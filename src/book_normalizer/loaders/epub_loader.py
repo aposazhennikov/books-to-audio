@@ -85,7 +85,21 @@ class EpubLoader(BaseLoader):
 
         chapters: list[Chapter] = []
 
-        for item in epub_book.get_items_of_type(9):  # ITEM_DOCUMENT = 9.
+        # Use spine to preserve reading order.
+        spine_items = epub_book.spine
+        if not spine_items:
+            # Fallback to get_items_of_type if spine is empty.
+            spine_items = [(item.get_id(), 'yes') for item in epub_book.get_items_of_type(9)]
+
+        for spine_entry in spine_items:
+            # spine_entry is typically (item_id, linear_flag).
+            item_id = spine_entry[0] if isinstance(spine_entry, tuple) else spine_entry
+            
+            # Get the actual item by ID.
+            item = epub_book.get_item_with_id(item_id)
+            if not item or item.get_type() != 9:  # ITEM_DOCUMENT = 9.
+                continue
+
             content = item.get_content()
             if not content:
                 continue

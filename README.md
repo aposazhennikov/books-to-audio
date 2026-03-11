@@ -91,6 +91,7 @@ pytest tests/test_chapter_detection.py -v  # Specific test file
   - Added numeric heading detection: "1. Title", "1.1 Subtitle", "2.3. Section"
   - Added common standalone headings: "Введение", "Заключение", "Предисловие", "Послесловие"
   - Existing: "Глава 1", "Часть III", "Пролог", "Эпилог", Roman numerals
+- **Fixed EPUB chapter order**: Now uses spine order instead of get_items_of_type() to preserve correct reading sequence
 - Automatic removal of repeated PDF headers/footers (pattern matching with numbers)
 - Empty chapter filtering now works across all formats (not just FB2)
 - Output folders now auto-create as `{bookname}_{format}/`

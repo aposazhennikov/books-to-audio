@@ -31,6 +31,26 @@ from book_normalizer.stress.resolver import StressResolver
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_filename(name: str) -> str:
+    """Sanitize a string for use as a directory name."""
+    import re
+
+    name = name.strip()
+    name = re.sub(r'[<>:"/\\|?*]', "", name)
+    name = re.sub(r"\s+", "_", name)
+    name = name[:100]
+    return name if name else "untitled"
+
+
+def _build_output_dir(input_path: Path, base_out: Path) -> Path:
+    """Build output directory path: base_out/bookname_format/."""
+    stem = input_path.stem
+    fmt = input_path.suffix.lstrip(".")
+    sanitized_name = _sanitize_filename(stem)
+    folder_name = f"{sanitized_name}_{fmt}" if fmt else sanitized_name
+    return base_out / folder_name
+
+
 def _build_config(
     verbose: bool,
     interactive: bool,
@@ -118,7 +138,8 @@ def process_command(
 
     pipeline.normalize_book(book)
 
-    output_dir = out.resolve()
+    output_dir = _build_output_dir(input_path, out).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     correction_store = CorrectionStore(config.correction_memory_path)
     punctuation_store = PunctuationStore(config.punctuation_memory_path)
@@ -284,7 +305,8 @@ def batch_command(input_dir: Path, out: Path, verbose: bool) -> None:
             book = chapter_detector.detect_and_split(book)
             pipeline.normalize_book(book)
 
-            book_out = out / file_path.stem
+            book_out = _build_output_dir(file_path, out)
+            book_out.mkdir(parents=True, exist_ok=True)
             txt_exporter.export(book, book_out)
             qwen_exporter.export(book, book_out)
             json_exporter.export(book, book_out)

@@ -109,6 +109,11 @@ class ChapterDetector:
             start = hit.paragraph_index
             end = hits[i + 1].paragraph_index if i + 1 < len(hits) else len(paragraphs)
             chapter_paras = paragraphs[start + 1 : end]
+
+            # Skip empty chapters (e.g., from table of contents).
+            if not chapter_paras:
+                continue
+
             self._reindex_paragraphs(chapter_paras)
 
             chapters.append(
@@ -119,10 +124,29 @@ class ChapterDetector:
                 )
             )
 
+        # Filter out chapters with no meaningful content and reindex.
+        chapters = [ch for ch in chapters if self._has_meaningful_content(ch)]
         for idx, ch in enumerate(chapters):
             ch.index = idx
 
         return chapters
+
+    @staticmethod
+    def _has_meaningful_content(chapter: Chapter) -> bool:
+        """Check if chapter has meaningful content (not just separators/whitespace)."""
+        if not chapter.paragraphs:
+            return False
+
+        # Count total text length excluding whitespace and common separators.
+        total_chars = 0
+        for para in chapter.paragraphs:
+            text = para.raw_text.strip()
+            # Skip paragraphs that are only separators.
+            if text and text not in ("---", "***", "—", "–", "•"):
+                total_chars += len(text)
+
+        # Consider chapter meaningful if it has at least 20 chars of actual content.
+        return total_chars >= 20
 
     @staticmethod
     def _reindex_paragraphs(paragraphs: list[Paragraph]) -> None:

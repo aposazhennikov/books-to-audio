@@ -115,7 +115,26 @@ class ChapterDetector:
             if result:
                 heading_text, label = result
                 hits.append(_HeadingHit(paragraph_index=idx, heading_text=heading_text, pattern_label=label))
-        return hits
+
+        # Remove duplicate headings (keep only the last occurrence).
+        # This handles cases where TOC entries duplicate actual chapter headings.
+        seen_titles: dict[str, int] = {}
+        for i, hit in enumerate(hits):
+            normalized_title = hit.heading_text.strip().upper()
+            if normalized_title in seen_titles:
+                # Mark previous occurrence for removal.
+                seen_titles[normalized_title] = i
+            else:
+                seen_titles[normalized_title] = i
+
+        # Keep only last occurrence of each title.
+        unique_hits = []
+        last_indices = set(seen_titles.values())
+        for i, hit in enumerate(hits):
+            if i in last_indices:
+                unique_hits.append(hit)
+
+        return unique_hits
 
     @staticmethod
     def _find_toc_based_headings(paragraphs: list[Paragraph], toc_titles: list[str]) -> list[_HeadingHit]:

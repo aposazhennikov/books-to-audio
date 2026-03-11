@@ -6,8 +6,8 @@ dist/
 build/
 .eggs/
 *.egg
-books/*
 .venv/
+books/
 venv/
 env/
 .env

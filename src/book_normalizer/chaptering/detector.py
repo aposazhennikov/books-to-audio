@@ -218,8 +218,7 @@ class ChapterDetector:
                 if lines_from_heading:
                     split_para = Paragraph(
                         raw_text='\n'.join(lines_from_heading),
-                        index=heading_para.index,
-                        stress_text=None,
+                        index_in_chapter=0,  # Will be reindexed later.
                     )
                     chapter_paras.append(split_para)
 
@@ -232,8 +231,7 @@ class ChapterDetector:
                     if lines_before_heading:
                         prev_para = Paragraph(
                             raw_text='\n'.join(lines_before_heading),
-                            index=heading_para.index,
-                            stress_text=None,
+                            index_in_chapter=len(chapters[-1].paragraphs),
                         )
                         chapters[-1].paragraphs.append(prev_para)
             else:

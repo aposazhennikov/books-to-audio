@@ -81,6 +81,7 @@ pytest tests/test_chapter_detection.py -v  # Specific test file
   - Finds "Оглавление"/"Содержание" sections automatically
   - Extracts chapter titles from TOC entries (e.g., "1. Title ... 5")
   - Matches TOC titles against book text (handles embedded headings)
+  - **Smart paragraph splitting**: When heading is found within a multi-line paragraph, splits it at the heading line to preserve context (no mid-sentence cuts)
   - Falls back to TOC when pattern matching finds ≤2 chapters
 - Added "Часть" pattern for chapter detection (e.g., "Часть I", "Часть III")
 - Automatic removal of repeated PDF headers/footers (pattern matching with numbers)

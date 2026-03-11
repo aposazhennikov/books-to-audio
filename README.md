@@ -87,7 +87,10 @@ pytest tests/test_chapter_detection.py -v  # Specific test file
   - **Smart paragraph splitting**: When heading is found within a multi-line paragraph, splits it at the heading line to preserve context (no mid-sentence cuts)
   - **Duplicate heading removal**: Filters TOC duplicates (keeps only last occurrence) to avoid empty chapters
   - Falls back to TOC when pattern matching finds ≤2 chapters
-- Added "Часть" pattern for chapter detection (e.g., "Часть I", "Часть III")
+- **Enhanced chapter patterns**:
+  - Added numeric heading detection: "1. Title", "1.1 Subtitle", "2.3. Section"
+  - Added common standalone headings: "Введение", "Заключение", "Предисловие", "Послесловие"
+  - Existing: "Глава 1", "Часть III", "Пролог", "Эпилог", Roman numerals
 - Automatic removal of repeated PDF headers/footers (pattern matching with numbers)
 - Empty chapter filtering now works across all formats (not just FB2)
 - Output folders now auto-create as `{bookname}_{format}/`

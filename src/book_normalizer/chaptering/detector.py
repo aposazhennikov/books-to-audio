@@ -145,8 +145,8 @@ class ChapterDetector:
             if text and text not in ("---", "***", "—", "–", "•"):
                 total_chars += len(text)
 
-        # Consider chapter meaningful if it has at least 20 chars of actual content.
-        return total_chars >= 20
+        # Consider chapter meaningful if it has at least 10 chars of actual content.
+        return total_chars >= 10
 
     @staticmethod
     def _reindex_paragraphs(paragraphs: list[Paragraph]) -> None:

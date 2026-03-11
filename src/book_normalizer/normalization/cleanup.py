@@ -19,23 +19,45 @@ def remove_repeated_headers(text: str, min_occurrences: int = 3) -> str:
     """
     Remove repeated header/footer lines that appear across pages.
 
-    Counts line occurrences; if a line appears more than `min_occurrences`
-    times, it is likely a repeating header or footer.
+    Counts line occurrences and patterns (lines with numbers replaced by #).
+    If a line or pattern appears more than `min_occurrences` times, 
+    it is likely a repeating header or footer.
     """
     lines = text.split("\n")
     line_counts: dict[str, int] = {}
+    pattern_counts: dict[str, int] = {}
+
     for line in lines:
         stripped = line.strip()
         if stripped and len(stripped) < 100:
+            # Count exact line.
             line_counts[stripped] = line_counts.get(stripped, 0) + 1
 
+            # Count pattern with numbers replaced by #.
+            pattern = re.sub(r"\d+", "#", stripped)
+            if pattern != stripped:  # Only if line contains numbers.
+                pattern_counts[pattern] = pattern_counts.get(pattern, 0) + 1
+
+    # Find repeated exact lines.
     repeated = {line for line, count in line_counts.items() if count >= min_occurrences}
-    if not repeated:
+
+    # Find repeated patterns (e.g., "Page #" appears many times).
+    repeated_patterns = {
+        pattern for pattern, count in pattern_counts.items() if count >= min_occurrences
+    }
+
+    if not repeated and not repeated_patterns:
         return text
 
     cleaned_lines: list[str] = []
     for line in lines:
-        if line.strip() not in repeated:
-            cleaned_lines.append(line)
+        stripped = line.strip()
+        # Skip if exact match or pattern match.
+        if stripped in repeated:
+            continue
+        pattern = re.sub(r"\d+", "#", stripped)
+        if pattern in repeated_patterns:
+            continue
+        cleaned_lines.append(line)
 
     return "\n".join(cleaned_lines)

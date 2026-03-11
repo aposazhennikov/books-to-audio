@@ -7,7 +7,10 @@ Semi-automatic Russian book source normalizer for TTS pipelines.
 - **Multi-format support**: TXT, PDF, EPUB, FB2, DOCX
 - **Automatic output folders**: Creates `{bookname}_{format}/` directories
 - **Smart chapter detection**: 
-  - Finds chapter headings using regex patterns ("Глава", "Часть", etc.)
+  - Finds chapter headings using regex patterns:
+    - "Глава 1", "Часть III", "Пролог/Эпилог"
+    - **Numeric headings**: "1. Title", "1.1 Subtitle", "2.3. Section"
+    - **Common headings**: "Введение", "Заключение", "Предисловие", "Послесловие"
   - Fallback to Table of Contents parsing if few/no chapters found
   - Handles embedded TOC entries within multi-line paragraphs
 - **PDF cleanup**: Removes repeated headers/footers (e.g., "Book Title | Page 123")

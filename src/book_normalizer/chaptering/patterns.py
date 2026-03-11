@@ -20,6 +20,16 @@ CHAPTER_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
     # "Часть I", "Часть 2", "ЧАСТЬ III".
     (re.compile(r"^\s*[Чч][Аа][Сс][Тт][Ьь]\s+[IVXLCDM\d]+", re.MULTILINE), "part"),
+    # "1. Title", "1.1 Title", "1.1. Title" — numeric headings.
+    (re.compile(r"^\s*\d+(?:\.\d+)*\.?\s+[А-ЯЁA-Z][А-Яа-яЁёA-Za-z\s]{3,}", re.MULTILINE), "numeric_heading"),
+    # "Введение", "Заключение", "Послесловие" — common standalone headings.
+    (
+        re.compile(
+            r"^\s*(?:[Вв]ведение|[Зз]аключение|[Пп]ослесловие|[Пп]редисловие)\s*$",
+            re.MULTILINE,
+        ),
+        "intro_conclusion",
+    ),
     # "Пролог", "Эпилог", "ПРОЛОГ".
     (
         re.compile(

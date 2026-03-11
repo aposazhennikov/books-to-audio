@@ -1,0 +1,22 @@
+"""Logging configuration for the book normalizer."""
+
+from __future__ import annotations
+
+import logging
+import sys
+
+
+def setup_logging(verbose: bool = False) -> None:
+    """Configure root logger with appropriate level and format."""
+    level = logging.DEBUG if verbose else logging.INFO
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(
+        logging.Formatter(
+            fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
+    root = logging.getLogger("book_normalizer")
+    root.setLevel(level)
+    root.addHandler(handler)
+    root.propagate = False

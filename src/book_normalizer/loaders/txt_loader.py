@@ -7,6 +7,7 @@ from pathlib import Path
 
 from book_normalizer.loaders.base import BaseLoader
 from book_normalizer.models.book import Book, Metadata, Paragraph, Chapter
+from book_normalizer.normalization.cleanup import remove_repeated_headers
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,9 @@ class TxtLoader(BaseLoader):
 
         text = self._read_with_encoding_fallback(resolved)
         logger.info("Loaded %d characters from '%s'", len(text), resolved.name)
+
+        # Remove repeated headers/footers before splitting into paragraphs.
+        text = remove_repeated_headers(text, min_occurrences=3)
 
         paragraphs = self._split_paragraphs(text)
 

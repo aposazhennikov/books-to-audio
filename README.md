@@ -89,8 +89,13 @@ pytest tests/test_chapter_detection.py -v  # Specific test file
   - Falls back to TOC when pattern matching finds ≤2 chapters
 - **Enhanced chapter patterns**:
   - Added numeric heading detection: "1. Title", "1.1 Subtitle", "2.3. Section"
+  - **Improved numeric pattern**: Now requires 10+ characters after number to avoid matching list items (e.g., "1. For magic Voodoo...")
   - Added common standalone headings: "Введение", "Заключение", "Предисловие", "Послесловие"
   - Existing: "Глава 1", "Часть III", "Пролог", "Эпилог", Roman numerals
+- **FB2 improvements**:
+  - Now extracts `<subtitle>` elements (e.g., "3.1. Половой разбой")
+  - Now extracts `<cite>` elements (epigraphs/quotes with authors)
+  - Full chapter titles used (not just pattern match) when splitting paragraphs
 - **Fixed EPUB chapter order**: Now uses spine order instead of get_items_of_type() to preserve correct reading sequence
 - Automatic removal of repeated PDF headers/footers (pattern matching with numbers)
 - Empty chapter filtering now works across all formats (not just FB2)

@@ -177,6 +177,34 @@ class Fb2Loader(BaseLoader):
                     )
                     idx += 1
 
+            elif tag == "subtitle":
+                text = "".join(elem.itertext()).strip()
+                if text:
+                    paragraphs.append(
+                        Paragraph(raw_text=text, normalized_text="", index_in_chapter=idx)
+                    )
+                    idx += 1
+
+            elif tag == "cite":
+                cite_parts: list[str] = []
+                for cite_elem in elem:
+                    cite_tag = etree.QName(cite_elem.tag).localname if isinstance(cite_elem.tag, str) else ""
+                    if cite_tag == "p":
+                        cite_text = "".join(cite_elem.itertext()).strip()
+                        if cite_text:
+                            cite_parts.append(cite_text)
+                    elif cite_tag == "text-author":
+                        author_text = "".join(cite_elem.itertext()).strip()
+                        if author_text:
+                            cite_parts.append(author_text)
+                
+                if cite_parts:
+                    combined_cite = "\n".join(cite_parts)
+                    paragraphs.append(
+                        Paragraph(raw_text=combined_cite, normalized_text="", index_in_chapter=idx)
+                    )
+                    idx += 1
+
             elif tag == "empty-line":
                 continue
 

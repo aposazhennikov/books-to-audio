@@ -220,12 +220,14 @@ class ChapterDetector:
 
             # Find which line contains the heading.
             heading_line_idx = -1
+            full_title = hit.heading_text
             for line_idx, line in enumerate(lines):
                 normalized_line = line.strip().rstrip('.,:;!? ')
                 normalized_title = hit.heading_text.strip().rstrip('.,:;!? ')
                 
                 if normalized_title in normalized_line or normalized_line.startswith(normalized_title):
                     heading_line_idx = line_idx
+                    full_title = line.strip()
                     break
 
             # Split paragraph at heading line if found.
@@ -270,7 +272,7 @@ class ChapterDetector:
 
             chapters.append(
                 Chapter(
-                    title=hit.heading_text,
+                    title=full_title,
                     index=len(chapters),
                     paragraphs=chapter_paras,
                 )

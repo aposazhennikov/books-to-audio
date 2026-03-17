@@ -19,6 +19,7 @@ class StressMemoryEntry(BaseModel):
     normalized_word: str = ""
     stressed_form: str = ""
     confirmed: bool = False
+    context_hint: str = ""
     updated_at: datetime = Field(default_factory=_now)
 
 
@@ -29,6 +30,10 @@ class CorrectionMemoryEntry(BaseModel):
     replacement: str
     context_hint: str = ""
     confirmed: bool = False
+    issue_type: str = ""
+    token: str = ""
+    normalized_token: str = ""
+    auto_apply_safe: bool = False
     updated_at: datetime = Field(default_factory=_now)
 
 

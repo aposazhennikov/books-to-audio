@@ -7,6 +7,7 @@ from typing import Protocol
 
 from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.models.review import IssueSeverity, IssueType, ReviewIssue
+from book_normalizer.stress.dictionary import is_russian_word
 
 
 class IssueDetector(Protocol):
@@ -128,11 +129,11 @@ class OcrSpellingDetector:
 
     _MIXED_SCRIPT = re.compile(r"[а-яёА-ЯЁ][a-zA-Z]|[a-zA-Z][а-яёА-ЯЁ]")
 
-    _OCR_SUBSTITUTIONS: list[tuple[re.Pattern[str], str, str]] = [
-        (re.compile(r"(?<=[а-яёА-ЯЁ])0(?=[а-яёА-ЯЁ])"), "Digit 0 inside Cyrillic word (likely O).", "о"),
-        (re.compile(r"(?<=[а-яёА-ЯЁ])3(?=[а-яёА-ЯЁ])"), "Digit 3 inside Cyrillic word (likely З).", "\u0417"),
-        (re.compile(r"(?<=[а-яёА-ЯЁ])6(?=[а-яёА-ЯЁ])"), "Digit 6 inside Cyrillic word (likely б).", "\u0431"),
-    ]
+    _OCR_SUBSTITUTIONS: dict[str, tuple[str, str]] = {
+        "0": ("\u043e", "\u041e"),  # о / О
+        "3": ("\u0437", "\u0417"),  # з / З
+        "6": ("\u0431", "\u0411"),  # б / Б
+    }
 
     _SUSPICIOUS_SEQUENCES = re.compile(
         r"[бвгджзклмнпрстфхцчшщ]{5,}"
@@ -185,25 +186,76 @@ class OcrSpellingDetector:
     def _detect_ocr_substitutions(
         self, text: str, chapter: Chapter, para: Paragraph,
     ) -> list[ReviewIssue]:
-        """Find digit-for-letter OCR substitutions inside words."""
+        """Find digit-for-letter OCR substitutions inside words (token-based)."""
         results: list[ReviewIssue] = []
-        for pattern, description, replacement in self._OCR_SUBSTITUTIONS:
-            for match in pattern.finditer(text):
-                ctx_before, ctx_after = _extract_context(text, match.start(), match.end())
-                results.append(
-                    ReviewIssue(
-                        issue_type=IssueType.OCR_ARTIFACT,
-                        severity=IssueSeverity.HIGH,
-                        original_fragment=match.group(),
-                        suggested_fragment=replacement,
-                        context_before=ctx_before,
-                        context_after=ctx_after,
-                        chapter_id=chapter.id,
-                        paragraph_id=para.id,
-                        confidence=0.80,
-                    )
+        # Tokenize into Cyrillic+digit chunks and everything else.
+        token_re = re.compile(r"[А-Яа-яЁё0-9\-]+|[^А-Яа-яЁё0-9\-]+")
+
+        for match in token_re.finditer(text):
+            token = match.group(0)
+            start, end = match.start(), match.end()
+
+            if not self._is_suspicious_ocr_token_for_issue(token):
+                continue
+
+            fixed = self._correct_ocr_token(token)
+            if fixed == token:
+                continue
+
+            ctx_before, ctx_after = _extract_context(text, start, end)
+            results.append(
+                ReviewIssue(
+                    issue_type=IssueType.OCR_ARTIFACT,
+                    severity=IssueSeverity.HIGH,
+                    original_fragment=token,
+                    suggested_fragment=fixed,
+                    context_before=ctx_before,
+                    context_after=ctx_after,
+                    chapter_id=chapter.id,
+                    paragraph_id=para.id,
+                    confidence=0.80,
                 )
+            )
+
         return results
+
+    def _is_suspicious_ocr_token_for_issue(self, token: str) -> bool:
+        """Detect tokens that likely contain digit-for-letter OCR substitutions."""
+        has_digit = any(ch.isdigit() for ch in token)
+        has_cyr = any("\u0400" <= ch <= "\u04FF" for ch in token)
+        if not (has_digit and has_cyr):
+            return False
+
+        core = token.replace("-", "").replace("'", "")
+        if not core:
+            return False
+        for ch in core:
+            if not (ch.isdigit() or ("\u0400" <= ch <= "\u04FF")):
+                return False
+        return len(core) >= 2
+
+    def _correct_ocr_token(self, token: str) -> str:
+        """Return a canonical corrected form for an OCR-corrupted token."""
+        chars: list[str] = list(token)
+        changed = False
+        for i, ch in enumerate(chars):
+            if ch not in self._OCR_SUBSTITUTIONS:
+                continue
+            # Only treat as OCR substitution if neighbor is Cyrillic.
+            left_cyr = i > 0 and ("\u0400" <= chars[i - 1] <= "\u04FF")
+            right_cyr = i + 1 < len(chars) and ("\u0400" <= chars[i + 1] <= "\u04FF")
+            if not (left_cyr or right_cyr):
+                continue
+            lower, upper = self._OCR_SUBSTITUTIONS[ch]
+            if ch.isdigit():
+                # Preserve case based on neighbors if possible.
+                use_upper = (
+                    (i > 0 and chars[i - 1].isupper())
+                    or (i + 1 < len(chars) and chars[i + 1].isupper())
+                )
+                chars[i] = upper if use_upper else lower
+                changed = True
+        return "".join(chars) if changed else token
 
     def _detect_suspicious_sequences(
         self, text: str, chapter: Chapter, para: Paragraph,

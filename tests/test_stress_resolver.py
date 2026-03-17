@@ -11,13 +11,15 @@ from book_normalizer.stress.resolver import StressResolver, _find_context_for_wo
 
 class TestFindContext:
     def test_finds_context(self) -> None:
-        para = Paragraph(raw_text="", normalized_text="Это молоко вкусное.", index_in_chapter=0)
+        para = Paragraph(raw_text="", normalized_text="Это молоко вкусное. Ещё одно предложение.", index_in_chapter=0)
         ch = Chapter(title="Test", index=0, paragraphs=[para])
         book = Book(chapters=[ch])
 
         contexts = _find_context_for_word(book, "молоко")
         assert len(contexts) == 1
         assert "молоко" in contexts[0]
+        # Should return at least a full sentence context.
+        assert "Это молоко вкусное." in contexts[0]
 
     def test_no_match(self) -> None:
         para = Paragraph(raw_text="", normalized_text="Текст без нужного слова.", index_in_chapter=0)

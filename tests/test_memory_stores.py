@@ -68,7 +68,15 @@ class TestJsonStore:
 class TestCorrectionStore:
     def test_add_and_lookup(self, tmp_path: Path) -> None:
         store = CorrectionStore(tmp_path / "corrections.json")
-        entry = CorrectionMemoryEntry(original="тесь", replacement="тест", confirmed=True)
+        entry = CorrectionMemoryEntry(
+            original="тесь",
+            replacement="тест",
+            confirmed=True,
+            issue_type="spelling",
+            token="тесь",
+            normalized_token="тесь",
+            auto_apply_safe=True,
+        )
         store.add(entry)
         assert store.has("тесь")
         assert store.lookup("тесь").replacement == "тест"
@@ -86,15 +94,53 @@ class TestCorrectionStore:
     def test_persistence(self, tmp_path: Path) -> None:
         path = tmp_path / "corrections.json"
         store1 = CorrectionStore(path)
-        store1.add(CorrectionMemoryEntry(original="x", replacement="y", confirmed=True))
+        store1.add(
+            CorrectionMemoryEntry(
+                original="x",
+                replacement="y",
+                confirmed=True,
+                issue_type="ocr_artifact",
+                token="x",
+                normalized_token="x",
+                auto_apply_safe=True,
+            )
+        )
 
         store2 = CorrectionStore(path)
         assert store2.has("x")
         assert store2.lookup("x").confirmed is True
 
+    def test_backward_compatibility_loads_legacy_entries(self, tmp_path: Path) -> None:
+        path = tmp_path / "legacy.json"
+        raw = [
+            {
+                "original": "legacy",
+                "replacement": "legacy_fixed",
+                "confirmed": True,
+            }
+        ]
+        json_store = JsonStore(path)
+        json_store.save_raw(raw)
+
+        store = CorrectionStore(path)
+        entries = store.all_entries()
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry.original == "legacy"
+        # Legacy entries should not be auto-applied by default.
+        assert entry.auto_apply_safe is False
+
     def test_remove(self, tmp_path: Path) -> None:
         store = CorrectionStore(tmp_path / "corrections.json")
-        store.add(CorrectionMemoryEntry(original="a", replacement="b"))
+        store.add(
+            CorrectionMemoryEntry(
+                original="a",
+                replacement="b",
+                issue_type="spelling",
+                token="a",
+                normalized_token="a",
+            )
+        )
         assert store.remove("a") is True
         assert not store.has("a")
         assert store.remove("missing") is False

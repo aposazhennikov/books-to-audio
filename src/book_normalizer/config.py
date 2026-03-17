@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+from enum import Enum
 
 from pydantic import BaseModel, Field
+
+
+class OcrMode(str, Enum):
+    """OCR execution mode for PDF handling."""
+
+    OFF = "off"
+    AUTO = "auto"
+    FORCE = "force"
+    COMPARE = "compare"
 
 
 class AppConfig(BaseModel):
@@ -20,6 +30,7 @@ class AppConfig(BaseModel):
     skip_spellcheck: bool = False
     export_json: bool = True
     chapters_only: bool = False
+    ocr_mode: OcrMode = OcrMode.OFF
 
     @property
     def stress_dict_path(self) -> Path:

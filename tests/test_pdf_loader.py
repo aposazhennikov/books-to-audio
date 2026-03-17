@@ -7,7 +7,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from book_normalizer.loaders.pdf_loader import PdfLoader
+from book_normalizer.config import OcrMode
+from book_normalizer.loaders.pdf_loader import (
+    PdfLoader,
+    PdfOcrCompareResult,
+    PdfTextVariant,
+    extract_pdf_with_ocr_mode,
+    select_pdf_text_for_mode,
+)
 
 
 class TestPdfLoader:
@@ -48,3 +55,51 @@ class TestPdfLoader:
         loader = PdfLoader()
         book = loader.load(pdf_file)
         assert any(r["stage"] == "loading" for r in book.audit_trail)
+
+
+class TestOcrModeSelection:
+    def test_extract_pdf_with_ocr_mode_off_returns_only_native(self, tmp_path: Path) -> None:
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+        with patch.object(PdfLoader, "_extract_text", return_value="native text"):
+            result = extract_pdf_with_ocr_mode(pdf_file, OcrMode.OFF)
+
+        assert result.native.text == "native text"
+        assert result.ocr is None
+
+    def test_select_pdf_text_for_mode_off_uses_native(self) -> None:
+        compare = PdfOcrCompareResult(
+            native=PdfTextVariant(kind="native", text="native"),
+            ocr=PdfTextVariant(kind="ocr", text="ocr"),
+        )
+        chosen, stats = select_pdf_text_for_mode(compare, OcrMode.OFF)
+        assert chosen.kind == "native"
+        assert stats["selected"] == "native"
+
+    def test_select_pdf_text_for_mode_force_uses_ocr(self) -> None:
+        compare = PdfOcrCompareResult(
+            native=PdfTextVariant(kind="native", text="native"),
+            ocr=PdfTextVariant(kind="ocr", text="ocr"),
+        )
+        chosen, stats = select_pdf_text_for_mode(compare, OcrMode.FORCE)
+        assert chosen.kind == "ocr"
+        assert stats["selected"] == "ocr"
+
+    def test_select_pdf_text_for_mode_auto_falls_back_when_native_empty(self) -> None:
+        compare = PdfOcrCompareResult(
+            native=PdfTextVariant(kind="native", text="   "),
+            ocr=PdfTextVariant(kind="ocr", text="ocr text"),
+        )
+        chosen, stats = select_pdf_text_for_mode(compare, OcrMode.AUTO)
+        assert chosen.kind == "ocr"
+        assert stats["selected"] == "ocr"
+
+    def test_select_pdf_text_for_mode_auto_prefers_native_when_not_empty(self) -> None:
+        compare = PdfOcrCompareResult(
+            native=PdfTextVariant(kind="native", text="native text"),
+            ocr=PdfTextVariant(kind="ocr", text="ocr text"),
+        )
+        chosen, stats = select_pdf_text_for_mode(compare, OcrMode.AUTO)
+        assert chosen.kind == "native"
+        assert stats["selected"] == "native"

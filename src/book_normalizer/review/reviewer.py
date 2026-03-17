@@ -131,7 +131,7 @@ class Reviewer:
 
         if issue.issue_type in (IssueType.OCR_ARTIFACT, IssueType.SPELLING) and self._correction_store:
             entry = self._correction_store.lookup(issue.original_fragment)
-            if entry and entry.confirmed:
+            if entry and entry.confirmed and entry.auto_apply_safe:
                 return ReviewDecision(
                     issue_id=issue.id,
                     action=ReviewAction.ACCEPT,

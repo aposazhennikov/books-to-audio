@@ -23,25 +23,50 @@ logger = logging.getLogger(__name__)
 
 
 def _find_context_for_word(book: Book, word: str, max_contexts: int = 2) -> list[str]:
-    """Find example contexts where a word appears in the book."""
+    """Find example sentence-level contexts where a word appears in the book."""
     contexts: list[str] = []
     target = word.lower()
+    sentence_separators = ".!?"
+
     for chapter in book.chapters:
         for para in chapter.paragraphs:
             text = para.normalized_text or para.raw_text
             lower_text = text.lower()
             idx = lower_text.find(target)
-            if idx >= 0:
-                start = max(0, idx - 30)
-                end = min(len(text), idx + len(word) + 30)
-                snippet = text[start:end]
-                if start > 0:
-                    snippet = "..." + snippet
-                if end < len(text):
-                    snippet = snippet + "..."
-                contexts.append(snippet)
-                if len(contexts) >= max_contexts:
-                    return contexts
+            if idx < 0:
+                continue
+
+            # Expand to sentence boundaries.
+            start = idx
+            while start > 0 and text[start] not in sentence_separators and text[start] != "\n":
+                start -= 1
+            if start < len(text) and text[start] in sentence_separators:
+                start += 1
+
+            end = idx + len(word)
+            while end < len(text) and text[end] not in sentence_separators and text[end] != "\n":
+                end += 1
+            if end < len(text):
+                end += 1
+
+            sentence = text[start:end].strip()
+            # Include small prefix/suffix from paragraph for additional context.
+            prefix_start = max(0, start - 40)
+            suffix_end = min(len(text), end + 40)
+            prefix = text[prefix_start:start].strip()
+            suffix = text[end:suffix_end].strip()
+
+            full_context_parts: list[str] = []
+            if prefix:
+                full_context_parts.append("..." + prefix)
+            full_context_parts.append(sentence)
+            if suffix:
+                full_context_parts.append(suffix + "...")
+
+            contexts.append(" ".join(full_context_parts))
+            if len(contexts) >= max_contexts:
+                return contexts
+
     return contexts
 
 
@@ -95,7 +120,9 @@ class StressResolver:
                 break
 
             if stressed:
-                self._dict.add_user_entry(word, stressed, confirmed=True)
+                # Store decision together with compact context for future disambiguation.
+                context_hint = " | ".join(contexts[:2]) if contexts else ""
+                self._dict.add_user_entry(word, stressed, confirmed=True, context_hint=context_hint)
                 resolved_count += 1
                 self._console.print(f"[green]Saved: {word} -> {stressed}[/green]")
             else:

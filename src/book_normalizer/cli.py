@@ -5,17 +5,19 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import click
 
 from book_normalizer import __version__
 from book_normalizer.chaptering.detector import ChapterDetector
-from book_normalizer.config import AppConfig
+from book_normalizer.config import AppConfig, OcrMode
 from book_normalizer.exporters.json_exporter import JsonExporter
 from book_normalizer.exporters.qwen_exporter import QwenExporter
 from book_normalizer.exporters.txt_exporter import TxtExporter
 from book_normalizer.loaders.factory import LoaderFactory
+from book_normalizer.loaders.pdf_loader import PdfLoader, extract_pdf_with_ocr_mode
 from book_normalizer.logging_config import setup_logging
 from book_normalizer.memory.correction_store import CorrectionStore
 from book_normalizer.memory.punctuation_store import PunctuationStore
@@ -27,6 +29,7 @@ from book_normalizer.review.tui import InteractiveReviewer
 from book_normalizer.stress.annotator import StressAnnotator
 from book_normalizer.stress.dictionary import StressDictionary
 from book_normalizer.stress.resolver import StressResolver
+from book_normalizer.verification import run_verification
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,7 @@ def _build_config(
     skip_spellcheck: bool,
     export_json: bool,
     chapters_only: bool,
+    ocr_mode: OcrMode,
 ) -> AppConfig:
     """Build an AppConfig from CLI flags."""
     return AppConfig(
@@ -71,6 +75,7 @@ def _build_config(
         skip_spellcheck=skip_spellcheck,
         export_json=export_json,
         chapters_only=chapters_only,
+        ocr_mode=ocr_mode,
     )
 
 
@@ -91,6 +96,26 @@ def main() -> None:
 @click.option("--chapters-only", is_flag=True, default=False, help="Export only chapter files.")
 @click.option("--export-json/--no-export-json", default=True, help="Export JSON structure.")
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Verbose logging output.")
+@click.option(
+    "--ocr-mode",
+    type=click.Choice([m.value for m in OcrMode]),
+    default=OcrMode.OFF.value,
+    show_default=True,
+    help="OCR execution mode for PDF files.",
+)
+@click.option(
+    "--verify-report",
+    is_flag=True,
+    default=False,
+    help="Generate before/after verification reports for quality control.",
+)
+@click.option(
+    "--sample-size",
+    type=int,
+    default=20,
+    show_default=True,
+    help="Number of random paragraph samples in verification report.",
+)
 def process_command(
     input_path: Path,
     out: Path,
@@ -102,6 +127,9 @@ def process_command(
     chapters_only: bool,
     export_json: bool,
     verbose: bool,
+    ocr_mode: str,
+    verify_report: bool,
+    sample_size: int,
 ) -> None:
     """Process a single book file: load, normalize, split chapters, export."""
     setup_logging(verbose=verbose)
@@ -115,18 +143,68 @@ def process_command(
         skip_spellcheck=skip_spellcheck,
         export_json=export_json,
         chapters_only=chapters_only,
+        ocr_mode=OcrMode(ocr_mode),
     )
 
     click.echo(f"Processing: {input_path}")
 
     try:
         factory = LoaderFactory.default()
-        book = factory.load(input_path)
+        if input_path.suffix.lower() == ".pdf":
+            compare = extract_pdf_with_ocr_mode(input_path, config.ocr_mode)
+            chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, config.ocr_mode)
+
+            # Build Book from the chosen text variant.
+            loader = PdfLoader()
+            paragraphs = loader._split_paragraphs(chosen_variant.text)
+            chapter = Chapter(
+                title="Full Text",
+                index=0,
+                paragraphs=paragraphs,
+                source_span_start=0,
+                source_span_end=len(chosen_variant.text),
+            )
+            metadata = Metadata(
+                source_path=str(input_path.resolve()),
+                source_format="pdf",
+            )
+            from book_normalizer.models.book import Book as BookModel
+
+            book = BookModel(metadata=metadata, chapters=[chapter])
+            book.add_audit(
+                "loading",
+                "pdf_loader_ocr_mode",
+                f"mode={config.ocr_mode.value}, selected={ocr_stats.get('selected')}, "
+                f"native_len={ocr_stats.get('native_len')}, ocr_len={ocr_stats.get('ocr_len')}",
+            )
+            # In COMPARE mode, compare artifacts will be written after output_dir is known.
+        else:
+            book = factory.load(input_path)
     except (FileNotFoundError, ValueError, ImportError) as exc:
         click.echo(f"Error loading file: {exc}", err=True)
         sys.exit(1)
 
     click.echo(f"Loaded: {len(book.chapters)} chapter(s), source={book.metadata.source_format}")
+
+    verification_before = deepcopy(book) if verify_report else None
+
+    output_dir = _build_output_dir(input_path, out).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # If PDF compare mode was used, write compare report artifacts now.
+    if input_path.suffix.lower() == ".pdf" and config.ocr_mode == OcrMode.COMPARE:
+        try:
+            from book_normalizer.loaders.pdf_loader import (
+                extract_pdf_with_ocr_mode as _extract_for_report,
+                select_pdf_text_for_mode as _select_for_report,
+                write_pdf_compare_report,
+            )
+
+            compare = _extract_for_report(input_path, config.ocr_mode)
+            chosen_variant, ocr_stats = _select_for_report(compare, config.ocr_mode)
+            write_pdf_compare_report(output_dir, compare, ocr_stats)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to write PDF compare report: %s", exc)
 
     pipeline = NormalizationPipeline()
     book = pipeline.normalize_book(book)
@@ -137,9 +215,6 @@ def process_command(
     click.echo(f"Chapter detection complete: {len(book.chapters)} chapter(s) found.")
 
     pipeline.normalize_book(book)
-
-    output_dir = _build_output_dir(input_path, out).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     correction_store = CorrectionStore(config.correction_memory_path)
     punctuation_store = PunctuationStore(config.punctuation_memory_path)
@@ -204,6 +279,20 @@ def process_command(
         encoding="utf-8",
     )
     click.echo(f"Audit log: {audit_path}")
+
+    if verify_report and verification_before is not None:
+        verification_result = run_verification(
+            before=verification_before,
+            after=book,
+            output_dir=output_dir,
+            sample_size=sample_size,
+        )
+        click.echo(
+            "Verification reports generated: "
+            f"{verification_result.artifacts['stats_before_after']}, "
+            f"{verification_result.artifacts['suspicious_changes']}, "
+            f"{verification_result.artifacts['random_sample_review']}"
+        )
 
     click.echo("Done.")
 

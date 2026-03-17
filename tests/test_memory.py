@@ -25,7 +25,14 @@ class TestStressMemoryEntry:
 
 class TestCorrectionMemoryEntry:
     def test_creation(self) -> None:
-        entry = CorrectionMemoryEntry(original="тесь", replacement="тест")
+        entry = CorrectionMemoryEntry(
+            original="тесь",
+            replacement="тест",
+            issue_type="spelling",
+            token="тесь",
+            normalized_token="тесь",
+            auto_apply_safe=True,
+        )
         assert entry.original == "тесь"
         assert entry.replacement == "тест"
 

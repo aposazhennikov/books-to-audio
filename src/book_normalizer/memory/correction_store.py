@@ -32,9 +32,20 @@ class CorrectionStore:
         return self._cache
 
     def lookup(self, original: str) -> CorrectionMemoryEntry | None:
-        """Find a stored correction for the given original fragment."""
+        """
+        Find a stored correction for the given original fragment.
+
+        Only entries explicitly marked as safe for auto-apply are returned
+        for naive lookups, to prevent overly broad character substitutions
+        from being applied out of context.
+        """
         cache = self._ensure_loaded()
-        return cache.get(original)
+        entry = cache.get(original)
+        if not entry:
+            return None
+        if not entry.auto_apply_safe:
+            return None
+        return entry
 
     def has(self, original: str) -> bool:
         """Check if a correction exists for the given original."""

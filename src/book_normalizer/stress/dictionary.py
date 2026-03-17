@@ -161,7 +161,13 @@ class StressDictionary:
         """Check if a word exists in any dictionary source."""
         return self.lookup(word) is not None
 
-    def add_user_entry(self, word: str, stressed_form: str, confirmed: bool = True) -> None:
+    def add_user_entry(
+        self,
+        word: str,
+        stressed_form: str,
+        confirmed: bool = True,
+        context_hint: str | None = None,
+    ) -> None:
         """Add an entry to the user store."""
         if self._store is None:
             logger.warning("No user store configured; entry not persisted.")
@@ -171,5 +177,6 @@ class StressDictionary:
             normalized_word=word.lower().strip(),
             stressed_form=stressed_form,
             confirmed=confirmed,
+            context_hint=context_hint or "",
         )
         self._store.add(entry)

@@ -52,6 +52,9 @@ class ChapterDetector:
         # First try: scan for chapter headings in text.
         hits = self._find_headings(all_paragraphs)
 
+        # Recover orphaned "Глава" lines with OCR-damaged numerals.
+        hits = self._recover_orphan_glava_headings(all_paragraphs, hits)
+
         # Second try: if no headings or very few (<= 2), try parsing TOC.
         if len(hits) <= 2:
             full_text = "\n\n".join(p.raw_text for p in all_paragraphs)
@@ -134,7 +137,112 @@ class ChapterDetector:
             if i in last_indices:
                 unique_hits.append(hit)
 
+        unique_hits = ChapterDetector._filter_numeric_heading_noise(unique_hits)
         return unique_hits
+
+    @staticmethod
+    def _filter_numeric_heading_noise(hits: list[_HeadingHit]) -> list[_HeadingHit]:
+        """
+        Discard numeric_heading hits whose numbers look like footnotes
+        rather than real chapter numbers.
+
+        Footnotes restart numbering per chapter, so their leading numbers
+        repeatedly drop below the running maximum when read in document
+        order.  Real chapter numbers are monotonically increasing.
+        """
+        numeric_hits = [h for h in hits if h.pattern_label == "numeric_heading"]
+        if len(numeric_hits) < 3:
+            return hits
+
+        num_re = re.compile(r"^\s*(\d+)")
+        numbers: list[int] = []
+        for h in numeric_hits:
+            m = num_re.match(h.heading_text)
+            if m:
+                numbers.append(int(m.group(1)))
+
+        if not numbers:
+            return hits
+
+        # Count how many times the number drops below the running max
+        # (a "restart").  Footnotes restart per chapter; real chapters don't.
+        running_max = 0
+        restarts = 0
+        for n in numbers:
+            if n < running_max:
+                restarts += 1
+            running_max = max(running_max, n)
+
+        restart_rate = restarts / len(numbers)
+        if restart_rate > 0.25:
+            logger.info(
+                "Discarding %d numeric_heading hits (restart_rate=%.2f, likely footnotes).",
+                len(numeric_hits),
+                restart_rate,
+            )
+            return [h for h in hits if h.pattern_label != "numeric_heading"]
+
+        return hits
+
+    # "Глава" + single short token (1-10 non-space chars) + end of line.
+    # Rejects TOC entries like "Глава I Сержант гвардии 7".
+    _RE_ORPHAN_GLAVA = re.compile(
+        r"^\s*[Гг][Лл][Аа][Вв][Аа]\s+\S{1,10}\s*$"
+    )
+
+    @staticmethod
+    def _recover_orphan_glava_headings(
+        paragraphs: list[Paragraph],
+        hits: list[_HeadingHit],
+    ) -> list[_HeadingHit]:
+        """
+        Recover chapter headings where 'Глава' is followed by an
+        unrecognisable token (e.g. OCR-damaged numeral like '[М' for IV).
+
+        Activated only when the book already has ≥ 3 confirmed 'Глава'-style
+        hits, proving it consistently uses this convention.  The orphan line
+        must contain exactly one short token after 'Глава' to avoid false
+        positives from sentences or TOC entries.
+        """
+        glava_hits = [
+            h for h in hits
+            if h.heading_text.strip().lower().startswith("глава")
+        ]
+        if len(glava_hits) < 3:
+            return hits
+
+        hit_indices = {h.paragraph_index for h in hits}
+
+        recovered: list[_HeadingHit] = []
+        for idx, para in enumerate(paragraphs):
+            if idx in hit_indices:
+                continue
+            text = para.raw_text.strip()
+            if not text:
+                continue
+            first_line = text.split("\n", maxsplit=1)[0].strip()
+            if not ChapterDetector._RE_ORPHAN_GLAVA.match(first_line):
+                continue
+            if match_chapter_heading(first_line) is not None:
+                continue
+            recovered.append(
+                _HeadingHit(
+                    paragraph_index=idx,
+                    heading_text=first_line,
+                    pattern_label="chapter_recovered",
+                )
+            )
+
+        if recovered:
+            logger.info(
+                "Recovered %d orphaned 'Глава' heading(s) with damaged numerals.",
+                len(recovered),
+            )
+            all_hits = hits + recovered
+            all_hits.sort(key=lambda h: h.paragraph_index)
+            return all_hits
+
+        return hits
 
     @staticmethod
     def _find_toc_based_headings(paragraphs: list[Paragraph], toc_titles: list[str]) -> list[_HeadingHit]:

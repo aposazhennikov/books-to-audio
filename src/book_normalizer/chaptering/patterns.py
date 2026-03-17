@@ -18,6 +18,10 @@ CHAPTER_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         ),
         "chapter_word",
     ),
+    # "Глава V", "Глава XIV", "Глава |", "Глава Il" — Latin Roman numerals
+    # including frequent OCR variants (l for I, | for I).
+    # The $ anchor rejects TOC lines like "Глава I Title 7".
+    (re.compile(r"^\s*[Гг][Лл][Аа][Вв][Аа]\s+[IVXLCDMl|]+\s*$", re.MULTILINE), "chapter_roman"),
     # "Часть I", "Часть 2", "ЧАСТЬ III".
     (re.compile(r"^\s*[Чч][Аа][Сс][Тт][Ьь]\s+[IVXLCDM\d]+", re.MULTILINE), "part"),
     # "1. Title", "1.1 Title", "1.1. Title" — numeric headings.

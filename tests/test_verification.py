@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from book_normalizer.models.book import Book
+from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 from book_normalizer.verification.report import (
     VerificationConfig,
     _collect_candidate_headings,
@@ -10,7 +10,16 @@ from book_normalizer.verification.report import (
 
 
 def make_simple_book(raw: str) -> Book:
-    return Book.from_raw_text(raw, source_path="test.txt", source_format="txt")
+    """Build a Book with blank-line paragraph splitting for test convenience."""
+    parts = [p for p in raw.split("\n\n") if p.strip()]
+    paragraphs = [
+        Paragraph(raw_text=p, normalized_text="", index_in_chapter=i)
+        for i, p in enumerate(parts)
+    ]
+    title = parts[0] if parts else "Full Text"
+    chapter = Chapter(title=title, index=0, paragraphs=paragraphs)
+    metadata = Metadata(source_path="test.txt", source_format="txt")
+    return Book(metadata=metadata, chapters=[chapter])
 
 
 def test_compute_book_stats_basic(tmp_path: Path) -> None:

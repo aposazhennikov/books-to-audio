@@ -43,13 +43,15 @@ class EpubLoader(BaseLoader):
         metadata = self._extract_metadata(epub_book, resolved)
         chapters = self._extract_chapters(epub_book)
 
-        if not chapters:
-            chapters = [Chapter(title="Full Text", index=0, paragraphs=[])]
+        total_paras = sum(len(ch.paragraphs) for ch in chapters)
+        if total_paras == 0:
+            # Fail loudly instead of silently exporting an empty book.
+            raise ValueError(f"EPUB extraction produced no paragraphs for '{resolved}'.")
 
         book = Book(metadata=metadata, chapters=chapters)
-        total_paras = sum(len(ch.paragraphs) for ch in chapters)
         book.add_audit(
-            "loading", "epub_loader",
+            "loading",
+            "epub_loader",
             f"chapters={len(chapters)}, paragraphs={total_paras}",
         )
         return book
@@ -80,24 +82,44 @@ class EpubLoader(BaseLoader):
 
     @classmethod
     def _extract_chapters(cls, epub_book: object) -> list[Chapter]:
-        """Extract chapters from EPUB spine items containing text."""
+        """Extract chapters from EPUB document items in a robust, spine-aware order."""
         from ebooklib import epub
 
         chapters: list[Chapter] = []
 
-        # Use spine to preserve reading order.
-        spine_items = epub_book.spine
-        if not spine_items:
-            # Fallback to get_items_of_type if spine is empty.
-            spine_items = [(item.get_id(), 'yes') for item in epub_book.get_items_of_type(9)]
+        # Collect all document items first. Some ebooklib versions expose ITEM_DOCUMENT,
+        # others require using the numeric type code (9).
+        item_document_type = getattr(epub, "ITEM_DOCUMENT", 9)
+        doc_items = list(epub_book.get_items_of_type(item_document_type))
 
-        for spine_entry in spine_items:
-            # spine_entry is typically (item_id, linear_flag).
-            item_id = spine_entry[0] if isinstance(spine_entry, tuple) else spine_entry
-            
-            # Get the actual item by ID.
-            item = epub_book.get_item_with_id(item_id)
-            if not item or item.get_type() != 9:  # ITEM_DOCUMENT = 9.
+        # Also include items whose type is 0 (regular HTML chapters in some EPUBs),
+        # while avoiding duplicates by id.
+        seen_ids: set[str] = {getattr(it, "get_id", lambda: "")() for it in doc_items}
+        for item in epub_book.get_items():
+            item_type = getattr(item, "get_type", lambda: None)()
+            item_id = getattr(item, "get_id", lambda: "")()
+            if item_type == 0 and item_id and item_id not in seen_ids:
+                doc_items.append(item)
+                seen_ids.add(item_id)
+
+        id_to_item = {item.get_id(): item for item in doc_items}
+
+        # Build reading order from spine when available, then append remaining docs.
+        ordered_ids: list[str] = []
+        spine = getattr(epub_book, "spine", []) or []
+        for entry in spine:
+            item_id = entry[0] if isinstance(entry, tuple) else entry
+            if item_id in id_to_item and item_id not in ordered_ids:
+                ordered_ids.append(item_id)
+
+        for item in doc_items:
+            item_id = item.get_id()
+            if item_id not in ordered_ids:
+                ordered_ids.append(item_id)
+
+        for item_id in ordered_ids:
+            item = id_to_item.get(item_id)
+            if not item:
                 continue
 
             content = item.get_content()
@@ -111,15 +133,29 @@ class EpubLoader(BaseLoader):
 
             title = cls._extract_title_from_html(html_text)
             plain_text = cls._html_to_text(html_text)
-
             if not plain_text.strip():
                 continue
 
             paragraphs = cls._split_paragraphs(plain_text)
             if not paragraphs:
-                continue
+                # Fallback: treat whole block as a single paragraph if non-empty.
+                paragraphs = [
+                    Paragraph(raw_text=plain_text.strip(), normalized_text="", index_in_chapter=0)
+                ]
 
             chapter_title = title or f"Section {len(chapters) + 1}"
+
+            # If the first paragraph duplicates the title text, drop it.
+            if title and paragraphs and paragraphs[0].raw_text.strip() == title.strip():
+                paragraphs = [
+                    Paragraph(
+                        raw_text=p.raw_text,
+                        normalized_text=p.normalized_text,
+                        index_in_chapter=idx,
+                    )
+                    for idx, p in enumerate(paragraphs[1:])
+                ]
+
             chapters.append(
                 Chapter(
                     title=chapter_title,

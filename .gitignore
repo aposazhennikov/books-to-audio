@@ -1,4 +1,7 @@
 __pycache__/
+.cursor/
+eval_corpus/
+eval_results*/
 *.py[cod]
 *$py.class
 *.egg-info/

@@ -25,6 +25,45 @@ class TestEpubLoader:
         with pytest.raises(FileNotFoundError):
             loader.load(tmp_path / "missing.epub")
 
+    @patch("book_normalizer.loaders.epub_loader.EpubLoader._extract_chapters")
+    @patch("ebooklib.epub.read_epub")
+    def test_load_raises_on_empty_extraction(
+        self,
+        mock_read_epub: MagicMock,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_extract.return_value = []
+
+        epub_file = tmp_path / "empty.epub"
+        epub_file.write_bytes(b"dummy")
+
+        loader = EpubLoader()
+        mock_read_epub.return_value = MagicMock()
+
+        with pytest.raises(ValueError, match="EPUB extraction produced no paragraphs"):
+            loader.load(epub_file)
+
+    def test_extract_chapters_uses_document_items_when_spine_useless(self) -> None:
+        # Simulate EPUB where spine contains only non-document items
+        # and real text lives in ITEM_DOCUMENT items.
+        mock_book = MagicMock()
+        mock_book.spine = [("nav", "no")]
+
+        mock_doc = MagicMock()
+        mock_doc.get_id.return_value = "doc1"
+        mock_doc.get_type.return_value = 9  # ITEM_DOCUMENT
+        html = "<h1>Title</h1><p>First paragraph.</p><p>Second paragraph.</p>"
+        mock_doc.get_content.return_value = html.encode("utf-8")
+
+        mock_book.get_items_of_type.return_value = [mock_doc]
+        mock_book.get_item_with_id.return_value = mock_doc
+
+        chapters = EpubLoader._extract_chapters(mock_book)
+        assert len(chapters) == 1
+        assert chapters[0].title in ("Title", "Section 1")
+        assert len(chapters[0].paragraphs) == 2
+
     def test_html_to_text(self) -> None:
         html = "<p>First paragraph.</p><p>Second paragraph.</p>"
         result = EpubLoader._html_to_text(html)

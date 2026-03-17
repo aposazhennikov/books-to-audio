@@ -17,7 +17,12 @@ from book_normalizer.exporters.json_exporter import JsonExporter
 from book_normalizer.exporters.qwen_exporter import QwenExporter
 from book_normalizer.exporters.txt_exporter import TxtExporter
 from book_normalizer.loaders.factory import LoaderFactory
-from book_normalizer.loaders.pdf_loader import PdfLoader, extract_pdf_with_ocr_mode
+from book_normalizer.loaders.pdf_loader import (
+    PdfLoader,
+    extract_pdf_with_ocr_mode,
+    select_pdf_text_for_mode,
+    write_pdf_compare_report,
+)
 from book_normalizer.logging_config import setup_logging
 from book_normalizer.memory.correction_store import CorrectionStore
 from book_normalizer.memory.punctuation_store import PunctuationStore
@@ -150,27 +155,19 @@ def process_command(
 
     try:
         factory = LoaderFactory.default()
-        if input_path.suffix.lower() == ".pdf":
+        is_pdf = input_path.suffix.lower() == ".pdf"
+        if is_pdf:
             compare = extract_pdf_with_ocr_mode(input_path, config.ocr_mode)
             chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, config.ocr_mode)
 
-            # Build Book from the chosen text variant.
-            loader = PdfLoader()
-            paragraphs = loader._split_paragraphs(chosen_variant.text)
-            chapter = Chapter(
-                title="Full Text",
-                index=0,
-                paragraphs=paragraphs,
-                source_span_start=0,
-                source_span_end=len(chosen_variant.text),
-            )
-            metadata = Metadata(
-                source_path=str(input_path.resolve()),
-                source_format="pdf",
-            )
             from book_normalizer.models.book import Book as BookModel
 
-            book = BookModel(metadata=metadata, chapters=[chapter])
+            # Build Book from the chosen text variant.
+            book = BookModel.from_raw_text(
+                chosen_variant.text,
+                source_path=input_path,
+                source_format="pdf",
+            )
             book.add_audit(
                 "loading",
                 "pdf_loader_ocr_mode",
@@ -194,14 +191,8 @@ def process_command(
     # If PDF compare mode was used, write compare report artifacts now.
     if input_path.suffix.lower() == ".pdf" and config.ocr_mode == OcrMode.COMPARE:
         try:
-            from book_normalizer.loaders.pdf_loader import (
-                extract_pdf_with_ocr_mode as _extract_for_report,
-                select_pdf_text_for_mode as _select_for_report,
-                write_pdf_compare_report,
-            )
-
-            compare = _extract_for_report(input_path, config.ocr_mode)
-            chosen_variant, ocr_stats = _select_for_report(compare, config.ocr_mode)
+            compare = extract_pdf_with_ocr_mode(input_path, config.ocr_mode)
+            chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, config.ocr_mode)
             write_pdf_compare_report(output_dir, compare, ocr_stats)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Failed to write PDF compare report: %s", exc)
@@ -215,6 +206,9 @@ def process_command(
     click.echo(f"Chapter detection complete: {len(book.chapters)} chapter(s) found.")
 
     pipeline.normalize_book(book)
+
+    # Emit basic chapter sanity report for downstream TTS inspection.
+    _write_chapter_sanity_report(book, output_dir)
 
     correction_store = CorrectionStore(config.correction_memory_path)
     punctuation_store = PunctuationStore(config.punctuation_memory_path)
@@ -357,6 +351,54 @@ def _scan_book(
         skip_spellcheck=config.skip_spellcheck,
     )
     return reviewer.scan(book)
+
+
+def _write_chapter_sanity_report(book: object, output_dir: Path) -> None:
+    """Write a simple chapter sanity report for TTS-oriented inspection."""
+    from book_normalizer.models.book import Book
+
+    if not isinstance(book, Book):
+        return
+
+    total_chapters = len(book.chapters)
+    total_paragraphs = sum(len(ch.paragraphs) for ch in book.chapters)
+
+    tiny_threshold = 3
+    tiny_counts = [len(ch.paragraphs) for ch in book.chapters if len(ch.paragraphs) <= tiny_threshold]
+    tiny_ratio = (len(tiny_counts) / total_chapters) if total_chapters else 0.0
+
+    max_paras = max((len(ch.paragraphs) for ch in book.chapters), default=0)
+    avg_paras = (total_paragraphs / total_chapters) if total_chapters else 0.0
+
+    suspicious = False
+    reasons: list[str] = []
+
+    if total_chapters > 50:
+        suspicious = True
+        reasons.append("too_many_chapters")
+    if tiny_ratio > 0.7 and total_chapters > 5:
+        suspicious = True
+        reasons.append("too_many_tiny_chapters")
+    if avg_paras > 0 and max_paras > 5 * avg_paras and total_chapters > 3:
+        suspicious = True
+        reasons.append("very_uneven_distribution")
+
+    lines: list[str] = []
+    lines.append(f"total_chapters={total_chapters}")
+    lines.append(f"total_paragraphs={total_paragraphs}")
+    lines.append(f"avg_paragraphs_per_chapter={avg_paras:.2f}")
+    lines.append(f"max_paragraphs_in_chapter={max_paras}")
+    lines.append(f"tiny_chapters_ratio={tiny_ratio:.2f}")
+    lines.append(f"suspicious={'yes' if suspicious else 'no'}")
+    if reasons:
+        lines.append("reasons=" + ",".join(reasons))
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / "chapter_sanity_report.txt"
+    report_path.write_text("\n".join(lines), encoding="utf-8")
+
+    if suspicious:
+        logger.warning("Chapter sanity check flagged book as suspicious: %s", ", ".join(reasons))
 
 
 @main.command(name="batch")

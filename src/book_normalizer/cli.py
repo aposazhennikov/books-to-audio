@@ -550,6 +550,13 @@ def _parse_chapter_range(value: str) -> tuple[int, int] | None:
 @click.option("--llm-endpoint", default="", help="API endpoint for LLM speaker attribution.")
 @click.option("--llm-model", default="qwen3:8b", show_default=True, help="LLM model name for speaker attribution.")
 @click.option("--skip-stress", is_flag=True, default=False, help="Skip stress annotation.")
+@click.option(
+    "--ocr-mode",
+    type=click.Choice([m.value for m in OcrMode]),
+    default=OcrMode.AUTO.value,
+    show_default=True,
+    help="OCR execution mode for PDF files.",
+)
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Verbose logging output.")
 def synthesize_command(
     input_path: Path,
@@ -568,6 +575,7 @@ def synthesize_command(
     llm_endpoint: str,
     llm_model: str,
     skip_stress: bool,
+    ocr_mode: str,
     verbose: bool,
 ) -> None:
     """Synthesize an audiobook from a book file using Qwen3-TTS."""
@@ -576,8 +584,25 @@ def synthesize_command(
     click.echo(f"Loading: {input_path}")
 
     try:
-        factory = LoaderFactory.default()
-        book = factory.load(input_path)
+        is_pdf = input_path.suffix.lower() == ".pdf"
+        if is_pdf:
+            ocr = OcrMode(ocr_mode)
+            compare = extract_pdf_with_ocr_mode(input_path, ocr)
+            chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, ocr)
+
+            from book_normalizer.models.book import Book as BookModel, Chapter, Metadata, Paragraph
+
+            paragraphs = PdfLoader._split_paragraphs(chosen_variant.text)
+            chapter = Chapter(title="Full Text", index=0, paragraphs=paragraphs)
+            metadata = Metadata(source_path=str(input_path), source_format="pdf")
+            book = BookModel(metadata=metadata, chapters=[chapter])
+            book.add_audit(
+                "loading", "pdf_loader_ocr_mode",
+                f"mode={ocr.value}, selected={ocr_stats.get('selected')}",
+            )
+        else:
+            factory = LoaderFactory.default()
+            book = factory.load(input_path)
     except (FileNotFoundError, ValueError, ImportError) as exc:
         click.echo(f"Error loading file: {exc}", err=True)
         sys.exit(1)

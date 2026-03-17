@@ -17,9 +17,10 @@ fi
 python "$PROJECT_DIR/scripts/tts_runner.py" \
     --chunks-json "$MANIFEST" \
     --out "$OUT_DIR" \
-    --model "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice" \
+    --model "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice" \
     --narrator-speaker "Aiden" \
     --male-speaker "Ryan" \
     --female-speaker "Serena" \
+    --batch-size 1 \
     --resume \
     $CHAPTER_ARG

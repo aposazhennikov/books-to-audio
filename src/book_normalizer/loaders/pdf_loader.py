@@ -152,7 +152,7 @@ def _win_to_wsl_path(win_path: str) -> str:
     return p
 
 
-def _ocr_image_via_wsl(img_bytes: bytes, lang: str) -> str:
+def _ocr_image_via_wsl(img_bytes: bytes, lang: str, psm: int = 6) -> str:
     """Run Tesseract OCR on image bytes via WSL bridge."""
     import subprocess
     import tempfile
@@ -164,7 +164,10 @@ def _ocr_image_via_wsl(img_bytes: bytes, lang: str) -> str:
     try:
         wsl_path = _win_to_wsl_path(tmp_path)
         result = subprocess.run(
-            ["wsl", "tesseract", wsl_path, "stdout", "-l", lang],
+            [
+                "wsl", "tesseract", wsl_path, "stdout",
+                "-l", lang, "--psm", str(psm),
+            ],
             capture_output=True, timeout=120,
         )
         return result.stdout.decode("utf-8", errors="replace")
@@ -172,13 +175,38 @@ def _ocr_image_via_wsl(img_bytes: bytes, lang: str) -> str:
         Path(tmp_path).unlink(missing_ok=True)
 
 
-def _ocr_pdf_with_tesseract(path: Path, lang: str = "rus") -> str:
-    """
-    OCR a PDF file page-by-page using PyMuPDF + Tesseract.
+def _preprocess_image_for_ocr(img: Any) -> Any:
+    """Apply image preprocessing to improve OCR accuracy.
 
-    Each page is rendered to an image at 300 DPI, then passed through
-    Tesseract for Russian text recognition.  Supports both native
-    Tesseract and WSL-bridged Tesseract on Windows.
+    Steps: convert to grayscale, apply adaptive threshold for binarization,
+    and median filter for noise removal.
+    """
+    from PIL import ImageFilter
+
+    if img.mode != "L":
+        img = img.convert("L")
+
+    img = img.filter(ImageFilter.MedianFilter(size=3))
+
+    # Adaptive binarization using a simple threshold.
+    img = img.point(lambda x: 255 if x > 140 else 0, "1")
+    img = img.convert("L")
+
+    return img
+
+
+def _ocr_pdf_with_tesseract(
+    path: Path,
+    lang: str = "rus",
+    dpi: int = 400,
+    psm: int = 6,
+    preprocess: bool = True,
+) -> str:
+    """OCR a PDF file page-by-page using PyMuPDF + Tesseract.
+
+    Renders each page to an image at the given DPI, optionally applies
+    image preprocessing (binarization + noise removal), then runs
+    Tesseract for text recognition.
     """
     import fitz
 
@@ -194,7 +222,7 @@ def _ocr_pdf_with_tesseract(path: Path, lang: str = "rus") -> str:
         else:
             raise RuntimeError("Tesseract is not installed (neither native nor WSL).")
 
-    zoom = 300 / 72  # 300 DPI / default 72 DPI.
+    zoom = dpi / 72
     matrix = fitz.Matrix(zoom, zoom)
 
     pages: list[str] = []
@@ -205,10 +233,22 @@ def _ocr_pdf_with_tesseract(path: Path, lang: str = "rus") -> str:
             pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY)
 
             if use_wsl:
-                page_text = _ocr_image_via_wsl(pix.tobytes("png"), lang)
+                if preprocess:
+                    from PIL import Image as PILImage
+                    img = PILImage.frombytes("L", [pix.width, pix.height], pix.samples)
+                    img = _preprocess_image_for_ocr(img)
+                    import io
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    page_text = _ocr_image_via_wsl(buf.getvalue(), lang, psm=psm)
+                else:
+                    page_text = _ocr_image_via_wsl(pix.tobytes("png"), lang, psm=psm)
             else:
                 img = Image.frombytes("L", [pix.width, pix.height], pix.samples)
-                page_text = pytesseract.image_to_string(img, lang=lang)
+                if preprocess:
+                    img = _preprocess_image_for_ocr(img)
+                tess_config = f"--psm {psm}"
+                page_text = pytesseract.image_to_string(img, lang=lang, config=tess_config)
 
             if page_text and page_text.strip():
                 pages.append(page_text)
@@ -219,13 +259,17 @@ def _ocr_pdf_with_tesseract(path: Path, lang: str = "rus") -> str:
     return "\n\n".join(pages)
 
 
-def extract_pdf_with_ocr_mode(path: Path, mode: OcrMode) -> PdfOcrCompareResult:
-    """
-    Extract PDF text according to the requested OCR mode.
+def extract_pdf_with_ocr_mode(
+    path: Path,
+    mode: OcrMode,
+    dpi: int = 400,
+    psm: int = 6,
+    preprocess: bool = True,
+) -> PdfOcrCompareResult:
+    """Extract PDF text according to the requested OCR mode.
 
     Uses PyMuPDF for native text extraction.  When OCR is requested,
-    renders each page to an image and runs Tesseract (pytesseract)
-    for Russian text recognition.
+    renders each page to an image at the given DPI and runs Tesseract.
     """
     loader = PdfLoader()
     resolved = path.resolve()
@@ -245,8 +289,13 @@ def extract_pdf_with_ocr_mode(path: Path, mode: OcrMode) -> PdfOcrCompareResult:
         return PdfOcrCompareResult(native=native_variant, ocr=None)
 
     try:
-        logger.info("Running Tesseract OCR on '%s'...", resolved.name)
-        ocr_text = _ocr_pdf_with_tesseract(resolved)
+        logger.info(
+            "Running Tesseract OCR on '%s' (dpi=%d, psm=%d, preprocess=%s)...",
+            resolved.name, dpi, psm, preprocess,
+        )
+        ocr_text = _ocr_pdf_with_tesseract(
+            resolved, dpi=dpi, psm=psm, preprocess=preprocess,
+        )
         ocr_text = remove_repeated_headers(ocr_text, min_occurrences=3)
         ocr_variant = PdfTextVariant(kind="ocr", text=ocr_text)
         logger.info("OCR complete: %d characters extracted.", len(ocr_text))

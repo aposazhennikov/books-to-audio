@@ -121,6 +121,8 @@ def main() -> None:
     show_default=True,
     help="Number of random paragraph samples in verification report.",
 )
+@click.option("--ocr-dpi", type=int, default=400, show_default=True, help="DPI for OCR rendering.")
+@click.option("--ocr-psm", type=int, default=6, show_default=True, help="Tesseract PSM mode.")
 def process_command(
     input_path: Path,
     out: Path,
@@ -135,6 +137,8 @@ def process_command(
     ocr_mode: str,
     verify_report: bool,
     sample_size: int,
+    ocr_dpi: int,
+    ocr_psm: int,
 ) -> None:
     """Process a single book file: load, normalize, split chapters, export."""
     setup_logging(verbose=verbose)
@@ -157,14 +161,14 @@ def process_command(
         factory = LoaderFactory.default()
         is_pdf = input_path.suffix.lower() == ".pdf"
         if is_pdf:
-            compare = extract_pdf_with_ocr_mode(input_path, config.ocr_mode)
+            compare = extract_pdf_with_ocr_mode(
+                input_path, config.ocr_mode, dpi=ocr_dpi, psm=ocr_psm,
+            )
             chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, config.ocr_mode)
 
             from book_normalizer.models.book import Book as BookModel, Chapter, Metadata, Paragraph
             from book_normalizer.loaders.pdf_loader import PdfLoader
 
-            # Split text into paragraphs (from_raw_text creates 1 paragraph
-            # from the entire text, which breaks chapter detection).
             paragraphs = PdfLoader._split_paragraphs(chosen_variant.text)
             chapter = Chapter(title="Full Text", index=0, paragraphs=paragraphs)
             metadata = Metadata(source_path=str(input_path), source_format="pdf")
@@ -175,7 +179,6 @@ def process_command(
                 f"mode={config.ocr_mode.value}, selected={ocr_stats.get('selected')}, "
                 f"native_len={ocr_stats.get('native_len')}, ocr_len={ocr_stats.get('ocr_len')}",
             )
-            # In COMPARE mode, compare artifacts will be written after output_dir is known.
         else:
             book = factory.load(input_path)
     except (FileNotFoundError, ValueError, ImportError) as exc:
@@ -542,7 +545,7 @@ def _parse_chapter_range(value: str) -> tuple[int, int] | None:
     show_default=True,
     help="Output audio format.",
 )
-@click.option("--max-chunk-chars", type=int, default=900, show_default=True, help="Max characters per TTS chunk.")
+@click.option("--max-chunk-chars", type=int, default=600, show_default=True, help="Max characters per TTS chunk.")
 @click.option("--pause-phrase-ms", type=int, default=300, show_default=True, help="Pause between phrases (ms).")
 @click.option("--pause-speaker-ms", type=int, default=1500, show_default=True, help="Pause on speaker change (ms).")
 @click.option("--pause-chapter-ms", type=int, default=3000, show_default=True, help="Pause between chapters (ms).")
@@ -557,6 +560,9 @@ def _parse_chapter_range(value: str) -> tuple[int, int] | None:
     show_default=True,
     help="OCR execution mode for PDF files.",
 )
+@click.option("--ocr-dpi", type=int, default=400, show_default=True, help="DPI for OCR rendering.")
+@click.option("--ocr-psm", type=int, default=6, show_default=True, help="Tesseract PSM mode.")
+@click.option("--llm-api-key", default="", help="API key for LLM speaker attribution (OpenAI, etc.).")
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Verbose logging output.")
 def synthesize_command(
     input_path: Path,
@@ -576,6 +582,9 @@ def synthesize_command(
     llm_model: str,
     skip_stress: bool,
     ocr_mode: str,
+    ocr_dpi: int,
+    ocr_psm: int,
+    llm_api_key: str,
     verbose: bool,
 ) -> None:
     """Synthesize an audiobook from a book file using Qwen3-TTS."""
@@ -587,7 +596,9 @@ def synthesize_command(
         is_pdf = input_path.suffix.lower() == ".pdf"
         if is_pdf:
             ocr = OcrMode(ocr_mode)
-            compare = extract_pdf_with_ocr_mode(input_path, ocr)
+            compare = extract_pdf_with_ocr_mode(
+                input_path, ocr, dpi=ocr_dpi, psm=ocr_psm,
+            )
             chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, ocr)
 
             from book_normalizer.models.book import Book as BookModel, Chapter, Metadata, Paragraph
@@ -657,6 +668,7 @@ def synthesize_command(
         attr_mode,
         llm_endpoint=llm_endpoint,
         llm_model=llm_model,
+        llm_api_key=llm_api_key,
         cache_dir=cache_dir,
         session_path=session_path,
     )

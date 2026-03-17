@@ -53,7 +53,12 @@ def main() -> None:
         choices=["heuristic", "llm", "manual"],
         help="Speaker attribution mode.",
     )
-    parser.add_argument("--max-chunk-chars", type=int, default=900, help="Max chars per chunk.")
+    parser.add_argument("--max-chunk-chars", type=int, default=600, help="Max chars per chunk (600 for stable intonation).")
+    parser.add_argument(
+        "--stress-mode", default="strip",
+        choices=["strip", "keep_acute"],
+        help="Stress mark handling: strip (remove) or keep_acute (preserve for TTS).",
+    )
     parser.add_argument("--out", default=None, help="Output JSON path (default: book_dir/chunks_manifest.json).")
     args = parser.parse_args()
 

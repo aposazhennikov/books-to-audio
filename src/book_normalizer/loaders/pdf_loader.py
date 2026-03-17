@@ -115,12 +115,117 @@ class PdfOcrCompareResult:
     ocr: PdfTextVariant | None
 
 
+def _wsl_tesseract_available() -> bool:
+    """Check if Tesseract is available inside WSL (Windows Subsystem for Linux)."""
+    import platform
+    import subprocess
+
+    if platform.system() != "Windows":
+        return False
+    try:
+        result = subprocess.run(
+            ["wsl", "tesseract", "--version"],
+            capture_output=True, timeout=10,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def _tesseract_available() -> bool:
+    """Check if Tesseract OCR is installed and accessible (native or WSL)."""
+    try:
+        import pytesseract  # noqa: F401
+        pytesseract.get_tesseract_version()
+        return True
+    except Exception:
+        pass
+    return _wsl_tesseract_available()
+
+
+def _win_to_wsl_path(win_path: str) -> str:
+    """Convert a Windows path like C:\\Users\\... to /mnt/c/Users/..."""
+    p = win_path.replace("\\", "/")
+    if len(p) >= 2 and p[1] == ":":
+        drive = p[0].lower()
+        p = f"/mnt/{drive}{p[2:]}"
+    return p
+
+
+def _ocr_image_via_wsl(img_bytes: bytes, lang: str) -> str:
+    """Run Tesseract OCR on image bytes via WSL bridge."""
+    import subprocess
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        tmp.write(img_bytes)
+        tmp_path = tmp.name
+
+    try:
+        wsl_path = _win_to_wsl_path(tmp_path)
+        result = subprocess.run(
+            ["wsl", "tesseract", wsl_path, "stdout", "-l", lang],
+            capture_output=True, timeout=120,
+        )
+        return result.stdout.decode("utf-8", errors="replace")
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+def _ocr_pdf_with_tesseract(path: Path, lang: str = "rus") -> str:
+    """
+    OCR a PDF file page-by-page using PyMuPDF + Tesseract.
+
+    Each page is rendered to an image at 300 DPI, then passed through
+    Tesseract for Russian text recognition.  Supports both native
+    Tesseract and WSL-bridged Tesseract on Windows.
+    """
+    import fitz
+
+    use_wsl = False
+    try:
+        import pytesseract
+        from PIL import Image
+        pytesseract.get_tesseract_version()
+    except Exception:
+        if _wsl_tesseract_available():
+            use_wsl = True
+            logger.info("Using Tesseract via WSL bridge.")
+        else:
+            raise RuntimeError("Tesseract is not installed (neither native nor WSL).")
+
+    zoom = 300 / 72  # 300 DPI / default 72 DPI.
+    matrix = fitz.Matrix(zoom, zoom)
+
+    pages: list[str] = []
+    with fitz.open(str(path)) as doc:
+        total = len(doc)
+        for page_num in range(total):
+            page = doc[page_num]
+            pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY)
+
+            if use_wsl:
+                page_text = _ocr_image_via_wsl(pix.tobytes("png"), lang)
+            else:
+                img = Image.frombytes("L", [pix.width, pix.height], pix.samples)
+                page_text = pytesseract.image_to_string(img, lang=lang)
+
+            if page_text and page_text.strip():
+                pages.append(page_text)
+
+            if (page_num + 1) % 20 == 0 or page_num == total - 1:
+                logger.info("OCR progress: %d/%d pages", page_num + 1, total)
+
+    return "\n\n".join(pages)
+
+
 def extract_pdf_with_ocr_mode(path: Path, mode: OcrMode) -> PdfOcrCompareResult:
     """
     Extract PDF text according to the requested OCR mode.
 
-    NOTE: OCR path currently reuses native extraction as a placeholder.
-    The structure is in place so real OCR integration can be plugged in later.
+    Uses PyMuPDF for native text extraction.  When OCR is requested,
+    renders each page to an image and runs Tesseract (pytesseract)
+    for Russian text recognition.
     """
     loader = PdfLoader()
     resolved = path.resolve()
@@ -130,18 +235,36 @@ def extract_pdf_with_ocr_mode(path: Path, mode: OcrMode) -> PdfOcrCompareResult:
     if mode == OcrMode.OFF:
         return PdfOcrCompareResult(native=native_variant, ocr=None)
 
-    # Placeholder OCR implementation: currently reuses native text.
-    # In future, this should call an external OCR engine (ocrmypdf/tesseract)
-    # and read back OCR-annotated text.
+    if not _tesseract_available():
+        logger.warning(
+            "Tesseract OCR is not installed. Install it: "
+            "apt install tesseract-ocr tesseract-ocr-rus  (Linux) or "
+            "choco install tesseract  (Windows) + pip install pytesseract Pillow. "
+            "Falling back to native text extraction."
+        )
+        return PdfOcrCompareResult(native=native_variant, ocr=None)
+
     try:
-        # Placeholder OCR implementation: reuse native text for now.
-        ocr_text = native_text
+        logger.info("Running Tesseract OCR on '%s'...", resolved.name)
+        ocr_text = _ocr_pdf_with_tesseract(resolved)
+        ocr_text = remove_repeated_headers(ocr_text, min_occurrences=3)
         ocr_variant = PdfTextVariant(kind="ocr", text=ocr_text)
-    except Exception as exc:  # pragma: no cover - defensive
+        logger.info("OCR complete: %d characters extracted.", len(ocr_text))
+    except Exception as exc:
         logger.warning("OCR extraction failed for '%s': %s", resolved, exc)
         ocr_variant = None
 
     return PdfOcrCompareResult(native=native_variant, ocr=ocr_variant)
+
+
+def _cyrillic_ratio(text: str) -> float:
+    """Return the fraction of alphabetic characters that are Cyrillic."""
+    sample = text[:10000]
+    alpha = [c for c in sample if c.isalpha()]
+    if not alpha:
+        return 0.0
+    cyr = sum(1 for c in alpha if "\u0400" <= c <= "\u04ff")
+    return cyr / len(alpha)
 
 
 def select_pdf_text_for_mode(
@@ -156,12 +279,15 @@ def select_pdf_text_for_mode(
     native = compare.native
     ocr = compare.ocr
 
+    native_cyr = _cyrillic_ratio(native.text)
+
     stats: Dict[str, Any] = {
         "mode": mode.value,
         "native_len": len(native.text),
         "ocr_len": len(ocr.text) if ocr else 0,
         "native_empty": len(native.text.strip()) == 0,
         "ocr_empty": (len(ocr.text.strip()) == 0) if ocr else True,
+        "native_cyrillic_ratio": round(native_cyr, 3),
         "selected": "native",
         "reason": "",
     }
@@ -179,22 +305,17 @@ def select_pdf_text_for_mode(
         stats["reason"] = "ocr_mode=force"
         return ocr, stats
 
-    if mode == OcrMode.AUTO:
-        # Simple heuristic: if native text is essentially empty, fall back to OCR.
-        if stats["native_empty"] and not stats["ocr_empty"]:
-            stats["selected"] = "ocr"
-            stats["reason"] = "native_empty_use_ocr"
-            return ocr, stats
-        stats["reason"] = "native_preferred_in_auto_mode"
-        return native, stats
+    # AUTO / COMPARE: prefer OCR when native text is empty or garbage.
+    native_is_bad = stats["native_empty"] or native_cyr < 0.3
+    ocr_usable = not stats["ocr_empty"]
 
-    # COMPARE: choose like AUTO for pipeline, but stats will be written to a report.
-    if stats["native_empty"] and not stats["ocr_empty"]:
+    if native_is_bad and ocr_usable:
         stats["selected"] = "ocr"
-        stats["reason"] = "compare_mode_native_empty_use_ocr"
+        reason_detail = "native_empty" if stats["native_empty"] else f"native_cyr={native_cyr:.2f}"
+        stats["reason"] = f"{'auto' if mode == OcrMode.AUTO else 'compare'}_mode_{reason_detail}_use_ocr"
         return ocr, stats
 
-    stats["reason"] = "compare_mode_native_preferred"
+    stats["reason"] = f"{'auto' if mode == OcrMode.AUTO else 'compare'}_mode_native_preferred"
     return native, stats
 
 

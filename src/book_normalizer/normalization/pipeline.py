@@ -113,6 +113,25 @@ class NormalizationPipeline:
             result = new_result
         return result, changed_stages
 
+    @staticmethod
+    def _estimate_cyrillic_ratio(book: Book) -> float:
+        """Estimate the ratio of Cyrillic characters in the book text."""
+        sample = ""
+        for ch in book.chapters:
+            for p in ch.paragraphs[:20]:
+                sample += p.raw_text[:500]
+                if len(sample) > 5000:
+                    break
+            if len(sample) > 5000:
+                break
+        if not sample:
+            return 0.0
+        alpha_chars = [c for c in sample if c.isalpha()]
+        if not alpha_chars:
+            return 0.0
+        cyrillic = sum(1 for c in alpha_chars if "\u0400" <= c <= "\u04ff")
+        return cyrillic / len(alpha_chars)
+
     def normalize_book(self, book: Book, detailed_audit: bool = True) -> Book:
         """
         Apply normalization to every paragraph in the book.
@@ -123,6 +142,19 @@ class NormalizationPipeline:
         When detailed_audit is True, records which stages actually
         changed text for each paragraph (aggregated per-stage count).
         """
+        cyr_ratio = self._estimate_cyrillic_ratio(book)
+        if cyr_ratio < 0.3:
+            logger.warning(
+                "Text quality is very low (Cyrillic ratio %.1f%%). "
+                "The source may be a scanned PDF without proper OCR. "
+                "Normalization results will be unreliable.",
+                cyr_ratio * 100,
+            )
+            book.add_audit(
+                "normalization", "quality_warning",
+                f"cyrillic_ratio={cyr_ratio:.2f}, likely_ocr_garbage=true",
+            )
+
         total_paragraphs = 0
         stage_hit_counts: dict[str, int] = {}
 

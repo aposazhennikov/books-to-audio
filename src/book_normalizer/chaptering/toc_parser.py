@@ -82,8 +82,39 @@ def find_toc_section(text: str) -> tuple[int, int] | None:
 
             break
 
-    # Fallback: assume TOC is first ~1500 chars after marker.
-    return (start_pos, min(start_pos + 1500, len(text)))
+    # Fallback: scan for end of TOC-like content (short lines with dots).
+    toc_line_re = re.compile(
+        r"^\s*(?:"
+        r"[.…·\s\-–—]*$|"                        # Only dots / whitespace.
+        r"(?:[А-ЯЁA-Z\d]|[Гг]лава|[Чч]асть).{0,148}$"  # Short heading-like line.
+        r")",
+    )
+    end_pos = start_pos
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        end_pos += len(line) + 1
+        if not stripped:
+            continue
+        if len(stripped) > 200:
+            break
+        if not toc_line_re.match(stripped) and i > 5:
+            break
+
+    return (start_pos, min(end_pos, len(text)))
+
+
+_TRAILING_DOTS_RE = re.compile(r"\s*[.…·\-–—]{3,}\s*\d*\s*$")
+_TRAILING_SHORT_DOTS_RE = re.compile(r"\s*[.…]+\s*$")
+
+
+def _clean_toc_line(line: str) -> str:
+    """Strip trailing dots/ellipsis and optional page number from a TOC line."""
+    return _TRAILING_DOTS_RE.sub("", line).strip()
+
+
+def _clean_trailing_dots(title: str) -> str:
+    """Remove stray trailing dots from a parsed title."""
+    return _TRAILING_SHORT_DOTS_RE.sub("", title).strip()
 
 
 def parse_toc_entries(toc_text: str) -> list[TocEntry]:
@@ -94,36 +125,86 @@ def parse_toc_entries(toc_text: str) -> list[TocEntry]:
     - "1. Предисловие ... 5"
     - "2.1. Медицина как совокупность методик ... 14"
     - "Глава первая ... 10"
+    - "ГЛАВА 1. ТЕОРЕТИЧЕСКИЕ ОСНОВЫ ... "
     """
     entries: list[TocEntry] = []
 
-    # Pattern for numbered entries: "1.2.3. Title ... 123" or "1. Title".
+    # Pre-clean lines: strip trailing dot-leaders and page numbers.
+    lines = toc_text.split("\n")
+
+    # Pattern: "ГЛАВА N. Title" (numbered chapter heading).
+    glava_num_pattern = re.compile(
+        r"^\s*[Гг][Лл][Аа][Вв][Аа]\s+(\d+)\.\s*(.+)",
+    )
+
+    # Pattern: "N. Title" or "N.N. Title" (numbered entries).
     numbered_pattern = re.compile(
-        r"^\s*(\d+(?:\.\d+)*)\.\s+([^.…]+?)(?:\s*[.…]+\s*(\d+))?\s*$", re.MULTILINE
+        r"^\s*(\d+(?:\.\d+)*)\.\s+(.+)",
     )
 
-    # Pattern for word entries: "Глава первая ... 10".
+    # Pattern: "Глава первая", "Часть первая" (word entries).
     word_pattern = re.compile(
-        r"^\s*((?:[Гг][Лл][Аа][Вв][Аа]|[Чч][Аа][Сс][Тт][Ьь])\s+[А-Яа-яЁё]+)"
-        r"(?:\s*[.…]+\s*(\d+))?\s*$",
-        re.MULTILINE,
+        r"^\s*((?:[Гг][Лл][Аа][Вв][Аа]|[Чч][Аа][Сс][Тт][Ьь])\s+[А-Яа-яЁё]+)",
     )
 
-    for match in numbered_pattern.finditer(toc_text):
-        number = match.group(1)
-        title = match.group(2).strip()
-        page_num = match.group(3)
+    # Pattern: standalone section titles (ВВЕДЕНИЕ, ЗАКЛЮЧЕНИЕ, etc.).
+    section_pattern = re.compile(
+        r"^\s*(ВВЕДЕНИЕ|ЗАКЛЮЧЕНИЕ|ПОСЛЕСЛОВИЕ|ПРЕДИСЛОВИЕ|"
+        r"КРАТКИЙ СЛОВАРЬ[А-ЯЁ\s]*|БИБЛИОГРАФИЯ|ЛИТЕРАТУРА|ПРИЛОЖЕНИ[ЕЯ])\s*$",
+        re.IGNORECASE,
+    )
 
-        # Determine nesting level by counting dots.
-        level = number.count(".")
+    page_num_re = re.compile(r"\s+(\d+)\s*$")
 
-        entries.append(TocEntry(title=title, page_num=page_num, level=level))
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped or len(stripped) < 3:
+            continue
 
-    for match in word_pattern.finditer(toc_text):
-        title = match.group(1).strip()
-        page_num = match.group(2)
+        # Extract page number from original line if present.
+        page_match = page_num_re.search(stripped)
+        page_num = page_match.group(1) if page_match else None
 
-        entries.append(TocEntry(title=title, page_num=page_num, level=0))
+        clean = _clean_toc_line(stripped)
+        if not clean or len(clean) < 3:
+            continue
+
+        # Try "ГЛАВА N. Title".
+        m = glava_num_pattern.match(clean)
+        if m:
+            title = _clean_trailing_dots(m.group(2).strip())
+            if title:
+                entries.append(TocEntry(title=title, page_num=page_num, level=0))
+            continue
+
+        # Try "N. Title" / "N.N. Title".
+        m = numbered_pattern.match(clean)
+        if m:
+            number = m.group(1)
+            title = _clean_trailing_dots(m.group(2).strip())
+            if title and len(title) > 3:
+                level = number.count(".")
+                # Simple "N." entries nested under a ГЛАВА heading are sub-chapters.
+                if level == 0 and entries and any(
+                    e.level == 0 and e.title != title for e in entries
+                ):
+                    level = 1
+                entries.append(TocEntry(title=title, page_num=page_num, level=level))
+            continue
+
+        # Try "Глава первая" / "Часть первая".
+        m = word_pattern.match(clean)
+        if m:
+            title = m.group(1).strip()
+            entries.append(TocEntry(title=title, page_num=page_num, level=0))
+            continue
+
+        # Try standalone section titles.
+        m = section_pattern.match(clean)
+        if m:
+            title = m.group(1).strip()
+            entries.append(TocEntry(title=title, page_num=page_num, level=0))
+            continue
 
     return entries
 

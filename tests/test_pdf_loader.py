@@ -97,8 +97,8 @@ class TestOcrModeSelection:
 
     def test_select_pdf_text_for_mode_auto_prefers_native_when_not_empty(self) -> None:
         compare = PdfOcrCompareResult(
-            native=PdfTextVariant(kind="native", text="native text"),
-            ocr=PdfTextVariant(kind="ocr", text="ocr text"),
+            native=PdfTextVariant(kind="native", text="Родной текст на русском языке"),
+            ocr=PdfTextVariant(kind="ocr", text="Текст после распознавания"),
         )
         chosen, stats = select_pdf_text_for_mode(compare, OcrMode.AUTO)
         assert chosen.kind == "native"

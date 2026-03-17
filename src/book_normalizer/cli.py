@@ -104,7 +104,7 @@ def main() -> None:
 @click.option(
     "--ocr-mode",
     type=click.Choice([m.value for m in OcrMode]),
-    default=OcrMode.OFF.value,
+    default=OcrMode.AUTO.value,
     show_default=True,
     help="OCR execution mode for PDF files.",
 )
@@ -160,14 +160,15 @@ def process_command(
             compare = extract_pdf_with_ocr_mode(input_path, config.ocr_mode)
             chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, config.ocr_mode)
 
-            from book_normalizer.models.book import Book as BookModel
+            from book_normalizer.models.book import Book as BookModel, Chapter, Metadata, Paragraph
+            from book_normalizer.loaders.pdf_loader import PdfLoader
 
-            # Build Book from the chosen text variant.
-            book = BookModel.from_raw_text(
-                chosen_variant.text,
-                source_path=input_path,
-                source_format="pdf",
-            )
+            # Split text into paragraphs (from_raw_text creates 1 paragraph
+            # from the entire text, which breaks chapter detection).
+            paragraphs = PdfLoader._split_paragraphs(chosen_variant.text)
+            chapter = Chapter(title="Full Text", index=0, paragraphs=paragraphs)
+            metadata = Metadata(source_path=str(input_path), source_format="pdf")
+            book = BookModel(metadata=metadata, chapters=[chapter])
             book.add_audit(
                 "loading",
                 "pdf_loader_ocr_mode",

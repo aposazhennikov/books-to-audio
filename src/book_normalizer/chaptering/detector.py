@@ -65,21 +65,27 @@ class ChapterDetector:
                 toc_text = full_text[start:end]
                 toc_entries = parse_toc_entries(toc_text)
 
+                # Compute paragraph indices that overlap with the TOC text.
+                toc_para_indices = self._paragraphs_in_range(
+                    all_paragraphs, full_text, start, end,
+                )
+
                 if toc_entries:
-                    # Extract main chapter titles from TOC.
-                    # Try level=0 first (e.g., "1.", "2."), then level=1 if too few.
                     main_titles = extract_main_titles(toc_entries, max_level=0)
 
                     if len(main_titles) < 5:
-                        # Not enough main chapters, include sub-chapters (level=1).
-                        main_titles = extract_main_titles(toc_entries, max_level=1)
+                        level1_titles = extract_main_titles(toc_entries, max_level=1)
+                        # Only use sub-chapters if there aren't too many
+                        # (many level-1 entries suggest sub-sections, not chapters).
+                        if len(level1_titles) <= 20:
+                            main_titles = level1_titles
 
                     logger.info("Found %d chapters in TOC (level 0-1).", len(main_titles))
 
-                    # Try to find these titles in text.
-                    toc_hits = self._find_toc_based_headings(all_paragraphs, main_titles)
+                    toc_hits = self._find_toc_based_headings(
+                        all_paragraphs, main_titles, skip_indices=toc_para_indices,
+                    )
 
-                    # Use TOC hits if we found more chapters than pattern matching.
                     if len(toc_hits) > len(hits):
                         logger.info("Using TOC-based chapters (%d) instead of pattern-based (%d).", len(toc_hits), len(hits))
                         hits = toc_hits
@@ -246,7 +252,31 @@ class ChapterDetector:
         return hits
 
     @staticmethod
-    def _find_toc_based_headings(paragraphs: list[Paragraph], toc_titles: list[str]) -> list[_HeadingHit]:
+    def _paragraphs_in_range(
+        paragraphs: list[Paragraph],
+        full_text: str,
+        range_start: int,
+        range_end: int,
+    ) -> set[int]:
+        """Return indices of paragraphs whose text overlaps a character range in full_text."""
+        result: set[int] = set()
+        pos = 0
+        for idx, para in enumerate(paragraphs):
+            para_start = full_text.find(para.raw_text, pos)
+            if para_start == -1:
+                continue
+            para_end = para_start + len(para.raw_text)
+            if para_start < range_end and para_end > range_start:
+                result.add(idx)
+            pos = para_end
+        return result
+
+    @staticmethod
+    def _find_toc_based_headings(
+        paragraphs: list[Paragraph],
+        toc_titles: list[str],
+        skip_indices: set[int] | None = None,
+    ) -> list[_HeadingHit]:
         """
         Find headings in paragraphs based on TOC titles.
 
@@ -254,13 +284,15 @@ class ChapterDetector:
         Checks ALL lines in a paragraph, not just the first one.
         """
         hits: list[_HeadingHit] = []
+        _skip = skip_indices or set()
 
         for idx, para in enumerate(paragraphs):
+            if idx in _skip:
+                continue
             text = para.raw_text.strip()
             if not text:
                 continue
 
-            # Split into lines and check each line.
             lines = text.split("\n")
 
             for line in lines:

@@ -501,5 +501,239 @@ def review_session_command(session_path: Path) -> None:
     click.echo(f"Completed:   {session.completed}")
 
 
+def _parse_chapter_range(value: str) -> tuple[int, int] | None:
+    """Parse a chapter range string like '1-5' into (start, end) tuple."""
+    if not value:
+        return None
+    parts = value.split("-")
+    if len(parts) == 2:
+        return int(parts[0]), int(parts[1])
+    if len(parts) == 1:
+        n = int(parts[0])
+        return n, n
+    raise click.BadParameter(f"Invalid chapter range: {value}")
+
+
+@main.command(name="synthesize")
+@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--out", "-o", type=click.Path(path_type=Path), default=Path("output"), help="Output directory.")
+@click.option(
+    "--speaker-mode",
+    type=click.Choice(["heuristic", "llm", "manual"]),
+    default="heuristic",
+    show_default=True,
+    help="Speaker attribution strategy.",
+)
+@click.option(
+    "--voice-config",
+    "voice_config_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Path to voice_config.json with voice profiles.",
+)
+@click.option("--gpu-device", default="cuda:0", show_default=True, help="GPU device for TTS inference.")
+@click.option("--resume", is_flag=True, default=False, help="Resume from last checkpoint.")
+@click.option("--chapter-range", default="", help="Chapter range to synthesize, e.g. '1-5'.")
+@click.option(
+    "--format",
+    "audio_format",
+    type=click.Choice(["wav", "mp3", "both"]),
+    default="wav",
+    show_default=True,
+    help="Output audio format.",
+)
+@click.option("--max-chunk-chars", type=int, default=900, show_default=True, help="Max characters per TTS chunk.")
+@click.option("--pause-phrase-ms", type=int, default=300, show_default=True, help="Pause between phrases (ms).")
+@click.option("--pause-speaker-ms", type=int, default=1500, show_default=True, help="Pause on speaker change (ms).")
+@click.option("--pause-chapter-ms", type=int, default=3000, show_default=True, help="Pause between chapters (ms).")
+@click.option("--skip-assembly", is_flag=True, default=False, help="Only generate chunks, skip assembly.")
+@click.option("--llm-endpoint", default="", help="API endpoint for LLM speaker attribution.")
+@click.option("--llm-model", default="qwen3:8b", show_default=True, help="LLM model name for speaker attribution.")
+@click.option("--skip-stress", is_flag=True, default=False, help="Skip stress annotation.")
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Verbose logging output.")
+def synthesize_command(
+    input_path: Path,
+    out: Path,
+    speaker_mode: str,
+    voice_config_path: Path | None,
+    gpu_device: str,
+    resume: bool,
+    chapter_range: str,
+    audio_format: str,
+    max_chunk_chars: int,
+    pause_phrase_ms: int,
+    pause_speaker_ms: int,
+    pause_chapter_ms: int,
+    skip_assembly: bool,
+    llm_endpoint: str,
+    llm_model: str,
+    skip_stress: bool,
+    verbose: bool,
+) -> None:
+    """Synthesize an audiobook from a book file using Qwen3-TTS."""
+    setup_logging(verbose=verbose)
+
+    click.echo(f"Loading: {input_path}")
+
+    try:
+        factory = LoaderFactory.default()
+        book = factory.load(input_path)
+    except (FileNotFoundError, ValueError, ImportError) as exc:
+        click.echo(f"Error loading file: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Loaded: {len(book.chapters)} chapter(s)")
+
+    # --- Normalization & chapter detection ---
+    pipeline = NormalizationPipeline()
+    book = pipeline.normalize_book(book)
+
+    detector = ChapterDetector()
+    book = detector.detect_and_split(book)
+    pipeline.normalize_book(book)
+    click.echo(f"Chapters detected: {len(book.chapters)}")
+
+    # --- Stress annotation ---
+    if not skip_stress:
+        from book_normalizer.memory.stress_store import StressStore
+        from book_normalizer.stress.annotator import StressAnnotator
+        from book_normalizer.stress.dictionary import StressDictionary
+
+        config = AppConfig()
+        stress_store = StressStore(config.stress_dict_path)
+        stress_dict = StressDictionary(store=stress_store)
+        annotator = StressAnnotator(stress_dict)
+        ann_result = annotator.annotate_book(book)
+        click.echo(
+            f"Stress: {ann_result.total_words} words, "
+            f"{ann_result.known_words} known, "
+            f"{ann_result.unknown_words} unknown."
+        )
+
+    # --- Dialogue detection ---
+    from book_normalizer.dialogue.detector import DialogueDetector
+
+    dialogue_detector = DialogueDetector()
+    annotated_chapters = dialogue_detector.detect_book(book)
+    total_dialogue = sum(ch.dialogue_count for ch in annotated_chapters)
+    click.echo(f"Dialogue detected: {total_dialogue} dialogue line(s)")
+
+    # --- Speaker attribution ---
+    from book_normalizer.dialogue.attribution import SpeakerMode, create_attributor
+
+    attr_mode = SpeakerMode(speaker_mode)
+    output_dir = _build_output_dir(input_path, out).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    cache_dir = output_dir / "speaker_cache"
+    session_path = output_dir / "manual_speaker_session.json"
+
+    attributor = create_attributor(
+        attr_mode,
+        llm_endpoint=llm_endpoint,
+        llm_model=llm_model,
+        cache_dir=cache_dir,
+        session_path=session_path,
+    )
+    attr_result = attributor.attribute(annotated_chapters)
+    click.echo(
+        f"Attribution ({attr_result.strategy}): "
+        f"male={attr_result.male_lines}, "
+        f"female={attr_result.female_lines}, "
+        f"narrator={attr_result.narrator_lines}"
+    )
+
+    # --- Voice-annotated chunking ---
+    from book_normalizer.chunking.voice_splitter import chunk_annotated_book
+
+    chunked = chunk_annotated_book(annotated_chapters, max_chunk_chars=max_chunk_chars)
+    total_chunks = sum(len(v) for v in chunked.values())
+    click.echo(f"Chunks: {total_chunks} voice-annotated chunks across {len(chunked)} chapter(s)")
+
+    # --- Voice config ---
+    from book_normalizer.tts.voice_config import VoiceConfig
+
+    if voice_config_path:
+        voice_cfg = VoiceConfig.from_json(voice_config_path)
+    else:
+        voice_cfg = VoiceConfig.default_clone_config()
+        click.echo("No --voice-config provided. Using default clone config template.")
+        template_path = output_dir / "voice_config_template.json"
+        voice_cfg.to_json(template_path)
+        click.echo(f"Template saved to: {template_path}")
+        click.echo("Fill in ref_audio and ref_text for each voice, then re-run with --voice-config.")
+        sys.exit(0)
+
+    errors = voice_cfg.validate_all()
+    if errors:
+        for err in errors:
+            click.echo(f"Voice config error: {err}", err=True)
+        sys.exit(1)
+
+    # --- TTS synthesis ---
+    from book_normalizer.tts.voice_manager import VoiceManager
+
+    click.echo(f"Initializing TTS on {gpu_device}...")
+    vm = VoiceManager(voice_cfg, device=gpu_device)
+    vm.initialize()
+
+    from book_normalizer.tts.synthesizer import TTSSynthesizer
+
+    synthesizer = TTSSynthesizer(vm, output_dir, resume=resume)
+
+    ch_range = _parse_chapter_range(chapter_range) if chapter_range else None
+    synthesizer.synthesize_chapters(chunked, chapter_range=ch_range)
+    click.echo("TTS synthesis complete.")
+
+    # --- Audio assembly ---
+    if not skip_assembly:
+        from book_normalizer.tts.assembler import AudioAssembler
+
+        assembler = AudioAssembler(
+            output_dir,
+            pause_phrase_ms=pause_phrase_ms,
+            pause_speaker_ms=pause_speaker_ms,
+            pause_chapter_ms=pause_chapter_ms,
+        )
+        export_mp3 = audio_format in ("mp3", "both")
+        result_files = assembler.assemble(export_mp3=export_mp3)
+        for desc, path in result_files.items():
+            click.echo(f"  {desc}: {path}")
+
+    click.echo("Done.")
+
+
+@main.command(name="init-voices")
+@click.option("--out", "-o", type=click.Path(path_type=Path), default=Path("voices"), help="Output directory.")
+@click.option(
+    "--preset",
+    type=click.Choice(["clone", "custom"]),
+    default="clone",
+    show_default=True,
+    help="Preset type: 'clone' for reference audio, 'custom' for built-in speakers.",
+)
+def init_voices_command(out: Path, preset: str) -> None:
+    """Generate a voice_config.json template."""
+    from book_normalizer.tts.voice_config import VoiceConfig
+
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+
+    if preset == "custom":
+        cfg = VoiceConfig.default_custom_voice_config()
+    else:
+        cfg = VoiceConfig.default_clone_config()
+
+    config_path = out / "voice_config.json"
+    cfg.to_json(config_path)
+    click.echo(f"Voice config template created: {config_path}")
+
+    if preset == "clone":
+        click.echo("Next steps:")
+        click.echo("  1. Place 3-10 sec WAV reference files in the voices/ directory.")
+        click.echo("  2. Edit voice_config.json: set ref_audio and ref_text for each voice.")
+        click.echo("  3. Run: normalize-book synthesize <book> --voice-config voices/voice_config.json")
+
+
 if __name__ == "__main__":
     main()

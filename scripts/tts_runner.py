@@ -19,24 +19,44 @@ import time
 from pathlib import Path
 from typing import Any
 
-# Russian-language instruct prompts for better intonation and pacing.
+# Legacy instruct prompts (backward compat for old manifests).
 INSTRUCT_MAP = {
-    "narrator": (
-        "Спокойный, чёткий голос рассказчика. "
-        "Читай размеренно, с правильными паузами и естественной интонацией. "
-        "Не торопись."
-    ),
-    "male": (
-        "Уверенный мужской голос. "
-        "Говори с эмоцией, соответствующей контексту диалога. "
-        "Естественные интонации."
-    ),
-    "female": (
-        "Мягкий женский голос. "
-        "Говори с эмоцией, соответствующей контексту диалога. "
-        "Естественные интонации."
-    ),
+    "narrator": "Спокойный, чёткий голос рассказчика. Читай размеренно, не торопись.",
+    "male": "Уверенный мужской голос. Говори с эмоцией. Естественные интонации.",
+    "female": "Мягкий женский голос. Говори с эмоцией. Естественные интонации.",
 }
+
+# Legacy speaker mapping (backward compat for old manifests).
+LEGACY_SPEAKER_MAP = {
+    "narrator": "Aiden",
+    "male": "Ryan",
+    "female": "Serena",
+}
+
+# Extended voice presets: voice_id -> (speaker, instruct).
+VOICE_PRESETS = {
+    "narrator_calm": ("Aiden", "Спокойный, чёткий голос рассказчика. Читай размеренно, не торопись."),
+    "narrator_energetic": ("Ryan", "Энергичный, уверенный голос рассказчика. Читай бодро."),
+    "narrator_wise": ("Uncle_Fu", "Мудрый голос рассказчика. Читай неторопливо, с глубиной."),
+    "male_young": ("Ryan", "Молодой мужской голос. Говори с эмоцией. Естественные интонации."),
+    "male_confident": ("Aiden", "Уверенный мужской голос. Говори чётко и решительно."),
+    "male_deep": ("Uncle_Fu", "Глубокий мужской голос. Говори с достоинством и весомостью."),
+    "male_lively": ("Dylan", "Живой, весёлый мужской голос. Говори бодро, с юмором."),
+    "male_regional": ("Eric", "Яркий мужской голос с характером. Говори экспрессивно."),
+    "female_warm": ("Serena", "Мягкий, тёплый женский голос. Говори нежно, с теплотой."),
+    "female_bright": ("Vivian", "Яркий, звонкий женский голос. Говори выразительно."),
+    "female_playful": ("Ono_Anna", "Игривый женский голос. Говори легко, с улыбкой."),
+    "female_gentle": ("Sohee", "Нежный, мелодичный женский голос. Говори спокойно и ласково."),
+}
+
+
+def resolve_voice(voice_id: str, speaker_map: dict) -> tuple[str, str]:
+    """Resolve voice_id to (speaker, instruct), supporting both legacy and new presets."""
+    if voice_id in VOICE_PRESETS:
+        return VOICE_PRESETS[voice_id]
+    speaker = speaker_map.get(voice_id, LEGACY_SPEAKER_MAP.get(voice_id, "Aiden"))
+    instruct = INSTRUCT_MAP.get(voice_id, "")
+    return speaker, instruct
 
 
 def _detect_attn_impl() -> str:
@@ -75,9 +95,7 @@ def synthesize_chunk(
     language: str = "Russian",
 ) -> tuple[Any, int]:
     """Generate audio for a single chunk using CustomVoice."""
-    speaker = speaker_map.get(voice_id, "Serena")
-    imap = instruct_map or INSTRUCT_MAP
-    instruct = imap.get(voice_id, "")
+    speaker, instruct = resolve_voice(voice_id, speaker_map)
 
     wavs, sr = model.generate_custom_voice(
         text=text,
@@ -97,9 +115,9 @@ def synthesize_batch(
     language: str = "Russian",
 ) -> list[tuple[Any, int]]:
     """Generate audio for multiple chunks in a single batch call."""
-    imap = instruct_map or INSTRUCT_MAP
-    speakers = [speaker_map.get(vid, "Serena") for vid in voice_ids]
-    instructs = [imap.get(vid, "") for vid in voice_ids]
+    resolved = [resolve_voice(vid, speaker_map) for vid in voice_ids]
+    speakers = [r[0] for r in resolved]
+    instructs = [r[1] for r in resolved]
     langs = [language] * len(texts)
 
     wavs, sr = model.generate_custom_voice(

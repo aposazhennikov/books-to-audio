@@ -178,21 +178,70 @@ def _ocr_image_via_wsl(img_bytes: bytes, lang: str, psm: int = 6) -> str:
 def _preprocess_image_for_ocr(img: Any) -> Any:
     """Apply image preprocessing to improve OCR accuracy.
 
-    Steps: convert to grayscale, apply adaptive threshold for binarization,
-    and median filter for noise removal.
+    Pipeline:
+    1. Convert to grayscale.
+    2. Gentle noise reduction (small median filter).
+    3. Contrast enhancement via histogram equalization.
+    4. Adaptive binarization using Otsu's method.
+    5. Light sharpening to recover edge detail.
     """
-    from PIL import ImageFilter
+    from PIL import ImageFilter, ImageOps
 
     if img.mode != "L":
         img = img.convert("L")
 
+    # Gentle noise reduction — size=3 removes salt-and-pepper without destroying detail.
     img = img.filter(ImageFilter.MedianFilter(size=3))
 
-    # Adaptive binarization using a simple threshold.
-    img = img.point(lambda x: 255 if x > 140 else 0, "1")
+    # Contrast enhancement — autocontrast stretches histogram to full range.
+    img = ImageOps.autocontrast(img, cutoff=0.5)
+
+    # Otsu's adaptive threshold — compute optimal threshold from histogram.
+    histogram = img.histogram()
+    total_pixels = sum(histogram)
+    current_sum = 0
+    current_weight = 0
+    max_variance = 0.0
+    threshold = 128
+
+    total_mean = sum(i * histogram[i] for i in range(256))
+
+    for i in range(256):
+        current_weight += histogram[i]
+        if current_weight == 0:
+            continue
+        bg_weight = total_pixels - current_weight
+        if bg_weight == 0:
+            break
+
+        current_sum += i * histogram[i]
+        bg_mean = (total_mean - current_sum) / bg_weight
+        fg_mean = current_sum / current_weight
+
+        variance = current_weight * bg_weight * (fg_mean - bg_mean) ** 2
+        if variance > max_variance:
+            max_variance = variance
+            threshold = i
+
+    img = img.point(lambda x, thr=threshold: 255 if x > thr else 0, "1")
     img = img.convert("L")
 
+    # Sharpen to recover edge detail lost during binarization.
+    img = img.filter(ImageFilter.SHARPEN)
+
     return img
+
+
+def _page_text_quality(text: str) -> float:
+    """Estimate OCR quality of a page — ratio of Cyrillic alpha chars.
+
+    Returns a float 0.0..1.0 where 1.0 means all alpha chars are Cyrillic.
+    """
+    alpha = [c for c in text if c.isalpha()]
+    if not alpha:
+        return 0.0
+    cyrillic = sum(1 for c in alpha if "\u0400" <= c <= "\u04ff")
+    return cyrillic / len(alpha)
 
 
 def _ocr_pdf_with_tesseract(
@@ -251,6 +300,13 @@ def _ocr_pdf_with_tesseract(
                 page_text = pytesseract.image_to_string(img, lang=lang, config=tess_config)
 
             if page_text and page_text.strip():
+                quality = _page_text_quality(page_text)
+                if quality < 0.15:
+                    logger.debug(
+                        "Page %d skipped: low quality (%.0f%% Cyrillic).",
+                        page_num + 1, quality * 100,
+                    )
+                    continue
                 pages.append(page_text)
 
             if (page_num + 1) % 20 == 0 or page_num == total - 1:

@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.tts_worker import TTSSynthesisWorker
 
@@ -38,64 +39,116 @@ class SynthesisPage(QWidget):
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setSpacing(10)
 
-        # Manifest selection.
+        # ── Manifest selection ──
         file_row = QHBoxLayout()
-        self._manifest_label = QLabel("No manifest loaded")
-        self._manifest_label.setStyleSheet("font-weight: bold;")
+        file_row.setSpacing(8)
+        self._manifest_label = QLabel()
+        self._manifest_label.setStyleSheet(
+            "font-weight: 700; font-size: 13px; padding: 6px 12px;"
+            "background: rgba(255,255,255,0.04); border-radius: 6px;"
+        )
         file_row.addWidget(self._manifest_label, stretch=1)
-        btn = QPushButton("Load Manifest")
-        btn.clicked.connect(self._browse_manifest)
-        file_row.addWidget(btn)
+
+        self._btn_load = QPushButton()
+        self._btn_load.clicked.connect(self._browse_manifest)
+        file_row.addWidget(self._btn_load)
         layout.addLayout(file_row)
 
-        # Settings.
+        # ── Settings ──
         settings = QFormLayout()
+        settings.setHorizontalSpacing(16)
+        settings.setVerticalSpacing(8)
 
         self._model_combo = QComboBox()
         self._model_combo.addItems(MODELS)
-        settings.addRow("Model:", self._model_combo)
+        self._model_label = QLabel()
+        settings.addRow(self._model_label, self._model_combo)
+
+        self._model_hint = QLabel()
+        self._model_hint.setWordWrap(True)
+        self._model_hint.setStyleSheet(
+            "color: rgba(255,255,255,0.4); font-size: 11px;"
+            "background: transparent; border: none;"
+            "padding: 0 0 4px 0;"
+        )
+        settings.addRow("", self._model_hint)
 
         self._batch_size = QSpinBox()
         self._batch_size.setRange(1, 8)
         self._batch_size.setValue(1)
-        settings.addRow("Batch Size:", self._batch_size)
+        self._batch_label = QLabel()
+        settings.addRow(self._batch_label, self._batch_size)
+
+        self._batch_hint = QLabel()
+        self._batch_hint.setWordWrap(True)
+        self._batch_hint.setStyleSheet(
+            "color: rgba(255,255,255,0.4); font-size: 11px;"
+            "background: transparent; border: none;"
+            "padding: 0 0 4px 0;"
+        )
+        settings.addRow("", self._batch_hint)
 
         self._chapter_spin = QSpinBox()
         self._chapter_spin.setRange(0, 999)
         self._chapter_spin.setValue(0)
-        self._chapter_spin.setSpecialValueText("All chapters")
-        settings.addRow("Chapter (0=all):", self._chapter_spin)
+        self._chapter_label = QLabel()
+        settings.addRow(self._chapter_label, self._chapter_spin)
 
         layout.addLayout(settings)
 
-        # Action buttons.
+        # ── Action buttons ──
         btn_row = QHBoxLayout()
-        self._btn_start = QPushButton("Start Synthesis")
-        self._btn_start.setMinimumHeight(40)
-        self._btn_start.setStyleSheet("font-size: 14px; font-weight: bold; background-color: #2ecc71; color: white;")
+        btn_row.setSpacing(8)
+
+        self._btn_start = QPushButton()
+        self._btn_start.setObjectName("successBtn")
+        self._btn_start.setMinimumHeight(44)
         self._btn_start.clicked.connect(self._start_synthesis)
         self._btn_start.setEnabled(False)
         btn_row.addWidget(self._btn_start)
 
-        self._btn_stop = QPushButton("Stop")
-        self._btn_stop.setMinimumHeight(40)
-        self._btn_stop.setStyleSheet("font-size: 14px; background-color: #e74c3c; color: white;")
+        self._btn_stop = QPushButton()
+        self._btn_stop.setObjectName("dangerBtn")
+        self._btn_stop.setMinimumHeight(44)
         self._btn_stop.clicked.connect(self._stop_synthesis)
         self._btn_stop.setEnabled(False)
         btn_row.addWidget(self._btn_stop)
 
         layout.addLayout(btn_row)
 
-        # Progress.
+        # ── Progress ──
         self._progress = ProgressWidget()
         layout.addWidget(self._progress)
 
-        # Status log.
-        self._status = QLabel("Waiting for manifest...")
+        # ── Status ──
+        self._status = QLabel()
         self._status.setWordWrap(True)
+        self._status.setStyleSheet(
+            "color: rgba(255,255,255,0.6); font-size: 12px; padding: 4px 0;"
+        )
         layout.addWidget(self._status)
         layout.addStretch()
+
+        self.retranslate()
+
+    def retranslate(self) -> None:
+        """Update translatable strings."""
+        if not self._manifest_path:
+            self._manifest_label.setText(t("synth.no_manifest"))
+        self._btn_load.setText(t("synth.load_manifest"))
+        self._model_label.setText(t("synth.model"))
+        self._model_hint.setText(t("synth.model_hint"))
+        self._model_combo.setToolTip(t("synth.model_hint"))
+        self._batch_label.setText(t("synth.batch_size"))
+        self._batch_hint.setText(t("synth.batch_hint"))
+        self._batch_size.setToolTip(t("synth.batch_hint"))
+        self._chapter_label.setText(t("synth.chapter"))
+        self._chapter_spin.setSpecialValueText(t("synth.all_chapters"))
+        self._btn_start.setText(t("synth.start"))
+        self._btn_stop.setText(t("synth.stop"))
+        self._status.setText(t("synth.waiting"))
 
     def set_manifest(self, manifest_path: Path, output_dir: Path) -> None:
         """Set the manifest file and output directory."""
@@ -106,7 +159,7 @@ class SynthesisPage(QWidget):
 
     def _browse_manifest(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Load Chunks Manifest", "", "JSON (*.json)",
+            self, t("synth.load_manifest"), "", "JSON (*.json)",
         )
         if path:
             p = Path(path)
@@ -148,7 +201,7 @@ class SynthesisPage(QWidget):
     def _on_finished(self, manifest: str) -> None:
         self._btn_start.setEnabled(True)
         self._btn_stop.setEnabled(False)
-        self._progress.set_status("Synthesis complete!")
+        self._progress.set_status(t("synth.complete"))
         self._status.setText(f"Output: {manifest}")
 
     def _on_error(self, msg: str) -> None:

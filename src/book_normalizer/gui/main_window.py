@@ -7,6 +7,8 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
     QStatusBar,
@@ -15,6 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from book_normalizer.gui.i18n import get_language, set_language, t
 from book_normalizer.gui.pages.assembly_page import AssemblyPage
 from book_normalizer.gui.pages.normalize_page import NormalizePage
 from book_normalizer.gui.pages.synthesis_page import SynthesisPage
@@ -26,67 +29,80 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Books to Audio — Audiobook Generator")
-        self.setMinimumSize(1100, 750)
+        self.setWindowTitle("Books to Audio")
+        self.setMinimumSize(1200, 800)
         self._output_dir: Path | None = None
         self._setup_ui()
         self._connect_signals()
+        self._retranslate()
 
     def _setup_ui(self) -> None:
         central = QWidget()
+        central.setObjectName("centralWidget")
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(16, 12, 16, 8)
+        layout.setSpacing(8)
 
-        # Header.
-        header = QLabel("Books to Audio")
-        header.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
-        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header.setStyleSheet("color: #2c3e50; margin: 4px 0;")
-        layout.addWidget(header)
+        # ── Header row ──
+        header_row = QHBoxLayout()
+        header_row.setSpacing(12)
 
-        subtitle = QLabel("Audiobook generation pipeline: Normalize → Voices → Synthesize → Assemble")
-        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("color: #7f8c8d; margin-bottom: 8px;")
-        layout.addWidget(subtitle)
+        self._title = QLabel()
+        self._title.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+        self._title.setStyleSheet("color: #fff; letter-spacing: 1px;")
+        header_row.addWidget(self._title)
 
-        # Tabs.
+        header_row.addStretch()
+
+        # Language switcher.
+        self._lang_label = QLabel()
+        self._lang_label.setStyleSheet(
+            "color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 600;"
+        )
+        header_row.addWidget(self._lang_label)
+
+        self._lang_combo = QComboBox()
+        self._lang_combo.addItem("\U0001f1f7\U0001f1fa  \u0420\u0443\u0441\u0441\u043a\u0438\u0439", "ru")
+        self._lang_combo.addItem("\U0001f1ec\U0001f1e7  English", "en")
+        self._lang_combo.setFixedWidth(160)
+        self._lang_combo.setStyleSheet(
+            "QComboBox { font-size: 13px; font-weight: 600; }"
+        )
+        self._lang_combo.currentIndexChanged.connect(self._on_language_changed)
+        header_row.addWidget(self._lang_combo)
+
+        layout.addLayout(header_row)
+
+        # Subtitle.
+        self._subtitle = QLabel()
+        self._subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._subtitle.setStyleSheet(
+            "color: rgba(255,255,255,0.4); font-size: 13px; "
+            "margin-bottom: 4px; letter-spacing: 2px;"
+        )
+        layout.addWidget(self._subtitle)
+
+        # ── Tabs ──
         self._tabs = QTabWidget()
-        self._tabs.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #bdc3c7; border-radius: 4px; }
-            QTabBar::tab {
-                padding: 8px 24px;
-                font-size: 13px;
-                min-width: 120px;
-            }
-            QTabBar::tab:selected {
-                font-weight: bold;
-                background: #ecf0f1;
-            }
-        """)
-
         self._normalize_page = NormalizePage()
         self._voices_page = VoicesPage()
         self._synthesis_page = SynthesisPage()
         self._assembly_page = AssemblyPage()
 
-        self._tabs.addTab(self._normalize_page, "1. Normalize")
-        self._tabs.addTab(self._voices_page, "2. Voices")
-        self._tabs.addTab(self._synthesis_page, "3. Synthesize")
-        self._tabs.addTab(self._assembly_page, "4. Assemble")
+        self._tabs.addTab(self._normalize_page, "")
+        self._tabs.addTab(self._voices_page, "")
+        self._tabs.addTab(self._synthesis_page, "")
+        self._tabs.addTab(self._assembly_page, "")
 
         layout.addWidget(self._tabs, stretch=1)
 
-        # Status bar.
+        # ── Status bar ──
         self._statusbar = QStatusBar()
         self.setStatusBar(self._statusbar)
-        self._statusbar.showMessage("Ready. Load a book file to begin.")
 
     def _connect_signals(self) -> None:
         """Wire up page transitions."""
-        # After normalization completes, pass book to voices page.
-        self._normalize_page._worker_finished = self._on_normalization_done
-
         original_finished = self._normalize_page._on_finished
 
         def patched_finished(book):
@@ -95,7 +111,6 @@ class MainWindow(QMainWindow):
 
         self._normalize_page._on_finished = patched_finished
 
-        # After voice detection, pass manifest to synthesis page.
         original_voice_done = self._voices_page._on_detection_done
 
         def patched_voice_done(manifest_path):
@@ -104,18 +119,40 @@ class MainWindow(QMainWindow):
 
         self._voices_page._on_detection_done = patched_voice_done
 
+    def _on_language_changed(self, _index: int) -> None:
+        """Handle language combo change."""
+        lang = self._lang_combo.currentData()
+        set_language(lang)
+        self._retranslate()
+        self._normalize_page.retranslate()
+        self._voices_page.retranslate()
+        self._synthesis_page.retranslate()
+        self._assembly_page.retranslate()
+
+    def _retranslate(self) -> None:
+        """Update all translatable strings in the main window."""
+        self._title.setText(t("app.title"))
+        self._subtitle.setText(t("app.subtitle"))
+        self._lang_label.setText(t("app.lang_label"))
+        self._statusbar.showMessage(t("app.ready"))
+
+        self._tabs.setTabText(0, t("tab.normalize"))
+        self._tabs.setTabText(1, t("tab.voices"))
+        self._tabs.setTabText(2, t("tab.synthesize"))
+        self._tabs.setTabText(3, t("tab.assemble"))
+
     def _on_normalization_done(self, book: object) -> None:
         """Called when normalization completes."""
-        # Determine output directory.
         path_text = self._normalize_page._path_label.text()
-        if path_text and path_text != "No file selected":
+        no_file = t("norm.no_file")
+        if path_text and path_text != no_file:
             from book_normalizer.cli import _build_output_dir
             self._output_dir = _build_output_dir(Path(path_text), Path("output")).resolve()
             self._output_dir.mkdir(parents=True, exist_ok=True)
 
             self._voices_page.set_book(book, self._output_dir)
             self._statusbar.showMessage(
-                f"Normalization complete. {len(book.chapters)} chapters. Go to Voices tab."
+                t("status.norm_done", n=len(book.chapters))
             )
             self._tabs.setCurrentIndex(1)
 
@@ -126,4 +163,4 @@ class MainWindow(QMainWindow):
             self._synthesis_page.set_manifest(mp, self._output_dir)
             audio_dir = self._output_dir / "audio_chunks"
             self._assembly_page.set_audio_dir(audio_dir, self._output_dir)
-            self._statusbar.showMessage("Voice assignment ready. Go to Synthesize tab.")
+            self._statusbar.showMessage(t("status.voices_done"))

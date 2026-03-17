@@ -5,6 +5,8 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
 
+from book_normalizer.gui.i18n import t
+
 
 class ProgressWidget(QWidget):
     """Combined progress bar with status text and ETA."""
@@ -12,13 +14,18 @@ class ProgressWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 4, 0, 4)
+        layout.setSpacing(4)
 
-        self._status = QLabel("Ready")
+        self._status = QLabel(t("progress.ready"))
         self._status.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self._status.setStyleSheet(
+            "font-weight: 600; font-size: 12px; color: rgba(255,255,255,0.7);"
+        )
         layout.addWidget(self._status)
 
         bar_row = QHBoxLayout()
+        bar_row.setSpacing(8)
         self._bar = QProgressBar()
         self._bar.setMinimum(0)
         self._bar.setMaximum(100)
@@ -26,8 +33,11 @@ class ProgressWidget(QWidget):
         bar_row.addWidget(self._bar, stretch=1)
 
         self._eta = QLabel("")
-        self._eta.setMinimumWidth(120)
+        self._eta.setMinimumWidth(140)
         self._eta.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._eta.setStyleSheet(
+            "font-weight: 600; font-size: 12px; color: rgba(124,92,252,0.9);"
+        )
         bar_row.addWidget(self._eta)
         layout.addLayout(bar_row)
 
@@ -42,7 +52,7 @@ class ProgressWidget(QWidget):
         pct = (current / total * 100) if total > 0 else 0
         self._status.setText(f"{current}/{total} ({pct:.0f}%)")
         if eta:
-            self._eta.setText(f"ETA: {eta}")
+            self._eta.setText(t("progress.eta", eta=eta))
         else:
             self._eta.setText("")
 
@@ -50,5 +60,5 @@ class ProgressWidget(QWidget):
         """Reset to initial state."""
         self._bar.setValue(0)
         self._bar.setMaximum(100)
-        self._status.setText("Ready")
+        self._status.setText(t("progress.ready"))
         self._eta.setText("")

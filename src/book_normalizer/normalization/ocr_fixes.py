@@ -113,27 +113,67 @@ def _has_cyrillic_context(is_cyrillic: list[bool], idx: int) -> bool:
     return False
 
 
+_TRAILING_JUNK = re.compile(
+    r"\s+[а-яёА-ЯЁa-zA-Z.,;:!?\-]{1,3}\s*$"
+)
+
+_LEADING_COMMA_PERIOD = re.compile(
+    r"^[‚,.:;]\s*"
+)
+
+_MULTI_SPACE = re.compile(r" {3,}")
+
+_BROKEN_HYPHEN = re.compile(
+    r"([а-яёА-ЯЁ])-\s*\n\s*([а-яё])"
+)
+
+_STRAY_LINE_PATTERN = re.compile(
+    r"^[\s\W]{0,4}[а-яёА-ЯЁa-zA-Z]{1,2}[\s\W]{0,4}$"
+)
+
+
 def fix_ocr_artifacts(text: str) -> str:
     """Remove common OCR artifacts from Cyrillic text.
 
     Handles stray apostrophes/backticks, spurious periods inside words,
-    lone garbage symbols, and low-comma quotation marks typical of
-    Tesseract misrecognition on Russian scans.
+    lone garbage symbols, low-comma quotation marks, trailing junk characters,
+    broken hyphenated words across lines, and scattered single-char noise
+    typical of Tesseract misrecognition on Russian scans.
     """
     text = _STRAY_PUNCT_IN_CYR.sub("", text)
     text = _PERIOD_INSIDE_WORD.sub(" ", text)
     text = _LONE_GARBAGE.sub("", text)
 
-    # Remove single-character stray lines that are OCR noise.
+    # Rejoin words broken by hyphenation across lines.
+    text = _BROKEN_HYPHEN.sub(r"\1\2", text)
+
+    # Remove excess whitespace (3+ spaces -> single space).
+    text = _MULTI_SPACE.sub(" ", text)
+
     lines = text.split("\n")
     cleaned: list[str] = []
     for line in lines:
         stripped = line.strip()
-        if len(stripped) <= 2 and not stripped.isdigit() and stripped not in ("—", "«", "»"):
-            if _HAS_CYRILLIC.search(stripped) or stripped in ("", ):
-                if len(stripped) == 1:
-                    continue
-        cleaned.append(line)
-    text = "\n".join(cleaned)
 
+        # Skip empty lines (preserve one blank).
+        if not stripped:
+            if not cleaned or cleaned[-1].strip():
+                cleaned.append("")
+            continue
+
+        # Skip lines that are just 1-2 stray characters (OCR noise).
+        if _STRAY_LINE_PATTERN.match(stripped):
+            if not stripped.isdigit() and stripped not in ("—", "«", "»", "—,"):
+                continue
+
+        # Remove leading stray comma/period from OCR.
+        stripped = _LEADING_COMMA_PERIOD.sub("", stripped)
+
+        # Remove trailing junk chars (1-3 random letters at line end).
+        stripped = _TRAILING_JUNK.sub("", stripped)
+
+        if stripped:
+            cleaned.append(stripped)
+
+    text = "\n".join(cleaned)
     return text

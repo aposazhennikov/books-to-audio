@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 
 
@@ -27,7 +28,14 @@ class AssemblyWorker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    def __init__(self, audio_dir: Path, output_dir: Path, pause_same: int, pause_change: int, parent=None):
+    def __init__(
+        self,
+        audio_dir: Path,
+        output_dir: Path,
+        pause_same: int,
+        pause_change: int,
+        parent=None,
+    ):
         super().__init__(parent)
         self._audio_dir = audio_dir
         self._output_dir = output_dir
@@ -36,7 +44,11 @@ class AssemblyWorker(QThread):
 
     def run(self) -> None:
         try:
-            script = Path(__file__).resolve().parent.parent.parent.parent.parent / "scripts" / "assemble_chapter.py"
+            script = (
+                Path(__file__).resolve().parent.parent.parent.parent.parent
+                / "scripts"
+                / "assemble_chapter.py"
+            )
 
             wsl_script = self._to_wsl(script)
             wsl_audio = self._to_wsl(self._audio_dir)
@@ -53,7 +65,7 @@ class AssemblyWorker(QThread):
                 f"--pause-change {self._pause_change}",
             ]
 
-            self.progress.emit("Assembling chapters...")
+            self.progress.emit(t("asm.assembling"))
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
             if result.returncode == 0:
@@ -66,6 +78,7 @@ class AssemblyWorker(QThread):
 
     @staticmethod
     def _to_wsl(path: Path) -> str:
+        """Convert Windows path to WSL path."""
         p = str(path.resolve()).replace("\\", "/")
         if len(p) >= 2 and p[1] == ":":
             drive = p[0].lower()
@@ -85,49 +98,74 @@ class AssemblyPage(QWidget):
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setSpacing(10)
 
-        # Directory selection.
+        # ── Directory selection ──
         dir_row = QHBoxLayout()
-        self._dir_label = QLabel("No audio directory selected")
-        self._dir_label.setStyleSheet("font-weight: bold;")
+        dir_row.setSpacing(8)
+        self._dir_label = QLabel()
+        self._dir_label.setStyleSheet(
+            "font-weight: 700; font-size: 13px; padding: 6px 12px;"
+            "background: rgba(255,255,255,0.04); border-radius: 6px;"
+        )
         dir_row.addWidget(self._dir_label, stretch=1)
-        btn = QPushButton("Select Audio Dir")
-        btn.clicked.connect(self._browse_dir)
-        dir_row.addWidget(btn)
+
+        self._btn_browse = QPushButton()
+        self._btn_browse.clicked.connect(self._browse_dir)
+        dir_row.addWidget(self._btn_browse)
         layout.addLayout(dir_row)
 
-        # Pause settings.
+        # ── Pause settings ──
         settings = QFormLayout()
+        settings.setHorizontalSpacing(16)
+        settings.setVerticalSpacing(8)
+
         self._pause_same = QSpinBox()
         self._pause_same.setRange(0, 5000)
         self._pause_same.setValue(300)
         self._pause_same.setSuffix(" ms")
-        settings.addRow("Pause (same voice):", self._pause_same)
+        self._pause_same_label = QLabel()
+        settings.addRow(self._pause_same_label, self._pause_same)
 
         self._pause_change = QSpinBox()
         self._pause_change.setRange(0, 5000)
         self._pause_change.setValue(600)
         self._pause_change.setSuffix(" ms")
-        settings.addRow("Pause (voice change):", self._pause_change)
+        self._pause_change_label = QLabel()
+        settings.addRow(self._pause_change_label, self._pause_change)
         layout.addLayout(settings)
 
-        # Run button.
-        self._btn_run = QPushButton("Assemble All Chapters")
-        self._btn_run.setMinimumHeight(40)
-        self._btn_run.setStyleSheet("font-size: 14px; font-weight: bold;")
+        # ── Run button ──
+        self._btn_run = QPushButton()
+        self._btn_run.setObjectName("primaryBtn")
+        self._btn_run.setMinimumHeight(44)
         self._btn_run.clicked.connect(self._run_assembly)
         self._btn_run.setEnabled(False)
         layout.addWidget(self._btn_run)
 
-        # Progress.
+        # ── Progress ──
         self._progress = ProgressWidget()
         layout.addWidget(self._progress)
 
-        # Output.
+        # ── Output ──
         self._output_label = QLabel("")
         self._output_label.setWordWrap(True)
+        self._output_label.setStyleSheet(
+            "color: rgba(255,255,255,0.6); font-size: 12px; padding: 4px 0;"
+        )
         layout.addWidget(self._output_label)
         layout.addStretch()
+
+        self.retranslate()
+
+    def retranslate(self) -> None:
+        """Update translatable strings."""
+        if not self._audio_dir:
+            self._dir_label.setText(t("asm.no_dir"))
+        self._btn_browse.setText(t("asm.select_dir"))
+        self._pause_same_label.setText(t("asm.pause_same"))
+        self._pause_change_label.setText(t("asm.pause_change"))
+        self._btn_run.setText(t("asm.run"))
 
     def set_audio_dir(self, audio_dir: Path, output_dir: Path) -> None:
         """Set audio chunks directory and output directory."""
@@ -137,7 +175,7 @@ class AssemblyPage(QWidget):
         self._btn_run.setEnabled(True)
 
     def _browse_dir(self) -> None:
-        d = QFileDialog.getExistingDirectory(self, "Select Audio Chunks Directory")
+        d = QFileDialog.getExistingDirectory(self, t("asm.select_dir"))
         if d:
             self._audio_dir = Path(d)
             self._output_dir = Path(d).parent
@@ -149,11 +187,13 @@ class AssemblyPage(QWidget):
             return
 
         self._btn_run.setEnabled(False)
-        self._progress.set_status("Assembling...")
+        self._progress.set_status(t("asm.assembling"))
 
         self._worker = AssemblyWorker(
-            self._audio_dir, self._output_dir,
-            self._pause_same.value(), self._pause_change.value(),
+            self._audio_dir,
+            self._output_dir,
+            self._pause_same.value(),
+            self._pause_change.value(),
         )
         self._worker.progress.connect(self._progress.set_status)
         self._worker.finished.connect(self._on_finished)
@@ -162,7 +202,7 @@ class AssemblyPage(QWidget):
 
     def _on_finished(self, output: str) -> None:
         self._btn_run.setEnabled(True)
-        self._progress.set_status("Assembly complete!")
+        self._progress.set_status(t("asm.complete"))
         self._output_label.setText(output)
 
     def _on_error(self, msg: str) -> None:

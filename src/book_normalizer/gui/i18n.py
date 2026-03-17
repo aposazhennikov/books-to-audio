@@ -1,0 +1,398 @@
+"""Internationalization (i18n) support for GUI — Russian / English."""
+
+from __future__ import annotations
+
+from typing import Any
+
+_LANG: str = "ru"
+
+TRANSLATIONS: dict[str, dict[str, str]] = {
+    # ── App-level ──
+    "app.title": {"en": "Books to Audio", "ru": "Книги в Аудио"},
+    "app.subtitle": {
+        "en": "Normalize \u2192 Voices \u2192 Synthesize \u2192 Assemble",
+        "ru": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u2192 \u0413\u043e\u043b\u043e\u0441\u0430 \u2192 \u0421\u0438\u043d\u0442\u0435\u0437 \u2192 \u0421\u0431\u043e\u0440\u043a\u0430",
+    },
+    "app.ready": {
+        "en": "Ready. Load a book file to begin.",
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u043e. \u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u043a\u043d\u0438\u0433\u0443 \u0434\u043b\u044f \u043d\u0430\u0447\u0430\u043b\u0430.",
+    },
+    "app.lang_label": {"en": "Language:", "ru": "\u042f\u0437\u044b\u043a:"},
+
+    # ── Tab names ──
+    "tab.normalize": {
+        "en": "1. Normalize",
+        "ru": "1. \u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f",
+    },
+    "tab.voices": {"en": "2. Voices", "ru": "2. \u0413\u043e\u043b\u043e\u0441\u0430"},
+    "tab.synthesize": {
+        "en": "3. Synthesize",
+        "ru": "3. \u0421\u0438\u043d\u0442\u0435\u0437",
+    },
+    "tab.assemble": {
+        "en": "4. Assemble",
+        "ru": "4. \u0421\u0431\u043e\u0440\u043a\u0430",
+    },
+
+    # ── Normalize page ──
+    "norm.no_file": {
+        "en": "No file selected",
+        "ru": "\u0424\u0430\u0439\u043b \u043d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d",
+    },
+    "norm.browse": {"en": "Browse\u2026", "ru": "\u041e\u0431\u0437\u043e\u0440\u2026"},
+    "norm.ocr_mode": {"en": "OCR Mode:", "ru": "\u0420\u0435\u0436\u0438\u043c OCR:"},
+    "norm.ocr_mode_hint": {
+        "en": "auto = OCR if text unreadable | off = no OCR | force = always OCR | compare = both",
+        "ru": "auto = OCR \u0435\u0441\u043b\u0438 \u0442\u0435\u043a\u0441\u0442 \u043d\u0435\u0447\u0438\u0442\u0430\u0435\u043c | off = \u0431\u0435\u0437 OCR | force = \u0432\u0441\u0435\u0433\u0434\u0430 OCR | compare = \u043e\u0431\u0430",
+    },
+    "norm.ocr_mode_tip": {
+        "en": (
+            "auto \u2014 OCR only if native text is empty or unreadable (Cyrillic < 30%)\n"
+            "off \u2014 use only native PDF text extraction, no OCR\n"
+            "force \u2014 always run OCR, ignore native text\n"
+            "compare \u2014 run both, save comparison report"
+        ),
+        "ru": (
+            "auto \u2014 OCR \u0442\u043e\u043b\u044c\u043a\u043e \u0435\u0441\u043b\u0438 \u0442\u0435\u043a\u0441\u0442 \u043f\u0443\u0441\u0442 \u0438\u043b\u0438 \u043d\u0435\u0447\u0438\u0442\u0430\u0435\u043c (\u043a\u0438\u0440\u0438\u043b\u043b\u0438\u0446\u0430 < 30%)\n"
+            "off \u2014 \u0442\u043e\u043b\u044c\u043a\u043e \u0438\u0437\u0432\u043b\u0435\u0447\u0435\u043d\u0438\u0435 \u0442\u0435\u043a\u0441\u0442\u0430 \u0438\u0437 PDF, \u0431\u0435\u0437 OCR\n"
+            "force \u2014 \u0432\u0441\u0435\u0433\u0434\u0430 \u0437\u0430\u043f\u0443\u0441\u043a\u0430\u0442\u044c OCR, \u0438\u0433\u043d\u043e\u0440\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0432\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442\n"
+            "compare \u2014 \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u043e\u0431\u0430 \u0441\u043f\u043e\u0441\u043e\u0431\u0430, \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043e\u0442\u0447\u0451\u0442"
+        ),
+    },
+    "norm.ocr_dpi": {"en": "OCR DPI:", "ru": "OCR DPI:"},
+    "norm.ocr_dpi_hint": {
+        "en": "300 = fast | 400 = recommended | 600 = best quality (slow)",
+        "ru": "300 = \u0431\u044b\u0441\u0442\u0440\u043e | 400 = \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0443\u0435\u0442\u0441\u044f | 600 = \u043b\u0443\u0447\u0448\u0435\u0435 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e (\u043c\u0435\u0434\u043b\u0435\u043d\u043d\u043e)",
+    },
+    "norm.ocr_dpi_tip": {
+        "en": (
+            "DPI (dots per inch) for rendering PDF pages to images before OCR.\n"
+            "Higher = better quality text recognition, but slower.\n"
+            "300 = fast, 400 = good balance (default), 600 = best quality."
+        ),
+        "ru": (
+            "DPI (\u0442\u043e\u0447\u0435\u043a \u043d\u0430 \u0434\u044e\u0439\u043c) \u0434\u043b\u044f \u0440\u0435\u043d\u0434\u0435\u0440\u0430 \u0441\u0442\u0440\u0430\u043d\u0438\u0446 PDF \u043f\u0435\u0440\u0435\u0434 OCR.\n"
+            "\u0411\u043e\u043b\u044c\u0448\u0435 = \u043b\u0443\u0447\u0448\u0435 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e, \u043d\u043e \u043c\u0435\u0434\u043b\u0435\u043d\u043d\u0435\u0435.\n"
+            "300 = \u0431\u044b\u0441\u0442\u0440\u043e, 400 = \u043e\u043f\u0442\u0438\u043c\u0430\u043b\u044c\u043d\u043e, 600 = \u043c\u0430\u043a\u0441\u0438\u043c\u0430\u043b\u044c\u043d\u043e\u0435 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e."
+        ),
+    },
+    "norm.ocr_psm": {"en": "Tesseract PSM:", "ru": "Tesseract PSM:"},
+    "norm.ocr_psm_hint": {
+        "en": "6 = block of text (best for books) | 3 = auto | 4 = single column",
+        "ru": "6 = \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 (\u043b\u0443\u0447\u0448\u0435\u0435 \u0434\u043b\u044f \u043a\u043d\u0438\u0433) | 3 = \u0430\u0432\u0442\u043e | 4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430",
+    },
+    "norm.ocr_psm_tip": {
+        "en": (
+            "Tesseract Page Segmentation Mode (PSM):\n"
+            "3 = fully automatic (default Tesseract)\n"
+            "4 = single column of variable-size text\n"
+            "6 = uniform block of text (recommended for books)\n"
+            "11 = sparse text, find as much as possible\n"
+            "13 = raw line, treat as single text line"
+        ),
+        "ru": (
+            "\u0420\u0435\u0436\u0438\u043c \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0430\u0446\u0438\u0438 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b Tesseract (PSM):\n"
+            "3 = \u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439\n"
+            "4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 \u0442\u0435\u043a\u0441\u0442\u0430\n"
+            "6 = \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 (\u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0443\u0435\u0442\u0441\u044f \u0434\u043b\u044f \u043a\u043d\u0438\u0433)\n"
+            "11 = \u0440\u0430\u0437\u0440\u0435\u0436\u0435\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442\n"
+            "13 = \u043e\u0434\u043d\u0430 \u0441\u0442\u0440\u043e\u043a\u0430 \u0442\u0435\u043a\u0441\u0442\u0430"
+        ),
+    },
+    "norm.ocr_not_applicable": {
+        "en": "OCR settings apply only to PDF files",
+        "ru": "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 OCR \u043f\u0440\u0438\u043c\u0435\u043d\u0438\u043c\u044b \u0442\u043e\u043b\u044c\u043a\u043e \u043a PDF",
+    },
+    "norm.run": {
+        "en": "Run Normalization",
+        "ru": "\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044e",
+    },
+    "norm.starting": {
+        "en": "Starting\u2026",
+        "ru": "\u0417\u0430\u043f\u0443\u0441\u043a\u2026",
+    },
+    "norm.loading": {
+        "en": "Loading book\u2026",
+        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u043a\u043d\u0438\u0433\u0438\u2026",
+    },
+    "norm.normalizing": {
+        "en": "Normalizing: {stage} ({cur}/{total}) \u2014 ETA: {eta}",
+        "ru": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f: {stage} ({cur}/{total}) \u2014 \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}",
+    },
+    "norm.norm_paragraphs": {
+        "en": "Normalizing: {done}/{total} paragraphs \u2014 ETA: {eta}",
+        "ru": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f: {done}/{total} \u0430\u0431\u0437\u0430\u0446\u0435\u0432 \u2014 \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}",
+    },
+    "norm.detecting_chapters": {
+        "en": "Detecting chapters\u2026",
+        "ru": "\u041e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0438\u0435 \u0433\u043b\u0430\u0432\u2026",
+    },
+    "norm.annotating_stress": {
+        "en": "Annotating stress marks\u2026",
+        "ru": "\u0420\u0430\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430 \u0443\u0434\u0430\u0440\u0435\u043d\u0438\u0439\u2026",
+    },
+    "norm.done": {
+        "en": "Done: {n} chapters, {time} total",
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u043e: {n} \u0433\u043b\u0430\u0432, {time} \u0432\u0441\u0435\u0433\u043e",
+    },
+    "norm.raw_placeholder": {
+        "en": "Raw text (before normalization)",
+        "ru": "\u0418\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442 (\u0434\u043e \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u0438)",
+    },
+    "norm.norm_placeholder": {
+        "en": "Normalized text (after)",
+        "ru": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u043e\u0432\u0430\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442 (\u043f\u043e\u0441\u043b\u0435)",
+    },
+    "norm.select_file": {
+        "en": "Select Book File",
+        "ru": "\u0412\u044b\u0431\u0440\u0430\u0442\u044c \u0444\u0430\u0439\u043b \u043a\u043d\u0438\u0433\u0438",
+    },
+
+    # ── Voices page ──
+    "voice.speaker_mode": {
+        "en": "Speaker Mode:",
+        "ru": "\u0420\u0435\u0436\u0438\u043c \u0434\u0438\u043a\u0442\u043e\u0440\u0430:",
+    },
+    "voice.max_chunk": {
+        "en": "Max Chunk Chars:",
+        "ru": "\u041c\u0430\u043a\u0441. \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432 \u0432 \u0447\u0430\u043d\u043a\u0435:",
+    },
+    "voice.detect": {
+        "en": "Detect & Chunk",
+        "ru": "\u041e\u043f\u0440\u0435\u0434\u0435\u043b\u0438\u0442\u044c \u0438 \u0440\u0430\u0437\u0431\u0438\u0442\u044c",
+    },
+    "voice.load_manifest": {
+        "en": "Load Existing Manifest",
+        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
+    },
+    "voice.save_manifest": {
+        "en": "Save Manifest",
+        "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
+    },
+    "voice.all_narrator": {
+        "en": "All \u2192 Narrator",
+        "ru": "\u0412\u0441\u0435 \u2192 \u0414\u0438\u043a\u0442\u043e\u0440",
+    },
+    "voice.auto_detect": {
+        "en": "Auto-detect",
+        "ru": "\u0410\u0432\u0442\u043e-\u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0438\u0442\u044c",
+    },
+    "voice.save": {"en": "Save", "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c"},
+    "voice.col_chapter": {"en": "Chapter", "ru": "\u0413\u043b\u0430\u0432\u0430"},
+    "voice.col_chunk": {"en": "Chunk", "ru": "\u0427\u0430\u043d\u043a"},
+    "voice.col_text": {
+        "en": "Text Preview",
+        "ru": "\u041f\u0440\u0435\u0432\u044c\u044e \u0442\u0435\u043a\u0441\u0442\u0430",
+    },
+    "voice.col_voice": {"en": "Voice", "ru": "\u0413\u043e\u043b\u043e\u0441"},
+    "voice.col_intonation": {
+        "en": "Intonation",
+        "ru": "\u0418\u043d\u0442\u043e\u043d\u0430\u0446\u0438\u044f",
+    },
+    "voice.stats": {
+        "en": "Total: {total} chunks | Narrator: {narrator} | Male: {male} | Female: {female}",
+        "ru": "\u0412\u0441\u0435\u0433\u043e: {total} \u0447\u0430\u043d\u043a\u043e\u0432 | \u0414\u0438\u043a\u0442\u043e\u0440: {narrator} | \u041c\u0443\u0436.: {male} | \u0416\u0435\u043d.: {female}",
+    },
+    "voice.detecting": {
+        "en": "Running dialogue detection and chunking\u2026",
+        "ru": "\u0414\u0435\u0442\u0435\u043a\u0442\u0438\u043c \u0434\u0438\u0430\u043b\u043e\u0433\u0438 \u0438 \u0440\u0430\u0437\u0431\u0438\u0432\u0430\u0435\u043c\u2026",
+    },
+    "voice.saved": {
+        "en": "Saved: {name}",
+        "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e: {name}",
+    },
+    "voice.generate_previews": {
+        "en": "Generate Voice Previews (WSL/GPU)",
+        "ru": "\u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043f\u0440\u0435\u0432\u044c\u044e \u0433\u043e\u043b\u043e\u0441\u043e\u0432 (WSL/GPU)",
+    },
+    "voice.refresh_previews": {
+        "en": "Refresh",
+        "ru": "\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c",
+    },
+    "voice.no_previews": {
+        "en": "No previews generated yet. Click 'Generate' to create samples.",
+        "ru": "\u041f\u0440\u0435\u0432\u044c\u044e \u043d\u0435 \u0441\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u044b. \u041d\u0430\u0436\u043c\u0438\u0442\u0435 \u00ab\u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u0442\u044c\u00bb.",
+    },
+    "voice.previews_ready": {
+        "en": "{count}/{total} voice previews ready",
+        "ru": "{count}/{total} \u043f\u0440\u0435\u0432\u044c\u044e \u0433\u043e\u0442\u043e\u0432\u044b",
+    },
+    "voice.generating_previews": {
+        "en": "Generating previews via WSL (this takes a few minutes)\u2026",
+        "ru": "\u0413\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f \u043f\u0440\u0435\u0432\u044c\u044e \u0447\u0435\u0440\u0435\u0437 WSL (\u044d\u0442\u043e \u0437\u0430\u0439\u043c\u0451\u0442 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u043c\u0438\u043d\u0443\u0442)\u2026",
+    },
+    "voice.preview_panel": {
+        "en": "Voice Library",
+        "ru": "\u0411\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0430 \u0433\u043e\u043b\u043e\u0441\u043e\u0432",
+    },
+    "voice.output_dir": {
+        "en": "Output folder:",
+        "ru": "\u041f\u0430\u043f\u043a\u0430 \u0432\u044b\u0432\u043e\u0434\u0430:",
+    },
+    "voice.choose_dir": {
+        "en": "Browse\u2026",
+        "ru": "\u041e\u0431\u0437\u043e\u0440\u2026",
+    },
+    "voice.preview_phrase": {
+        "en": "Preview phrase:",
+        "ru": "\u0424\u0440\u0430\u0437\u0430 \u0434\u043b\u044f \u043f\u0440\u0435\u0432\u044c\u044e:",
+    },
+    "voice.default_phrase": {
+        "en": (
+            "Sergey sat at the table drinking tea with raspberry jam. "
+            "His mood was rather melancholic."
+        ),
+        "ru": (
+            "\u0421\u0435\u0440\u0433\u0435\u0439 \u0441\u0438\u0434\u0435\u043b \u0437\u0430 \u0441\u0442\u043e\u043b\u043e\u043c \u0438 \u043f\u0438\u043b \u0447\u0430\u0439 \u0441 \u043c\u0430\u043b\u0438\u043d\u043e\u0432\u044b\u043c \u0432\u0430\u0440\u0435\u043d\u044c\u0435\u043c. "
+            "\u0421\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u0435 \u0431\u044b\u043b\u043e \u0432\u0435\u0441\u044c\u043c\u0430 \u0442\u043e\u0441\u043a\u043b\u0438\u0432\u044b\u043c."
+        ),
+    },
+    "voice.gen_loading": {
+        "en": "Loading TTS model\u2026 (1\u20132 min)",
+        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 TTS \u043c\u043e\u0434\u0435\u043b\u0438\u2026 (1\u20132 \u043c\u0438\u043d)",
+    },
+    "voice.gen_progress": {
+        "en": "{done}/{total} \u2014 {name} \u2014 ETA: {eta}",
+        "ru": "{done}/{total} \u2014 {name} \u2014 \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}",
+    },
+    "voice.gen_done": {
+        "en": "Done! All {total} previews generated in {elapsed}",
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u043e! \u0412\u0441\u0435 {total} \u043f\u0440\u0435\u0432\u044c\u044e \u0441\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u044b \u0437\u0430 {elapsed}",
+    },
+
+    # ── Synthesis page ──
+    "synth.no_manifest": {
+        "en": "No manifest loaded",
+        "ru": "\u041c\u0430\u043d\u0438\u0444\u0435\u0441\u0442 \u043d\u0435 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d",
+    },
+    "synth.load_manifest": {
+        "en": "Load Manifest",
+        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
+    },
+    "synth.model": {"en": "Model:", "ru": "\u041c\u043e\u0434\u0435\u043b\u044c:"},
+    "synth.model_hint": {
+        "en": (
+            "1.7B \u2014 best quality, 18% fewer errors (WER) vs 0.6B. "
+            "Needs ~4 GB VRAM. ~80\u2013120 s per chunk.\n"
+            "0.6B \u2014 faster, needs ~2 GB VRAM. ~30\u201360 s per chunk. "
+            "Good for drafts and previews."
+        ),
+        "ru": (
+            "1.7B \u2014 лучшее качество, на 18% меньше ошибок (WER). "
+            "Нужно ~4 ГБ VRAM. ~80\u2013120 сек/чанк.\n"
+            "0.6B \u2014 быстрее, нужно ~2 ГБ VRAM. ~30\u201360 сек/чанк. "
+            "Подходит для черновиков и превью."
+        ),
+    },
+    "synth.batch_size": {
+        "en": "Batch Size:",
+        "ru": "\u0420\u0430\u0437\u043c\u0435\u0440 \u0431\u0430\u0442\u0447\u0430:",
+    },
+    "synth.batch_hint": {
+        "en": (
+            "How many chunks are synthesized at once.\n"
+            "1 \u2014 sequential, minimal VRAM (~4 GB for 1.7B). Most stable.\n"
+            "2\u20134 \u2014 moderate speedup, needs 6\u201310 GB VRAM.\n"
+            "5\u20138 \u2014 max throughput, needs 12+ GB VRAM. "
+            "Risk of OOM errors on smaller GPUs."
+        ),
+        "ru": (
+            "Сколько чанков синтезируются одновременно.\n"
+            "1 \u2014 последовательно, минимум VRAM (~4 ГБ для 1.7B). "
+            "Самый стабильный.\n"
+            "2\u20134 \u2014 умеренное ускорение, нужно 6\u201310 ГБ VRAM.\n"
+            "5\u20138 \u2014 макс. скорость, нужно 12+ ГБ VRAM. "
+            "Риск ошибок нехватки памяти на слабых GPU."
+        ),
+    },
+    "synth.chapter": {
+        "en": "Chapter (0=all):",
+        "ru": "\u0413\u043b\u0430\u0432\u0430 (0=\u0432\u0441\u0435):",
+    },
+    "synth.all_chapters": {
+        "en": "All chapters",
+        "ru": "\u0412\u0441\u0435 \u0433\u043b\u0430\u0432\u044b",
+    },
+    "synth.start": {
+        "en": "Start Synthesis",
+        "ru": "\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u0441\u0438\u043d\u0442\u0435\u0437",
+    },
+    "synth.stop": {
+        "en": "Stop",
+        "ru": "\u0421\u0442\u043e\u043f",
+    },
+    "synth.waiting": {
+        "en": "Waiting for manifest\u2026",
+        "ru": "\u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435 \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442\u0430\u2026",
+    },
+    "synth.complete": {
+        "en": "Synthesis complete!",
+        "ru": "\u0421\u0438\u043d\u0442\u0435\u0437 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d!",
+    },
+
+    # ── Assembly page ──
+    "asm.no_dir": {
+        "en": "No audio directory selected",
+        "ru": "\u041f\u0430\u043f\u043a\u0430 \u0430\u0443\u0434\u0438\u043e \u043d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d\u0430",
+    },
+    "asm.select_dir": {
+        "en": "Select Audio Dir",
+        "ru": "\u0412\u044b\u0431\u0440\u0430\u0442\u044c \u043f\u0430\u043f\u043a\u0443 \u0430\u0443\u0434\u0438\u043e",
+    },
+    "asm.pause_same": {
+        "en": "Pause (same voice):",
+        "ru": "\u041f\u0430\u0443\u0437\u0430 (\u0442\u043e\u0442 \u0436\u0435 \u0433\u043e\u043b\u043e\u0441):",
+    },
+    "asm.pause_change": {
+        "en": "Pause (voice change):",
+        "ru": "\u041f\u0430\u0443\u0437\u0430 (\u0441\u043c\u0435\u043d\u0430 \u0433\u043e\u043b\u043e\u0441\u0430):",
+    },
+    "asm.run": {
+        "en": "Assemble All Chapters",
+        "ru": "\u0421\u043e\u0431\u0440\u0430\u0442\u044c \u0432\u0441\u0435 \u0433\u043b\u0430\u0432\u044b",
+    },
+    "asm.assembling": {
+        "en": "Assembling\u2026",
+        "ru": "\u0421\u0431\u043e\u0440\u043a\u0430\u2026",
+    },
+    "asm.complete": {
+        "en": "Assembly complete!",
+        "ru": "\u0421\u0431\u043e\u0440\u043a\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0430!",
+    },
+
+    # ── Progress widget ──
+    "progress.ready": {"en": "Ready", "ru": "\u0413\u043e\u0442\u043e\u0432\u043e"},
+    "progress.eta": {"en": "ETA: {eta}", "ru": "\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}"},
+
+    # ── Status bar messages ──
+    "status.norm_done": {
+        "en": "Normalization complete. {n} chapters. Go to Voices tab.",
+        "ru": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0430. {n} \u0433\u043b\u0430\u0432. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043d\u0430 \u0432\u043a\u043b\u0430\u0434\u043a\u0443 \u00ab\u0413\u043e\u043b\u043e\u0441\u0430\u00bb.",
+    },
+    "status.voices_done": {
+        "en": "Voice assignment ready. Go to Synthesize tab.",
+        "ru": "\u0413\u043e\u043b\u043e\u0441\u0430 \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u044b. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043d\u0430 \u0432\u043a\u043b\u0430\u0434\u043a\u0443 \u00ab\u0421\u0438\u043d\u0442\u0435\u0437\u00bb.",
+    },
+}
+
+
+def set_language(lang: str) -> None:
+    """Set current UI language ('en' or 'ru')."""
+    global _LANG  # noqa: PLW0603
+    _LANG = lang
+
+
+def get_language() -> str:
+    """Return current UI language code."""
+    return _LANG
+
+
+def t(key: str, **kwargs: Any) -> str:
+    """Translate key to current language, with optional format kwargs."""
+    entry = TRANSLATIONS.get(key)
+    if not entry:
+        return key
+    text = entry.get(_LANG, entry.get("en", key))
+    if kwargs:
+        text = text.format(**kwargs)
+    return text

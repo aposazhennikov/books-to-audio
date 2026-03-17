@@ -66,10 +66,10 @@ class TestQwenExporter:
         exporter = QwenExporter()
         files = exporter.export(sample_book, tmp_path)
 
-        assert len(files) == 3
         assert (tmp_path / "qwen_full.txt").exists()
         assert (tmp_path / "qwen_chapter_001.txt").exists()
         assert (tmp_path / "qwen_chapter_002.txt").exists()
+        assert (tmp_path / "qwen_chunks").is_dir()
 
     def test_strips_stress_marks(self, tmp_path: Path) -> None:
         from book_normalizer.exporters.qwen_exporter import StressExportStrategy

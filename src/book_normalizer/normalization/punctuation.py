@@ -46,3 +46,29 @@ def normalize_ellipsis(text: str) -> str:
     """Replace sequences of dots with a proper ellipsis character."""
     text = re.sub(r"\.{3,}", ELLIPSIS, text)
     return text
+
+
+def adapt_punctuation_for_tts(text: str) -> str:
+    """
+    Adjust punctuation for better TTS output quality.
+
+    - Replace em-dash used as sentence connector (not dialogue) with comma.
+    - Replace ellipsis before a capital letter with period (clearer pause).
+    - Strip leftover markdown formatting.
+    """
+    # Em-dash between clauses (not at line start = not dialogue).
+    # Pattern: "word — word" mid-sentence -> "word, word".
+    text = re.sub(
+        r"(?<=[а-яёА-ЯЁ\d,.])\s*" + EM_DASH + r"\s*(?=[а-яё\d])",
+        ", ",
+        text,
+    )
+
+    # Ellipsis before a capital letter -> period for cleaner TTS pause.
+    text = re.sub(r"…\s*(?=[А-ЯЁA-Z])", ". ", text)
+
+    # Strip markdown bold/italic/heading markers.
+    text = re.sub(r"\*{1,3}|_{1,3}", "", text)
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+
+    return text

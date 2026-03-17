@@ -61,3 +61,38 @@ def remove_repeated_headers(text: str, min_occurrences: int = 3) -> str:
         cleaned_lines.append(line)
 
     return "\n".join(cleaned_lines)
+
+
+# Inline footnote pattern: a line starting with 1-2 digits followed by
+# a lowercase letter and short explanatory text (< 100 chars total).
+_INLINE_FOOTNOTE_RE = re.compile(
+    r"^\s*\d{1,2}\s+[а-яё].*$", re.MULTILINE
+)
+
+# Superscript-style footnote markers in running text: "[1]", "[2]".
+_BRACKET_FOOTNOTE_REF = re.compile(r"\[\d{1,2}\]")
+
+
+def remove_inline_footnotes(text: str) -> str:
+    """
+    Remove inline footnotes that were merged into running text by OCR.
+
+    Targets two patterns:
+    1. Standalone short lines like '1 чтобы стать учителем (франц.).'
+    2. Bracketed references like '[1]' or '[2]' within sentences.
+    """
+    lines = text.split("\n")
+    cleaned: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if (
+            stripped
+            and len(stripped) < 100
+            and _INLINE_FOOTNOTE_RE.match(stripped)
+            and not re.match(r"^\s*\d{1,2}\s+[А-ЯЁA-Z]", stripped)
+        ):
+            continue
+        cleaned.append(line)
+    result = "\n".join(cleaned)
+    result = _BRACKET_FOOTNOTE_REF.sub("", result)
+    return result

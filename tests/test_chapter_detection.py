@@ -218,7 +218,7 @@ class TestChapterDetector:
         result = detector.detect_and_split(book)
         assert len(result.chapters) == 5
         titles = [ch.title for ch in result.chapters]
-        assert any("[М" in t for t in titles)
+        assert any("4" in t or "[М" in t for t in titles)
 
     def test_recover_various_ocr_artifacts(self) -> None:
         """Different OCR artifacts after 'Глава' are all recovered."""

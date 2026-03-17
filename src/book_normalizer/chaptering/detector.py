@@ -90,6 +90,7 @@ class ChapterDetector:
             return book
 
         chapters = self._split_at_headings(all_paragraphs, hits)
+        self._normalize_chapter_titles(chapters)
         logger.info("Detected %d chapters.", len(chapters))
 
         new_book = book.model_copy(deep=True)
@@ -415,3 +416,31 @@ class ChapterDetector:
         """Re-assign sequential index_in_chapter values."""
         for idx, para in enumerate(paragraphs):
             para.index_in_chapter = idx
+
+    _RE_GLAVA_TITLE = re.compile(
+        r"^(\s*[Гг][Лл][Аа][Вв][Аа]\s+)\S+\s*$"
+    )
+
+    @staticmethod
+    def _normalize_chapter_titles(chapters: list[Chapter]) -> None:
+        """
+        Replace OCR-damaged chapter numerals with sequential numbers.
+
+        For titles matching 'Глава <garbled>', substitute with
+        'Глава <N>' where N is the sequential index among Глава-titled
+        chapters.  This makes chapter titles TTS-friendly.
+        """
+        glava_re = re.compile(r"^\s*[Гг][Лл][Аа][Вв][Аа]\s+", re.IGNORECASE)
+        glava_indices = [
+            i for i, ch in enumerate(chapters)
+            if glava_re.match(ch.title)
+        ]
+        if len(glava_indices) < 2:
+            return
+
+        for seq, ch_idx in enumerate(glava_indices, start=1):
+            ch = chapters[ch_idx]
+            m = glava_re.match(ch.title)
+            if m:
+                prefix = m.group(0).rstrip() + " "
+                ch.title = f"{prefix.strip()} {seq}"

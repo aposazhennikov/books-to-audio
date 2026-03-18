@@ -90,7 +90,7 @@ class GeneratePreviewsWorker(QThread):
             cmd = [
                 "wsl", "-e", "bash", "-c",
                 f"source ~/venvs/qwen3tts/bin/activate && "
-                f"python '{wsl_script}' "
+                f"PYTHONUNBUFFERED=1 python -u '{wsl_script}' "
                 f"--out '{wsl_out}' "
                 f"--model '{self._model}' "
                 f"--ids '{ids_arg}' "

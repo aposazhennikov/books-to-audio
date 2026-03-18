@@ -2,6 +2,25 @@
 
 Full-pipeline Russian audiobook generator: from book files (PDF/TXT/EPUB/FB2/DOCX) to multi-voice audio.
 
+## Requirements
+
+| Component | Requirement |
+|-----------|-------------|
+| **OS** | Windows 10/11 (GUI runs on Windows) |
+| **WSL 2** | Required for TTS synthesis (Qwen3-TTS runs in Linux) |
+| **Python** | 3.10 or newer |
+| **GPU** | NVIDIA with CUDA (6+ GB VRAM recommended for 1.7B model) |
+| **RAM** | 8+ GB (16 GB recommended for large books) |
+
+### Libraries
+
+| Group | Packages |
+|-------|----------|
+| **Core** | pydantic, click, PyMuPDF, python-docx, ebooklib, lxml, rich, num2words |
+| **OCR** (optional) | pytesseract, Pillow — requires [Tesseract](https://github.com/tesseract-ocr/tesseract) on PATH (Windows: install from [UB-Mannheim](https://github.com/UB-Mannheim/tesseract/wiki)) |
+| **GUI** | PyQt6 |
+| **TTS** (in WSL) | qwen-tts, torch, soundfile, numpy |
+
 ## Features
 
 - **Multi-format support**: TXT, PDF (with OCR), EPUB, FB2, DOCX
@@ -16,36 +35,62 @@ Full-pipeline Russian audiobook generator: from book files (PDF/TXT/EPUB/FB2/DOC
 - **GUI application**: PyQt6 desktop app with all features
 - **CLI interface**: full-featured command-line tools
 
-## Quick Start
+## Quick Start (from scratch)
 
-### Installation
+### 1. Prerequisites
 
-```bash
-# Core (normalization only)
-pip install -e "."
+| Step | Action |
+|------|--------|
+| **WSL 2** | `wsl --install` (restart if needed). Default Ubuntu is fine. |
+| **Python 3.10+** | Install on Windows from [python.org](https://www.python.org/downloads/) or `winget install Python.Python.3.12` |
+| **NVIDIA GPU** | Drivers with CUDA support. 6+ GB VRAM for 1.7B model. |
 
-# With OCR support
-pip install -e ".[ocr]"
+### 2. Install on Windows
 
-# With GUI
-pip install -e ".[gui]"
+```powershell
+cd C:\path\to\books-to-audio
 
-# Everything
-pip install -e ".[ocr,gui,llm,dev]"
+python -m venv .venv
+.venv\Scripts\activate
+
+pip install -e ".[ocr,gui]"
 ```
 
-### WSL Setup for TTS (one-time)
+### 3. WSL setup for TTS (one-time)
 
-Qwen3-TTS runs on GPU via WSL. Setup:
+TTS runs in WSL to access the GPU. In **WSL terminal**:
 
 ```bash
-# In WSL:
+sudo apt update && sudo apt install python3.10 python3.10-venv
+
 python3.10 -m venv ~/venvs/qwen3tts
 source ~/venvs/qwen3tts/bin/activate
+
 pip install qwen-tts torch soundfile numpy
 
-# Optional: install flash-attention for 1.5-2x speedup
+# Optional: flash-attention for 1.5-2x speedup
 pip install flash-attn --no-build-isolation
+```
+
+### 4. Run the GUI
+
+From **Windows PowerShell** (not WSL):
+
+```powershell
+cd C:\path\to\books-to-audio
+.venv\Scripts\activate
+python -m book_normalizer.gui.app
+```
+
+> GUI runs on Windows. WSL is used internally only for TTS synthesis and assembly.
+
+### Installation variants
+
+```powershell
+pip install -e "."              # Core only
+pip install -e ".[ocr]"         # + OCR for scanned PDFs
+pip install -e ".[ocr,gui]"     # + GUI (recommended)
+pip install -e ".[ocr,gui,llm,dev]"  # Full
 ```
 
 ## Full Pipeline: Step-by-Step

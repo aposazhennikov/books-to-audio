@@ -455,6 +455,27 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Waiting for manifest\u2026",
         "ru": "\u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435 \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442\u0430\u2026",
     },
+    "synth.in_progress": {
+        "en": "Synthesis in progress\u2026 (each chunk may take 1\u20132 min)",
+        "ru": "\u0421\u0438\u043d\u0442\u0435\u0437 \u0432 \u043f\u0440\u043e\u0446\u0435\u0441\u0441\u0435\u2026 "
+        "(\u043a\u0430\u0436\u0434\u044b\u0439 \u0447\u0430\u043d\u043a \u043c\u043e\u0436\u0435\u0442 \u0437\u0430\u043d\u044f\u0442\u044c 1\u20132 \u043c\u0438\u043d)",
+    },
+    "synth.progress_status": {
+        "en": "Chunk {current}/{total} \u2022 ETA: {eta}",
+        "ru": "\u0427\u0430\u043d\u043a {current}/{total} \u2022 \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}",
+    },
+    "synth.progress_status_no_eta": {
+        "en": "Chunk {current}/{total}",
+        "ru": "\u0427\u0430\u043d\u043a {current}/{total}",
+    },
+    "synth.progress_chapter": {
+        "en": "Ch. {chapter} \u2022 Chunk {current}/{total} \u2022 ETA: {eta}",
+        "ru": "\u0413\u043b. {chapter} \u2022 \u0427\u0430\u043d\u043a {current}/{total} \u2022 \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}",
+    },
+    "synth.progress_chapter_no_eta": {
+        "en": "Ch. {chapter} \u2022 Chunk {current}/{total}",
+        "ru": "\u0413\u043b. {chapter} \u2022 \u0427\u0430\u043d\u043a {current}/{total}",
+    },
     "synth.resume": {
         "en": "Resume:",
         "ru": "Продолжить:",

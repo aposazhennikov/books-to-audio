@@ -286,6 +286,7 @@ class SynthesisPage(QWidget):
         self._phase = "loading"
         self._phase_start = time.time()
         self._tick_timer.start()
+        self._status.setText(t("synth.in_progress"))
         self._on_tick()
 
     def _stop_synthesis(self) -> None:
@@ -304,10 +305,44 @@ class SynthesisPage(QWidget):
                 t("synth.loading_model") + f"  [{time_str}]",
             )
 
-    def _on_progress(self, current: int, total: int, eta: str) -> None:
+    def _on_progress(
+        self,
+        current: int,
+        total: int,
+        eta: str,
+        chapter: int = 0,
+    ) -> None:
         if self._phase == "loading":
             self._phase = "synth"
         self._progress.set_progress(current, total, eta)
+        if chapter > 0:
+            status = (
+                t(
+                    "synth.progress_chapter",
+                    chapter=chapter,
+                    current=current,
+                    total=total,
+                    eta=eta,
+                )
+                if eta
+                else t(
+                    "synth.progress_chapter_no_eta",
+                    chapter=chapter,
+                    current=current,
+                    total=total,
+                )
+            )
+        else:
+            status = (
+                t("synth.progress_status", current=current, total=total, eta=eta)
+                if eta
+                else t(
+                    "synth.progress_status_no_eta",
+                    current=current,
+                    total=total,
+                )
+            )
+        self._status.setText(status)
 
     def _on_status(self, msg: str) -> None:
         if msg == "__loading__":

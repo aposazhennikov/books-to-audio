@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -180,7 +181,7 @@ class ExportChunksWorker(QThread):
 class TTSSynthesisWorker(QThread):
     """Run TTS synthesis via WSL subprocess and monitor progress."""
 
-    progress = pyqtSignal(int, int, str)
+    progress = pyqtSignal(int, int, str, int)
     status = pyqtSignal(str)
     finished = pyqtSignal(str, int, int)
     error = pyqtSignal(str)
@@ -239,7 +240,8 @@ class TTSSynthesisWorker(QThread):
             cmd = [
                 "wsl", "-e", "bash", "-c",
                 f"source ~/venvs/qwen3tts/bin/activate && "
-                f"python {self._wsl_path(script_path)} "
+                f"PYTHONUNBUFFERED=1 python -u "
+                f"{self._wsl_path(script_path)} "
                 f"--chunks-json {self._wsl_path(self._manifest_path)} "
                 f"--out {self._wsl_path(self._output_dir)} "
                 f"--model {self._model} "
@@ -283,7 +285,9 @@ class TTSSynthesisWorker(QThread):
                         eta_part = ""
                         if "ETA:" in line:
                             eta_part = line.split("ETA:")[1].strip().rstrip(")")
-                        self.progress.emit(synthesized, total, eta_part)
+                        ch_match = re.search(r"\bch(\d+)\b", line)
+                        chapter = int(ch_match.group(1)) if ch_match else 0
+                        self.progress.emit(synthesized, total, eta_part, chapter)
                     except (ValueError, IndexError):
                         pass
 
@@ -298,7 +302,7 @@ class TTSSynthesisWorker(QThread):
                                 skipped = int(p.split()[0])
                     except (ValueError, IndexError):
                         pass
-                    self.progress.emit(total, total, "0s")
+                    self.progress.emit(total, total, "0s", 0)
 
             self._process.wait()
             rc = self._process.returncode

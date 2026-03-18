@@ -57,7 +57,7 @@ class AssemblyWorker(QThread):
             cmd = [
                 "wsl", "-e", "bash", "-c",
                 f"source ~/venvs/qwen3tts/bin/activate && "
-                f"python {wsl_script} "
+                f"PYTHONUNBUFFERED=1 python -u {wsl_script} "
                 f"--audio-dir {wsl_audio} "
                 f"--out {wsl_out} "
                 f"--all "

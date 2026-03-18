@@ -202,9 +202,30 @@ class AssemblyPage(QWidget):
 
     def _on_finished(self, output: str) -> None:
         self._btn_run.setEnabled(True)
-        self._progress.set_status(t("asm.complete"))
-        self._output_label.setText(output)
+        translated = self._translate_output(output)
+        if "No WAV" in output or "No chapter" in output:
+            self._progress.set_status(t("asm.no_wav_found"))
+        else:
+            self._progress.set_status(t("asm.complete"))
+        self._output_label.setText(translated)
 
     def _on_error(self, msg: str) -> None:
         self._btn_run.setEnabled(True)
-        self._progress.set_status(f"Error: {msg}")
+        self._progress.set_status(f"❌ {msg}")
+
+    @staticmethod
+    def _translate_output(text: str) -> str:
+        """Replace known English phrases from WSL script with i18n."""
+        import re
+        text = text.replace("No WAV chunks in", t("asm.no_wav_in"))
+        text = text.replace("No chapter dirs found in", t("asm.no_chapters_in"))
+        text = re.sub(
+            r"(\d+) chunks -> ([\d.]+)s",
+            lambda m: t(
+                "asm.chunk_stats",
+                chunks=m.group(1),
+                duration=m.group(2),
+            ),
+            text,
+        )
+        return text

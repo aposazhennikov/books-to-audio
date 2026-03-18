@@ -78,6 +78,24 @@ class VoiceAnnotatedChunk(BaseModel):
     chapter_index: int = 0
     role: SpeakerRole = SpeakerRole.NARRATOR
     voice_id: str = ""
+    intonation: str = "neutral"
+
+
+class VoiceSegment(BaseModel):
+    """A single dialogue/narrator segment before chunking.
+
+    Represents the finest granularity of voice assignment.
+    Users assign voice_id and intonation per segment,
+    then segments are grouped into chunks for TTS.
+    """
+
+    segment_index: int = 0
+    chapter_index: int = 0
+    is_dialogue: bool = False
+    role: SpeakerRole = SpeakerRole.NARRATOR
+    voice_id: str = ""
+    intonation: str = "neutral"
+    text: str = ""
 
 
 class SpeakerAnnotationResult(BaseModel):

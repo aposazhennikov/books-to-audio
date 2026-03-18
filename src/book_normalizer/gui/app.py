@@ -323,9 +323,9 @@ QGroupBox::title {
 
 /* ── Splitter ── */
 QSplitter::handle {
-    background: rgba(255, 255, 255, 0.08);
-    width: 2px;
-    margin: 4px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    width: 1px;
+    margin: 8px 2px;
     border-radius: 1px;
 }
 
@@ -376,6 +376,7 @@ def _resolve_theme() -> str:
 
 def main() -> None:
     """Launch the Books-to-Audio GUI application."""
+    from PyQt6.QtGui import QFont
     from PyQt6.QtWidgets import QApplication
 
     from book_normalizer.gui.main_window import MainWindow
@@ -383,6 +384,7 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("Books to Audio")
     app.setOrganizationName("books-to-audio")
+    app.setFont(QFont("Segoe UI", 13))
     app.setStyleSheet(_resolve_theme())
 
     window = MainWindow()

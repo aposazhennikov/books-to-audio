@@ -9,9 +9,97 @@ from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from book_normalizer.gui.i18n import t
+
+
+class ExportSegmentsWorker(QThread):
+    """Export voice-annotated segments (line-level) from a processed book."""
+
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        book: object,
+        output_dir: Path,
+        speaker_mode: str = "heuristic",
+        llm_endpoint: str = "",
+        llm_model: str = "",
+        llm_api_key: str = "",
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._book = book
+        self._output_dir = output_dir
+        self._speaker_mode = speaker_mode
+        self._llm_endpoint = llm_endpoint
+        self._llm_model = llm_model
+        self._llm_api_key = llm_api_key
+
+    def run(self) -> None:
+        try:
+            from book_normalizer.chunking.voice_splitter import (
+                extract_segments_book,
+            )
+            from book_normalizer.dialogue.attribution import (
+                SpeakerMode,
+                create_attributor,
+            )
+            from book_normalizer.dialogue.detector import DialogueDetector
+
+            self.progress.emit(t("voice.detecting_dialogue"))
+            detector = DialogueDetector()
+            annotated = detector.detect_book(self._book)
+
+            self.progress.emit(
+                t("voice.attributing", mode=self._speaker_mode),
+            )
+            attr_mode = SpeakerMode(self._speaker_mode)
+            attributor = create_attributor(
+                attr_mode,
+                cache_dir=self._output_dir / "speaker_cache",
+                llm_endpoint=self._llm_endpoint or "",
+                llm_model=self._llm_model or "qwen3:8b",
+                llm_api_key=self._llm_api_key or "",
+            )
+            attributor.attribute(annotated)
+
+            self.progress.emit(t("voice.extracting_segments"))
+            segments = extract_segments_book(annotated)
+
+            manifest = []
+            for seg in segments:
+                manifest.append({
+                    "segment_index": seg.segment_index,
+                    "chapter_index": seg.chapter_index,
+                    "is_dialogue": seg.is_dialogue,
+                    "role": seg.role.value,
+                    "voice_id": seg.voice_id,
+                    "intonation": seg.intonation,
+                    "text": seg.text,
+                })
+
+            self._output_dir.mkdir(parents=True, exist_ok=True)
+            manifest_path = (
+                self._output_dir / "segments_manifest.json"
+            )
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            self.progress.emit(
+                t("voice.exported_segments", n=len(manifest)),
+            )
+            self.finished.emit(str(manifest_path))
+
+        except Exception as exc:
+            self.error.emit(str(exc))
+
 
 class ExportChunksWorker(QThread):
-    """Export voice-annotated chunks from a processed book."""
+    """Legacy: export voice-annotated chunks from a processed book."""
 
     progress = pyqtSignal(str)
     finished = pyqtSignal(str)
@@ -33,23 +121,34 @@ class ExportChunksWorker(QThread):
 
     def run(self) -> None:
         try:
-            from book_normalizer.chunking.voice_splitter import chunk_annotated_book
-            from book_normalizer.dialogue.attribution import SpeakerMode, create_attributor
+            from book_normalizer.chunking.voice_splitter import (
+                chunk_annotated_book,
+            )
+            from book_normalizer.dialogue.attribution import (
+                SpeakerMode,
+                create_attributor,
+            )
             from book_normalizer.dialogue.detector import DialogueDetector
 
-            self.progress.emit("Detecting dialogue...")
+            self.progress.emit(t("voice.detecting_dialogue"))
             detector = DialogueDetector()
             annotated = detector.detect_book(self._book)
 
-            self.progress.emit(f"Speaker attribution ({self._speaker_mode})...")
+            self.progress.emit(
+                t("voice.attributing", mode=self._speaker_mode),
+            )
             attr_mode = SpeakerMode(self._speaker_mode)
             attributor = create_attributor(
-                attr_mode, cache_dir=self._output_dir / "speaker_cache",
+                attr_mode,
+                cache_dir=self._output_dir / "speaker_cache",
             )
             attributor.attribute(annotated)
 
-            self.progress.emit("Chunking...")
-            chunked = chunk_annotated_book(annotated, max_chunk_chars=self._max_chunk_chars)
+            self.progress.emit(t("voice.chunking"))
+            chunked = chunk_annotated_book(
+                annotated,
+                max_chunk_chars=self._max_chunk_chars,
+            )
 
             manifest = []
             for ch_idx in sorted(chunked.keys()):
@@ -65,10 +164,13 @@ class ExportChunksWorker(QThread):
             self._output_dir.mkdir(parents=True, exist_ok=True)
             manifest_path = self._output_dir / "chunks_manifest.json"
             manifest_path.write_text(
-                json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8",
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
             )
 
-            self.progress.emit(f"Exported {len(manifest)} chunks")
+            self.progress.emit(
+                t("voice.exported_chunks", n=len(manifest)),
+            )
             self.finished.emit(str(manifest_path))
 
         except Exception as exc:
@@ -79,7 +181,8 @@ class TTSSynthesisWorker(QThread):
     """Run TTS synthesis via WSL subprocess and monitor progress."""
 
     progress = pyqtSignal(int, int, str)
-    finished = pyqtSignal(str)
+    status = pyqtSignal(str)
+    finished = pyqtSignal(str, int, int)
     error = pyqtSignal(str)
 
     def __init__(
@@ -89,6 +192,7 @@ class TTSSynthesisWorker(QThread):
         model: str = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
         chapter: int | None = None,
         batch_size: int = 1,
+        resume: bool = False,
         parent=None,
     ):
         super().__init__(parent)
@@ -97,6 +201,7 @@ class TTSSynthesisWorker(QThread):
         self._model = model
         self._chapter = chapter
         self._batch_size = batch_size
+        self._resume = resume
         self._process: subprocess.Popen | None = None
         self._cancelled = False
 
@@ -108,13 +213,29 @@ class TTSSynthesisWorker(QThread):
 
     def run(self) -> None:
         try:
-            manifest = json.loads(self._manifest_path.read_text(encoding="utf-8"))
+            manifest = json.loads(
+                self._manifest_path.read_text(encoding="utf-8"),
+            )
             total = len(manifest)
             if self._chapter is not None:
-                total = sum(1 for c in manifest if c["chapter_index"] == self._chapter - 1)
+                total = sum(
+                    1 for c in manifest
+                    if c.get("chapter_index") == self._chapter - 1
+                )
 
-            script_path = Path(__file__).resolve().parent.parent.parent.parent.parent / "scripts" / "tts_runner.py"
+            if total == 0:
+                self.error.emit(t("synth.err_no_chunks"))
+                return
 
+            script_path = (
+                Path(__file__).resolve().parent.parent.parent.parent.parent
+                / "scripts" / "tts_runner.py"
+            )
+
+            resume_flag = " --resume" if self._resume else ""
+            chapter_flag = (
+                f" --chapter {self._chapter}" if self._chapter else ""
+            )
             cmd = [
                 "wsl", "-e", "bash", "-c",
                 f"source ~/venvs/qwen3tts/bin/activate && "
@@ -122,9 +243,8 @@ class TTSSynthesisWorker(QThread):
                 f"--chunks-json {self._wsl_path(self._manifest_path)} "
                 f"--out {self._wsl_path(self._output_dir)} "
                 f"--model {self._model} "
-                f"--batch-size {self._batch_size} "
-                f"--resume"
-                + (f" --chapter {self._chapter}" if self._chapter else ""),
+                f"--batch-size {self._batch_size}"
+                f"{resume_flag}{chapter_flag}",
             ]
 
             self._process = subprocess.Popen(
@@ -136,7 +256,11 @@ class TTSSynthesisWorker(QThread):
                 errors="replace",
             )
 
-            done = 0
+            self.status.emit("__loading__")
+
+            synthesized = 0
+            skipped = 0
+            last_lines: list[str] = []
             for line in iter(self._process.stdout.readline, ""):
                 if self._cancelled:
                     break
@@ -144,24 +268,53 @@ class TTSSynthesisWorker(QThread):
                 if not line:
                     continue
 
+                last_lines.append(line)
+                if len(last_lines) > 50:
+                    last_lines.pop(0)
+
+                if "Model loaded" in line:
+                    self.status.emit("__model_ready__")
+
                 if line.startswith("  ["):
                     try:
                         parts = line.split("]")[0].replace("[", "").strip()
-                        current, tot = parts.split("/")
-                        done = int(current)
-                        eta_part = line.split("ETA:")[1].strip() if "ETA:" in line else ""
-                        self.progress.emit(done, total, eta_part)
+                        current, _tot = parts.split("/")
+                        synthesized = int(current)
+                        eta_part = ""
+                        if "ETA:" in line:
+                            eta_part = line.split("ETA:")[1].strip().rstrip(")")
+                        self.progress.emit(synthesized, total, eta_part)
                     except (ValueError, IndexError):
                         pass
 
                 if line.startswith("Done:"):
+                    try:
+                        parts = line.split(",")
+                        for p in parts:
+                            p = p.strip()
+                            if "synthesized" in p:
+                                synthesized = int(p.split()[0].replace("Done:", "").strip())
+                            elif "skipped" in p:
+                                skipped = int(p.split()[0])
+                    except (ValueError, IndexError):
+                        pass
                     self.progress.emit(total, total, "0s")
 
             self._process.wait()
-            if not self._cancelled:
-                self.finished.emit(str(self._output_dir / "synthesis_manifest.json"))
+            rc = self._process.returncode
+
+            if self._cancelled:
+                self.error.emit(t("synth.cancelled"))
+            elif rc != 0:
+                tail = "\n".join(last_lines[-10:])
+                self.error.emit(
+                    t("synth.err_exit_code", code=rc) + f"\n{tail}",
+                )
             else:
-                self.error.emit("Cancelled by user")
+                out_path = str(
+                    self._output_dir / "audio_chunks",
+                )
+                self.finished.emit(out_path, synthesized, skipped)
 
         except Exception as exc:
             self.error.emit(str(exc))

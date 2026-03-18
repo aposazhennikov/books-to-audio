@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QIcon
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -31,6 +31,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Books to Audio")
         self.setMinimumSize(1200, 800)
+        icon_path = Path(__file__).resolve().parent / "assets" / "icon.svg"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
         self._output_dir: Path | None = None
         self._setup_ui()
         self._connect_signals()
@@ -111,13 +114,7 @@ class MainWindow(QMainWindow):
 
         self._normalize_page._on_finished = patched_finished
 
-        original_voice_done = self._voices_page._on_detection_done
-
-        def patched_voice_done(manifest_path):
-            original_voice_done(manifest_path)
-            self._on_voices_done(manifest_path)
-
-        self._voices_page._on_detection_done = patched_voice_done
+        self._voices_page.chunks_built.connect(self._on_chunks_built)
 
     def _on_language_changed(self, _index: int) -> None:
         """Handle language combo change."""
@@ -156,11 +153,11 @@ class MainWindow(QMainWindow):
             )
             self._tabs.setCurrentIndex(1)
 
-    def _on_voices_done(self, manifest_path: str) -> None:
-        """Called when voice detection/chunking completes."""
-        mp = Path(manifest_path)
-        if self._output_dir:
-            self._synthesis_page.set_manifest(mp, self._output_dir)
-            audio_dir = self._output_dir / "audio_chunks"
-            self._assembly_page.set_audio_dir(audio_dir, self._output_dir)
-            self._statusbar.showMessage(t("status.voices_done"))
+    def _on_chunks_built(self, chunks_path: str) -> None:
+        """Called when TTS chunks are built from segments."""
+        mp = Path(chunks_path)
+        out_dir = self._output_dir or mp.parent
+        self._synthesis_page.set_manifest(mp, out_dir)
+        audio_dir = out_dir / "audio_chunks"
+        self._assembly_page.set_audio_dir(audio_dir, out_dir)
+        self._statusbar.showMessage(t("status.voices_done"))

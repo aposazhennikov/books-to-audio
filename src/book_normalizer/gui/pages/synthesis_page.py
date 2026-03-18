@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import time
 from pathlib import Path
 
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -35,19 +39,29 @@ class SynthesisPage(QWidget):
         self._manifest_path: Path | None = None
         self._output_dir: Path | None = None
         self._worker: TTSSynthesisWorker | None = None
+        self._chapter_map: dict[int, int] = {}
+        self._phase = "idle"
+        self._phase_start = 0.0
+        self._tick_timer = QTimer(self)
+        self._tick_timer.setInterval(1000)
+        self._tick_timer.timeout.connect(self._on_tick)
         self._setup_ui()
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
-        # ── Manifest selection ──
+        # Manifest selection.
         file_row = QHBoxLayout()
         file_row.setSpacing(8)
         self._manifest_label = QLabel()
+        self._manifest_label.setWordWrap(True)
+        self._manifest_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse,
+        )
         self._manifest_label.setStyleSheet(
             "font-weight: 700; font-size: 13px; padding: 6px 12px;"
-            "background: rgba(255,255,255,0.04); border-radius: 6px;"
+            "background: rgba(255,255,255,0.04); border-radius: 6px;",
         )
         file_row.addWidget(self._manifest_label, stretch=1)
 
@@ -56,7 +70,7 @@ class SynthesisPage(QWidget):
         file_row.addWidget(self._btn_load)
         layout.addLayout(file_row)
 
-        # ── Settings ──
+        # Settings.
         settings = QFormLayout()
         settings.setHorizontalSpacing(16)
         settings.setVerticalSpacing(8)
@@ -71,7 +85,7 @@ class SynthesisPage(QWidget):
         self._model_hint.setStyleSheet(
             "color: rgba(255,255,255,0.4); font-size: 11px;"
             "background: transparent; border: none;"
-            "padding: 0 0 4px 0;"
+            "padding: 0 0 4px 0;",
         )
         settings.addRow("", self._model_hint)
 
@@ -86,19 +100,39 @@ class SynthesisPage(QWidget):
         self._batch_hint.setStyleSheet(
             "color: rgba(255,255,255,0.4); font-size: 11px;"
             "background: transparent; border: none;"
-            "padding: 0 0 4px 0;"
+            "padding: 0 0 4px 0;",
         )
         settings.addRow("", self._batch_hint)
 
-        self._chapter_spin = QSpinBox()
-        self._chapter_spin.setRange(0, 999)
-        self._chapter_spin.setValue(0)
+        self._chapter_combo = QComboBox()
+        self._chapter_combo.setMinimumWidth(200)
         self._chapter_label = QLabel()
-        settings.addRow(self._chapter_label, self._chapter_spin)
+        settings.addRow(self._chapter_label, self._chapter_combo)
+
+        self._chapter_info = QLabel()
+        self._chapter_info.setStyleSheet(
+            "color: rgba(255,255,255,0.4); font-size: 11px;"
+            "background: transparent; border: none;"
+            "padding: 0 0 4px 0;",
+        )
+        settings.addRow("", self._chapter_info)
+
+        self._resume_check = QCheckBox()
+        self._resume_label = QLabel()
+        settings.addRow(self._resume_label, self._resume_check)
+
+        self._resume_hint = QLabel()
+        self._resume_hint.setWordWrap(True)
+        self._resume_hint.setStyleSheet(
+            "color: rgba(255,255,255,0.4); font-size: 11px;"
+            "background: transparent; border: none;"
+            "padding: 0 0 4px 0;",
+        )
+        settings.addRow("", self._resume_hint)
 
         layout.addLayout(settings)
 
-        # ── Action buttons ──
+        # Action buttons.
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
@@ -118,15 +152,19 @@ class SynthesisPage(QWidget):
 
         layout.addLayout(btn_row)
 
-        # ── Progress ──
+        # Progress.
         self._progress = ProgressWidget()
         layout.addWidget(self._progress)
 
-        # ── Status ──
+        # Status.
         self._status = QLabel()
         self._status.setWordWrap(True)
+        self._status.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse,
+        )
         self._status.setStyleSheet(
-            "color: rgba(255,255,255,0.6); font-size: 12px; padding: 4px 0;"
+            "color: rgba(255,255,255,0.6); font-size: 12px;"
+            "padding: 4px 0;",
         )
         layout.addWidget(self._status)
         layout.addStretch()
@@ -145,10 +183,13 @@ class SynthesisPage(QWidget):
         self._batch_hint.setText(t("synth.batch_hint"))
         self._batch_size.setToolTip(t("synth.batch_hint"))
         self._chapter_label.setText(t("synth.chapter"))
-        self._chapter_spin.setSpecialValueText(t("synth.all_chapters"))
+        self._resume_label.setText(t("synth.resume"))
+        self._resume_check.setText(t("synth.resume_check"))
+        self._resume_hint.setText(t("synth.resume_hint"))
         self._btn_start.setText(t("synth.start"))
         self._btn_stop.setText(t("synth.stop"))
         self._status.setText(t("synth.waiting"))
+        self._refresh_chapter_combo()
 
     def set_manifest(self, manifest_path: Path, output_dir: Path) -> None:
         """Set the manifest file and output directory."""
@@ -156,10 +197,14 @@ class SynthesisPage(QWidget):
         self._output_dir = output_dir
         self._manifest_label.setText(str(manifest_path))
         self._btn_start.setEnabled(True)
+        self._load_chapters_from_manifest()
 
     def _browse_manifest(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, t("synth.load_manifest"), "", "JSON (*.json)",
+            self,
+            t("synth.load_manifest"),
+            "",
+            "JSON (*.json)",
         )
         if path:
             p = Path(path)
@@ -167,12 +212,59 @@ class SynthesisPage(QWidget):
             self._output_dir = p.parent
             self._manifest_label.setText(str(p))
             self._btn_start.setEnabled(True)
+            self._load_chapters_from_manifest()
+
+    def _load_chapters_from_manifest(self) -> None:
+        """Parse manifest and populate chapter combo with real data."""
+        if not self._manifest_path or not self._manifest_path.exists():
+            return
+        try:
+            data = json.loads(
+                self._manifest_path.read_text(encoding="utf-8"),
+            )
+            chapter_chunks: dict[int, int] = {}
+            for item in data:
+                ch = item.get("chapter_index", 0)
+                chapter_chunks[ch] = chapter_chunks.get(ch, 0) + 1
+            self._chapter_map = chapter_chunks
+            self._refresh_chapter_combo()
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    def _refresh_chapter_combo(self) -> None:
+        """Rebuild the chapter combo from loaded data."""
+        self._chapter_combo.clear()
+        total = sum(self._chapter_map.values())
+        all_label = t("synth.all_chapters")
+        if total:
+            all_label += f"  ({total} " + t("synth.chunks_word") + ")"
+        self._chapter_combo.addItem(all_label, 0)
+        for ch_idx in sorted(self._chapter_map.keys()):
+            cnt = self._chapter_map[ch_idx]
+            label = t(
+                "synth.chapter_item",
+                num=ch_idx + 1,
+                chunks=cnt,
+            )
+            self._chapter_combo.addItem(label, ch_idx + 1)
+
+        if self._chapter_map:
+            self._chapter_info.setText(
+                t(
+                    "synth.chapter_info",
+                    chapters=len(self._chapter_map),
+                    chunks=total,
+                ),
+            )
+        else:
+            self._chapter_info.setText("")
 
     def _start_synthesis(self) -> None:
         if not self._manifest_path or not self._output_dir:
             return
 
-        chapter = self._chapter_spin.value() if self._chapter_spin.value() > 0 else None
+        selected = self._chapter_combo.currentData()
+        chapter = selected if selected and selected > 0 else None
 
         self._btn_start.setEnabled(False)
         self._btn_stop.setEnabled(True)
@@ -184,27 +276,78 @@ class SynthesisPage(QWidget):
             model=self._model_combo.currentText(),
             chapter=chapter,
             batch_size=self._batch_size.value(),
+            resume=self._resume_check.isChecked(),
         )
         self._worker.progress.connect(self._on_progress)
+        self._worker.status.connect(self._on_status)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
         self._worker.start()
+        self._phase = "loading"
+        self._phase_start = time.time()
+        self._tick_timer.start()
+        self._on_tick()
 
     def _stop_synthesis(self) -> None:
+        self._tick_timer.stop()
         if self._worker:
             self._worker.cancel()
         self._btn_stop.setEnabled(False)
 
+    def _on_tick(self) -> None:
+        """Update elapsed time display every second."""
+        elapsed = int(time.time() - self._phase_start)
+        m, s = divmod(elapsed, 60)
+        time_str = f"{m}:{s:02d}" if m else f"{s} сек"
+        if self._phase == "loading":
+            self._progress.set_busy(
+                t("synth.loading_model") + f"  [{time_str}]",
+            )
+
     def _on_progress(self, current: int, total: int, eta: str) -> None:
+        if self._phase == "loading":
+            self._phase = "synth"
         self._progress.set_progress(current, total, eta)
 
-    def _on_finished(self, manifest: str) -> None:
+    def _on_status(self, msg: str) -> None:
+        if msg == "__loading__":
+            self._phase = "loading"
+            self._phase_start = time.time()
+            self._tick_timer.start()
+            self._on_tick()
+        elif msg == "__model_ready__":
+            elapsed = int(time.time() - self._phase_start)
+            self._phase = "synth"
+            self._tick_timer.stop()
+            self._progress.set_busy(
+                t("synth.model_ready", sec=elapsed),
+            )
+        else:
+            self._progress.set_busy(msg)
+
+    def _on_finished(
+        self,
+        output_dir: str,
+        synthesized: int,
+        skipped: int,
+    ) -> None:
+        self._tick_timer.stop()
+        self._phase = "idle"
         self._btn_start.setEnabled(True)
         self._btn_stop.setEnabled(False)
-        self._progress.set_status(t("synth.complete"))
-        self._status.setText(f"Output: {manifest}")
+        self._progress.set_progress(1, 1, "")
+        self._status.setText(
+            t(
+                "synth.done_detail",
+                synthesized=synthesized,
+                skipped=skipped,
+                path=output_dir,
+            ),
+        )
 
     def _on_error(self, msg: str) -> None:
+        self._tick_timer.stop()
+        self._phase = "idle"
         self._btn_start.setEnabled(True)
         self._btn_stop.setEnabled(False)
-        self._progress.set_status(f"Error: {msg}")
+        self._progress.set_status(f"❌ {msg}")

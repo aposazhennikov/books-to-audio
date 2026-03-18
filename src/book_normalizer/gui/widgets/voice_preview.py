@@ -453,31 +453,34 @@ class VoicePreviewPanel(QWidget):
         )
         layout.addWidget(self._phrase_input)
 
-        # Buttons row.
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(6)
-
+        # Generate button on its own row.
         self._btn_generate = QPushButton()
         self._btn_generate.setObjectName("primaryBtn")
         self._btn_generate.setMinimumHeight(34)
         self._btn_generate.clicked.connect(self._generate_previews)
-        btn_row.addWidget(self._btn_generate)
+        layout.addWidget(self._btn_generate)
+
+        # Selection + refresh row (compact).
+        sel_row = QHBoxLayout()
+        sel_row.setSpacing(4)
 
         self._btn_select_all = QPushButton()
-        self._btn_select_all.setMinimumHeight(34)
+        self._btn_select_all.setMinimumHeight(28)
         self._btn_select_all.clicked.connect(self._select_all)
-        btn_row.addWidget(self._btn_select_all)
+        sel_row.addWidget(self._btn_select_all)
 
         self._btn_select_none = QPushButton()
-        self._btn_select_none.setMinimumHeight(34)
+        self._btn_select_none.setMinimumHeight(28)
         self._btn_select_none.clicked.connect(self._select_none)
-        btn_row.addWidget(self._btn_select_none)
+        sel_row.addWidget(self._btn_select_none)
 
         self._btn_refresh = QPushButton()
-        self._btn_refresh.setMinimumHeight(34)
+        self._btn_refresh.setMinimumHeight(28)
         self._btn_refresh.clicked.connect(self._refresh_all)
-        btn_row.addWidget(self._btn_refresh)
-        layout.addLayout(btn_row)
+        sel_row.addWidget(self._btn_refresh)
+
+        sel_row.addStretch()
+        layout.addLayout(sel_row)
 
         # Progress bar.
         self._progress_bar = QProgressBar()

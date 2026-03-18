@@ -151,59 +151,177 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # ── Voices page ──
     "voice.speaker_mode": {
         "en": "Speaker Mode:",
-        "ru": "\u0420\u0435\u0436\u0438\u043c \u0434\u0438\u043a\u0442\u043e\u0440\u0430:",
+        "ru": "Режим диктора:",
+    },
+    "voice.speaker_mode_hint": {
+        "en": (
+            "heuristic — rule-based detection from verb endings "
+            "(he said / she asked). Fast, no network.\n"
+            "llm — send text to an LLM for smarter attribution. "
+            "Needs a running LLM server or OpenAI API key.\n"
+            "manual — assign every dialogue line yourself in the table."
+        ),
+        "ru": (
+            "heuristic — определение по окончаниям глаголов "
+            "(сказал / спросила). Быстро, без сети.\n"
+            "llm — отправить текст в LLM для умной атрибуции. "
+            "Нужен LLM-сервер или OpenAI API ключ.\n"
+            "manual — назначить каждую реплику вручную в таблице."
+        ),
     },
     "voice.max_chunk": {
         "en": "Max Chunk Chars:",
-        "ru": "\u041c\u0430\u043a\u0441. \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432 \u0432 \u0447\u0430\u043d\u043a\u0435:",
+        "ru": "Макс. символов в чанке:",
     },
     "voice.detect": {
-        "en": "Detect & Chunk",
-        "ru": "\u041e\u043f\u0440\u0435\u0434\u0435\u043b\u0438\u0442\u044c \u0438 \u0440\u0430\u0437\u0431\u0438\u0442\u044c",
+        "en": "Detect Segments",
+        "ru": "Определить сегменты",
+    },
+    "voice.build_chunks": {
+        "en": "Build TTS Chunks",
+        "ru": "Собрать чанки для TTS",
     },
     "voice.load_manifest": {
-        "en": "Load Existing Manifest",
-        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
+        "en": "Load Manifest",
+        "ru": "Загрузить манифест",
     },
     "voice.save_manifest": {
         "en": "Save Manifest",
-        "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
+        "ru": "Сохранить манифест",
     },
     "voice.all_narrator": {
         "en": "All \u2192 Narrator",
-        "ru": "\u0412\u0441\u0435 \u2192 \u0414\u0438\u043a\u0442\u043e\u0440",
+        "ru": "Все \u2192 Диктор",
+    },
+    "voice.all_male": {
+        "en": "All \u2192 Male Confident",
+        "ru": "Все \u2192 Муж. уверенный",
+    },
+    "voice.all_female": {
+        "en": "All \u2192 Female Warm",
+        "ru": "Все \u2192 Жен. тёплый",
     },
     "voice.auto_detect": {
         "en": "Auto-detect",
-        "ru": "\u0410\u0432\u0442\u043e-\u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0438\u0442\u044c",
+        "ru": "Авто-определить",
     },
-    "voice.save": {"en": "Save", "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c"},
-    "voice.col_chapter": {"en": "Chapter", "ru": "\u0413\u043b\u0430\u0432\u0430"},
-    "voice.col_chunk": {"en": "Chunk", "ru": "\u0427\u0430\u043d\u043a"},
+    "voice.apply_all": {
+        "en": "\u2192 All",
+        "ru": "\u2192 Все",
+    },
+    "voice.apply_dialogue": {
+        "en": "\u2192 Dialogue only",
+        "ru": "\u2192 Только речь",
+    },
+    "voice.apply_narrator": {
+        "en": "\u2192 Narrator only",
+        "ru": "\u2192 Только автор",
+    },
+    "voice.save": {"en": "Save", "ru": "Сохранить"},
+    "voice.col_num": {"en": "#", "ru": "#"},
+    "voice.col_type": {"en": "Type", "ru": "Тип"},
+    "voice.col_chapter": {"en": "Ch.", "ru": "Гл."},
+    "voice.col_chunk": {"en": "Chunk", "ru": "Чанк"},
     "voice.col_text": {
         "en": "Text Preview",
-        "ru": "\u041f\u0440\u0435\u0432\u044c\u044e \u0442\u0435\u043a\u0441\u0442\u0430",
+        "ru": "Превью текста",
     },
-    "voice.col_voice": {"en": "Voice", "ru": "\u0413\u043e\u043b\u043e\u0441"},
+    "voice.col_voice": {"en": "Voice", "ru": "Голос"},
     "voice.col_intonation": {
         "en": "Intonation",
-        "ru": "\u0418\u043d\u0442\u043e\u043d\u0430\u0446\u0438\u044f",
+        "ru": "Интонация",
+    },
+    "voice.type_speech": {"en": "Speech", "ru": "Речь"},
+    "voice.type_narrator": {"en": "Narr.", "ru": "Автор"},
+    "voice.stats_segments": {
+        "en": "{total} segments | Speech: {speech} | Narrator: {narr}",
+        "ru": "{total} сегментов | Речь: {speech} | Автор: {narr}",
     },
     "voice.stats": {
-        "en": "Total: {total} chunks | Narrator: {narrator} | Male: {male} | Female: {female}",
-        "ru": "\u0412\u0441\u0435\u0433\u043e: {total} \u0447\u0430\u043d\u043a\u043e\u0432 | \u0414\u0438\u043a\u0442\u043e\u0440: {narrator} | \u041c\u0443\u0436.: {male} | \u0416\u0435\u043d.: {female}",
+        "en": "Total: {total} chunks | Narrator: {narrator} "
+              "| Male: {male} | Female: {female}",
+        "ru": "Всего: {total} чанков | Диктор: {narrator} "
+              "| Муж.: {male} | Жен.: {female}",
     },
     "voice.detecting": {
-        "en": "Running dialogue detection and chunking\u2026",
-        "ru": "\u0414\u0435\u0442\u0435\u043a\u0442\u0438\u043c \u0434\u0438\u0430\u043b\u043e\u0433\u0438 \u0438 \u0440\u0430\u0437\u0431\u0438\u0432\u0430\u0435\u043c\u2026",
+        "en": "Detecting dialogue segments\u2026",
+        "ru": "Определяем сегменты диалогов\u2026",
+    },
+    "voice.detecting_dialogue": {
+        "en": "Detecting dialogue\u2026",
+        "ru": "Определение диалогов\u2026",
+    },
+    "voice.attributing": {
+        "en": "Speaker attribution ({mode})\u2026",
+        "ru": "Атрибуция дикторов ({mode})\u2026",
+    },
+    "voice.extracting_segments": {
+        "en": "Extracting segments\u2026",
+        "ru": "Извлечение сегментов\u2026",
+    },
+    "voice.exported_segments": {
+        "en": "Exported {n} segments",
+        "ru": "Экспортировано {n} сегментов",
+    },
+    "voice.chunking": {
+        "en": "Chunking\u2026",
+        "ru": "Разбиение на чанки\u2026",
+    },
+    "voice.exported_chunks": {
+        "en": "Exported {n} chunks",
+        "ru": "Экспортировано {n} чанков",
+    },
+    "voice.building_chunks": {
+        "en": "Building TTS chunks from {n} segments\u2026",
+        "ru": "Собираем TTS-чанки из {n} сегментов\u2026",
+    },
+    "voice.segments_ready": {
+        "en": "\u2714 {n} segments detected. Assign voices, then click "
+              "'Build TTS Chunks'.",
+        "ru": "\u2714 {n} сегментов найдено. Назначьте голоса, "
+              "затем нажмите \u00abСобрать чанки для TTS\u00bb.",
+    },
+    "voice.chunks_done": {
+        "en": "\u2714 Built {n} TTS chunks! "
+              "Go to the Synthesize tab to start synthesis.",
+        "ru": "\u2714 Собрано {n} TTS-чанков! "
+              "Перейдите на вкладку \u00abСинтез\u00bb для запуска.",
     },
     "voice.saved": {
-        "en": "Saved: {name}",
-        "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e: {name}",
+        "en": "\u2714 Saved: {path}",
+        "ru": "\u2714 Сохранено: {path}",
+    },
+    "voice.manifest_path": {
+        "en": "Manifest: {path}",
+        "ru": "Манифест: {path}",
+    },
+    # ── Intonation labels ──
+    "inton.neutral": {"en": "Neutral", "ru": "Нейтральная"},
+    "inton.calm": {"en": "Calm", "ru": "Спокойная"},
+    "inton.excited": {"en": "Excited", "ru": "Взволнованная"},
+    "inton.joyful": {"en": "Joyful", "ru": "Радостная"},
+    "inton.sad": {"en": "Sad", "ru": "Грустная"},
+    "inton.angry": {"en": "Angry", "ru": "Злая"},
+    "inton.whisper": {"en": "Whisper", "ru": "Шёпот"},
+    # ── LLM config ──
+    "voice.llm_provider": {
+        "en": "LLM Provider:",
+        "ru": "LLM провайдер:",
+    },
+    "voice.llm_local": {"en": "Local (Ollama)", "ru": "Локальный (Ollama)"},
+    "voice.llm_openai": {"en": "OpenAI (ChatGPT)", "ru": "OpenAI (ChatGPT)"},
+    "voice.llm_endpoint": {
+        "en": "Endpoint (ip:port):",
+        "ru": "Адрес (ip:порт):",
+    },
+    "voice.llm_model": {"en": "LLM Model:", "ru": "LLM Модель:"},
+    "voice.llm_api_key": {
+        "en": "OpenAI API Key:",
+        "ru": "OpenAI API ключ:",
     },
     "voice.generate_previews": {
-        "en": "Generate Voice Previews (WSL/GPU)",
-        "ru": "\u0421\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043f\u0440\u0435\u0432\u044c\u044e \u0433\u043e\u043b\u043e\u0441\u043e\u0432 (WSL/GPU)",
+        "en": "Generate Previews (WSL)",
+        "ru": "Сгенерировать превью (WSL)",
     },
     "voice.refresh_previews": {
         "en": "Refresh",
@@ -306,12 +424,24 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         ),
     },
     "synth.chapter": {
-        "en": "Chapter (0=all):",
-        "ru": "\u0413\u043b\u0430\u0432\u0430 (0=\u0432\u0441\u0435):",
+        "en": "Chapter:",
+        "ru": "Глава:",
     },
     "synth.all_chapters": {
         "en": "All chapters",
-        "ru": "\u0412\u0441\u0435 \u0433\u043b\u0430\u0432\u044b",
+        "ru": "Все главы",
+    },
+    "synth.chapter_item": {
+        "en": "Chapter {num}  ({chunks} chunks)",
+        "ru": "Глава {num}  ({chunks} чанков)",
+    },
+    "synth.chapter_info": {
+        "en": "{chapters} chapters, {chunks} chunks total",
+        "ru": "{chapters} глав, {chunks} чанков всего",
+    },
+    "synth.chunks_word": {
+        "en": "chunks",
+        "ru": "чанков",
     },
     "synth.start": {
         "en": "Start Synthesis",
@@ -325,9 +455,63 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Waiting for manifest\u2026",
         "ru": "\u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435 \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442\u0430\u2026",
     },
+    "synth.resume": {
+        "en": "Resume:",
+        "ru": "Продолжить:",
+    },
+    "synth.resume_check": {
+        "en": "Skip already synthesized chunks",
+        "ru": "Пропустить уже синтезированные чанки",
+    },
+    "synth.resume_hint": {
+        "en": (
+            "If checked, chunks that already have WAV files "
+            "will be skipped. Useful to continue after interruption."
+        ),
+        "ru": (
+            "Если включено, чанки с уже готовыми WAV-файлами "
+            "будут пропущены. Полезно для продолжения после обрыва."
+        ),
+    },
+    "synth.loading_model": {
+        "en": "Loading TTS model\u2026 (may take 1\u20132 min)",
+        "ru": "Загрузка TTS модели\u2026 (может занять 1\u20132 мин)",
+    },
+    "synth.loading_model_elapsed": {
+        "en": "Loading TTS model\u2026 {sec}s elapsed",
+        "ru": "Загрузка TTS модели\u2026 {sec} сек",
+    },
+    "synth.model_ready": {
+        "en": "\u2714 Model loaded in {sec}s. Synthesizing\u2026",
+        "ru": "\u2714 Модель загружена за {sec} сек. Синтез\u2026",
+    },
+    "synth.err_no_chunks": {
+        "en": "No chunks in manifest to synthesize.",
+        "ru": "В манифесте нет чанков для синтеза.",
+    },
+    "synth.cancelled": {
+        "en": "Synthesis cancelled by user.",
+        "ru": "Синтез отменён пользователем.",
+    },
+    "synth.err_exit_code": {
+        "en": "TTS process exited with code {code}.",
+        "ru": "TTS-процесс завершился с кодом {code}.",
+    },
     "synth.complete": {
         "en": "Synthesis complete!",
-        "ru": "\u0421\u0438\u043d\u0442\u0435\u0437 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d!",
+        "ru": "Синтез завершён!",
+    },
+    "synth.done_detail": {
+        "en": (
+            "\u2714 Synthesis complete!\n"
+            "Synthesized: {synthesized} chunks, skipped: {skipped}\n"
+            "Output: {path}"
+        ),
+        "ru": (
+            "\u2714 Синтез завершён!\n"
+            "Синтезировано: {synthesized} чанков, пропущено: {skipped}\n"
+            "Папка: {path}"
+        ),
     },
 
     # ── Assembly page ──
@@ -357,7 +541,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "asm.complete": {
         "en": "Assembly complete!",
-        "ru": "\u0421\u0431\u043e\u0440\u043a\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0430!",
+        "ru": "Сборка завершена!",
+    },
+    "asm.no_wav_found": {
+        "en": "No WAV files found — run synthesis first.",
+        "ru": "WAV-файлы не найдены — сначала запустите синтез.",
+    },
+    "asm.no_wav_in": {
+        "en": "No WAV chunks in",
+        "ru": "Нет WAV чанков в",
+    },
+    "asm.no_chapters_in": {
+        "en": "No chapter dirs found in",
+        "ru": "Папки глав не найдены в",
+    },
+    "asm.chunk_stats": {
+        "en": "{chunks} chunks -> {duration}s",
+        "ru": "{chunks} чанков \u2192 {duration} сек",
     },
 
     # ── Progress widget ──

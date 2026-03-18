@@ -318,6 +318,13 @@ Merge individual audio chunks into full chapter WAV files:
 7. **Yofication** — automatic ё restoration improves pronunciation of words like "всё", "её", "ёлка".
 8. **Stress marks** — try `--stress-mode keep_acute` if the model handles them well. May improve emphasis on key syllables.
 
+### Synthesis seems stuck?
+
+- **First chunk can take 2–5 min** — model warm-up, especially with batch size 2+.
+- **Check the log** — GUI shows a live log; also see `output/<book>/synthesis_log.txt`. Look for `[INFO] Starting synthesis of batch...` — if you see it but no `Batch done...` for 5+ min, the GPU may be overloaded.
+- **Try batch=1** — on 6 GB VRAM, batch 2 can cause swapping or OOM.
+- **Task Manager** — if GPU is 80–90% and VRAM is full, it's working, just slow.
+
 ## CLI Commands Reference
 
 | Command | Description |

@@ -423,6 +423,22 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "Риск ошибок нехватки памяти на слабых GPU."
         ),
     },
+    "synth.chunk_timeout": {
+        "en": "Chunk timeout:",
+        "ru": "Таймаут чанка:",
+    },
+    "synth.chunk_timeout_hint": {
+        "en": (
+            "Max seconds to wait for a single chunk before skipping it.\n"
+            "Useful when corrupted text causes the model to hang.\n"
+            "Default: 300 s (5 min). Increase for very long chunks."
+        ),
+        "ru": (
+            "Максимальное время ожидания одного чанка перед пропуском.\n"
+            "Помогает, когда поврежденный текст вешает модель.\n"
+            "По умолчанию: 300 с (5 мин). Увеличьте для очень длинных чанков."
+        ),
+    },
     "synth.chapter": {
         "en": "Chapter:",
         "ru": "Глава:",
@@ -476,6 +492,34 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Ch. {chapter} \u2022 Chunk {current}/{total}",
         "ru": "\u0413\u043b. {chapter} \u2022 \u0427\u0430\u043d\u043a {current}/{total}",
     },
+    "synth.progress_done": {
+        "en": "Processed {current}/{total} chunks",
+        "ru": "\u041e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u043e {current}/{total} \u0447\u0430\u043d\u043a\u043e\u0432",
+    },
+    "synth.progress_remaining": {
+        "en": "{n} left",
+        "ru": "\u043e\u0441\u0442\u0430\u043b\u043e\u0441\u044c {n}",
+    },
+    "synth.progress_last_chunk": {
+        "en": "last: {chars} chars in {sec:.1f}s",
+        "ru": "\u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0439: {chars} \u0441\u0438\u043c\u0432. \u0437\u0430 {sec:.1f} \u0441",
+    },
+    "synth.progress_chars": {
+        "en": "{done}/{total} chars ({left} left)",
+        "ru": "{done}/{total} \u0441\u0438\u043c\u0432. (\u043e\u0441\u0442. {left})",
+    },
+    "synth.progress_eta": {
+        "en": "ETA: {eta}",
+        "ru": "\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}",
+    },
+    "synth.log_placeholder": {
+        "en": "Log will appear here when synthesis runs\u2026",
+        "ru": "\u041b\u043e\u0433 \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u043f\u0440\u0438 \u0437\u0430\u043f\u0443\u0441\u043a\u0435 \u0441\u0438\u043d\u0442\u0435\u0437\u0430\u2026",
+    },
+    "synth.log_path": {
+        "en": "Log file: {path}",
+        "ru": "\u041b\u043e\u0433: {path}",
+    },
     "synth.resume": {
         "en": "Resume:",
         "ru": "Продолжить:",
@@ -494,6 +538,28 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "будут пропущены. Полезно для продолжения после обрыва."
         ),
     },
+    "synth.compile": {
+        "en": "torch.compile:",
+        "ru": "torch.compile:",
+    },
+    "synth.compile_check": {
+        "en": "Enable JIT compilation (+20–40% speed)",
+        "ru": "Включить JIT-компиляцию (+20–40% скорости)",
+    },
+    "synth.compile_hint": {
+        "en": (
+            "Compiles model with torch.compile(). "
+            "First chunk will be slower (JIT warmup), "
+            "all subsequent chunks will run faster. "
+            "Requires PyTorch 2.0+."
+        ),
+        "ru": (
+            "Компилирует модель через torch.compile(). "
+            "Первый чанк будет медленнее (прогрев JIT), "
+            "все последующие — быстрее. "
+            "Требует PyTorch 2.0+."
+        ),
+    },
     "synth.loading_model": {
         "en": "Loading TTS model\u2026 (may take 1\u20132 min)",
         "ru": "Загрузка TTS модели\u2026 (может занять 1\u20132 мин)",
@@ -505,6 +571,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.model_ready": {
         "en": "\u2714 Model loaded in {sec}s. Synthesizing\u2026",
         "ru": "\u2714 Модель загружена за {sec} сек. Синтез\u2026",
+    },
+    "synth.synthesizing": {
+        "en": "Synthesizing first chunk\u2026",
+        "ru": "\u0421\u0438\u043d\u0442\u0435\u0437 \u043f\u0435\u0440\u0432\u043e\u0433\u043e \u0447\u0430\u043d\u043a\u0430\u2026",
     },
     "synth.err_no_chunks": {
         "en": "No chunks in manifest to synthesize.",
@@ -584,6 +654,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # ── Progress widget ──
     "progress.ready": {"en": "Ready", "ru": "\u0413\u043e\u0442\u043e\u0432\u043e"},
     "progress.eta": {"en": "ETA: {eta}", "ru": "\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}"},
+    "progress.remaining_chunks": {
+        "en": "{n} chunks left",
+        "ru": "\u043e\u0441\u0442. {n} \u0447\u0430\u043d\u043a\u043e\u0432",
+    },
 
     # ── Status bar messages ──
     "status.norm_done": {

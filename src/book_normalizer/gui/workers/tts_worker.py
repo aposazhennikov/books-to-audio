@@ -181,8 +181,12 @@ class ExportChunksWorker(QThread):
 class TTSSynthesisWorker(QThread):
     """Run TTS synthesis via WSL subprocess and monitor progress."""
 
-    progress = pyqtSignal(int, int, str, int)
+    progress = pyqtSignal(
+        int, int, str, int,
+        int, float, int, int, int,
+    )
     status = pyqtSignal(str)
+    log_line = pyqtSignal(str)
     finished = pyqtSignal(str, int, int)
     error = pyqtSignal(str)
 
@@ -194,6 +198,8 @@ class TTSSynthesisWorker(QThread):
         chapter: int | None = None,
         batch_size: int = 1,
         resume: bool = False,
+        chunk_timeout: int = 300,
+        use_compile: bool = False,
         parent=None,
     ):
         super().__init__(parent)
@@ -203,6 +209,8 @@ class TTSSynthesisWorker(QThread):
         self._chapter = chapter
         self._batch_size = batch_size
         self._resume = resume
+        self._chunk_timeout = chunk_timeout
+        self._use_compile = use_compile
         self._process: subprocess.Popen | None = None
         self._cancelled = False
 
@@ -237,6 +245,10 @@ class TTSSynthesisWorker(QThread):
             chapter_flag = (
                 f" --chapter {self._chapter}" if self._chapter else ""
             )
+            log_path = self._output_dir / "synthesis_log.txt"
+            log_flag = f" --log-file {self._wsl_path(log_path)}"
+            timeout_flag = f" --chunk-timeout {self._chunk_timeout}"
+            compile_flag = " --compile" if self._use_compile else ""
             cmd = [
                 "wsl", "-e", "bash", "-c",
                 f"source ~/venvs/qwen3tts/bin/activate && "
@@ -246,7 +258,7 @@ class TTSSynthesisWorker(QThread):
                 f"--out {self._wsl_path(self._output_dir)} "
                 f"--model {self._model} "
                 f"--batch-size {self._batch_size}"
-                f"{resume_flag}{chapter_flag}",
+                f"{resume_flag}{chapter_flag}{log_flag}{timeout_flag}{compile_flag}",
             ]
 
             self._process = subprocess.Popen(
@@ -270,6 +282,7 @@ class TTSSynthesisWorker(QThread):
                 if not line:
                     continue
 
+                self.log_line.emit(line)
                 last_lines.append(line)
                 if len(last_lines) > 50:
                     last_lines.pop(0)
@@ -277,7 +290,29 @@ class TTSSynthesisWorker(QThread):
                 if "Model loaded" in line:
                     self.status.emit("__model_ready__")
 
-                if line.startswith("  ["):
+                if line.startswith("PROGRESS "):
+                    try:
+                        kv = dict(
+                            re.findall(r"(\w+)=([\d.]+)", line),
+                        )
+                        done_val = int(kv.get("done", 0))
+                        total_val = int(kv.get("total", total))
+                        remaining = int(kv.get("remaining", 0))
+                        chunk_chars = int(kv.get("chunk_chars", 0))
+                        chunk_sec = float(kv.get("chunk_sec", 0))
+                        remaining_chars = int(kv.get("remaining_chars", 0))
+                        total_chars = int(kv.get("total_chars", 0))
+                        eta_sec = int(kv.get("eta_sec", 0))
+                        ch_num = int(kv.get("ch", 0))
+                        eta_str = self._format_eta(eta_sec)
+                        self.progress.emit(
+                            done_val, total_val, eta_str, ch_num,
+                            chunk_chars, chunk_sec,
+                            remaining, remaining_chars, total_chars,
+                        )
+                    except (ValueError, KeyError, TypeError):
+                        pass
+                elif line.startswith("["):
                     try:
                         parts = line.split("]")[0].replace("[", "").strip()
                         current, _tot = parts.split("/")
@@ -287,7 +322,10 @@ class TTSSynthesisWorker(QThread):
                             eta_part = line.split("ETA:")[1].strip().rstrip(")")
                         ch_match = re.search(r"\bch(\d+)\b", line)
                         chapter = int(ch_match.group(1)) if ch_match else 0
-                        self.progress.emit(synthesized, total, eta_part, chapter)
+                        self.progress.emit(
+                            synthesized, total, eta_part, chapter,
+                            0, 0.0, total - synthesized, 0, 0,
+                        )
                     except (ValueError, IndexError):
                         pass
 
@@ -302,7 +340,10 @@ class TTSSynthesisWorker(QThread):
                                 skipped = int(p.split()[0])
                     except (ValueError, IndexError):
                         pass
-                    self.progress.emit(total, total, "0s", 0)
+                    self.progress.emit(
+                        total, total, "0s", 0,
+                        0, 0.0, 0, 0, 0,
+                    )
 
             self._process.wait()
             rc = self._process.returncode
@@ -322,6 +363,20 @@ class TTSSynthesisWorker(QThread):
 
         except Exception as exc:
             self.error.emit(str(exc))
+
+    @staticmethod
+    def _format_eta(seconds: int) -> str:
+        """Format seconds to HH:MM:SS or MmSs."""
+        if seconds <= 0:
+            return "0s"
+        h = seconds // 3600
+        m = (seconds % 3600) // 60
+        s = seconds % 60
+        if h > 0:
+            return f"{h}h{m:02d}m{s:02d}s"
+        if m > 0:
+            return f"{m}m{s:02d}s"
+        return f"{s}s"
 
     @staticmethod
     def _wsl_path(path: Path) -> str:

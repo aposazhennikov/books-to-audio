@@ -64,7 +64,11 @@ class ProgressWidget(QWidget):
         self._bar.setMaximum(total)
         self._bar.setValue(current)
         pct = (current / total * 100) if total > 0 else 0
-        self._status.setText(f"{current}/{total} ({pct:.0f}%)")
+        remaining = total - current
+        status = f"{current}/{total} ({pct:.0f}%)"
+        if remaining > 0:
+            status += f" • {t('progress.remaining_chunks', n=remaining)}"
+        self._status.setText(status)
         if eta:
             self._eta.setText(t("progress.eta", eta=eta))
         else:

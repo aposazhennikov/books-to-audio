@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QPlainTextEdit,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -92,6 +93,7 @@ class SynthesisPage(QWidget):
         self._batch_size = QSpinBox()
         self._batch_size.setRange(1, 8)
         self._batch_size.setValue(1)
+        self._batch_size.setMaximumWidth(120)
         self._batch_label = QLabel()
         settings.addRow(self._batch_label, self._batch_size)
 
@@ -103,6 +105,15 @@ class SynthesisPage(QWidget):
             "padding: 0 0 4px 0;",
         )
         settings.addRow("", self._batch_hint)
+
+        self._chunk_timeout = QSpinBox()
+        self._chunk_timeout.setRange(30, 1800)
+        self._chunk_timeout.setValue(300)
+        self._chunk_timeout.setSingleStep(30)
+        self._chunk_timeout.setSuffix(" с")
+        self._chunk_timeout.setMaximumWidth(120)
+        self._chunk_timeout_label = QLabel()
+        settings.addRow(self._chunk_timeout_label, self._chunk_timeout)
 
         self._chapter_combo = QComboBox()
         self._chapter_combo.setMinimumWidth(200)
@@ -130,6 +141,19 @@ class SynthesisPage(QWidget):
         )
         settings.addRow("", self._resume_hint)
 
+        self._compile_check = QCheckBox()
+        self._compile_label = QLabel()
+        settings.addRow(self._compile_label, self._compile_check)
+
+        self._compile_hint = QLabel()
+        self._compile_hint.setWordWrap(True)
+        self._compile_hint.setStyleSheet(
+            "color: rgba(255,255,255,0.4); font-size: 11px;"
+            "background: transparent; border: none;"
+            "padding: 0 0 4px 0;",
+        )
+        settings.addRow("", self._compile_hint)
+
         layout.addLayout(settings)
 
         # Action buttons.
@@ -155,6 +179,18 @@ class SynthesisPage(QWidget):
         # Progress.
         self._progress = ProgressWidget()
         layout.addWidget(self._progress)
+
+        # Log (collapsible).
+        self._log_edit = QPlainTextEdit()
+        self._log_edit.setReadOnly(True)
+        self._log_edit.setMaximumHeight(120)
+        self._log_edit.setStyleSheet(
+            "font-family: 'Cascadia Code', Consolas, monospace;"
+            "font-size: 11px; background: rgba(0,0,0,0.3);"
+            "border-radius: 4px; padding: 6px;",
+        )
+        self._log_edit.setPlaceholderText(t("synth.log_placeholder"))
+        layout.addWidget(self._log_edit)
 
         # Status.
         self._status = QLabel()
@@ -182,10 +218,15 @@ class SynthesisPage(QWidget):
         self._batch_label.setText(t("synth.batch_size"))
         self._batch_hint.setText(t("synth.batch_hint"))
         self._batch_size.setToolTip(t("synth.batch_hint"))
+        self._chunk_timeout_label.setText(t("synth.chunk_timeout"))
+        self._chunk_timeout.setToolTip(t("synth.chunk_timeout_hint"))
         self._chapter_label.setText(t("synth.chapter"))
         self._resume_label.setText(t("synth.resume"))
         self._resume_check.setText(t("synth.resume_check"))
         self._resume_hint.setText(t("synth.resume_hint"))
+        self._compile_label.setText(t("synth.compile"))
+        self._compile_check.setText(t("synth.compile_check"))
+        self._compile_hint.setText(t("synth.compile_hint"))
         self._btn_start.setText(t("synth.start"))
         self._btn_stop.setText(t("synth.stop"))
         self._status.setText(t("synth.waiting"))
@@ -277,12 +318,21 @@ class SynthesisPage(QWidget):
             chapter=chapter,
             batch_size=self._batch_size.value(),
             resume=self._resume_check.isChecked(),
+            chunk_timeout=self._chunk_timeout.value(),
+            use_compile=self._compile_check.isChecked(),
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.status.connect(self._on_status)
+        self._worker.log_line.connect(self._on_log_line)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
         self._worker.start()
+        self._log_edit.clear()
+        if self._output_dir:
+            log_path = self._output_dir / "synthesis_log.txt"
+            self._log_edit.appendPlainText(
+                t("synth.log_path", path=str(log_path)),
+            )
         self._phase = "loading"
         self._phase_start = time.time()
         self._tick_timer.start()
@@ -295,6 +345,11 @@ class SynthesisPage(QWidget):
             self._worker.cancel()
         self._btn_stop.setEnabled(False)
 
+    def _on_log_line(self, line: str) -> None:
+        self._log_edit.appendPlainText(line)
+        sb = self._log_edit.verticalScrollBar()
+        sb.setValue(sb.maximum())
+
     def _on_tick(self) -> None:
         """Update elapsed time display every second."""
         elapsed = int(time.time() - self._phase_start)
@@ -304,6 +359,10 @@ class SynthesisPage(QWidget):
             self._progress.set_busy(
                 t("synth.loading_model") + f"  [{time_str}]",
             )
+        elif self._phase == "synth":
+            self._progress.set_busy(
+                t("synth.synthesizing") + f"  [{time_str}]",
+            )
 
     def _on_progress(
         self,
@@ -311,38 +370,41 @@ class SynthesisPage(QWidget):
         total: int,
         eta: str,
         chapter: int = 0,
+        chunk_chars: int = 0,
+        chunk_sec: float = 0.0,
+        remaining: int = 0,
+        remaining_chars: int = 0,
+        total_chars: int = 0,
     ) -> None:
         if self._phase == "loading":
             self._phase = "synth"
+        self._tick_timer.stop()
         self._progress.set_progress(current, total, eta)
-        if chapter > 0:
-            status = (
+        parts = [t("synth.progress_done", current=current, total=total)]
+        if remaining or (total - current) > 0:
+            parts.append(
+                t("synth.progress_remaining", n=remaining or (total - current)),
+            )
+        if chunk_chars > 0 and chunk_sec > 0:
+            parts.append(
                 t(
-                    "synth.progress_chapter",
-                    chapter=chapter,
-                    current=current,
-                    total=total,
-                    eta=eta,
-                )
-                if eta
-                else t(
-                    "synth.progress_chapter_no_eta",
-                    chapter=chapter,
-                    current=current,
-                    total=total,
-                )
+                    "synth.progress_last_chunk",
+                    chars=chunk_chars,
+                    sec=chunk_sec,
+                ),
             )
-        else:
-            status = (
-                t("synth.progress_status", current=current, total=total, eta=eta)
-                if eta
-                else t(
-                    "synth.progress_status_no_eta",
-                    current=current,
-                    total=total,
-                )
+        if total_chars > 0 and remaining_chars >= 0:
+            parts.append(
+                t(
+                    "synth.progress_chars",
+                    done=total_chars - remaining_chars,
+                    total=total_chars,
+                    left=remaining_chars,
+                ),
             )
-        self._status.setText(status)
+        if eta:
+            parts.append(t("synth.progress_eta", eta=eta))
+        self._status.setText(" • ".join(parts))
 
     def _on_status(self, msg: str) -> None:
         if msg == "__loading__":
@@ -353,7 +415,8 @@ class SynthesisPage(QWidget):
         elif msg == "__model_ready__":
             elapsed = int(time.time() - self._phase_start)
             self._phase = "synth"
-            self._tick_timer.stop()
+            self._phase_start = time.time()
+            self._tick_timer.start()
             self._progress.set_busy(
                 t("synth.model_ready", sec=elapsed),
             )

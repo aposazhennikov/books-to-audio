@@ -12,7 +12,7 @@
     "inputs": {
       "ref_audio": ["1", 0],
       "ref_text": "{{REF_TEXT}}",
-      "model_choice": "0.6B",
+      "model_choice": "1.7B",
       "device": "auto",
       "precision": "bf16",
       "attention": "auto",

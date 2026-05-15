@@ -41,7 +41,14 @@ import time
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
 import soundfile as sf
+
+from book_normalizer.tts.model_paths import (
+    default_comfyui_models_dir,
+    describe_model_resolution,
+)
 
 
 class ChunkTimeoutError(Exception):
@@ -111,6 +118,10 @@ def _detect_attn_impl(use_sage: bool = False) -> str:
 
 
 _sage_enabled = False
+
+
+class SageAttentionUnavailableError(RuntimeError):
+    """Raised when SageAttention was explicitly requested but cannot run."""
 
 # Ordered preference list for SageAttention kernels.
 #   v2-only functions (available from GitHub install) first,
@@ -183,7 +194,7 @@ def _resolve_sage_fn():
     return None, {}, ""
 
 
-def _apply_sage_attention() -> bool:
+def _apply_sage_attention(required: bool = False) -> bool:
     """Replace F.scaled_dot_product_attention with a SageAttention wrapper.
 
     Searches for the most numerically-stable kernel available:
@@ -194,44 +205,70 @@ def _apply_sage_attention() -> bool:
     Falls back to the original SDPA when attn_mask or dropout is present.
 
     Returns True if SageAttention was installed successfully.
+    Raises SageAttentionUnavailableError when ``required`` is True and no
+    compatible kernel can be installed.
     """
     global _sage_enabled  # noqa: PLW0603
+    if _sage_enabled:
+        return True
+
     try:
+        import importlib.util
+
         import torch  # noqa: F401
         import torch.nn.functional as F  # noqa: N812
 
+        sage_installed = importlib.util.find_spec("sageattention") is not None
         chosen_fn, extra_kw, variant = _resolve_sage_fn()
 
         if chosen_fn is None:
-            print(
-                "[sage] WARNING: sageattention is installed but no stable "
-                "kernel found. Using default SDPA."
-            )
+            if sage_installed:
+                message = (
+                    "sageattention is installed, but no compatible SageAttention "
+                    "kernel was found."
+                )
+            else:
+                message = "sageattention is not installed in the active Python environment."
+            prefix = "ERROR" if required else "WARNING"
+            print(f"[sage] {prefix}: {message}")
             sys.stdout.flush()
+            if required:
+                raise SageAttentionUnavailableError(message)
             return False
 
         _original_sdpa = F.scaled_dot_product_attention
+        _sage_runtime_warned = False
 
         def _sage_wrapper(
             query, key, value,
             attn_mask=None, dropout_p=0.0, is_causal=False, scale=None,
             **kwargs,
         ):
-            if attn_mask is not None or dropout_p > 0.0:
+            nonlocal _sage_runtime_warned
+            if attn_mask is not None or dropout_p > 0.0 or kwargs.get("enable_gqa"):
                 return _original_sdpa(
                     query, key, value,
                     attn_mask=attn_mask, dropout_p=dropout_p,
                     is_causal=is_causal, scale=scale, **kwargs,
                 )
             try:
-                return chosen_fn(
-                    query, key, value,
-                    tensor_layout="HND",
-                    is_causal=is_causal,
-                    sm_scale=scale,
+                sage_kwargs = {
+                    "tensor_layout": "HND",
+                    "is_causal": is_causal,
                     **extra_kw,
-                )
-            except Exception:
+                }
+                if scale is not None:
+                    sage_kwargs["sm_scale"] = scale
+                return chosen_fn(query, key, value, **sage_kwargs)
+            except Exception as exc:
+                if not _sage_runtime_warned:
+                    print(
+                        "[sage] WARNING: SageAttention kernel call failed "
+                        f"({type(exc).__name__}: {exc}); falling back to SDPA "
+                        "for this call shape."
+                    )
+                    sys.stdout.flush()
+                    _sage_runtime_warned = True
                 return _original_sdpa(
                     query, key, value,
                     attn_mask=attn_mask, dropout_p=dropout_p,
@@ -243,9 +280,16 @@ def _apply_sage_attention() -> bool:
         print(f"[sage] SageAttention installed: {variant}.")
         sys.stdout.flush()
         return True
-    except ImportError:
-        print("[sage] sageattention not installed, using default SDPA.")
+    except ImportError as exc:
+        message = (
+            "SageAttention was requested but torch/sageattention cannot be "
+            f"imported ({type(exc).__name__}: {exc}). Install the WSL TTS "
+            "extras, e.g. pip install git+https://github.com/thu-ml/SageAttention.git"
+        )
+        print(f"[sage] ERROR: {message}" if required else "[sage] sageattention not installed, using default SDPA.")
         sys.stdout.flush()
+        if required:
+            raise SageAttentionUnavailableError(message) from exc
         return False
 
 
@@ -268,19 +312,25 @@ def load_model(
     model_name: str,
     device: str = "cuda:0",
     use_sage: bool = False,
+    models_dir: str | None = None,
 ):
     """Load a Qwen3-TTS model with the best available attention."""
     import torch
     from qwen_tts import Qwen3TTSModel
 
     if use_sage:
-        _apply_sage_attention()
+        _apply_sage_attention(required=True)
 
     want_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
     attn = _detect_attn_impl(use_sage=use_sage)
-    print(f"Loading {model_name} on {device} ({want_dtype}, attn={attn})...")
+    resolved_model, is_local = describe_model_resolution(model_name, models_dir=models_dir)
+    if is_local:
+        print(f"Using local model folder: {resolved_model}")
+    else:
+        print(f"Local model not found under {models_dir or default_comfyui_models_dir()}; using {model_name}")
+    print(f"Loading {resolved_model} on {device} ({want_dtype}, attn={attn})...")
     model = Qwen3TTSModel.from_pretrained(
-        model_name,
+        resolved_model,
         device_map=device,
         dtype=want_dtype,
         attn_implementation=attn,
@@ -511,6 +561,14 @@ def main() -> None:
         help="Qwen3-TTS model name (default: 1.7B for better quality).",
     )
     parser.add_argument(
+        "--models-dir",
+        default=str(default_comfyui_models_dir()),
+        help=(
+            "Shared ComfyUI models directory. The runner first looks for "
+            "Qwen model folders here (default: %(default)s)."
+        ),
+    )
+    parser.add_argument(
         "--device", default="cuda:0",
         help="Device for inference.",
     )
@@ -564,7 +622,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--sage-attention", action="store_true",
-        help="Use SageAttention (monkey-patches SDPA for ~2-3x speedup).",
+        help=(
+            "Require SageAttention (monkey-patches SDPA for ~2-3x speedup; "
+            "exits if no compatible kernel is installed)."
+        ),
     )
     args = parser.parse_args()
 
@@ -619,6 +680,7 @@ def _main_impl(args: argparse.Namespace) -> None:
     print(f"Batch size: {args.batch_size}")
     if args.sage_attention:
         print("SageAttention: enabled")
+    print(f"Model directory: {args.models_dir}")
 
     # Load voice clone config if provided.
     clone_config = load_clone_config(args.clone_config)
@@ -628,7 +690,10 @@ def _main_impl(args: argparse.Namespace) -> None:
     if clone_config:
         print(f"Loading Base model for voice cloning: {args.clone_model}")
         clone_model = load_model(
-            args.clone_model, args.device, use_sage=args.sage_attention,
+            args.clone_model,
+            args.device,
+            use_sage=args.sage_attention,
+            models_dir=args.models_dir,
         )
         clone_model = maybe_compile_model(
             clone_model, enable=args.compile, use_sage=args.sage_attention,
@@ -644,7 +709,12 @@ def _main_impl(args: argparse.Namespace) -> None:
     needs_custom = any(vid not in clone_prompts for vid in voice_ids_in_manifest)
 
     if needs_custom:
-        model = load_model(args.model, args.device, use_sage=args.sage_attention)
+        model = load_model(
+            args.model,
+            args.device,
+            use_sage=args.sage_attention,
+            models_dir=args.models_dir,
+        )
         model = maybe_compile_model(
             model, enable=args.compile, use_sage=args.sage_attention,
         )

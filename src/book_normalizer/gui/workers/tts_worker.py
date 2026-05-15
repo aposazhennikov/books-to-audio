@@ -11,6 +11,8 @@ from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from book_normalizer.gui.i18n import t
+from book_normalizer.tts.model_paths import default_comfyui_models_dir
+from book_normalizer.tts.wsl_runtime import build_wsl_tts_activation_script
 
 
 def _flatten_manifest_chunks(data: object) -> list[dict]:
@@ -220,6 +222,7 @@ class TTSSynthesisWorker(QThread):
         use_compile: bool = False,
         clone_config: str = "",
         use_sage_attention: bool = False,
+        models_dir: str = "",
         parent=None,
     ):
         super().__init__(parent)
@@ -233,6 +236,7 @@ class TTSSynthesisWorker(QThread):
         self._use_compile = use_compile
         self._clone_config = clone_config
         self._use_sage_attention = use_sage_attention
+        self._models_dir = models_dir
         self._process: subprocess.Popen | None = None
         self._cancelled = False
 
@@ -271,6 +275,9 @@ class TTSSynthesisWorker(QThread):
                 "--log-file", self._wsl_path(self._output_dir / "synthesis_log.txt"),
                 "--chunk-timeout", str(self._chunk_timeout),
             ]
+            models_dir = self._models_dir.strip() or str(default_comfyui_models_dir())
+            if models_dir:
+                args.extend(["--models-dir", self._wsl_path_text(models_dir)])
             if self._chapter is not None:
                 args.extend(["--chapter", str(self._chapter)])
             if self._resume:
@@ -286,8 +293,8 @@ class TTSSynthesisWorker(QThread):
                 args.append("--sage-attention")
 
             bash_cmd = (
-                "source ~/venvs/qwen3tts/bin/activate && "
-                "PYTHONUNBUFFERED=1 "
+                build_wsl_tts_activation_script()
+                + "\nPYTHONUNBUFFERED=1 "
                 + " ".join(shlex.quote(arg) for arg in args)
             )
             cmd = [
@@ -435,3 +442,78 @@ class TTSSynthesisWorker(QThread):
             drive = p[0].lower()
             p = f"/mnt/{drive}{p[2:]}"
         return p
+
+    @staticmethod
+    def _wsl_path_text(path_text: str) -> str:
+        """Convert a user-entered Windows path string to a WSL path."""
+        p = path_text.strip().replace("\\", "/")
+        if len(p) >= 2 and p[1] == ":":
+            drive = p[0].lower()
+            p = f"/mnt/{drive}{p[2:]}"
+        return p
+
+
+class ComfyVoiceSaveWorker(QThread):
+    """Save a reusable custom voice through the ComfyUI voice setup workflow."""
+
+    status = pyqtSignal(str)
+    finished = pyqtSignal(str, list)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        audio_path: Path,
+        voice_name: str,
+        ref_text: str,
+        comfyui_url: str = "http://localhost:8188",
+        workflow_path: Path | None = None,
+        timeout: float = 300.0,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._audio_path = audio_path
+        self._voice_name = voice_name
+        self._ref_text = ref_text
+        self._comfyui_url = comfyui_url
+        self._workflow_path = workflow_path or (
+            Path(__file__).resolve().parent.parent.parent.parent.parent
+            / "comfyui_workflows"
+            / "voice_setup_template.json"
+        )
+        self._timeout = timeout
+
+    def run(self) -> None:
+        try:
+            from book_normalizer.comfyui.client import ComfyUIClient
+            from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
+
+            if not self._audio_path.exists():
+                self.error.emit(f"Audio file not found: {self._audio_path}")
+                return
+            if not self._voice_name.strip():
+                self.error.emit("Voice name is required.")
+                return
+
+            self.status.emit(t("synth.train_connecting"))
+            client = ComfyUIClient(self._comfyui_url)
+            if not client.is_reachable():
+                self.error.emit(t("synth.train_err_comfyui", url=self._comfyui_url))
+                return
+
+            self.status.emit(t("synth.train_uploading", file=self._audio_path.name))
+            uploaded_name = client.upload_audio(self._audio_path)
+
+            self.status.emit(t("synth.train_extracting", name=self._voice_name))
+            builder = WorkflowBuilder(self._workflow_path)
+            workflow = builder.build_voice_setup(
+                audio_filename=uploaded_name,
+                voice_name=self._voice_name.strip(),
+                ref_text=self._ref_text.strip(),
+            )
+            prompt_id = client.queue_prompt(workflow)
+            client.wait_for_execution(prompt_id, timeout=self._timeout)
+
+            speakers = client.list_saved_speakers()
+            self.finished.emit(self._voice_name.strip(), speakers)
+        except Exception as exc:
+            self.error.emit(str(exc))

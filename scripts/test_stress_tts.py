@@ -15,6 +15,10 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from book_normalizer.tts.model_paths import default_comfyui_models_dir, describe_model_resolution
+
 TEST_PAIRS = [
     {
         "id": "zamok",
@@ -68,6 +72,11 @@ def main() -> None:
         "--speaker", default="Aiden",
         help="Speaker voice.",
     )
+    parser.add_argument(
+        "--models-dir",
+        default=str(default_comfyui_models_dir()),
+        help="Shared ComfyUI models directory.",
+    )
     parser.add_argument("--device", default="cuda:0")
     args = parser.parse_args()
 
@@ -85,11 +94,14 @@ def main() -> None:
         attn = "sdpa"
 
     dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
-    print(f"Loading {args.model} ({attn})...")
+    model_name, is_local = describe_model_resolution(args.model, models_dir=args.models_dir)
+    if is_local:
+        print(f"Using local model folder: {model_name}")
+    print(f"Loading {model_name} ({attn})...")
     sys.stdout.flush()
 
     model = Qwen3TTSModel.from_pretrained(
-        args.model,
+        model_name,
         device_map=args.device,
         dtype=dtype,
         attn_implementation=attn,

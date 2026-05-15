@@ -27,7 +27,8 @@ from PyQt6.QtWidgets import (
 
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
-from book_normalizer.gui.workers.tts_worker import TTSSynthesisWorker
+from book_normalizer.gui.workers.tts_worker import ComfyVoiceSaveWorker, TTSSynthesisWorker
+from book_normalizer.tts.model_paths import default_comfyui_models_dir
 
 MODELS = [
     "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
@@ -173,6 +174,7 @@ class SynthesisPage(QWidget):
         self._manifest_path: Path | None = None
         self._output_dir: Path | None = None
         self._worker: TTSSynthesisWorker | None = None
+        self._voice_save_worker: ComfyVoiceSaveWorker | None = None
         self._chapter_map: dict[int, int] = {}
         self._phase = "idle"
         self._phase_start = 0.0
@@ -233,6 +235,20 @@ class SynthesisPage(QWidget):
         self._model_hint = self._hint_label()
         settings.addRow("", self._model_hint)
 
+        model_dir_row = QHBoxLayout()
+        model_dir_row.setSpacing(6)
+        self._models_dir_edit = QLineEdit(str(default_comfyui_models_dir()))
+        self._models_dir_edit.setMinimumWidth(320)
+        model_dir_row.addWidget(self._models_dir_edit, stretch=1)
+        self._btn_models_dir = QPushButton()
+        self._btn_models_dir.clicked.connect(self._browse_models_dir)
+        model_dir_row.addWidget(self._btn_models_dir)
+        self._models_dir_label = QLabel()
+        settings.addRow(self._models_dir_label, model_dir_row)
+
+        self._models_dir_hint = self._hint_label()
+        settings.addRow("", self._models_dir_hint)
+
         self._batch_size = QSpinBox()
         self._batch_size.setRange(1, 8)
         self._batch_size.setValue(1)
@@ -285,6 +301,7 @@ class SynthesisPage(QWidget):
 
         # ── Voice cloning panel ───────────────────────────────────────────
         layout.addWidget(self._build_clone_panel())
+        layout.addWidget(self._build_comfy_voice_panel())
 
         # ── Action buttons ────────────────────────────────────────────────
         btn_row = QHBoxLayout()
@@ -451,6 +468,79 @@ class SynthesisPage(QWidget):
         self._clone_body.setVisible(False)
         return frame
 
+    def _build_comfy_voice_panel(self) -> QFrame:
+        """Build the ComfyUI saved-voice training panel."""
+        frame = QFrame()
+        frame.setObjectName("comfyVoicePanel")
+        frame.setStyleSheet(
+            "QFrame#comfyVoicePanel {"
+            "  background: rgba(124,92,252,0.06);"
+            "  border: 1px solid rgba(124,92,252,0.22);"
+            "  border-radius: 8px;"
+            "  padding: 0px;"
+            "}"
+        )
+        outer = QVBoxLayout(frame)
+        outer.setContentsMargins(12, 8, 12, 8)
+        outer.setSpacing(6)
+
+        self._train_title = QLabel()
+        self._train_title.setStyleSheet(
+            "font-weight: 700; font-size: 13px; color: rgba(170,145,255,0.95);"
+        )
+        outer.addWidget(self._train_title)
+
+        self._train_desc = QLabel()
+        self._train_desc.setWordWrap(True)
+        self._train_desc.setStyleSheet(
+            "color: rgba(255,255,255,0.5); font-size: 11px; padding: 0 0 4px 0;"
+        )
+        outer.addWidget(self._train_desc)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(6)
+
+        self._train_url_edit = QLineEdit("http://localhost:8188")
+        self._train_url_label = QLabel()
+        form.addRow(self._train_url_label, self._train_url_edit)
+
+        self._train_name_edit = QLineEdit("narrator")
+        self._train_name_label = QLabel()
+        form.addRow(self._train_name_label, self._train_name_edit)
+
+        audio_row = QHBoxLayout()
+        audio_row.setSpacing(6)
+        self._train_audio_edit = QLineEdit()
+        self._train_audio_edit.setReadOnly(True)
+        audio_row.addWidget(self._train_audio_edit, stretch=1)
+        self._btn_train_audio = QPushButton()
+        self._btn_train_audio.clicked.connect(self._browse_train_audio)
+        audio_row.addWidget(self._btn_train_audio)
+        self._train_audio_label = QLabel()
+        form.addRow(self._train_audio_label, audio_row)
+
+        self._train_transcript_edit = QLineEdit()
+        self._train_transcript_label = QLabel()
+        form.addRow(self._train_transcript_label, self._train_transcript_edit)
+
+        outer.addLayout(form)
+
+        action_row = QHBoxLayout()
+        self._btn_train_voice = QPushButton()
+        self._btn_train_voice.clicked.connect(self._start_voice_training)
+        action_row.addWidget(self._btn_train_voice)
+        action_row.addStretch()
+        outer.addLayout(action_row)
+
+        self._train_status = QLabel()
+        self._train_status.setWordWrap(True)
+        self._train_status.setStyleSheet(
+            "color: rgba(255,255,255,0.62); font-size: 11px;"
+        )
+        outer.addWidget(self._train_status)
+        return frame
+
     @staticmethod
     def _hint_label() -> QLabel:
         lbl = QLabel()
@@ -471,6 +561,10 @@ class SynthesisPage(QWidget):
         self._model_label.setText(t("synth.model"))
         self._model_hint.setText(t("synth.model_hint"))
         self._model_combo.setToolTip(t("synth.model_hint"))
+        self._models_dir_label.setText(t("synth.models_dir"))
+        self._models_dir_hint.setText(t("synth.models_dir_hint"))
+        self._models_dir_edit.setToolTip(t("synth.models_dir_hint"))
+        self._btn_models_dir.setText(t("synth.choose_dir"))
         self._batch_label.setText(t("synth.batch_size"))
         self._batch_hint.setText(t("synth.batch_hint"))
         self._batch_size.setToolTip(t("synth.batch_hint"))
@@ -494,6 +588,18 @@ class SynthesisPage(QWidget):
         self._clone_col_role.setText(t("synth.clone_col_role"))
         self._clone_col_wav.setText(t("synth.clone_col_wav"))
         self._clone_col_transcript.setText(t("synth.clone_col_transcript"))
+
+        self._train_title.setText(t("synth.train_title"))
+        self._train_desc.setText(t("synth.train_desc"))
+        self._train_url_label.setText(t("synth.train_url"))
+        self._train_name_label.setText(t("synth.train_name"))
+        self._train_audio_label.setText(t("synth.train_audio"))
+        self._train_transcript_label.setText(t("synth.train_transcript"))
+        self._train_transcript_edit.setPlaceholderText(t("synth.clone_transcript_ph"))
+        self._btn_train_audio.setText(t("synth.browse_audio"))
+        self._btn_train_voice.setText(t("synth.train_start"))
+        if not self._train_status.text():
+            self._train_status.setText(t("synth.train_idle"))
 
         for row in self._clone_rows:
             row.retranslate()
@@ -548,6 +654,64 @@ class SynthesisPage(QWidget):
         json.dump(cfg, tmp, ensure_ascii=False, indent=2)
         tmp.close()
         return tmp.name
+
+    # ComfyUI saved voice logic
+
+    def _browse_models_dir(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self,
+            t("synth.models_dir"),
+            self._models_dir_edit.text().strip() or str(default_comfyui_models_dir()),
+        )
+        if path:
+            self._models_dir_edit.setText(path)
+
+    def _browse_train_audio(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            t("synth.train_audio"),
+            "",
+            "Audio (*.wav *.mp3 *.flac *.ogg);;All (*)",
+        )
+        if path:
+            self._train_audio_edit.setText(path)
+
+    def _start_voice_training(self) -> None:
+        audio = self._train_audio_edit.text().strip()
+        name = self._train_name_edit.text().strip()
+        ref_text = self._train_transcript_edit.text().strip()
+        if not audio or not name:
+            self._train_status.setText(t("synth.train_missing"))
+            return
+
+        self._btn_train_voice.setEnabled(False)
+        self._train_status.setText(t("synth.train_starting"))
+        self._voice_save_worker = ComfyVoiceSaveWorker(
+            audio_path=Path(audio),
+            voice_name=name,
+            ref_text=ref_text,
+            comfyui_url=self._train_url_edit.text().strip() or "http://localhost:8188",
+            timeout=float(self._chunk_timeout.value()),
+        )
+        self._voice_save_worker.status.connect(self._on_voice_train_status)
+        self._voice_save_worker.finished.connect(self._on_voice_train_finished)
+        self._voice_save_worker.error.connect(self._on_voice_train_error)
+        self._voice_save_worker.start()
+
+    def _on_voice_train_status(self, msg: str) -> None:
+        self._train_status.setText(msg)
+        self._log_edit.appendPlainText(msg)
+
+    def _on_voice_train_finished(self, name: str, speakers: list) -> None:
+        self._btn_train_voice.setEnabled(True)
+        speakers_text = ", ".join(str(s) for s in speakers) if speakers else t("synth.train_none")
+        self._train_status.setText(
+            t("synth.train_done", name=name, speakers=speakers_text),
+        )
+
+    def _on_voice_train_error(self, msg: str) -> None:
+        self._btn_train_voice.setEnabled(True)
+        self._train_status.setText(t("synth.train_error", msg=msg))
 
     # ── Manifest ──────────────────────────────────────────────────────────────
 
@@ -638,6 +802,7 @@ class SynthesisPage(QWidget):
             use_compile=self._compile_check.isChecked(),
             clone_config=clone_config_path,
             use_sage_attention=self._sage_check.isChecked(),
+            models_dir=self._models_dir_edit.text().strip(),
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.status.connect(self._on_status)

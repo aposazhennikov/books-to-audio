@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
+from book_normalizer.tts.wsl_runtime import build_wsl_tts_activation_script
 
 
 class AssemblyWorker(QThread):
@@ -56,10 +58,11 @@ class AssemblyWorker(QThread):
 
             cmd = [
                 "wsl", "-e", "bash", "-c",
-                f"source ~/venvs/qwen3tts/bin/activate && "
-                f"PYTHONUNBUFFERED=1 python -u {wsl_script} "
-                f"--audio-dir {wsl_audio} "
-                f"--out {wsl_out} "
+                build_wsl_tts_activation_script()
+                + "\nPYTHONUNBUFFERED=1 "
+                f"python -u {shlex.quote(wsl_script)} "
+                f"--audio-dir {shlex.quote(wsl_audio)} "
+                f"--out {shlex.quote(wsl_out)} "
                 f"--all "
                 f"--pause-same {self._pause_same} "
                 f"--pause-change {self._pause_change}",

@@ -149,7 +149,7 @@ def main() -> None:
     help="Number of random paragraph samples in verification report.",
 )
 @click.option("--ocr-dpi", type=int, default=400, show_default=True, help="DPI for OCR rendering.")
-@click.option("--ocr-psm", type=int, default=6, show_default=True, help="Tesseract PSM mode.")
+@click.option("--ocr-psm", type=int, default=4, show_default=True, help="Tesseract PSM mode.")
 def process_command(
     input_path: Path,
     out: Path,
@@ -587,7 +587,7 @@ def _parse_chapter_range(value: str) -> tuple[int, int] | None:
     help="OCR execution mode for PDF files.",
 )
 @click.option("--ocr-dpi", type=int, default=400, show_default=True, help="DPI for OCR rendering.")
-@click.option("--ocr-psm", type=int, default=6, show_default=True, help="Tesseract PSM mode.")
+@click.option("--ocr-psm", type=int, default=4, show_default=True, help="Tesseract PSM mode.")
 @click.option("--llm-api-key", default="", help="API key for LLM speaker attribution (OpenAI, etc.).")
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Verbose logging output.")
 def synthesize_command(

@@ -69,7 +69,7 @@ class NormalizeWorker(QThread):
         input_path: Path,
         ocr_mode: str = "auto",
         ocr_dpi: int = 400,
-        ocr_psm: int = 6,
+        ocr_psm: int = 4,
         skip_stress: bool = False,
         parent=None,
     ):
@@ -85,9 +85,10 @@ class NormalizeWorker(QThread):
         import fitz
 
         from book_normalizer.loaders.pdf_loader import (
-            _ocr_image_via_wsl,
-            _page_text_quality,
-            _preprocess_image_for_ocr,
+            _ocr_pil_image_with_tesseract,
+            _postprocess_ocr_text,
+            _prepare_ocr_page_images,
+            _should_keep_ocr_text,
             _wsl_tesseract_available,
             remove_repeated_headers,
         )
@@ -100,6 +101,7 @@ class NormalizeWorker(QThread):
             pytesseract.get_tesseract_version()
         except Exception:
             if _wsl_tesseract_available():
+                from PIL import Image
                 use_wsl = True
             else:
                 raise RuntimeError("Tesseract is not installed.")
@@ -115,27 +117,22 @@ class NormalizeWorker(QThread):
             for page_num in range(total_pages):
                 page = doc[page_num]
                 pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY)
+                img = Image.frombytes("L", [pix.width, pix.height], pix.samples)
 
-                if use_wsl:
-                    import io
-
-                    from PIL import Image as PILImage
-                    img = PILImage.frombytes("L", [pix.width, pix.height], pix.samples)
-                    img = _preprocess_image_for_ocr(img)
-                    buf = io.BytesIO()
-                    img.save(buf, format="PNG")
-                    page_text = _ocr_image_via_wsl(buf.getvalue(), "rus", psm=psm)
-                else:
-                    img = Image.frombytes("L", [pix.width, pix.height], pix.samples)
-                    img = _preprocess_image_for_ocr(img)
-                    tess_config = f"--psm {psm}"
-                    page_text = pytesseract.image_to_string(
-                        img, lang="rus", config=tess_config,
+                for segment_num, segment in enumerate(
+                    _prepare_ocr_page_images(img),
+                    start=1,
+                ):
+                    page_text = _ocr_pil_image_with_tesseract(
+                        segment,
+                        lang="rus",
+                        psm=psm,
+                        preprocess=True,
+                        use_wsl=use_wsl,
+                        pytesseract_module=None if use_wsl else pytesseract,
                     )
-
-                if page_text and page_text.strip():
-                    quality = _page_text_quality(page_text)
-                    if quality >= 0.15:
+                    page_text = _postprocess_ocr_text(page_text)
+                    if _should_keep_ocr_text(page_text):
                         pages_text.append(page_text)
 
                 elapsed = time.time() - start_time

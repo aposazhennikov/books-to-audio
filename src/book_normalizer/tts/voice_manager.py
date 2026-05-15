@@ -5,9 +5,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from book_normalizer.tts.model_paths import describe_model_resolution
 from book_normalizer.tts.voice_config import VoiceConfig, VoiceMethod, VoiceProfile
 
 logger = logging.getLogger(__name__)
+
+BASE_MODEL_NAME = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+DESIGN_MODEL_NAME = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+CUSTOM_VOICE_MODEL_NAME = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 
 
 class VoiceManager:
@@ -23,13 +28,16 @@ class VoiceManager:
         device: str = "cuda:0",
         dtype: str = "bfloat16",
         use_flash_attn: bool = True,
+        models_dir: str | None = None,
     ) -> None:
         self._config = config
         self._device = device
         self._dtype = dtype
         self._use_flash_attn = use_flash_attn
+        self._models_dir = models_dir
         self._base_model: Any = None
         self._design_model: Any = None
+        self._custom_model: Any = None
         self._clone_prompts: dict[str, Any] = {}
 
     @property
@@ -96,9 +104,10 @@ class VoiceManager:
             if self._use_flash_attn:
                 kwargs["attn_implementation"] = "flash_attention_2"
 
-            logger.info("Loading Qwen3-TTS-12Hz-1.7B-Base on %s...", self._device)
+            model_name = self._resolve_model(BASE_MODEL_NAME)
+            logger.info("Loading %s on %s...", model_name, self._device)
             self._base_model = Qwen3TTSModel.from_pretrained(
-                "Qwen/Qwen3-TTS-12Hz-1.7B-Base", **kwargs
+                model_name, **kwargs
             )
             logger.info("Base model loaded.")
         except ImportError as exc:
@@ -120,9 +129,10 @@ class VoiceManager:
             if self._use_flash_attn:
                 kwargs["attn_implementation"] = "flash_attention_2"
 
-            logger.info("Loading Qwen3-TTS-12Hz-1.7B-VoiceDesign on %s...", self._device)
+            model_name = self._resolve_model(DESIGN_MODEL_NAME)
+            logger.info("Loading %s on %s...", model_name, self._device)
             self._design_model = Qwen3TTSModel.from_pretrained(
-                "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", **kwargs
+                model_name, **kwargs
             )
             logger.info("VoiceDesign model loaded.")
         except ImportError as exc:
@@ -144,11 +154,10 @@ class VoiceManager:
             if self._use_flash_attn:
                 kwargs["attn_implementation"] = "flash_attention_2"
 
-            logger.info(
-                "Loading Qwen3-TTS-12Hz-1.7B-CustomVoice on %s...", self._device
-            )
+            model_name = self._resolve_model(CUSTOM_VOICE_MODEL_NAME)
+            logger.info("Loading %s on %s...", model_name, self._device)
             self._custom_model = Qwen3TTSModel.from_pretrained(
-                "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", **kwargs
+                model_name, **kwargs
             )
             logger.info("CustomVoice model loaded.")
         except ImportError as exc:
@@ -203,3 +212,13 @@ class VoiceManager:
         )
         self._clone_prompts[voice_id] = prompt
         logger.info("Design+clone prompt ready for '%s'.", voice_id)
+
+    def _resolve_model(self, model_name: str) -> str:
+        """Resolve a model id to the shared ComfyUI model folder when present."""
+        resolved, is_local = describe_model_resolution(
+            model_name,
+            models_dir=self._models_dir,
+        )
+        if is_local:
+            logger.info("Using local model folder: %s", resolved)
+        return resolved

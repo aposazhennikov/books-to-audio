@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from book_normalizer.gui.pages.synthesis_page import _iter_manifest_chunks
-from book_normalizer.gui.workers.tts_worker import _flatten_manifest_chunks
+from book_normalizer.gui.workers.tts_worker import (
+    TTSSynthesisWorker,
+    _flatten_manifest_chunks,
+)
 
 
 def _v2_manifest() -> dict:
@@ -48,3 +51,10 @@ def test_tts_worker_flattens_v2_manifest_for_legacy_runner() -> None:
             "text": "Hello",
         },
     ]
+
+
+def test_tts_worker_converts_models_dir_to_wsl_path() -> None:
+    assert (
+        TTSSynthesisWorker._wsl_path_text(r"D:\ComfyUI-external\models")
+        == "/mnt/d/ComfyUI-external/models"
+    )

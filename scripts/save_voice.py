@@ -137,7 +137,7 @@ def main() -> None:
         prompt_id = client.queue_prompt(workflow)
         print(f"  Queued: {prompt_id}")
         print("  Waiting for FB_Qwen3TTSVoiceClonePrompt + FB_Qwen3TTSSaveVoice...")
-        _wait_for_save(client, prompt_id, timeout=args.timeout)
+        client.wait_for_execution(prompt_id, timeout=args.timeout)
     except ComfyUIError as exc:
         print(f"ERROR during voice extraction: {exc}")
         sys.exit(1)
@@ -157,48 +157,6 @@ def main() -> None:
     print(
         f"\nNext step: run synthesize_dialogue.py with "
         f"--{'narrator' if args.name == 'narrator' else args.name}-speaker {args.name}"
-    )
-
-
-def _wait_for_save(
-    client: ComfyUIClient,
-    prompt_id: str,
-    timeout: float,
-) -> None:
-    """Wait for a voice-setup workflow to complete.
-
-    FB_Qwen3TTSSaveVoice is an output node with no audio outputs.
-    We therefore poll history until the execution status is complete
-    (no error, outputs key present) rather than looking for audio files.
-    """
-    import time as _time
-
-    deadline = _time.monotonic() + timeout
-    poll_interval = 2.0
-
-    while _time.monotonic() < deadline:
-        history = client.get_history(prompt_id)
-        if not history:
-            _time.sleep(poll_interval)
-            continue
-
-        status = history.get("status", {})
-        status_str = status.get("status_str", "")
-
-        if status_str == "error":
-            messages = status.get("messages", [])
-            raise ComfyUIError(
-                f"ComfyUI execution error for {prompt_id}: {messages}"
-            )
-
-        # The workflow is complete when the history entry has outputs.
-        if "outputs" in history:
-            return
-
-        _time.sleep(poll_interval)
-
-    raise ComfyUIError(
-        f"Timeout ({timeout}s) waiting for voice-setup workflow {prompt_id}"
     )
 
 

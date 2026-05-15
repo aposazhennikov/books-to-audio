@@ -150,6 +150,39 @@ class ComfyUIClient:
             f"Timeout ({timeout}s) waiting for ComfyUI prompt {prompt_id}"
         )
 
+    def wait_for_execution(
+        self,
+        prompt_id: str,
+        timeout: float = 300.0,
+    ) -> dict[str, Any]:
+        """Block until a prompt finishes, even when it has no audio output.
+
+        Voice-save workflows often end in a side-effect node such as
+        ``FB_Qwen3TTSSaveVoice`` and therefore do not return downloadable
+        audio. This method waits for the history entry to finish successfully
+        and returns the full history payload.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            history = self.get_history(prompt_id)
+            if not history:
+                time.sleep(_POLL_INTERVAL)
+                continue
+
+            status: dict[str, Any] = history.get("status", {})
+            if status.get("status_str") == "error":
+                messages = status.get("messages", [])
+                raise ComfyUIError(f"ComfyUI execution error for {prompt_id}: {messages}")
+
+            if "outputs" in history:
+                return history
+
+            time.sleep(_POLL_INTERVAL)
+
+        raise ComfyUIError(
+            f"Timeout ({timeout}s) waiting for ComfyUI prompt {prompt_id}"
+        )
+
     def download_audio(
         self,
         filename: str,

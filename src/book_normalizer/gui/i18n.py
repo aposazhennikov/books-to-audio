@@ -80,23 +80,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "norm.ocr_psm": {"en": "Tesseract PSM:", "ru": "Tesseract PSM:"},
     "norm.ocr_psm_hint": {
-        "en": "6 = block of text (best for books) | 3 = auto | 4 = single column",
-        "ru": "6 = \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 (\u043b\u0443\u0447\u0448\u0435\u0435 \u0434\u043b\u044f \u043a\u043d\u0438\u0433) | 3 = \u0430\u0432\u0442\u043e | 4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430",
+        "en": "4 = single scanned book page (recommended) | 6 = cropped text block | 3 = auto",
+        "ru": "4 = \u043e\u0434\u043d\u0430 \u0441\u043a\u0430\u043d-\u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u043a\u043d\u0438\u0433\u0438 (\u0440\u0435\u043a\u043e\u043c.) | 6 = \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 | 3 = \u0430\u0432\u0442\u043e",
     },
     "norm.ocr_psm_tip": {
         "en": (
             "Tesseract Page Segmentation Mode (PSM):\n"
             "3 = fully automatic (default Tesseract)\n"
-            "4 = single column of variable-size text\n"
-            "6 = uniform block of text (recommended for books)\n"
+            "4 = single column / scanned book page (recommended)\n"
+            "6 = uniform cropped text block\n"
             "11 = sparse text, find as much as possible\n"
             "13 = raw line, treat as single text line"
         ),
         "ru": (
             "\u0420\u0435\u0436\u0438\u043c \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0430\u0446\u0438\u0438 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b Tesseract (PSM):\n"
             "3 = \u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439\n"
-            "4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 \u0442\u0435\u043a\u0441\u0442\u0430\n"
-            "6 = \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 (\u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0443\u0435\u0442\u0441\u044f \u0434\u043b\u044f \u043a\u043d\u0438\u0433)\n"
+            "4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 / \u0441\u043a\u0430\u043d-\u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u043a\u043d\u0438\u0433\u0438 (\u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0443\u0435\u0442\u0441\u044f)\n"
+            "6 = \u0440\u043e\u0432\u043d\u044b\u0439 \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u043d\u044b\u0439 \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430\n"
             "11 = \u0440\u0430\u0437\u0440\u0435\u0436\u0435\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442\n"
             "13 = \u043e\u0434\u043d\u0430 \u0441\u0442\u0440\u043e\u043a\u0430 \u0442\u0435\u043a\u0441\u0442\u0430"
         ),
@@ -434,6 +434,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "Подходит для черновиков и превью."
         ),
     },
+    "synth.models_dir": {
+        "en": "Models dir:",
+        "ru": "Папка моделей:",
+    },
+    "synth.models_dir_hint": {
+        "en": (
+            "The WSL runner looks here before HuggingFace. Default points to "
+            "D:\\ComfyUI-external\\models and expects Qwen folders in audio_encoders."
+        ),
+        "ru": (
+            "WSL-runner сначала ищет модели здесь, а уже потом в HuggingFace. "
+            "По умолчанию: D:\\ComfyUI-external\\models; Qwen ожидается в audio_encoders."
+        ),
+    },
+    "synth.choose_dir": {"en": "Choose...", "ru": "Выбрать..."},
     "synth.batch_size": {
         "en": "Batch Size:",
         "ru": "\u0420\u0430\u0437\u043c\u0435\u0440 \u0431\u0430\u0442\u0447\u0430:",
@@ -603,15 +618,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.sage_hint": {
         "en": (
             "SageAttention replaces SDPA with quantized attention kernels.\n"
-            "Requires SageAttention v2 from GitHub (v1 from PyPI is NOT compatible):\n"
+            "Requires SageAttention in the WSL TTS venv; GitHub v2 is preferred:\n"
             "  pip install git+https://github.com/thu-ml/SageAttention.git\n"
-            "GPU: NVIDIA Ampere (30xx), Ada (40xx), Hopper, Blackwell."
+            "If enabled and unavailable, synthesis stops with an explicit error."
         ),
         "ru": (
             "SageAttention заменяет SDPA квантованными attention-ядрами.\n"
-            "Требуется SageAttention v2 с GitHub (v1 с PyPI НЕ совместим):\n"
+            "Нужен SageAttention в WSL TTS venv; GitHub v2 предпочтительнее:\n"
             "  pip install git+https://github.com/thu-ml/SageAttention.git\n"
-            "GPU: NVIDIA Ampere (30xx), Ada (40xx), Hopper, Blackwell."
+            "Если включено, но пакет недоступен, синтез остановится с явной ошибкой."
         ),
     },
     "synth.clone_enable": {
@@ -654,6 +669,54 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Type the exact words spoken in the audio file…",
         "ru": "Введите точный текст, который произносится в аудиофайле…",
     },
+    "synth.train_title": {
+        "en": "ComfyUI Saved Voice",
+        "ru": "Сохранение голоса ComfyUI",
+    },
+    "synth.train_desc": {
+        "en": (
+            "Extract a reusable custom voice through ComfyUI. The saved name will "
+            "appear in FB_Qwen3TTSLoadSpeaker and can be used by ComfyUI dialogue workflows."
+        ),
+        "ru": (
+            "Извлекает reusable custom voice через ComfyUI. Сохраненное имя появится "
+            "в FB_Qwen3TTSLoadSpeaker и подойдет для ComfyUI dialogue workflows."
+        ),
+    },
+    "synth.train_url": {"en": "ComfyUI URL:", "ru": "ComfyUI URL:"},
+    "synth.train_name": {"en": "Save as:", "ru": "Сохранить как:"},
+    "synth.train_audio": {"en": "Reference audio:", "ru": "Аудио-образец:"},
+    "synth.train_transcript": {"en": "Transcript:", "ru": "Транскрипт:"},
+    "synth.browse_audio": {"en": "Browse...", "ru": "Обзор..."},
+    "synth.train_start": {"en": "Save Voice", "ru": "Сохранить голос"},
+    "synth.train_idle": {
+        "en": "ComfyUI voice save is idle.",
+        "ru": "Сохранение голоса в ComfyUI ожидает запуска.",
+    },
+    "synth.train_missing": {
+        "en": "Choose an audio file and voice name first.",
+        "ru": "Сначала выберите аудио и имя голоса.",
+    },
+    "synth.train_starting": {"en": "Starting voice save...", "ru": "Запуск сохранения голоса..."},
+    "synth.train_connecting": {"en": "Connecting to ComfyUI...", "ru": "Подключение к ComfyUI..."},
+    "synth.train_uploading": {
+        "en": "Uploading {file} to ComfyUI...",
+        "ru": "Загрузка {file} в ComfyUI...",
+    },
+    "synth.train_extracting": {
+        "en": "Extracting and saving voice '{name}'...",
+        "ru": "Извлечение и сохранение голоса '{name}'...",
+    },
+    "synth.train_done": {
+        "en": "Saved '{name}'. Available speakers: {speakers}",
+        "ru": "Голос '{name}' сохранен. Доступные голоса: {speakers}",
+    },
+    "synth.train_error": {"en": "Voice save failed: {msg}", "ru": "Не удалось сохранить голос: {msg}"},
+    "synth.train_err_comfyui": {
+        "en": "ComfyUI is not reachable at {url}.",
+        "ru": "ComfyUI недоступен по адресу {url}.",
+    },
+    "synth.train_none": {"en": "(none)", "ru": "(нет)"},
     "synth.loading_model": {
         "en": "Loading TTS model\u2026 (may take 1\u20132 min)",
         "ru": "Загрузка TTS модели\u2026 (может занять 1\u20132 мин)",

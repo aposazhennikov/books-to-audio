@@ -17,6 +17,10 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from book_normalizer.tts.model_paths import default_comfyui_models_dir, describe_model_resolution
+
 PRESETS_JSON = [
     {"id": "narrator_calm", "speaker": "Aiden",
      "instruct": "Спокойный, чёткий голос рассказчика. "
@@ -71,6 +75,11 @@ def main() -> None:
         help="Qwen3-TTS model name.",
     )
     parser.add_argument(
+        "--models-dir",
+        default=str(default_comfyui_models_dir()),
+        help="Shared ComfyUI models directory.",
+    )
+    parser.add_argument(
         "--device", default="cuda:0",
         help="Device for inference.",
     )
@@ -116,11 +125,16 @@ def main() -> None:
     sys.stdout.flush()
 
     dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
-    print(f"LOADING_MODEL|{args.model}|{args.device}|{attn}")
+    model_name, is_local = describe_model_resolution(args.model, models_dir=args.models_dir)
+    if is_local:
+        print(f"MODEL_PATH|local|{model_name}")
+    else:
+        print(f"MODEL_PATH|remote|{args.model}")
+    print(f"LOADING_MODEL|{model_name}|{args.device}|{attn}")
     sys.stdout.flush()
 
     model = Qwen3TTSModel.from_pretrained(
-        args.model,
+        model_name,
         device_map=args.device,
         dtype=dtype,
         attn_implementation=attn,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from PyQt6.QtWidgets import (
 
 from book_normalizer.gui.i18n import get_language, t
 from book_normalizer.gui.voice_presets import VOICE_PRESETS, VoicePreset
+from book_normalizer.tts.model_paths import default_comfyui_models_dir
+from book_normalizer.tts.wsl_runtime import build_wsl_tts_activation_script
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _SCRIPT_PATH = _PROJECT_ROOT / "scripts" / "generate_voice_previews.py"
@@ -50,6 +53,15 @@ _STYLE_STATUS_ERR = (
 def _to_wsl(path: Path) -> str:
     """Convert Windows path to WSL path."""
     p = str(path.resolve()).replace("\\", "/")
+    if len(p) >= 2 and p[1] == ":":
+        drive = p[0].lower()
+        p = f"/mnt/{drive}{p[2:]}"
+    return p
+
+
+def _to_wsl_text(path_text: str) -> str:
+    """Convert a Windows path string to WSL path syntax."""
+    p = path_text.strip().replace("\\", "/")
     if len(p) >= 2 and p[1] == ":":
         drive = p[0].lower()
         p = f"/mnt/{drive}{p[2:]}"
@@ -85,16 +97,18 @@ class GeneratePreviewsWorker(QThread):
             wsl_script = _to_wsl(_SCRIPT_PATH)
             wsl_out = _to_wsl(self._out_dir)
 
-            safe_text = self._text.replace("'", "'\\''")
             ids_arg = ",".join(self._voice_ids)
+            models_dir = _to_wsl_text(str(default_comfyui_models_dir()))
             cmd = [
                 "wsl", "-e", "bash", "-c",
-                f"source ~/venvs/qwen3tts/bin/activate && "
-                f"PYTHONUNBUFFERED=1 python -u '{wsl_script}' "
-                f"--out '{wsl_out}' "
-                f"--model '{self._model}' "
-                f"--ids '{ids_arg}' "
-                f"--text '{safe_text}'",
+                build_wsl_tts_activation_script()
+                + "\nPYTHONUNBUFFERED=1 "
+                f"python -u {shlex.quote(wsl_script)} "
+                f"--out {shlex.quote(wsl_out)} "
+                f"--model {shlex.quote(self._model)} "
+                f"--models-dir {shlex.quote(models_dir)} "
+                f"--ids {shlex.quote(ids_arg)} "
+                f"--text {shlex.quote(self._text)}",
             ]
 
             self.progress_line.emit(t("voice.gen_loading"))

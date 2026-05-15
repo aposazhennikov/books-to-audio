@@ -12,6 +12,10 @@ from book_normalizer.loaders.pdf_loader import (
     PdfLoader,
     PdfOcrCompareResult,
     PdfTextVariant,
+    _looks_like_toc,
+    _postprocess_ocr_text,
+    _prepare_ocr_page_images,
+    _should_keep_ocr_text,
     extract_pdf_with_ocr_mode,
     select_pdf_text_for_mode,
 )
@@ -130,3 +134,38 @@ class TestOcrModeSelection:
         assert chosen.kind == "native"
         assert stats["native_unreadable"] is True
         assert stats["reason"] == "ocr_unavailable_native_unreadable"
+
+
+class TestOcrImagePreparation:
+    def test_prepare_ocr_page_images_splits_landscape_spread(self) -> None:
+        pil_image = pytest.importorskip("PIL.Image")
+
+        img = pil_image.new("L", (1000, 600), 255)
+        for x0 in (120, 620):
+            for y in range(120, 480, 18):
+                for x in range(x0, x0 + 260):
+                    img.putpixel((x, y), 0)
+
+        segments = _prepare_ocr_page_images(img)
+
+        assert len(segments) == 2
+        assert all(segment.size[0] < img.size[0] for segment in segments)
+
+    def test_postprocess_ocr_text_drops_noise_and_joins_hyphenation(self) -> None:
+        raw = "' \\\\ . p .\nСОДЕРЖА-\nЩАЯ ГЛУБОКОЕ\nисследование предмета"
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "p ." not in cleaned
+        assert "СОДЕРЖАЩАЯ ГЛУБОКОЕ исследование предмета" in cleaned
+
+    def test_should_keep_ocr_text_rejects_toc_blocks(self) -> None:
+        toc = (
+            "Содержание\n"
+            "ГЛАВА ПЕРВАЯ ................................ 3\n"
+            "ГЛАВА ВТОРАЯ ................................ 7\n"
+            "ГЛАВА ТРЕТЬЯ ................................ 10\n"
+        )
+
+        assert _looks_like_toc(toc) is True
+        assert _should_keep_ocr_text(toc) is False

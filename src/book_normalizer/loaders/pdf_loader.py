@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
@@ -16,6 +17,8 @@ from book_normalizer.normalization.cleanup import remove_repeated_headers
 logger = logging.getLogger(__name__)
 
 MIN_READABLE_CYRILLIC_RATIO = 0.3
+MIN_OCR_CYRILLIC_CHARS = 80
+SPREAD_PAGE_RATIO = 1.2
 
 
 class PdfLoader(BaseLoader):
@@ -233,6 +236,188 @@ def _preprocess_image_for_ocr(img: Any) -> Any:
     return img
 
 
+def _image_dark_bbox(img: Any, threshold: int = 205) -> tuple[int, int, int, int] | None:
+    """Return the bounding box of dark content in a page image."""
+    from PIL import ImageOps
+
+    gray = img.convert("L") if img.mode != "L" else img
+    gray = ImageOps.autocontrast(gray, cutoff=0.5)
+    mask = gray.point(lambda px: 255 if px < threshold else 0, "L")
+    return mask.getbbox()
+
+
+def _crop_image_to_content(img: Any, margin: int | None = None) -> Any:
+    """Crop scan margins while leaving a small safety border around text."""
+    bbox = _image_dark_bbox(img)
+    if bbox is None:
+        return img
+
+    width, height = img.size
+    pad = margin if margin is not None else max(16, int(min(width, height) * 0.015))
+    left, top, right, bottom = bbox
+    return img.crop((
+        max(0, left - pad),
+        max(0, top - pad),
+        min(width, right + pad),
+        min(height, bottom + pad),
+    ))
+
+
+def _image_ink_ratio(img: Any, threshold: int = 180) -> float:
+    """Estimate how much real dark content is present in an image."""
+    from PIL import ImageOps
+
+    probe = img.convert("L") if img.mode != "L" else img.copy()
+    probe.thumbnail((300, 300))
+    probe = ImageOps.autocontrast(probe, cutoff=0.5)
+    mask = probe.point(lambda px: 255 if px < threshold else 0, "L")
+    hist = mask.histogram()
+    dark = hist[255]
+    total = probe.size[0] * probe.size[1]
+    return dark / total if total else 0.0
+
+
+def _prepare_ocr_page_images(img: Any) -> list[Any]:
+    """Return page-like OCR regions, splitting scanned book spreads when needed."""
+    width, height = img.size
+    if height and width / height >= SPREAD_PAGE_RATIO:
+        mid = width // 2
+        parts = [
+            img.crop((0, 0, mid, height)),
+            img.crop((mid, 0, width, height)),
+        ]
+        segments = [
+            _crop_image_to_content(part)
+            for part in parts
+            if _image_ink_ratio(part) >= 0.002
+        ]
+        if segments:
+            return segments
+
+    cropped = _crop_image_to_content(img)
+    return [cropped] if _image_ink_ratio(cropped) >= 0.001 else []
+
+
+def _encode_png(img: Any) -> bytes:
+    """Encode a PIL image to PNG bytes for WSL Tesseract."""
+    import io
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _ocr_pil_image_with_tesseract(
+    img: Any,
+    *,
+    lang: str,
+    psm: int,
+    preprocess: bool,
+    use_wsl: bool,
+    pytesseract_module: Any | None = None,
+) -> str:
+    """Run Tesseract against a PIL image, either natively or via WSL."""
+    if preprocess:
+        img = _preprocess_image_for_ocr(img)
+
+    if use_wsl:
+        return _ocr_image_via_wsl(_encode_png(img), lang, psm=psm)
+
+    if pytesseract_module is None:
+        import pytesseract as pytesseract_module
+
+    return pytesseract_module.image_to_string(
+        img,
+        lang=lang,
+        config=f"--psm {psm}",
+    )
+
+
+_CYRILLIC_RE = re.compile(r"[\u0400-\u04ff]")
+_OCR_HYPHEN_LINEBREAK_RE = re.compile(
+    r"([\u0400-\u04ff])[-\u00ad\u2010-\u2015]\s*\n\s*([\u0400-\u04ff])"
+)
+
+
+def _cyrillic_char_count(text: str) -> int:
+    """Count Cyrillic letters in text."""
+    return len(_CYRILLIC_RE.findall(text))
+
+
+def _is_ocr_noise_line(line: str) -> bool:
+    """Return true for OCR lines made mostly of punctuation or scan artifacts."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    cyr = _cyrillic_char_count(stripped)
+    alnum = sum(ch.isalnum() for ch in stripped)
+    if cyr == 0 and alnum <= 2:
+        return True
+    if cyr < 2 and len(stripped) <= 12:
+        return True
+    punctuation = sum(not ch.isalnum() and not ch.isspace() for ch in stripped)
+    return cyr == 0 and punctuation / max(1, len(stripped)) > 0.35
+
+
+def _postprocess_ocr_text(text: str) -> str:
+    """Clean OCR text from a single page image before downstream normalization."""
+    text = text.replace("\r", "\n").replace("\f", "\n")
+    text = _OCR_HYPHEN_LINEBREAK_RE.sub(r"\1\2", text)
+
+    lines: list[str] = []
+    previous_blank = False
+    for raw_line in text.splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            if not previous_blank:
+                lines.append("")
+            previous_blank = True
+            continue
+        previous_blank = False
+        if _is_ocr_noise_line(line):
+            continue
+        lines.append(line)
+
+    paragraphs: list[str] = []
+    current: list[str] = []
+    for line in lines:
+        if not line:
+            if current:
+                paragraphs.append(" ".join(current).strip())
+                current = []
+            continue
+        current.append(line)
+    if current:
+        paragraphs.append(" ".join(current).strip())
+
+    return "\n\n".join(p for p in paragraphs if p)
+
+
+def _looks_like_toc(text: str) -> bool:
+    """Return true when an OCR block is likely a table of contents page."""
+    sample = text[:2500].lower()
+    if "содержание" not in sample:
+        return False
+    glava_count = sample.count("глава")
+    dotted_leaders = sample.count("....") + sample.count("…")
+    return glava_count >= 3 or dotted_leaders >= 3
+
+
+def _ocr_text_is_usable(text: str) -> bool:
+    """Return true when OCR text contains enough readable Russian content."""
+    return (
+        _cyrillic_char_count(text) >= MIN_OCR_CYRILLIC_CHARS
+        and _page_text_quality(text) >= 0.3
+    )
+
+
+def _should_keep_ocr_text(text: str) -> bool:
+    """Decide whether an OCR page/segment is useful book text."""
+    if not _ocr_text_is_usable(text):
+        return False
+    return not _looks_like_toc(text)
+
+
 def _page_text_quality(text: str) -> float:
     """Estimate OCR quality of a page — ratio of Cyrillic alpha chars.
 
@@ -249,7 +434,7 @@ def _ocr_pdf_with_tesseract(
     path: Path,
     lang: str = "rus",
     dpi: int = 400,
-    psm: int = 6,
+    psm: int = 4,
     preprocess: bool = True,
 ) -> str:
     """OCR a PDF file page-by-page using PyMuPDF + Tesseract.
@@ -267,6 +452,7 @@ def _ocr_pdf_with_tesseract(
         pytesseract.get_tesseract_version()
     except Exception:
         if _wsl_tesseract_available():
+            from PIL import Image
             use_wsl = True
             logger.info("Using Tesseract via WSL bridge.")
         else:
@@ -281,31 +467,28 @@ def _ocr_pdf_with_tesseract(
         for page_num in range(total):
             page = doc[page_num]
             pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY)
+            img = Image.frombytes("L", [pix.width, pix.height], pix.samples)
+            segments = _prepare_ocr_page_images(img)
 
-            if use_wsl:
-                if preprocess:
-                    from PIL import Image as PILImage
-                    img = PILImage.frombytes("L", [pix.width, pix.height], pix.samples)
-                    img = _preprocess_image_for_ocr(img)
-                    import io
-                    buf = io.BytesIO()
-                    img.save(buf, format="PNG")
-                    page_text = _ocr_image_via_wsl(buf.getvalue(), lang, psm=psm)
-                else:
-                    page_text = _ocr_image_via_wsl(pix.tobytes("png"), lang, psm=psm)
-            else:
-                img = Image.frombytes("L", [pix.width, pix.height], pix.samples)
-                if preprocess:
-                    img = _preprocess_image_for_ocr(img)
-                tess_config = f"--psm {psm}"
-                page_text = pytesseract.image_to_string(img, lang=lang, config=tess_config)
+            for segment_num, segment in enumerate(segments, start=1):
+                page_text = _ocr_pil_image_with_tesseract(
+                    segment,
+                    lang=lang,
+                    psm=psm,
+                    preprocess=preprocess,
+                    use_wsl=use_wsl,
+                    pytesseract_module=None if use_wsl else pytesseract,
+                )
+                page_text = _postprocess_ocr_text(page_text)
 
-            if page_text and page_text.strip():
-                quality = _page_text_quality(page_text)
-                if quality < 0.15:
+                if not _should_keep_ocr_text(page_text):
                     logger.debug(
-                        "Page %d skipped: low quality (%.0f%% Cyrillic).",
-                        page_num + 1, quality * 100,
+                        "Page %d segment %d skipped: chars=%d, cyr=%d, quality=%.0f%%.",
+                        page_num + 1,
+                        segment_num,
+                        len(page_text),
+                        _cyrillic_char_count(page_text),
+                        _page_text_quality(page_text) * 100,
                     )
                     continue
                 pages.append(page_text)
@@ -320,7 +503,7 @@ def extract_pdf_with_ocr_mode(
     path: Path,
     mode: OcrMode,
     dpi: int = 400,
-    psm: int = 6,
+    psm: int = 4,
     preprocess: bool = True,
 ) -> PdfOcrCompareResult:
     """Extract PDF text according to the requested OCR mode.

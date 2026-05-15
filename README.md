@@ -105,12 +105,30 @@ pip install qwen-tts torch soundfile numpy
 
 # Optional: flash-attention for 1.5-2x speedup
 pip install flash-attn --no-build-isolation
+
+# Optional: SageAttention for faster SDPA kernels
+pip install git+https://github.com/thu-ml/SageAttention.git
 ```
 
 ### 5. ComfyUI setup for TTS (recommended path)
 
 ComfyUI with Qwen3-TTS nodes provides streaming synthesis and better
 integration with the new v2 manifest pipeline.
+
+**Shared model folder:** the app now looks for Qwen3-TTS model folders in
+`D:\ComfyUI-external\models` before it lets HuggingFace download anything.
+For the WSL runner this is passed as `/mnt/d/ComfyUI-external/models`.
+The expected layout is:
+
+```text
+D:\ComfyUI-external\models\audio_encoders\
+  Qwen3-TTS-12Hz-1.7B-Base\
+  Qwen3-TTS-12Hz-1.7B-CustomVoice\
+  Qwen3-TTS-Tokenizer-12Hz\
+```
+
+You can override the folder with the GUI **Models dir** field, the CLI
+`--models-dir` option, or the `BOOKS_TO_AUDIO_MODELS_DIR` environment variable.
 
 **One-time workflow template setup:**
 
@@ -153,7 +171,7 @@ python -m book_normalizer.cli process books/mybook.pdf --out output -v --ocr-mod
 Options:
 - `--ocr-mode auto|off|force|compare` — OCR mode for PDF (see below)
 - `--ocr-dpi 400` — DPI for OCR rendering (see below)
-- `--ocr-psm 6` — Tesseract page segmentation mode (see below)
+- `--ocr-psm 4` — Tesseract page segmentation mode (see below)
 - `--interactive` — enable interactive review
 - `--skip-stress` — skip stress annotation
 
@@ -189,8 +207,8 @@ Page Segmentation Mode controls how Tesseract analyzes the page layout:
 | PSM | Description | When to use |
 |-----|-------------|-------------|
 | 3 | Fully automatic page segmentation | Mixed content (images + text) |
-| 4 | Single column of variable-size text | Single-column books |
-| 6 (default) | Uniform block of text | **Best for books** — consistent text layout |
+| 4 (default) | Single column of variable-size text | **Recommended for scanned book pages** |
+| 6 | Uniform block of text | Already cropped, clean text blocks |
 | 11 | Sparse text, find as much as possible | Pages with scattered text fragments |
 | 13 | Raw line, treat as single text line | Processing individual lines |
 
@@ -262,12 +280,14 @@ python scripts/tts_runner.py \
     --out output/mybook_pdf \
     --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
     --batch-size 1 \
+    --sage-attention \
     --resume
 ```
 
 Options:
 - `--model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` — 1.7B for best quality, 0.6B for speed
 - `--batch-size 2` — batch inference (needs more VRAM)
+- `--sage-attention` — require SageAttention; exits with a clear error if the active WSL venv does not have a compatible kernel
 - `--resume` — skip already generated chunks
 - `--chapter 3` — only generate specific chapter
 
@@ -359,7 +379,7 @@ Load a book file, configure OCR settings, run the full normalization pipeline.
 |-------|-------------|
 | **OCR Mode** | How text is extracted from PDF (auto/off/force/compare — see OCR Mode table above) |
 | **OCR DPI** | Resolution for PDF-to-image rendering before OCR (300-600, default 400 — see DPI table above) |
-| **Tesseract PSM** | Page layout analysis mode (0-13, default 6 for books — see PSM table above) |
+| **Tesseract PSM** | Page layout analysis mode (0-13, default 4 for scanned book pages — see PSM table above) |
 
 **Progress**: Shows per-page OCR progress with ETA (e.g., "OCR: page 45/120 — ETA: 2m 30s"), then normalization stages, then chapter detection. After completion, shows a before/after text comparison panel.
 
@@ -376,10 +396,17 @@ Interactive table for assigning voices and intonation to every text chunk:
 
 Start/stop TTS generation with real-time progress:
 - **Model** selector (see model comparison below)
+- **Models dir** points to the shared ComfyUI models directory, defaulting to `D:\ComfyUI-external\models`
 - **Batch Size** (see batch size guide below)
 - **Chapter** filter: synthesize all or a specific chapter
+- **ComfyUI Saved Voice** saves a reusable custom voice through `voice_setup_template.json`
 - Progress bar with ETA and chunk counter
 - **Stop** button to cancel mid-synthesis
+
+The saved ComfyUI voice flow uploads a reference audio clip, extracts the
+voice prompt with `FB_Qwen3TTSVoiceClonePrompt`, then saves it with
+`FB_Qwen3TTSSaveVoice`. The saved name appears in `FB_Qwen3TTSLoadSpeaker`
+and can be used by `scripts/synthesize_dialogue.py`.
 
 #### Model Comparison
 
@@ -415,7 +442,7 @@ Merge individual audio chunks into full chapter WAV files:
 1. **Use the 1.7B model** — 18% better WER than 0.6B for Russian. Worth the extra time for final audio.
 2. **Keep chunks short** — `--max-chunk-chars 300`–`600` for stable intonation. Smaller values create more chunks; splitting prefers sentence/clause boundaries and does not cut inside a word.
 3. **Start with batch=1** — increase only if your GPU has enough VRAM (see Batch Size Guide above).
-4. **Install flash-attention** — `pip install flash-attn --no-build-isolation` for 1.5-2x speedup. Highly recommended for production runs.
+4. **Install SageAttention or flash-attention** — `pip install git+https://github.com/thu-ml/SageAttention.git` for the SageAttention path, or `pip install flash-attn --no-build-isolation` for the existing flash-attn path.
 5. **Use `--resume`** — always add `--resume` when running TTS from CLI. It skips already generated chunks, saving hours on interrupted runs.
 6. **Russian instruct prompts** — built-in for 12 voice presets (narrators, male, female). Custom instruct text controls intonation style.
 7. **Yofication** — automatic ё restoration improves pronunciation of words like "всё", "её", "ёлка".
@@ -484,6 +511,14 @@ Step 3: synthesize via ComfyUI
         --chunks-json output/mybook_pdf/chunks_manifest_v2.json \
         --out output/mybook_pdf/audio_chunks \
         --workflow comfyui_workflows/qwen3_tts_template.json
+
+Optional WSL direct runner using the shared ComfyUI model folder:
+    python scripts/tts_runner.py \
+        --chunks-json output/mybook_pdf/chunks_manifest.json \
+        --out output/mybook_pdf \
+        --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
+        --models-dir /mnt/d/ComfyUI-external/models \
+        --resume
 
 Step 4: assemble chapters
     python scripts/assemble_chapter.py \

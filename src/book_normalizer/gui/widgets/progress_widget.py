@@ -28,7 +28,7 @@ class ProgressWidget(QWidget):
         self._status.setWordWrap(True)
         self._status.setStyleSheet(
             "font-weight: 600; font-size: 12px;"
-            "color: rgba(255,255,255,0.7);",
+            "color: rgba(226,232,240,0.72);",
         )
         layout.addWidget(self._status)
 
@@ -43,11 +43,11 @@ class ProgressWidget(QWidget):
         bar_layout.addWidget(self._bar, stretch=1)
 
         self._eta = QLabel("")
-        self._eta.setMinimumWidth(140)
+        self._eta.setMinimumWidth(112)
         self._eta.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._eta.setStyleSheet(
             "font-weight: 600; font-size: 12px;"
-            "color: rgba(124,92,252,0.9);",
+            "color: rgba(196,181,253,0.92);",
         )
         bar_layout.addWidget(self._eta)
         self._bar_row.setVisible(False)
@@ -67,7 +67,7 @@ class ProgressWidget(QWidget):
         remaining = total - current
         status = f"{current}/{total} ({pct:.0f}%)"
         if remaining > 0:
-            status += f" • {t('progress.remaining_chunks', n=remaining)}"
+            status += f" - {t('progress.remaining_chunks', n=remaining)}"
         self._status.setText(status)
         if eta:
             self._eta.setText(t("progress.eta", eta=eta))

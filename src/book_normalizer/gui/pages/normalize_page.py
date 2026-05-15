@@ -7,10 +7,12 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
+    QCheckBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
@@ -46,7 +48,8 @@ class NormalizePage(QWidget):
         self._path_label = QLabel()
         self._path_label.setStyleSheet(
             "font-weight: 700; font-size: 13px; padding: 6px 12px;"
-            "background: rgba(255,255,255,0.04); border-radius: 6px;"
+            "background: rgba(15,23,42,0.62); border: 1px solid rgba(148,163,184,0.12);"
+            "border-radius: 8px;"
         )
         file_row.addWidget(self._path_label, stretch=1)
 
@@ -69,7 +72,7 @@ class NormalizePage(QWidget):
         self._ocr_widgets.extend([self._ocr_mode_label, self._ocr_mode])
 
         self._ocr_mode_hint = QLabel()
-        self._ocr_mode_hint.setStyleSheet("color: rgba(255,255,255,0.35); font-size: 11px;")
+        self._ocr_mode_hint.setStyleSheet("color: rgba(226,232,240,0.46); font-size: 11px;")
         settings.addRow("", self._ocr_mode_hint)
         self._ocr_widgets.append(self._ocr_mode_hint)
 
@@ -81,7 +84,7 @@ class NormalizePage(QWidget):
         self._ocr_widgets.extend([self._ocr_dpi_label, self._ocr_dpi])
 
         self._ocr_dpi_hint = QLabel()
-        self._ocr_dpi_hint.setStyleSheet("color: rgba(255,255,255,0.35); font-size: 11px;")
+        self._ocr_dpi_hint.setStyleSheet("color: rgba(226,232,240,0.46); font-size: 11px;")
         settings.addRow("", self._ocr_dpi_hint)
         self._ocr_widgets.append(self._ocr_dpi_hint)
 
@@ -93,23 +96,40 @@ class NormalizePage(QWidget):
         self._ocr_widgets.extend([self._ocr_psm_label, self._ocr_psm])
 
         self._ocr_psm_hint = QLabel()
-        self._ocr_psm_hint.setStyleSheet("color: rgba(255,255,255,0.35); font-size: 11px;")
+        self._ocr_psm_hint.setStyleSheet("color: rgba(226,232,240,0.46); font-size: 11px;")
         settings.addRow("", self._ocr_psm_hint)
         self._ocr_widgets.append(self._ocr_psm_hint)
 
         self._ocr_not_applicable_label = QLabel()
         self._ocr_not_applicable_label.setStyleSheet(
-            "color: rgba(255,255,255,0.4); font-style: italic; font-size: 12px;"
+            "color: rgba(226,232,240,0.52); font-style: italic; font-size: 12px;"
             "padding: 4px 0;"
         )
         settings.addRow("", self._ocr_not_applicable_label)
+
+        self._llm_normalize = QCheckBox()
+        self._llm_normalize.stateChanged.connect(self._update_llm_visibility)
+        self._llm_normalize_label = QLabel()
+        settings.addRow(self._llm_normalize_label, self._llm_normalize)
+
+        self._llm_endpoint = QLineEdit("http://localhost:11434/v1")
+        self._llm_endpoint_label = QLabel()
+        settings.addRow(self._llm_endpoint_label, self._llm_endpoint)
+
+        self._llm_model = QLineEdit("qwen3:8b")
+        self._llm_model_label = QLabel()
+        settings.addRow(self._llm_model_label, self._llm_model)
+
+        self._llm_hint = QLabel()
+        self._llm_hint.setStyleSheet("color: rgba(226,232,240,0.46); font-size: 11px;")
+        settings.addRow("", self._llm_hint)
 
         layout.addLayout(settings)
 
         # ── Run button ──
         self._btn_run = QPushButton()
         self._btn_run.setObjectName("primaryBtn")
-        self._btn_run.setMinimumHeight(44)
+        self._btn_run.setMinimumHeight(38)
         self._btn_run.clicked.connect(self._run_normalization)
         self._btn_run.setEnabled(False)
         layout.addWidget(self._btn_run)
@@ -123,8 +143,8 @@ class NormalizePage(QWidget):
 
         self._raw_label = QLabel()
         self._raw_label.setStyleSheet(
-            "font-weight: 700; font-size: 11px; color: rgba(255,255,255,0.5);"
-            "text-transform: uppercase; letter-spacing: 1px;"
+            "font-weight: 800; font-size: 11px; color: rgba(226,232,240,0.62);"
+            "text-transform: uppercase;"
         )
         raw_container = QWidget()
         raw_layout = QVBoxLayout(raw_container)
@@ -142,8 +162,8 @@ class NormalizePage(QWidget):
         norm_layout.setSpacing(4)
         self._norm_label = QLabel()
         self._norm_label.setStyleSheet(
-            "font-weight: 700; font-size: 11px; color: rgba(255,255,255,0.5);"
-            "text-transform: uppercase; letter-spacing: 1px;"
+            "font-weight: 800; font-size: 11px; color: rgba(226,232,240,0.62);"
+            "text-transform: uppercase;"
         )
         norm_layout.addWidget(self._norm_label)
         self._norm_text = QPlainTextEdit()
@@ -154,6 +174,7 @@ class NormalizePage(QWidget):
         layout.addWidget(splitter, stretch=1)
 
         self._update_ocr_visibility()
+        self._update_llm_visibility()
         self.retranslate()
 
     def _update_ocr_visibility(self) -> None:
@@ -165,6 +186,19 @@ class NormalizePage(QWidget):
         self._ocr_not_applicable_label.setVisible(
             bool(self._selected_path) and not is_pdf
         )
+
+    def _update_llm_visibility(self) -> None:
+        """Show local LLM settings only when LLM normalization is enabled."""
+        enabled = self._llm_normalize.isChecked()
+        for widget in (
+            self._llm_endpoint_label,
+            self._llm_endpoint,
+            self._llm_model_label,
+            self._llm_model,
+            self._llm_hint,
+        ):
+            widget.setVisible(enabled)
+            widget.setEnabled(enabled)
 
     def retranslate(self) -> None:
         """Update all translatable strings."""
@@ -184,6 +218,17 @@ class NormalizePage(QWidget):
         self._ocr_psm_label.setToolTip(t("norm.ocr_psm_tip"))
         self._ocr_psm_hint.setText(t("norm.ocr_psm_hint"))
         self._ocr_not_applicable_label.setText(t("norm.ocr_not_applicable"))
+        self._llm_normalize_label.setText(t("norm.llm_normalize"))
+        self._llm_normalize.setText(t("norm.llm_normalize_check"))
+        self._llm_normalize.setToolTip(t("norm.llm_tip"))
+        self._llm_normalize_label.setToolTip(t("norm.llm_tip"))
+        self._llm_endpoint_label.setText(t("norm.llm_endpoint"))
+        self._llm_endpoint.setToolTip(t("norm.llm_tip"))
+        self._llm_endpoint_label.setToolTip(t("norm.llm_tip"))
+        self._llm_model_label.setText(t("norm.llm_model"))
+        self._llm_model.setToolTip(t("norm.llm_tip"))
+        self._llm_model_label.setToolTip(t("norm.llm_tip"))
+        self._llm_hint.setText(t("norm.llm_hint"))
         self._btn_run.setText(t("norm.run"))
         self._raw_text.setPlaceholderText(t("norm.raw_placeholder"))
         self._norm_text.setPlaceholderText(t("norm.norm_placeholder"))
@@ -217,6 +262,9 @@ class NormalizePage(QWidget):
             ocr_mode=self._ocr_mode.currentText(),
             ocr_dpi=self._ocr_dpi.value(),
             ocr_psm=self._ocr_psm.value(),
+            llm_normalize=self._llm_normalize.isChecked(),
+            llm_endpoint=self._llm_endpoint.text().strip() or "http://localhost:11434/v1",
+            llm_model=self._llm_model.text().strip() or "qwen3:8b",
         )
         self._worker.progress.connect(self._progress.set_status)
         self._worker.progress_pct.connect(self._progress.set_progress)

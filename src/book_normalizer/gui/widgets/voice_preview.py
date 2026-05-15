@@ -31,21 +31,21 @@ _SCRIPT_PATH = _PROJECT_ROOT / "scripts" / "generate_voice_previews.py"
 _DEFAULT_PREVIEW_DIR = _PROJECT_ROOT / "voice_previews"
 
 _STYLE_STATUS_NORMAL = (
-    "color: rgba(255,255,255,0.5); font-size: 11px;"
+    "color: rgba(226,232,240,0.54); font-size: 11px;"
     "background: transparent; border: none; padding: 2px 0;"
 )
 _STYLE_STATUS_ACTIVE = (
-    "color: rgba(124,92,252,0.8); font-size: 11px;"
+    "color: rgba(196,181,253,0.92); font-size: 11px;"
     "background: transparent; border: none; padding: 2px 0;"
 )
 _STYLE_STATUS_OK = (
-    "color: rgba(0,184,148,0.9); font-size: 12px;"
+    "color: #99f6e4; font-size: 12px;"
     "background: transparent; border: none; padding: 2px 0;"
 )
 _STYLE_STATUS_ERR = (
-    "color: rgba(231,76,60,0.9); font-size: 12px;"
-    "background: rgba(231,76,60,0.08);"
-    "border: 1px solid rgba(231,76,60,0.2);"
+    "color: #fca5a5; font-size: 12px;"
+    "background: rgba(239,68,68,0.10);"
+    "border: 1px solid rgba(248,113,113,0.22);"
     "border-radius: 6px; padding: 6px 8px;"
 )
 
@@ -217,13 +217,13 @@ class VoiceCard(QWidget):
         self.setObjectName("voiceCard")
         self.setStyleSheet(
             "#voiceCard {"
-            "  background: rgba(255,255,255,0.04);"
-            "  border: 1px solid rgba(255,255,255,0.08);"
+            "  background: rgba(15,23,42,0.58);"
+            "  border: 1px solid rgba(148,163,184,0.12);"
             "  border-radius: 10px; padding: 4px;"
             "}"
             "#voiceCard:hover {"
-            "  background: rgba(124,92,252,0.08);"
-            "  border-color: rgba(124,92,252,0.25);"
+            "  background: rgba(30,41,59,0.78);"
+            "  border-color: rgba(139,92,246,0.32);"
             "}"
         )
 
@@ -237,15 +237,15 @@ class VoiceCard(QWidget):
         self._checkbox.setStyleSheet(
             "QCheckBox::indicator {"
             "  width: 16px; height: 16px; border-radius: 3px;"
-            "  border: 1px solid rgba(255,255,255,0.2);"
-            "  background: rgba(255,255,255,0.04);"
+            "  border: 1px solid rgba(148,163,184,0.24);"
+            "  background: rgba(15,23,42,0.72);"
             "}"
             "QCheckBox::indicator:checked {"
-            "  background: rgba(124,92,252,0.6);"
-            "  border-color: rgba(124,92,252,0.8);"
+            "  background: rgba(139,92,246,0.72);"
+            "  border-color: rgba(196,181,253,0.88);"
             "}"
             "QCheckBox::indicator:hover {"
-            "  border-color: rgba(124,92,252,0.5);"
+            "  border-color: rgba(139,92,246,0.56);"
             "}"
         )
         layout.addWidget(self._checkbox)
@@ -263,7 +263,7 @@ class VoiceCard(QWidget):
         )
         self._label = QLabel(label_text)
         self._label.setStyleSheet(
-            "font-size: 13px; font-weight: 700; color: #e0e0e0;"
+            "font-size: 13px; font-weight: 700; color: #f1f5f9;"
             "background: transparent; border: none;"
         )
         top_row.addWidget(self._label)
@@ -286,7 +286,7 @@ class VoiceCard(QWidget):
         )
         self._desc = QLabel(desc)
         self._desc.setStyleSheet(
-            "color: rgba(255,255,255,0.35); font-size: 10px;"
+            "color: rgba(226,232,240,0.48); font-size: 10px;"
             "background: transparent; border: none;"
         )
         self._desc.setWordWrap(True)
@@ -294,7 +294,7 @@ class VoiceCard(QWidget):
 
         self._speaker_lbl = QLabel(f"speaker: {self.preset.speaker}")
         self._speaker_lbl.setStyleSheet(
-            "color: rgba(124,92,252,0.55); font-size: 9px;"
+            "color: rgba(196,181,253,0.66); font-size: 9px;"
             "font-weight: 600; background: transparent; border: none;"
         )
         info.addWidget(self._speaker_lbl)
@@ -303,21 +303,22 @@ class VoiceCard(QWidget):
 
         # Play button.
         self._btn_play = QPushButton("\u25B6")
-        self._btn_play.setFixedSize(32, 32)
+        self._btn_play.setMinimumSize(32, 32)
+        self._btn_play.setMaximumSize(40, 40)
         self._btn_play.setObjectName("playBtn")
         self._btn_play.setStyleSheet(
             "#playBtn {"
             "  font-size: 14px; border-radius: 16px;"
-            "  background: rgba(124,92,252,0.15); color: #7c5cfc;"
-            "  border: 1px solid rgba(124,92,252,0.25);"
+            "  background: rgba(139,92,246,0.16); color: #c4b5fd;"
+            "  border: 1px solid rgba(196,181,253,0.28);"
             "}"
             "#playBtn:hover {"
-            "  background: rgba(124,92,252,0.3); color: #fff;"
+            "  background: rgba(139,92,246,0.32); color: #fff;"
             "}"
             "#playBtn:disabled {"
-            "  background: rgba(255,255,255,0.02);"
-            "  color: rgba(255,255,255,0.12);"
-            "  border-color: rgba(255,255,255,0.04);"
+            "  background: rgba(15,23,42,0.42);"
+            "  color: rgba(226,232,240,0.16);"
+            "  border-color: rgba(148,163,184,0.08);"
             "}"
         )
         self._btn_play.clicked.connect(self._play)
@@ -343,8 +344,8 @@ class VoiceCard(QWidget):
             self._status_badge.setStyleSheet(
                 "font-size: 10px; font-weight: 700;"
                 "padding: 1px 6px; border-radius: 4px;"
-                "background: rgba(0,184,148,0.15);"
-                "color: rgba(0,184,148,0.9);"
+                "background: rgba(16,185,129,0.16);"
+                "color: #99f6e4;"
                 "border: none;"
             )
             self._checkbox.setChecked(False)
@@ -353,8 +354,8 @@ class VoiceCard(QWidget):
             self._status_badge.setStyleSheet(
                 "font-size: 10px; font-weight: 700;"
                 "padding: 1px 6px; border-radius: 4px;"
-                "background: rgba(255,255,255,0.05);"
-                "color: rgba(255,255,255,0.25);"
+                "background: rgba(148,163,184,0.08);"
+                "color: rgba(226,232,240,0.28);"
                 "border: none;"
             )
             self._checkbox.setChecked(True)
@@ -429,7 +430,7 @@ class VoicePreviewPanel(QWidget):
         self._dir_label = QLabel()
         self._dir_label.setStyleSheet(
             "font-weight: 600; font-size: 11px;"
-            "color: rgba(255,255,255,0.6);"
+            "color: rgba(226,232,240,0.62);"
             "background: transparent; border: none;"
         )
         dir_row.addWidget(self._dir_label)
@@ -448,7 +449,7 @@ class VoicePreviewPanel(QWidget):
         self._phrase_label = QLabel()
         self._phrase_label.setStyleSheet(
             "font-weight: 600; font-size: 11px;"
-            "color: rgba(255,255,255,0.6);"
+            "color: rgba(226,232,240,0.62);"
             "background: transparent; border: none;"
             "padding-top: 2px;"
         )
@@ -459,9 +460,9 @@ class VoicePreviewPanel(QWidget):
         self._phrase_input.setMaximumHeight(48)
         self._phrase_input.setStyleSheet(
             "QTextEdit {"
-            "  background: rgba(255,255,255,0.04);"
-            "  border: 1px solid rgba(255,255,255,0.1);"
-            "  border-radius: 6px; color: #d0d0d0;"
+            "  background: rgba(9,14,24,0.76);"
+            "  border: 1px solid rgba(148,163,184,0.14);"
+            "  border-radius: 8px; color: #d1d5db;"
             "  font-size: 12px; padding: 4px 6px;"
             "}"
         )
@@ -528,10 +529,10 @@ class VoicePreviewPanel(QWidget):
             cat_label = QLabel()
             cat_label.setStyleSheet(
                 "font-weight: 700; font-size: 11px;"
-                "color: rgba(124,92,252,0.7);"
+                "color: rgba(196,181,253,0.78);"
                 "background: transparent; border: none;"
                 "padding: 4px 0 1px 0;"
-                "text-transform: uppercase; letter-spacing: 1px;"
+                "text-transform: uppercase;"
             )
             self._cat_labels.append((cat_id, cat_label))
             layout.addWidget(cat_label)

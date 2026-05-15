@@ -30,7 +30,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Books to Audio")
-        self.setMinimumSize(1200, 800)
+        self._ui_scale = 1.0
+        self.setMinimumSize(760, 520)
+        self.resize(1180, 760)
         icon_path = Path(__file__).resolve().parent / "assets" / "icon.svg"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
@@ -44,8 +46,8 @@ class MainWindow(QMainWindow):
         central.setObjectName("centralWidget")
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(16, 12, 16, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 12, 14, 8)
+        layout.setSpacing(10)
 
         # ── Header row ──
         header_row = QHBoxLayout()
@@ -53,7 +55,7 @@ class MainWindow(QMainWindow):
 
         self._title = QLabel()
         self._title.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
-        self._title.setStyleSheet("color: #fff; letter-spacing: 1px;")
+        self._title.setStyleSheet("color: #f8fafc;")
         header_row.addWidget(self._title)
 
         header_row.addStretch()
@@ -61,14 +63,15 @@ class MainWindow(QMainWindow):
         # Language switcher.
         self._lang_label = QLabel()
         self._lang_label.setStyleSheet(
-            "color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 600;"
+            "color: rgba(226,232,240,0.62); font-size: 12px; font-weight: 600;"
         )
         header_row.addWidget(self._lang_label)
 
         self._lang_combo = QComboBox()
         self._lang_combo.addItem("\U0001f1f7\U0001f1fa  \u0420\u0443\u0441\u0441\u043a\u0438\u0439", "ru")
         self._lang_combo.addItem("\U0001f1ec\U0001f1e7  English", "en")
-        self._lang_combo.setFixedWidth(160)
+        self._lang_combo.setMinimumWidth(136)
+        self._lang_combo.setMaximumWidth(210)
         self._lang_combo.setStyleSheet(
             "QComboBox { font-size: 13px; font-weight: 600; }"
         )
@@ -81,8 +84,7 @@ class MainWindow(QMainWindow):
         self._subtitle = QLabel()
         self._subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._subtitle.setStyleSheet(
-            "color: rgba(255,255,255,0.4); font-size: 13px; "
-            "margin-bottom: 4px; letter-spacing: 2px;"
+            "color: rgba(226,232,240,0.48); font-size: 13px; margin-bottom: 4px;"
         )
         layout.addWidget(self._subtitle)
 
@@ -103,6 +105,17 @@ class MainWindow(QMainWindow):
         # ── Status bar ──
         self._statusbar = QStatusBar()
         self.setStatusBar(self._statusbar)
+
+    def set_ui_scale(self, scale: float) -> None:
+        """Apply global UI scale to window-specific sizing."""
+
+        self._ui_scale = scale
+        self.setMinimumSize(max(700, round(760 * scale)), max(480, round(520 * scale)))
+        self._title.setFont(
+            QFont("Segoe UI", max(16, round(22 * scale)), QFont.Weight.Bold)
+        )
+        self._lang_combo.setMinimumWidth(max(124, round(136 * scale)))
+        self._lang_combo.setMaximumWidth(max(170, round(210 * scale)))
 
     def _connect_signals(self) -> None:
         """Wire up page transitions."""

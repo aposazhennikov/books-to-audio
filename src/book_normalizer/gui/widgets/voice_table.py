@@ -33,7 +33,7 @@ INTONATION_KEYS = [
     "neutral", "calm", "excited", "joyful", "sad", "angry", "whisper",
 ]
 
-_DIALOGUE_BG = QColor(124, 92, 252, 25)
+_DIALOGUE_BG = QColor(139, 92, 246, 28)
 
 
 def _role_from_voice_id(voice_id: str, fallback: str = "narrator") -> str:
@@ -51,7 +51,7 @@ def _role_from_voice_id(voice_id: str, fallback: str = "narrator") -> str:
 def _make_voice_combo(current: str = "narrator_calm") -> QComboBox:
     """Create a QComboBox with all voice presets, grouped by category."""
     combo = QComboBox()
-    combo.setMinimumWidth(190)
+    combo.setMinimumWidth(160)
     lang = get_language()
 
     categories = [
@@ -75,7 +75,7 @@ def _make_voice_combo(current: str = "narrator_calm") -> QComboBox:
         model = combo.model()
         item = model.item(idx)
         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-        item.setForeground(QBrush(QColor(124, 92, 252, 180)))
+        item.setForeground(QBrush(QColor(196, 181, 253, 190)))
 
         presets = [p for p in VOICE_PRESETS if p.category == cat_id]
         for p in presets:
@@ -87,14 +87,14 @@ def _make_voice_combo(current: str = "narrator_calm") -> QComboBox:
             combo.setCurrentIndex(i)
             break
 
-    combo.view().setMinimumWidth(260)
+    combo.view().setMinimumWidth(230)
     return combo
 
 
 def _make_intonation_combo(current: str = "neutral") -> QComboBox:
     """Create a QComboBox with translated intonation options."""
     combo = QComboBox()
-    combo.setMinimumWidth(130)
+    combo.setMinimumWidth(118)
 
     for key in INTONATION_KEYS:
         combo.addItem(t(f"inton.{key}"), key)
@@ -161,7 +161,7 @@ class VoiceTableWidget(QWidget):
         toolbar2.setSpacing(4)
 
         self._quick_combo = _make_voice_combo("narrator_calm")
-        self._quick_combo.setMinimumWidth(220)
+        self._quick_combo.setMinimumWidth(190)
         toolbar2.addWidget(self._quick_combo)
 
         self._btn_apply_all = QPushButton()

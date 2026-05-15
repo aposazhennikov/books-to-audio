@@ -54,7 +54,7 @@ class VoicesPage(QWidget):
 
         # Left panel: settings + actions.
         left_panel = QWidget()
-        left_panel.setMinimumWidth(360)
+        left_panel.setMinimumWidth(300)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
@@ -75,7 +75,7 @@ class VoicesPage(QWidget):
         self._speaker_mode_hint = QLabel()
         self._speaker_mode_hint.setWordWrap(True)
         self._speaker_mode_hint.setStyleSheet(
-            "color: rgba(255,255,255,0.4); font-size: 10px;"
+            "color: rgba(226,232,240,0.48); font-size: 10px;"
             "padding: 0 0 4px 0;",
         )
         settings.addRow("", self._speaker_mode_hint)
@@ -130,7 +130,7 @@ class VoicesPage(QWidget):
 
         self._btn_detect = QPushButton()
         self._btn_detect.setObjectName("primaryBtn")
-        self._btn_detect.setMinimumHeight(40)
+        self._btn_detect.setMinimumHeight(38)
         self._btn_detect.clicked.connect(self._run_detection)
         self._btn_detect.setEnabled(False)
         btn_row.addWidget(self._btn_detect)
@@ -150,24 +150,24 @@ class VoicesPage(QWidget):
         btn_row2.setSpacing(8)
 
         self._btn_build = QPushButton()
-        self._btn_build.setMinimumHeight(36)
+        self._btn_build.setMinimumHeight(34)
         self._btn_build.clicked.connect(self._build_tts_chunks)
         self._btn_build.setEnabled(False)
         self._btn_build.setStyleSheet(
             "QPushButton {"
-            "  background: rgba(0,184,148,0.15);"
-            "  color: rgba(0,184,148,0.9);"
-            "  border: 1px solid rgba(0,184,148,0.3);"
+            "  background: rgba(16,185,129,0.16);"
+            "  color: #99f6e4;"
+            "  border: 1px solid rgba(45,212,191,0.32);"
             "  border-radius: 8px; font-weight: 700;"
             "  padding: 6px 16px;"
             "}"
             "QPushButton:hover {"
-            "  background: rgba(0,184,148,0.25);"
+            "  background: rgba(16,185,129,0.26);"
             "}"
             "QPushButton:disabled {"
-            "  color: rgba(255,255,255,0.2);"
-            "  background: rgba(255,255,255,0.03);"
-            "  border-color: rgba(255,255,255,0.06);"
+            "  color: rgba(226,232,240,0.24);"
+            "  background: rgba(15,23,42,0.50);"
+            "  border-color: rgba(148,163,184,0.08);"
             "}",
         )
         btn_row2.addWidget(self._btn_build)
@@ -181,7 +181,7 @@ class VoicesPage(QWidget):
         self._manifest_label = QLabel("")
         self._manifest_label.setWordWrap(True)
         self._manifest_label.setStyleSheet(
-            "color: rgba(255,255,255,0.45); font-size: 10px;"
+            "color: rgba(226,232,240,0.52); font-size: 10px;"
             "padding: 2px 0;",
         )
         self._manifest_label.setTextInteractionFlags(
@@ -194,8 +194,8 @@ class VoicesPage(QWidget):
 
         # Right panel: voice preview (scrollable, vertical only).
         right_panel = QWidget()
-        right_panel.setMinimumWidth(300)
-        right_panel.setMaximumWidth(520)
+        right_panel.setMinimumWidth(240)
+        right_panel.setMaximumWidth(480)
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(4, 0, 0, 0)
         right_layout.setSpacing(4)
@@ -203,7 +203,7 @@ class VoicesPage(QWidget):
         self._preview_title = QLabel()
         self._preview_title.setStyleSheet(
             "font-weight: 700; font-size: 14px;"
-            "color: rgba(255,255,255,0.8); padding: 4px 0;",
+            "color: rgba(248,250,252,0.86); padding: 4px 0;",
         )
         right_layout.addWidget(self._preview_title)
 
@@ -219,7 +219,7 @@ class VoicesPage(QWidget):
             "QScrollArea { border: none; background: transparent; }",
         )
         self._voice_preview = VoicePreviewPanel()
-        self._voice_preview.setMaximumWidth(500)
+        self._voice_preview.setMaximumWidth(460)
         scroll.setWidget(self._voice_preview)
         right_layout.addWidget(scroll)
 
@@ -243,7 +243,7 @@ class VoicesPage(QWidget):
         # Stats.
         self._stats_label = QLabel("")
         self._stats_label.setStyleSheet(
-            "color: rgba(255,255,255,0.6); font-size: 12px;"
+            "color: rgba(226,232,240,0.64); font-size: 12px;"
             "font-weight: 600; padding: 4px 0;",
         )
         layout.addWidget(self._stats_label)

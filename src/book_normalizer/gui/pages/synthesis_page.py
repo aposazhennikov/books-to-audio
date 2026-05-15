@@ -1,4 +1,4 @@
-"""Synthesis page — TTS generation with progress and ETA."""
+﻿"""Synthesis page — TTS generation with progress and ETA."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QTabWidget,
     QToolButton,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -96,30 +97,31 @@ class _CloneVoiceRow(QWidget):
 
         self._voice_combo = QComboBox()
         self._voice_combo.addItems(voice_ids)
-        self._voice_combo.setMinimumWidth(160)
+        self._voice_combo.setMinimumWidth(128)
         row1.addWidget(self._voice_combo)
 
         self._wav_edit = QLineEdit()
         self._wav_edit.setPlaceholderText("reference.wav")
         self._wav_edit.setReadOnly(True)
         self._wav_edit.setStyleSheet(
-            "color: rgba(255,255,255,0.7); font-size: 11px; padding: 4px 6px;"
-            "background: rgba(255,255,255,0.06); border-radius: 4px;"
-            "border: 1px solid rgba(255,255,255,0.1);",
+            "color: rgba(226,232,240,0.78); font-size: 11px; padding: 4px 6px;"
+            "background: rgba(15,23,42,0.72); border-radius: 6px;"
+            "border: 1px solid rgba(148,163,184,0.16);",
         )
         row1.addWidget(self._wav_edit, stretch=1)
 
-        self._btn_wav = QPushButton("WAV…")
-        self._btn_wav.setMaximumWidth(60)
+        self._btn_wav = QPushButton("WAV...")
+        self._btn_wav.setMaximumWidth(72)
         self._btn_wav.clicked.connect(self._browse_wav)
         row1.addWidget(self._btn_wav)
 
-        self._btn_remove = QPushButton("✕")
-        self._btn_remove.setMaximumWidth(32)
+        self._btn_remove = QPushButton("x")
+        self._btn_remove.setMaximumWidth(34)
         self._btn_remove.setStyleSheet(
-            "QPushButton { color: rgba(255,100,100,0.8); font-weight: 700;"
-            "background: transparent; border: none; padding: 2px; }"
-            "QPushButton:hover { color: rgba(255,80,80,1); }",
+            "QPushButton { color: rgba(252,165,165,0.86); font-weight: 700;"
+            "background: rgba(239,68,68,0.08); border: 1px solid rgba(248,113,113,0.16);"
+            "border-radius: 7px; padding: 2px; }"
+            "QPushButton:hover { color: #ffffff; background: rgba(239,68,68,0.24); }",
         )
         self._btn_remove.clicked.connect(self._on_remove)
         row1.addWidget(self._btn_remove)
@@ -129,9 +131,9 @@ class _CloneVoiceRow(QWidget):
         # Row 2: transcript text field.
         self._transcript = QLineEdit()
         self._transcript.setStyleSheet(
-            "color: rgba(255,255,255,0.7); font-size: 11px; padding: 4px 6px;"
-            "background: rgba(255,255,255,0.06); border-radius: 4px;"
-            "border: 1px solid rgba(255,255,255,0.1);",
+            "color: rgba(226,232,240,0.78); font-size: 11px; padding: 4px 6px;"
+            "background: rgba(15,23,42,0.72); border-radius: 6px;"
+            "border: 1px solid rgba(148,163,184,0.16);",
         )
         layout.addWidget(self._transcript)
 
@@ -222,7 +224,8 @@ class SynthesisPage(QWidget):
         )
         self._manifest_label.setStyleSheet(
             "font-weight: 700; font-size: 13px; padding: 6px 12px;"
-            "background: rgba(255,255,255,0.04); border-radius: 6px;",
+            "background: rgba(15,23,42,0.62); border: 1px solid rgba(148,163,184,0.12);"
+            "border-radius: 8px;",
         )
         file_row.addWidget(self._manifest_label, stretch=1)
 
@@ -247,14 +250,14 @@ class SynthesisPage(QWidget):
 
         self._btn_start = QPushButton()
         self._btn_start.setObjectName("successBtn")
-        self._btn_start.setMinimumHeight(44)
+        self._btn_start.setMinimumHeight(38)
         self._btn_start.clicked.connect(self._start_synthesis)
         self._btn_start.setEnabled(False)
         btn_row.addWidget(self._btn_start)
 
         self._btn_stop = QPushButton()
         self._btn_stop.setObjectName("dangerBtn")
-        self._btn_stop.setMinimumHeight(44)
+        self._btn_stop.setMinimumHeight(38)
         self._btn_stop.clicked.connect(self._stop_synthesis)
         self._btn_stop.setEnabled(False)
         btn_row.addWidget(self._btn_stop)
@@ -275,11 +278,11 @@ class SynthesisPage(QWidget):
 
         self._log_edit = QPlainTextEdit()
         self._log_edit.setReadOnly(True)
-        self._log_edit.setMaximumHeight(110)
+        self._log_edit.setMaximumHeight(104)
         self._log_edit.setStyleSheet(
             "font-family: 'Cascadia Code', Consolas, monospace;"
-            "font-size: 11px; background: rgba(0,0,0,0.3);"
-            "border-radius: 4px; padding: 6px;",
+            "font-size: 11px; background: rgba(9,14,24,0.86);"
+            "border: 1px solid rgba(148,163,184,0.12); border-radius: 8px; padding: 6px;",
         )
         bottom.addWidget(self._log_edit)
 
@@ -289,7 +292,7 @@ class SynthesisPage(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
         self._status.setStyleSheet(
-            "color: rgba(255,255,255,0.6); font-size: 12px; padding: 2px 0;",
+            "color: rgba(226,232,240,0.62); font-size: 12px; padding: 2px 0;",
         )
         bottom.addWidget(self._status)
 
@@ -303,25 +306,25 @@ class SynthesisPage(QWidget):
         frame.setObjectName("sampleVoicePanel")
         frame.setStyleSheet(
             "QFrame#sampleVoicePanel {"
-            "  background: rgba(124,92,252,0.07);"
-            "  border: 1px solid rgba(124,92,252,0.25);"
-            "  border-radius: 8px;"
+            "  background: rgba(18,24,36,0.94);"
+            "  border: 1px solid rgba(139,92,246,0.24);"
+            "  border-radius: 14px;"
             "}"
         )
         outer = QVBoxLayout(frame)
-        outer.setContentsMargins(12, 10, 12, 10)
-        outer.setSpacing(8)
+        outer.setContentsMargins(14, 12, 14, 12)
+        outer.setSpacing(9)
 
         self._sample_title = QLabel()
         self._sample_title.setStyleSheet(
-            "font-weight: 700; font-size: 13px; color: rgba(190,170,255,0.98);"
+            "font-weight: 800; font-size: 14px; color: #ddd6fe;"
         )
         outer.addWidget(self._sample_title)
 
         self._sample_desc = QLabel()
         self._sample_desc.setWordWrap(True)
         self._sample_desc.setStyleSheet(
-            "color: rgba(255,255,255,0.55); font-size: 11px;"
+            "color: rgba(226,232,240,0.62); font-size: 11px;"
         )
         outer.addWidget(self._sample_desc)
 
@@ -351,7 +354,7 @@ class SynthesisPage(QWidget):
         playback_row.addWidget(self._btn_sample_play)
         self._sample_duration_label = QLabel("0:00 / 0:00")
         self._sample_duration_label.setStyleSheet(
-            "color: rgba(255,255,255,0.7); font-size: 12px;"
+            "color: rgba(226,232,240,0.76); font-size: 12px;"
         )
         playback_row.addWidget(self._sample_duration_label)
         playback_row.addStretch()
@@ -365,7 +368,7 @@ class SynthesisPage(QWidget):
         )
 
         self._sample_transcript_edit = QPlainTextEdit()
-        self._sample_transcript_edit.setMaximumHeight(92)
+        self._sample_transcript_edit.setMaximumHeight(110)
         self._sample_transcript_label = QLabel()
         form.addRow(
             self._label_with_help(
@@ -453,7 +456,7 @@ class SynthesisPage(QWidget):
         self._sample_status = QLabel()
         self._sample_status.setWordWrap(True)
         self._sample_status.setStyleSheet(
-            "color: rgba(255,255,255,0.62); font-size: 11px;"
+            "color: rgba(226,232,240,0.62); font-size: 11px;"
         )
         outer.addWidget(self._sample_status)
         return frame
@@ -467,14 +470,14 @@ class SynthesisPage(QWidget):
 
         self._preset_title = QLabel()
         self._preset_title.setStyleSheet(
-            "font-weight: 700; font-size: 13px; color: rgba(190,170,255,0.98);"
+            "font-weight: 800; font-size: 14px; color: #ddd6fe;"
         )
         layout.addWidget(self._preset_title)
 
         self._preset_desc = QLabel()
         self._preset_desc.setWordWrap(True)
         self._preset_desc.setStyleSheet(
-            "color: rgba(255,255,255,0.58); font-size: 11px;"
+            "color: rgba(226,232,240,0.62); font-size: 11px;"
         )
         layout.addWidget(self._preset_desc)
 
@@ -501,14 +504,14 @@ class SynthesisPage(QWidget):
 
         self._advanced_title = QLabel()
         self._advanced_title.setStyleSheet(
-            "font-weight: 700; font-size: 13px; color: rgba(190,170,255,0.98);"
+            "font-weight: 800; font-size: 14px; color: #ddd6fe;"
         )
         layout.addWidget(self._advanced_title)
 
         self._advanced_desc = QLabel()
         self._advanced_desc.setWordWrap(True)
         self._advanced_desc.setStyleSheet(
-            "color: rgba(255,255,255,0.58); font-size: 11px;"
+            "color: rgba(226,232,240,0.62); font-size: 11px;"
         )
         layout.addWidget(self._advanced_desc)
 
@@ -519,7 +522,7 @@ class SynthesisPage(QWidget):
         model_dir_row = QHBoxLayout()
         model_dir_row.setSpacing(6)
         self._models_dir_edit = QLineEdit(str(default_comfyui_models_dir()))
-        self._models_dir_edit.setMinimumWidth(320)
+        self._models_dir_edit.setMinimumWidth(180)
         model_dir_row.addWidget(self._models_dir_edit, stretch=1)
         self._btn_models_dir = QPushButton()
         self._btn_models_dir.clicked.connect(self._browse_models_dir)
@@ -548,7 +551,7 @@ class SynthesisPage(QWidget):
         )
 
         self._chapter_combo = QComboBox()
-        self._chapter_combo.setMinimumWidth(200)
+        self._chapter_combo.setMinimumWidth(150)
         self._chapter_label = QLabel()
         form.addRow(
             self._label_with_help(self._chapter_label, "synth.chapter_help"),
@@ -565,7 +568,7 @@ class SynthesisPage(QWidget):
         self._batch_size = QSpinBox()
         self._batch_size.setRange(1, 8)
         self._batch_size.setValue(1)
-        self._batch_size.setMaximumWidth(120)
+        self._batch_size.setMaximumWidth(140)
         self._batch_label = QLabel()
         form.addRow(
             self._label_with_help(self._batch_label, "synth.batch_help"),
@@ -577,7 +580,7 @@ class SynthesisPage(QWidget):
         self._chunk_timeout.setValue(300)
         self._chunk_timeout.setSingleStep(30)
         self._chunk_timeout.setSuffix(" s")
-        self._chunk_timeout.setMaximumWidth(120)
+        self._chunk_timeout.setMaximumWidth(150)
         self._chunk_timeout_label = QLabel()
         form.addRow(
             self._label_with_help(
@@ -604,7 +607,7 @@ class SynthesisPage(QWidget):
         layout.addLayout(form)
         self._chapter_info = QLabel()
         self._chapter_info.setStyleSheet(
-            "color: rgba(255,255,255,0.42); font-size: 11px;"
+            "color: rgba(226,232,240,0.48); font-size: 11px;"
         )
         layout.addWidget(self._chapter_info)
         layout.addStretch()
@@ -624,21 +627,31 @@ class SynthesisPage(QWidget):
     def _help_button(self, help_key: str) -> QToolButton:
         btn = QToolButton()
         btn.setText("?")
-        btn.setAutoRaise(True)
-        btn.setCursor(Qt.CursorShape.WhatsThisCursor)
-        btn.setFixedSize(20, 20)
-        btn.setStyleSheet(
-            "QToolButton {"
-            "  color: rgba(255,255,255,0.72);"
-            "  border: 1px solid rgba(255,255,255,0.24);"
-            "  border-radius: 10px;"
-            "  background: rgba(255,255,255,0.06);"
-            "  font-weight: 700;"
-            "}"
-            "QToolButton:hover { background: rgba(124,92,252,0.28); }"
+        btn.setProperty("helpButton", True)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setMinimumSize(20, 20)
+        btn.setMaximumSize(24, 24)
+        btn.setToolTip(t(help_key))
+        btn.setStatusTip(t(help_key))
+        btn.setToolTipDuration(12000)
+        btn.clicked.connect(
+            lambda _checked=False, b=btn, key=help_key: self._show_help_tooltip(b, key),
         )
         self._help_buttons.append((btn, help_key))
         return btn
+
+    def _show_help_tooltip(self, button: QToolButton, help_key: str) -> None:
+        """Show help text immediately on click as well as on hover."""
+
+        text = t(help_key)
+        button.setToolTip(text)
+        QToolTip.showText(
+            button.mapToGlobal(button.rect().bottomRight()),
+            text,
+            button,
+            button.rect(),
+            12000,
+        )
 
     def _build_clone_panel(self) -> QFrame:
         """Build the voice cloning expandable panel."""
@@ -646,15 +659,15 @@ class SynthesisPage(QWidget):
         frame.setObjectName("clonePanel")
         frame.setStyleSheet(
             "QFrame#clonePanel {"
-            "  background: rgba(0,184,148,0.06);"
-            "  border: 1px solid rgba(0,184,148,0.2);"
-            "  border-radius: 8px;"
+            "  background: rgba(16,185,129,0.08);"
+            "  border: 1px solid rgba(45,212,191,0.22);"
+            "  border-radius: 14px;"
             "  padding: 0px;"
             "}"
         )
         outer = QVBoxLayout(frame)
-        outer.setContentsMargins(12, 8, 12, 8)
-        outer.setSpacing(6)
+        outer.setContentsMargins(14, 10, 14, 10)
+        outer.setSpacing(8)
 
         # Header row: checkbox + title.
         header = QHBoxLayout()
@@ -664,7 +677,7 @@ class SynthesisPage(QWidget):
 
         self._clone_title = QLabel()
         self._clone_title.setStyleSheet(
-            "font-weight: 700; font-size: 13px; color: rgba(0,220,170,0.9);"
+            "font-weight: 800; font-size: 14px; color: #99f6e4;"
         )
         header.addWidget(self._clone_title, stretch=1)
         outer.addLayout(header)
@@ -673,7 +686,7 @@ class SynthesisPage(QWidget):
         self._clone_desc = QLabel()
         self._clone_desc.setWordWrap(True)
         self._clone_desc.setStyleSheet(
-            "color: rgba(255,255,255,0.5); font-size: 11px; padding: 0 0 4px 0;"
+            "color: rgba(226,232,240,0.58); font-size: 11px; padding: 0 0 4px 0;"
         )
         outer.addWidget(self._clone_desc)
 
@@ -689,30 +702,31 @@ class SynthesisPage(QWidget):
         lbl_role = QLabel()
         lbl_role.setObjectName("cloneColRole")
         lbl_role.setStyleSheet(
-            "color: rgba(255,255,255,0.35); font-size: 10px; font-weight: 600;"
+            "color: rgba(226,232,240,0.42); font-size: 10px; font-weight: 600;"
         )
-        lbl_role.setFixedWidth(160)
+        lbl_role.setMinimumWidth(128)
+        lbl_role.setMaximumWidth(180)
         col_header.addWidget(lbl_role)
         lbl_wav = QLabel()
         lbl_wav.setObjectName("cloneColWav")
         lbl_wav.setStyleSheet(
-            "color: rgba(255,255,255,0.35); font-size: 10px; font-weight: 600;"
+            "color: rgba(226,232,240,0.42); font-size: 10px; font-weight: 600;"
         )
         col_header.addWidget(lbl_wav, stretch=1)
-        col_header.addSpacing(60 + 32 + 6)  # WAV btn + remove btn width.
+        col_header.addSpacing(72 + 34 + 6)  # WAV btn + remove btn width.
         body_layout.addLayout(col_header)
 
         # Separator.
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: rgba(255,255,255,0.08);")
+        sep.setStyleSheet("color: rgba(148,163,184,0.12);")
         body_layout.addWidget(sep)
 
         # Transcript column hint.
         col_transcript = QLabel()
         col_transcript.setObjectName("cloneColTranscript")
         col_transcript.setStyleSheet(
-            "color: rgba(255,255,255,0.35); font-size: 10px; padding: 0 0 2px 0;"
+            "color: rgba(226,232,240,0.42); font-size: 10px; padding: 0 0 2px 0;"
         )
         body_layout.addWidget(col_transcript)
 
@@ -728,12 +742,12 @@ class SynthesisPage(QWidget):
         self._btn_add_clone = QPushButton()
         self._btn_add_clone.setStyleSheet(
             "QPushButton {"
-            "  background: rgba(0,184,148,0.12);"
-            "  color: rgba(0,220,170,0.9);"
-            "  border: 1px dashed rgba(0,184,148,0.4);"
-            "  border-radius: 6px; padding: 5px 14px; font-size: 12px;"
+            "  background: rgba(16,185,129,0.14);"
+            "  color: #99f6e4;"
+            "  border: 1px dashed rgba(45,212,191,0.45);"
+            "  border-radius: 8px; padding: 5px 14px; font-size: 12px;"
             "}"
-            "QPushButton:hover { background: rgba(0,184,148,0.22); }"
+            "QPushButton:hover { background: rgba(16,185,129,0.24); }"
         )
         self._btn_add_clone.clicked.connect(self._add_clone_row)
         add_row.addWidget(self._btn_add_clone)
@@ -814,6 +828,7 @@ class SynthesisPage(QWidget):
         self._advanced_desc.setText(t("synth.advanced_desc"))
         for btn, help_key in self._help_buttons:
             btn.setToolTip(t(help_key))
+            btn.setStatusTip(t(help_key))
 
         self._btn_start.setText(t("synth.start"))
         self._btn_stop.setText(t("synth.stop"))

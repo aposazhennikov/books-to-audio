@@ -106,7 +106,8 @@ class AssemblyPage(QWidget):
         self._dir_label = QLabel()
         self._dir_label.setStyleSheet(
             "font-weight: 700; font-size: 13px; padding: 6px 12px;"
-            "background: rgba(255,255,255,0.04); border-radius: 6px;"
+            "background: rgba(15,23,42,0.62); border: 1px solid rgba(148,163,184,0.12);"
+            "border-radius: 8px;"
         )
         dir_row.addWidget(self._dir_label, stretch=1)
 
@@ -138,7 +139,7 @@ class AssemblyPage(QWidget):
         # ── Run button ──
         self._btn_run = QPushButton()
         self._btn_run.setObjectName("primaryBtn")
-        self._btn_run.setMinimumHeight(44)
+        self._btn_run.setMinimumHeight(38)
         self._btn_run.clicked.connect(self._run_assembly)
         self._btn_run.setEnabled(False)
         layout.addWidget(self._btn_run)
@@ -151,7 +152,7 @@ class AssemblyPage(QWidget):
         self._output_label = QLabel("")
         self._output_label.setWordWrap(True)
         self._output_label.setStyleSheet(
-            "color: rgba(255,255,255,0.6); font-size: 12px; padding: 4px 0;"
+            "color: rgba(226,232,240,0.62); font-size: 12px; padding: 4px 0;"
         )
         layout.addWidget(self._output_label)
         layout.addStretch()

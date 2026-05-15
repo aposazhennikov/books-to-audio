@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from book_normalizer.config import OcrMode
 from book_normalizer.gui.i18n import t
 
 
@@ -17,6 +18,21 @@ def _format_eta(seconds: float) -> str:
     m = int(seconds // 60)
     s = int(seconds % 60)
     return f"{m}m {s:02d}s"
+
+
+def _effective_pdf_extraction_mode(
+    requested_mode: OcrMode,
+    *,
+    tesseract_available: bool,
+) -> OcrMode:
+    """Return the PDF extraction mode the GUI can safely run."""
+    if tesseract_available or requested_mode == OcrMode.OFF:
+        return requested_mode
+
+    if requested_mode == OcrMode.FORCE:
+        raise RuntimeError(t("norm.err_tesseract_missing_force"))
+
+    return OcrMode.OFF
 
 
 class NormalizeWorker(QThread):
@@ -160,12 +176,13 @@ class NormalizeWorker(QThread):
     def run(self) -> None:
         try:
             from book_normalizer.chaptering.detector import ChapterDetector
-            from book_normalizer.config import OcrMode
             from book_normalizer.loaders.factory import LoaderFactory
             from book_normalizer.loaders.pdf_loader import (
                 PdfLoader,
                 PdfOcrCompareResult,
                 PdfTextVariant,
+                _tesseract_available,
+                extract_pdf_with_ocr_mode,
                 select_pdf_text_for_mode,
             )
             from book_normalizer.models.book import Book, Chapter, Metadata
@@ -177,16 +194,28 @@ class NormalizeWorker(QThread):
 
             if is_pdf:
                 ocr = OcrMode(self._ocr_mode)
+                tesseract_available = _tesseract_available()
+                effective_ocr = _effective_pdf_extraction_mode(
+                    ocr,
+                    tesseract_available=tesseract_available,
+                )
 
-                if ocr == OcrMode.OFF:
-                    from book_normalizer.loaders.pdf_loader import (
-                        extract_pdf_with_ocr_mode,
-                    )
+                if effective_ocr == OcrMode.OFF:
+                    if ocr != OcrMode.OFF:
+                        self.progress.emit(t("norm.ocr_unavailable_native"))
+
                     compare = extract_pdf_with_ocr_mode(
-                        self._input_path, ocr,
+                        self._input_path, effective_ocr,
                         dpi=self._ocr_dpi, psm=self._ocr_psm,
                     )
                     chosen, _ = select_pdf_text_for_mode(compare, ocr)
+
+                    if (
+                        ocr != OcrMode.OFF
+                        and not tesseract_available
+                        and not chosen.text.strip()
+                    ):
+                        raise RuntimeError(t("norm.err_tesseract_missing_scanned"))
                 else:
                     self.progress.emit(
                         f"OCR (DPI={self._ocr_dpi}, PSM={self._ocr_psm})..."

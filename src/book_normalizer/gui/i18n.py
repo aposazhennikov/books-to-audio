@@ -117,6 +117,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Loading book\u2026",
         "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u043a\u043d\u0438\u0433\u0438\u2026",
     },
+    "norm.ocr_unavailable_native": {
+        "en": "Tesseract is not installed; using native PDF text extraction.",
+        "ru": "Tesseract \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d; \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u044e \u0432\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u043e\u0435 \u0438\u0437\u0432\u043b\u0435\u0447\u0435\u043d\u0438\u0435 \u0442\u0435\u043a\u0441\u0442\u0430 PDF.",
+    },
+    "norm.err_tesseract_missing_force": {
+        "en": "Tesseract is not installed. Switch OCR mode to auto/off or install Tesseract with the Russian language pack.",
+        "ru": "Tesseract \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d. \u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u0435 OCR \u0432 auto/off \u0438\u043b\u0438 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 Tesseract \u0441 \u0440\u0443\u0441\u0441\u043a\u0438\u043c \u044f\u0437\u044b\u043a\u043e\u0432\u044b\u043c \u043f\u0430\u043a\u0435\u0442\u043e\u043c.",
+    },
+    "norm.err_tesseract_missing_scanned": {
+        "en": "No readable text was found in the PDF, and Tesseract is not installed. Install Tesseract with the Russian language pack, then run normalization again.",
+        "ru": "\u0412 PDF \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u0447\u0438\u0442\u0430\u0435\u043c\u044b\u0439 \u0442\u0435\u043a\u0441\u0442, \u0430 Tesseract \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d. \u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 Tesseract \u0441 \u0440\u0443\u0441\u0441\u043a\u0438\u043c \u044f\u0437\u044b\u043a\u043e\u0432\u044b\u043c \u043f\u0430\u043a\u0435\u0442\u043e\u043c \u0438 \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u0435 \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044e \u0441\u043d\u043e\u0432\u0430.",
+    },
     "norm.normalizing": {
         "en": "Normalizing: {stage} ({cur}/{total}) \u2014 ETA: {eta}",
         "ru": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f: {stage} ({cur}/{total}) \u2014 \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}",

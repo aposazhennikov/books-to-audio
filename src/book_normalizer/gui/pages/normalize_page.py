@@ -101,31 +101,31 @@ class NormalizePage(QWidget):
         self._ocr_mode = QComboBox()
         self._ocr_mode.addItems(["auto", "off", "force", "compare"])
         self._ocr_mode_label = QLabel()
-        settings.addRow(
-            self._label_with_help(self._ocr_mode_label, "norm.ocr_mode_tip"),
-            self._ocr_mode,
+        self._ocr_mode_label_wrap = self._label_with_help(
+            self._ocr_mode_label, "norm.ocr_mode_tip"
         )
-        self._ocr_widgets.extend([self._ocr_mode_label, self._ocr_mode])
+        settings.addRow(self._ocr_mode_label_wrap, self._ocr_mode)
+        self._ocr_widgets.extend([self._ocr_mode_label_wrap, self._ocr_mode])
 
         self._ocr_dpi = QSpinBox()
         self._ocr_dpi.setRange(72, 1200)
         self._ocr_dpi.setValue(400)
         self._ocr_dpi_label = QLabel()
-        settings.addRow(
-            self._label_with_help(self._ocr_dpi_label, "norm.ocr_dpi_tip"),
-            self._ocr_dpi,
+        self._ocr_dpi_label_wrap = self._label_with_help(
+            self._ocr_dpi_label, "norm.ocr_dpi_tip"
         )
-        self._ocr_widgets.extend([self._ocr_dpi_label, self._ocr_dpi])
+        settings.addRow(self._ocr_dpi_label_wrap, self._ocr_dpi)
+        self._ocr_widgets.extend([self._ocr_dpi_label_wrap, self._ocr_dpi])
 
         self._ocr_psm = QSpinBox()
         self._ocr_psm.setRange(0, 13)
         self._ocr_psm.setValue(6)
         self._ocr_psm_label = QLabel()
-        settings.addRow(
-            self._label_with_help(self._ocr_psm_label, "norm.ocr_psm_tip"),
-            self._ocr_psm,
+        self._ocr_psm_label_wrap = self._label_with_help(
+            self._ocr_psm_label, "norm.ocr_psm_tip"
         )
-        self._ocr_widgets.extend([self._ocr_psm_label, self._ocr_psm])
+        settings.addRow(self._ocr_psm_label_wrap, self._ocr_psm)
+        self._ocr_widgets.extend([self._ocr_psm_label_wrap, self._ocr_psm])
 
         self._ocr_not_applicable_label = QLabel()
         self._ocr_not_applicable_label.setStyleSheet(
@@ -137,24 +137,24 @@ class NormalizePage(QWidget):
         self._llm_normalize = QCheckBox()
         self._llm_normalize.stateChanged.connect(self._update_llm_visibility)
         self._llm_normalize_label = QLabel()
-        settings.addRow(
-            self._label_with_help(self._llm_normalize_label, "norm.llm_tip"),
-            self._llm_normalize,
+        self._llm_normalize_label_wrap = self._label_with_help(
+            self._llm_normalize_label, "norm.llm_tip"
         )
+        settings.addRow(self._llm_normalize_label_wrap, self._llm_normalize)
 
         self._llm_endpoint = QLineEdit("http://localhost:11434/v1")
         self._llm_endpoint_label = QLabel()
-        settings.addRow(
-            self._label_with_help(self._llm_endpoint_label, "norm.llm_tip"),
-            self._llm_endpoint,
+        self._llm_endpoint_label_wrap = self._label_with_help(
+            self._llm_endpoint_label, "norm.llm_tip"
         )
+        settings.addRow(self._llm_endpoint_label_wrap, self._llm_endpoint)
 
         self._llm_model = QLineEdit("qwen3:8b")
         self._llm_model_label = QLabel()
-        settings.addRow(
-            self._label_with_help(self._llm_model_label, "norm.llm_tip"),
-            self._llm_model,
+        self._llm_model_label_wrap = self._label_with_help(
+            self._llm_model_label, "norm.llm_tip"
         )
+        settings.addRow(self._llm_model_label_wrap, self._llm_model)
 
         layout.addLayout(settings)
 
@@ -223,9 +223,9 @@ class NormalizePage(QWidget):
         """Show local LLM settings only when LLM normalization is enabled."""
         enabled = self._llm_normalize.isChecked()
         for widget in (
-            self._llm_endpoint_label,
+            self._llm_endpoint_label_wrap,
             self._llm_endpoint,
-            self._llm_model_label,
+            self._llm_model_label_wrap,
             self._llm_model,
         ):
             widget.setVisible(enabled)

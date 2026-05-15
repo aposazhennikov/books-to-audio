@@ -43,6 +43,7 @@ from book_normalizer.tts.model_paths import default_comfyui_models_dir
 from book_normalizer.tts.voice_library import (
     default_voice_library_dir,
     list_saved_voices,
+    normalize_voice_library_dir,
 )
 
 MODELS = [
@@ -1365,7 +1366,7 @@ class SynthesisPage(QWidget):
     def _voice_library_dir(self) -> Path:
         """Return the configured voice library directory."""
         text = self._voice_library_dir_edit.text().strip()
-        return Path(text) if text else default_voice_library_dir()
+        return normalize_voice_library_dir(text or default_voice_library_dir())
 
     def _browse_voice_library_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(

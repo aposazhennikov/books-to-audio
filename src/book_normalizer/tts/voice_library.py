@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -32,7 +33,21 @@ class SavedVoice:
 
 def default_voice_library_dir() -> Path:
     """Return the shared project-local voice library directory."""
-    return Path("output") / "voices"
+    return Path(__file__).resolve().parents[3] / "output" / "voices"
+
+
+def normalize_voice_library_dir(library_dir: str | Path) -> Path:
+    """Return an absolute host path for a voice library directory."""
+    path_text = str(library_dir).strip()
+    if os.name == "nt" and path_text.startswith("/mnt/") and len(path_text) > 6:
+        drive = path_text[5]
+        rest = path_text[6:].lstrip("/")
+        path_text = f"{drive.upper()}:/{rest}"
+
+    path = Path(path_text).expanduser()
+    if not path.is_absolute():
+        path = default_voice_library_dir().parents[1] / path
+    return path
 
 
 def sanitize_voice_id(name: str) -> str:
@@ -46,6 +61,7 @@ def sanitize_voice_id(name: str) -> str:
 
 def voice_paths(library_dir: Path, name: str) -> tuple[Path, Path, str]:
     """Return prompt path, metadata path, and sanitized voice id."""
+    library_dir = normalize_voice_library_dir(library_dir)
     voice_id = sanitize_voice_id(name)
     return (
         library_dir / f"{voice_id}{VOICE_FILE_SUFFIX}",
@@ -108,6 +124,7 @@ def save_voice_prompt(
     """Persist a Qwen ``voice_clone_prompt`` and sidecar metadata."""
     import torch
 
+    library_dir = normalize_voice_library_dir(library_dir)
     prompt_path, metadata_path, voice_id = voice_paths(library_dir, name)
     if not overwrite and (prompt_path.exists() or metadata_path.exists()):
         raise FileExistsError(
@@ -158,6 +175,7 @@ def load_voice_prompt(prompt_path: Path, map_location: str | None = None) -> Any
 
 def list_saved_voices(library_dir: Path) -> list[SavedVoice]:
     """Return saved voices with valid metadata and prompt files."""
+    library_dir = normalize_voice_library_dir(library_dir)
     if not library_dir.exists():
         return []
 
@@ -174,7 +192,12 @@ def list_saved_voices(library_dir: Path) -> list[SavedVoice]:
         prompt_file = str(metadata.get("prompt_file") or f"{voice_id}{VOICE_FILE_SUFFIX}")
         prompt_path = library_dir / prompt_file
         if not prompt_path.exists():
-            continue
+            fallback = metadata_path.with_suffix("").with_suffix(VOICE_FILE_SUFFIX)
+            if fallback.exists():
+                prompt_path = fallback
+                voice_id = sanitize_voice_id(fallback.name.removesuffix(VOICE_FILE_SUFFIX))
+            else:
+                continue
 
         voices.append(
             SavedVoice(
@@ -194,6 +217,7 @@ def list_saved_voices(library_dir: Path) -> list[SavedVoice]:
 
 def resolve_saved_voice_path(name_or_path: str, library_dir: Path) -> Path:
     """Resolve a saved voice id/name/path to the underlying ``.voice.pt`` file."""
+    library_dir = normalize_voice_library_dir(library_dir)
     value = name_or_path.strip()
     if not value:
         raise ValueError("Saved voice name is empty.")

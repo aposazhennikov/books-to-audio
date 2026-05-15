@@ -65,6 +65,8 @@ VOICE_IDS = [
     "female_gentle",
 ]
 
+_TEST_FRAGMENT_MAX_CHARS = 420
+
 
 def _iter_manifest_chunks(data: object) -> list[dict]:
     """Return chunk records from v1 list or v2 grouped manifest."""
@@ -80,6 +82,51 @@ def _iter_manifest_chunks(data: object) -> list[dict]:
                 if isinstance(chunk, dict):
                     chunks.append({"chapter_index": chapter_index, **chunk})
         return chunks
+    return []
+
+
+def _shorten_test_fragment(text: str, max_chars: int = _TEST_FRAGMENT_MAX_CHARS) -> str:
+    """Return a compact, sentence-ish fragment suitable for a quick TTS check."""
+    normalized = " ".join(str(text or "").split())
+    if len(normalized) <= max_chars:
+        return normalized
+
+    sentence_cut = max(
+        normalized.rfind(".", 0, max_chars),
+        normalized.rfind("!", 0, max_chars),
+        normalized.rfind("?", 0, max_chars),
+    )
+    if sentence_cut >= 120:
+        return normalized[: sentence_cut + 1].strip()
+
+    word_cut = normalized.rfind(" ", 0, max_chars)
+    if word_cut >= 120:
+        return normalized[:word_cut].strip() + "..."
+
+    return normalized[:max_chars].strip() + "..."
+
+
+def _build_test_manifest_chunks(data: object, chapter: int | None = None) -> list[dict]:
+    """Pick one non-empty manifest chunk and trim it for preview synthesis.
+
+    ``chapter`` is 1-based to match the GUI combo and CLI argument.
+    """
+    chunks = _iter_manifest_chunks(data)
+    if chapter is not None:
+        target = chapter - 1
+        chunks = [c for c in chunks if int(c.get("chapter_index", 0)) == target]
+
+    for chunk in chunks:
+        text = _shorten_test_fragment(str(chunk.get("text") or ""))
+        if not text:
+            continue
+        preview = dict(chunk)
+        preview["text"] = text
+        preview["chapter_index"] = int(preview.get("chapter_index", 0))
+        preview["chunk_index"] = 0
+        preview["voice_id"] = str(preview.get("voice_id") or "narrator_calm")
+        return [preview]
+
     return []
 
 
@@ -201,9 +248,17 @@ class SynthesisPage(QWidget):
         self._sample_audio.setVolume(0.8)
         self._sample_player = QMediaPlayer(self)
         self._sample_player.setAudioOutput(self._sample_audio)
+        self._test_audio = QAudioOutput(self)
+        self._test_audio.setVolume(0.8)
+        self._test_player = QMediaPlayer(self)
+        self._test_player.setAudioOutput(self._test_audio)
+        self._test_player.playbackStateChanged.connect(self._on_test_playback_state)
         self._help_buttons: list[tuple[QToolButton, str]] = []
         self._voice_mode = "custom"
         self._saved_voices = []
+        self._run_kind = "idle"
+        self._preview_output_dir: Path | None = None
+        self._last_test_audio_path: Path | None = None
         self._setup_ui()
 
     # ── UI construction ──────────────────────────────────────────────────────
@@ -258,6 +313,19 @@ class SynthesisPage(QWidget):
         # ── Action buttons ────────────────────────────────────────────────
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
+
+        self._btn_test = QPushButton()
+        self._btn_test.setObjectName("primaryBtn")
+        self._btn_test.setMinimumHeight(38)
+        self._btn_test.clicked.connect(self._start_test_synthesis)
+        self._btn_test.setEnabled(False)
+        btn_row.addWidget(self._btn_test)
+
+        self._btn_play_test = QPushButton()
+        self._btn_play_test.setMinimumHeight(38)
+        self._btn_play_test.clicked.connect(self._toggle_test_playback)
+        self._btn_play_test.setEnabled(False)
+        btn_row.addWidget(self._btn_play_test)
 
         self._btn_start = QPushButton()
         self._btn_start.setObjectName("successBtn")
@@ -514,6 +582,7 @@ class SynthesisPage(QWidget):
         self._seed_spin = QSpinBox()
         self._seed_spin.setRange(-1, 2_147_483_647)
         self._seed_spin.setValue(-1)
+        self._seed_spin.setSpecialValueText("-1 (random)")
         self._seed_label = QLabel()
         controls.addRow(
             self._label_with_help(self._seed_label, "synth.seed_help"),
@@ -935,6 +1004,12 @@ class SynthesisPage(QWidget):
         self._repetition_penalty_label.setText(t("synth.repetition_penalty"))
         self._max_new_tokens_label.setText(t("synth.max_new_tokens"))
         self._seed_label.setText(t("synth.seed"))
+        self._temperature_spin.setToolTip(t("synth.temperature_help"))
+        self._top_p_spin.setToolTip(t("synth.top_p_help"))
+        self._top_k_spin.setToolTip(t("synth.top_k_help"))
+        self._repetition_penalty_spin.setToolTip(t("synth.repetition_penalty_help"))
+        self._max_new_tokens_spin.setToolTip(t("synth.max_new_tokens_help"))
+        self._seed_spin.setToolTip(t("synth.seed_help"))
         if not self._sample_status.text():
             self._sample_status.setText(t("synth.sample_idle"))
         self._preset_title.setText(t("synth.preset_title"))
@@ -945,6 +1020,9 @@ class SynthesisPage(QWidget):
             btn.setToolTip(t(help_key))
             btn.setStatusTip(t(help_key))
 
+        self._btn_test.setText(t("synth.test_start"))
+        self._btn_test.setToolTip(t("synth.test_help"))
+        self._btn_play_test.setText(t("synth.test_play"))
         self._btn_start.setText(t("synth.start"))
         self._btn_stop.setText(t("synth.stop"))
         self._status.setText(t("synth.waiting"))
@@ -1252,6 +1330,7 @@ class SynthesisPage(QWidget):
         self._output_dir = output_dir
         self._manifest_label.setText(str(manifest_path))
         self._btn_start.setEnabled(True)
+        self._btn_test.setEnabled(True)
         self._load_chapters_from_manifest()
 
     def _browse_manifest(self) -> None:
@@ -1264,6 +1343,7 @@ class SynthesisPage(QWidget):
             self._output_dir = p.parent
             self._manifest_label.setText(str(p))
             self._btn_start.setEnabled(True)
+            self._btn_test.setEnabled(True)
             self._load_chapters_from_manifest()
 
     def _load_chapters_from_manifest(self) -> None:
@@ -1307,12 +1387,15 @@ class SynthesisPage(QWidget):
 
     # ── Synthesis control ─────────────────────────────────────────────────────
 
+    def _selected_chapter(self) -> int | None:
+        selected = self._chapter_combo.currentData()
+        return selected if selected and selected > 0 else None
+
     def _start_synthesis(self) -> None:
         if not self._manifest_path or not self._output_dir:
             return
 
-        selected = self._chapter_combo.currentData()
-        chapter = selected if selected and selected > 0 else None
+        chapter = self._selected_chapter()
 
         try:
             clone_config_path = self._build_temp_sample_voice_config()
@@ -1321,8 +1404,8 @@ class SynthesisPage(QWidget):
             self._progress.set_status(str(exc))
             return
 
-        self._btn_start.setEnabled(False)
-        self._btn_stop.setEnabled(True)
+        self._run_kind = "full"
+        self._set_run_buttons_active(True)
         self._progress.reset()
 
         self._worker = TTSSynthesisWorker(
@@ -1365,11 +1448,104 @@ class SynthesisPage(QWidget):
         self._status.setText(t("synth.in_progress"))
         self._on_tick()
 
+    def _start_test_synthesis(self) -> None:
+        if not self._manifest_path or not self._output_dir:
+            return
+
+        chapter = self._selected_chapter()
+        try:
+            data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
+            test_chunks = _build_test_manifest_chunks(data, chapter=chapter)
+            if not test_chunks:
+                raise ValueError(t("synth.test_no_chunk"))
+            clone_config_path = self._build_temp_sample_voice_config()
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            self._status.setText(str(exc))
+            self._progress.set_status(str(exc))
+            return
+
+        self._preview_output_dir = self._output_dir / "tts_test_preview"
+        self._preview_output_dir.mkdir(parents=True, exist_ok=True)
+        test_manifest = self._preview_output_dir / "test_manifest.json"
+        test_manifest.write_text(
+            json.dumps(test_chunks, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        self._last_test_audio_path = None
+        self._btn_play_test.setEnabled(False)
+        self._test_player.stop()
+        self._test_player.setSource(QUrl())
+
+        self._run_kind = "test"
+        self._set_run_buttons_active(True)
+        self._progress.reset()
+
+        self._worker = TTSSynthesisWorker(
+            manifest_path=test_manifest,
+            output_dir=self._preview_output_dir,
+            model=self._model_combo.currentText(),
+            chapter=None,
+            batch_size=1,
+            resume=False,
+            chunk_timeout=self._chunk_timeout.value(),
+            use_compile=self._compile_check.isChecked(),
+            clone_config=clone_config_path,
+            use_sage_attention=self._sage_check.isChecked(),
+            models_dir=self._models_dir_edit.text().strip(),
+            voice_library_dir=str(self._voice_library_dir()),
+            temperature=self._temperature_spin.value(),
+            top_p=self._top_p_spin.value(),
+            top_k=self._top_k_spin.value(),
+            repetition_penalty=self._repetition_penalty_spin.value(),
+            max_new_tokens=self._max_new_tokens_spin.value(),
+            seed=self._seed_spin.value(),
+            output_format=str(self._output_format_combo.currentData() or "flac"),
+            merge_chapters=False,
+        )
+        self._worker.progress.connect(self._on_progress)
+        self._worker.status.connect(self._on_status)
+        self._worker.log_line.connect(self._on_log_line)
+        self._worker.finished.connect(self._on_finished)
+        self._worker.error.connect(self._on_error)
+        self._worker.start()
+
+        self._log_edit.clear()
+        self._log_edit.appendPlainText(
+            t("synth.test_log_path", path=str(self._preview_output_dir)),
+        )
+        self._phase = "loading"
+        self._phase_start = time.time()
+        self._tick_timer.start()
+        self._status.setText(t("synth.test_in_progress"))
+        self._on_tick()
+
     def _stop_synthesis(self) -> None:
         self._tick_timer.stop()
         if self._worker:
             self._worker.cancel()
         self._btn_stop.setEnabled(False)
+
+    def _set_run_buttons_active(self, active: bool) -> None:
+        has_manifest = bool(self._manifest_path)
+        self._btn_start.setEnabled(has_manifest and not active)
+        self._btn_test.setEnabled(has_manifest and not active)
+        self._btn_stop.setEnabled(active)
+        self._btn_save_sample_voice.setEnabled(not active)
+
+    def _toggle_test_playback(self) -> None:
+        if not self._last_test_audio_path:
+            return
+        if self._test_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._test_player.pause()
+        else:
+            self._test_player.play()
+
+    def _on_test_playback_state(self, state: QMediaPlayer.PlaybackState) -> None:
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self._btn_play_test.setText(t("synth.test_pause"))
+        else:
+            self._btn_play_test.setText(t("synth.test_play"))
 
     # ── Signal handlers ───────────────────────────────────────────────────────
 
@@ -1384,9 +1560,11 @@ class SynthesisPage(QWidget):
         m, s = divmod(elapsed, 60)
         time_str = f"{m}:{s:02d}" if m else f"{s} сек"
         if self._phase == "loading":
-            self._progress.set_busy(t("synth.loading_model") + f"  [{time_str}]")
+            key = "synth.test_loading_model" if self._run_kind == "test" else "synth.loading_model"
+            self._progress.set_busy(t(key) + f"  [{time_str}]")
         elif self._phase == "synth":
-            self._progress.set_busy(t("synth.synthesizing") + f"  [{time_str}]")
+            key = "synth.test_synthesizing" if self._run_kind == "test" else "synth.synthesizing"
+            self._progress.set_busy(t(key) + f"  [{time_str}]")
 
     def _on_progress(
         self,
@@ -1435,7 +1613,8 @@ class SynthesisPage(QWidget):
             self._phase = "synth"
             self._phase_start = time.time()
             self._tick_timer.start()
-            self._progress.set_busy(t("synth.model_ready", sec=elapsed))
+            key = "synth.test_model_ready" if self._run_kind == "test" else "synth.model_ready"
+            self._progress.set_busy(t(key, sec=elapsed))
         else:
             self._tick_timer.stop()
             self._progress.set_busy(msg)
@@ -1443,9 +1622,21 @@ class SynthesisPage(QWidget):
     def _on_finished(self, output_dir: str, synthesized: int, skipped: int) -> None:
         self._tick_timer.stop()
         self._phase = "idle"
-        self._btn_start.setEnabled(True)
-        self._btn_stop.setEnabled(False)
+        run_kind = self._run_kind
+        self._run_kind = "idle"
+        self._set_run_buttons_active(False)
         self._progress.set_progress(1, 1, "")
+        if run_kind == "test":
+            audio_path = self._find_test_audio_path()
+            if audio_path:
+                self._last_test_audio_path = audio_path
+                self._test_player.setSource(QUrl.fromLocalFile(str(audio_path)))
+                self._btn_play_test.setEnabled(True)
+                self._status.setText(t("synth.test_done", path=str(audio_path)))
+                self._sample_status.setText(t("synth.test_next_step"))
+            else:
+                self._status.setText(t("synth.test_done_no_file", path=output_dir))
+            return
         self._status.setText(
             t(
                 "synth.done_detail",
@@ -1458,6 +1649,27 @@ class SynthesisPage(QWidget):
     def _on_error(self, msg: str) -> None:
         self._tick_timer.stop()
         self._phase = "idle"
-        self._btn_start.setEnabled(True)
-        self._btn_stop.setEnabled(False)
+        self._run_kind = "idle"
+        self._set_run_buttons_active(False)
         self._progress.set_status(f"❌ {msg}")
+
+    def _find_test_audio_path(self) -> Path | None:
+        if not self._preview_output_dir:
+            return None
+        manifest = self._preview_output_dir / "synthesis_manifest.json"
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(data, list):
+            return None
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            rel = item.get("file")
+            if not rel:
+                continue
+            path = self._preview_output_dir / str(rel)
+            if path.exists():
+                return path
+        return None

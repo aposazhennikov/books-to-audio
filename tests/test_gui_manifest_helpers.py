@@ -6,7 +6,11 @@ import json
 from pathlib import Path
 
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest
-from book_normalizer.gui.pages.synthesis_page import _iter_manifest_chunks
+from book_normalizer.gui.pages.synthesis_page import (
+    _build_test_manifest_chunks,
+    _iter_manifest_chunks,
+    _shorten_test_fragment,
+)
 from book_normalizer.gui.workers.tts_worker import (
     ExportSegmentsWorker,
     TTSSynthesisWorker,
@@ -91,6 +95,51 @@ def test_tts_worker_converts_sample_audio_path_inside_clone_config(tmp_path: Pat
     assert converted_path is not None
     converted = json.loads(converted_path.read_text(encoding="utf-8"))
     assert converted["__all__"]["ref_audio"] == "/mnt/d/samples/narrator.wav"
+
+
+def test_build_test_manifest_uses_selected_chapter_and_trims_text() -> None:
+    long_text = " ".join(["Sentence"] * 90) + ". Final tail that should not be used."
+    manifest = {
+        "version": 2,
+        "chapters": [
+            {
+                "chapter_index": 0,
+                "chunks": [
+                    {
+                        "chunk_index": 4,
+                        "voice_id": "female_warm",
+                        "text": "First chapter text.",
+                    },
+                ],
+            },
+            {
+                "chapter_index": 1,
+                "chunks": [
+                    {
+                        "chunk_index": 9,
+                        "voice_id": "male_young",
+                        "text": long_text,
+                    },
+                ],
+            },
+        ],
+    }
+
+    preview = _build_test_manifest_chunks(manifest, chapter=2)
+
+    assert len(preview) == 1
+    assert preview[0]["chapter_index"] == 1
+    assert preview[0]["chunk_index"] == 0
+    assert preview[0]["voice_id"] == "male_young"
+    assert len(preview[0]["text"]) <= 420
+
+
+def test_shorten_test_fragment_prefers_sentence_boundary() -> None:
+    text = "A" * 140 + ". " + "B" * 500
+
+    shortened = _shorten_test_fragment(text, max_chars=300)
+
+    assert shortened == "A" * 140 + "."
 
 
 def test_v2_manifest_prefers_assigned_voice_id_over_stale_role() -> None:

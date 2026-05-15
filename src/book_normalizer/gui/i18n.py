@@ -770,28 +770,28 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Voice prompt {done}/{total} готов за {sec:.1f} с.",
     },
     "synth.temperature": {
-        "en": "Temperature:",
-        "ru": "Temperature:",
+        "en": "Temperature (0.10-2.00):",
+        "ru": "Temperature (0.10-2.00):",
     },
     "synth.top_p": {
-        "en": "Top-p:",
-        "ru": "Top-p:",
+        "en": "Top-p (0.10-1.00):",
+        "ru": "Top-p (0.10-1.00):",
     },
     "synth.top_k": {
-        "en": "Top-k:",
-        "ru": "Top-k:",
+        "en": "Top-k (1-200):",
+        "ru": "Top-k (1-200):",
     },
     "synth.repetition_penalty": {
-        "en": "Repetition penalty:",
-        "ru": "Repetition penalty:",
+        "en": "Repetition penalty (0.80-2.00):",
+        "ru": "Repetition penalty (0.80-2.00):",
     },
     "synth.max_new_tokens": {
-        "en": "Max new tokens:",
-        "ru": "Max new tokens:",
+        "en": "Max new tokens (128-8192):",
+        "ru": "Max new tokens (128-8192):",
     },
     "synth.seed": {
-        "en": "Seed:",
-        "ru": "Seed:",
+        "en": "Seed (-1=random):",
+        "ru": "Seed (-1=random):",
     },
     "synth.model_help": {
         "en": "Choose the Qwen CustomVoice model for built-in speakers. 1.7B is better quality; 0.6B is faster and lighter.",
@@ -850,28 +850,84 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Точный текст, произнесенный в sample audio. Чем точнее совпадение, тем лучше voice prompt.",
     },
     "synth.temperature_help": {
-        "en": "Controls randomness. Lower is steadier; higher is more expressive but can make speech less stable.",
-        "ru": "Случайность генерации. Ниже — ровнее; выше — выразительнее, но речь может стать менее стабильной.",
+        "en": (
+            "Range: 0.10-2.00. Default: 1.00.\n"
+            "Lower values make pronunciation steadier and more predictable.\n"
+            "Higher values add variation and expression, but can increase artifacts, odd pauses, or unstable speech.\n"
+            "Good first moves: 0.80-0.95 for stability, 1.05-1.15 for a slightly livelier voice."
+        ),
+        "ru": (
+            "Диапазон: 0.10-2.00. По умолчанию: 1.00.\n"
+            "Ниже - речь ровнее и предсказуемее.\n"
+            "Выше - больше вариативности и эмоции, но выше риск артефактов, странных пауз и нестабильной речи.\n"
+            "Для пробы: 0.80-0.95 для стабильности, 1.05-1.15 если голос слишком ровный."
+        ),
     },
     "synth.top_p_help": {
-        "en": "Limits token sampling to the most likely options. Lower can reduce odd phrasing; default 0.8 is balanced.",
-        "ru": "Ограничивает выбор наиболее вероятными вариантами. Ниже — меньше странностей; 0.8 обычно сбалансировано.",
+        "en": (
+            "Range: 0.10-1.00. Default: 0.80.\n"
+            "Top-p keeps only the smallest group of likely choices whose total probability reaches this value.\n"
+            "Lower values are stricter and can reduce strange phrasing. Higher values allow more alternatives.\n"
+            "Try 0.70-0.85 for audiobooks; 0.90+ only if the voice sounds too constrained."
+        ),
+        "ru": (
+            "Диапазон: 0.10-1.00. По умолчанию: 0.80.\n"
+            "Top-p оставляет только наиболее вероятные варианты, пока их суммарный шанс не достигнет этого числа.\n"
+            "Ниже - строже и меньше странных фраз. Выше - больше альтернатив.\n"
+            "Для книг обычно 0.70-0.85; 0.90+ имеет смысл, если голос слишком зажат."
+        ),
     },
     "synth.top_k_help": {
-        "en": "How many likely options the model may choose from at each step. Lower is safer; higher is more varied.",
-        "ru": "Сколько вероятных вариантов модель может выбирать на каждом шаге. Ниже — безопаснее; выше — разнообразнее.",
+        "en": (
+            "Range: 1-200. Default: 20.\n"
+            "At each generation step the model can choose only from the top K most likely audio tokens.\n"
+            "1 is almost deterministic and can sound flat or stuck. 10-30 is a safe audiobook range.\n"
+            "50-100 gives more variety, but can add pronunciation drift. 100+ is experimental."
+        ),
+        "ru": (
+            "Диапазон: 1-200. По умолчанию: 20.\n"
+            "На каждом шаге модель выбирает только из K самых вероятных аудио-токенов.\n"
+            "1 - почти без случайности; может звучать плоско или застревать. 10-30 - спокойный диапазон для аудиокниг.\n"
+            "50-100 - больше разнообразия, но выше риск съезда произношения. 100+ - эксперимент."
+        ),
     },
     "synth.repetition_penalty_help": {
-        "en": "Discourages repeated syllables or words. Increase slightly if the voice loops.",
-        "ru": "Снижает повторы слогов и слов. Немного увеличьте, если голос начинает зацикливаться.",
+        "en": (
+            "Range: 0.80-2.00. Default: 1.05. 1.00 means no penalty.\n"
+            "This penalizes recently generated audio/text tokens, so it can stop loops like repeated syllables, words, breaths, or stuck sounds.\n"
+            "1.03-1.10 is usually safe. Try 1.12-1.20 if speech repeats. Above 1.30 can make speech choppy or skip natural repeated words."
+        ),
+        "ru": (
+            "Диапазон: 0.80-2.00. По умолчанию: 1.05. 1.00 - без штрафа.\n"
+            "Штрафует то, что модель только что сгенерировала: аудио-токены, слоги, слова, дыхание, зацикленные звуки.\n"
+            "1.03-1.10 обычно безопасно. 1.12-1.20 - если речь повторяется. Выше 1.30 может сделать речь рубленой или выкидывать естественные повторы."
+        ),
     },
     "synth.max_new_tokens_help": {
-        "en": "Upper limit for generated audio tokens per chunk. Increase only for unusually long chunks.",
-        "ru": "Верхний лимит аудио-токенов на чанк. Увеличивайте только для необычно длинных чанков.",
+        "en": (
+            "Range: 128-8192. Default: 2048.\n"
+            "Hard cap for generated audio tokens in one chunk. It is a safety limit, not a quality knob.\n"
+            "Too low can cut the phrase off. Increase only when long chunks end early; otherwise keep the default."
+        ),
+        "ru": (
+            "Диапазон: 128-8192. По умолчанию: 2048.\n"
+            "Жесткий лимит аудио-токенов на один чанк; это защитный предел, а не ручка качества.\n"
+            "Слишком низко - фраза может обрезаться. Повышайте только если длинные чанки заканчиваются раньше текста."
+        ),
     },
     "synth.seed_help": {
-        "en": "Seed for repeatable generation. -1 means random every run.",
-        "ru": "Seed для повторяемой генерации. -1 означает случайный результат при каждом запуске.",
+        "en": (
+            "Range: -1 or 0-2147483647. Default: -1.\n"
+            "-1 means random every run, so the same text/settings can sound slightly different.\n"
+            "Set any fixed number, for example 42, when you want repeatable previews and reruns.\n"
+            "Changing the seed is useful when settings are good but one fragment came out unlucky."
+        ),
+        "ru": (
+            "Диапазон: -1 или 0-2147483647. По умолчанию: -1.\n"
+            "-1 - новая случайная версия при каждом запуске: тот же текст и настройки могут звучать чуть иначе.\n"
+            "Любое фиксированное число, например 42, делает превью и повторный рендер более повторяемыми.\n"
+            "Меняйте seed, если настройки уже нормальные, но конкретный фрагмент получился неудачно."
+        ),
     },
     "synth.chapter": {
         "en": "Chapter:",
@@ -897,6 +953,28 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Start Synthesis",
         "ru": "\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u0441\u0438\u043d\u0442\u0435\u0437",
     },
+    "synth.test_start": {
+        "en": "Test Fragment",
+        "ru": "\u0422\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442",
+    },
+    "synth.test_play": {
+        "en": "Play Test",
+        "ru": "\u041f\u0440\u043e\u0441\u043b\u0443\u0448\u0430\u0442\u044c \u0442\u0435\u0441\u0442",
+    },
+    "synth.test_pause": {
+        "en": "Pause Test",
+        "ru": "\u041f\u0430\u0443\u0437\u0430",
+    },
+    "synth.test_help": {
+        "en": (
+            "Render one short chunk from the selected chapter with the current voice and generation settings. "
+            "The preview is saved separately and does not mark the book as synthesized."
+        ),
+        "ru": (
+            "\u041e\u0437\u0432\u0443\u0447\u0438\u0442 \u043e\u0434\u0438\u043d \u043a\u043e\u0440\u043e\u0442\u043a\u0438\u0439 \u0447\u0430\u043d\u043a \u0438\u0437 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u043e\u0439 \u0433\u043b\u0430\u0432\u044b \u0441 \u0442\u0435\u043a\u0443\u0449\u0438\u043c \u0433\u043e\u043b\u043e\u0441\u043e\u043c \u0438 \u043f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u0430\u043c\u0438. "
+            "\u041f\u0440\u0435\u0432\u044c\u044e \u0441\u043e\u0445\u0440\u0430\u043d\u044f\u0435\u0442\u0441\u044f \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u043e \u0438 \u043d\u0435 \u043f\u043e\u043c\u0435\u0447\u0430\u0435\u0442 \u043a\u043d\u0438\u0433\u0443 \u043a\u0430\u043a \u0441\u0438\u043d\u0442\u0435\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u0443\u044e."
+        ),
+    },
     "synth.stop": {
         "en": "Stop",
         "ru": "\u0421\u0442\u043e\u043f",
@@ -909,6 +987,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Synthesis in progress\u2026 (each chunk may take 1\u20132 min)",
         "ru": "\u0421\u0438\u043d\u0442\u0435\u0437 \u0432 \u043f\u0440\u043e\u0446\u0435\u0441\u0441\u0435\u2026 "
         "(\u043a\u0430\u0436\u0434\u044b\u0439 \u0447\u0430\u043d\u043a \u043c\u043e\u0436\u0435\u0442 \u0437\u0430\u043d\u044f\u0442\u044c 1\u20132 \u043c\u0438\u043d)",
+    },
+    "synth.test_in_progress": {
+        "en": "Rendering a short test fragment with current settings...",
+        "ru": "\u041e\u0437\u0432\u0443\u0447\u0438\u0432\u0430\u044e \u043a\u043e\u0440\u043e\u0442\u043a\u0438\u0439 \u0442\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442 \u0441 \u0442\u0435\u043a\u0443\u0449\u0438\u043c\u0438 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430\u043c\u0438...",
+    },
+    "synth.test_no_chunk": {
+        "en": "No non-empty chunk found for a test fragment.",
+        "ru": "\u041d\u0435 \u043d\u0430\u0448\u0435\u043b\u0441\u044f \u043d\u0435\u043f\u0443\u0441\u0442\u043e\u0439 \u0447\u0430\u043d\u043a \u0434\u043b\u044f \u0442\u0435\u0441\u0442\u0430.",
     },
     "synth.progress_status": {
         "en": "Chunk {current}/{total} \u2022 ETA: {eta}",
@@ -953,6 +1039,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.log_path": {
         "en": "Log file: {path}",
         "ru": "\u041b\u043e\u0433: {path}",
+    },
+    "synth.test_log_path": {
+        "en": "Test preview folder: {path}",
+        "ru": "\u041f\u0430\u043f\u043a\u0430 \u0442\u0435\u0441\u0442\u043e\u0432\u043e\u0433\u043e \u043f\u0440\u0435\u0432\u044c\u044e: {path}",
     },
     "synth.resume": {
         "en": "Resume:",
@@ -1123,6 +1213,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Loading TTS model\u2026 (may take 1\u20132 min)",
         "ru": "Загрузка TTS модели\u2026 (может занять 1\u20132 мин)",
     },
+    "synth.test_loading_model": {
+        "en": "Loading TTS model for test fragment...",
+        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 TTS-\u043c\u043e\u0434\u0435\u043b\u0438 \u0434\u043b\u044f \u0442\u0435\u0441\u0442\u043e\u0432\u043e\u0433\u043e \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u0430...",
+    },
     "synth.loading_model_elapsed": {
         "en": "Loading TTS model\u2026 {sec}s elapsed",
         "ru": "Загрузка TTS модели\u2026 {sec} сек",
@@ -1131,9 +1225,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "\u2714 Model loaded in {sec}s. Synthesizing\u2026",
         "ru": "\u2714 Модель загружена за {sec} сек. Синтез\u2026",
     },
+    "synth.test_model_ready": {
+        "en": "\u2714 Model loaded in {sec}s. Rendering test fragment...",
+        "ru": "\u2714 \u041c\u043e\u0434\u0435\u043b\u044c \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d\u0430 \u0437\u0430 {sec} \u0441\u0435\u043a. \u0420\u0435\u043d\u0434\u0435\u0440 \u0442\u0435\u0441\u0442\u0430...",
+    },
     "synth.synthesizing": {
         "en": "Synthesizing first chunk\u2026",
         "ru": "\u0421\u0438\u043d\u0442\u0435\u0437 \u043f\u0435\u0440\u0432\u043e\u0433\u043e \u0447\u0430\u043d\u043a\u0430\u2026",
+    },
+    "synth.test_synthesizing": {
+        "en": "Synthesizing test fragment...",
+        "ru": "\u0421\u0438\u043d\u0442\u0435\u0437 \u0442\u0435\u0441\u0442\u043e\u0432\u043e\u0433\u043e \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u0430...",
     },
     "synth.err_no_chunks": {
         "en": "No chunks in manifest to synthesize.",
@@ -1150,6 +1252,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.complete": {
         "en": "Synthesis complete!",
         "ru": "Синтез завершён!",
+    },
+    "synth.test_done": {
+        "en": "Test fragment is ready. Output: {path}",
+        "ru": "\u0422\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442 \u0433\u043e\u0442\u043e\u0432. \u0424\u0430\u0439\u043b: {path}",
+    },
+    "synth.test_done_no_file": {
+        "en": "Test run finished, but no audio file was found in {path}. Check the log above.",
+        "ru": "\u0422\u0435\u0441\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043b\u0441\u044f, \u043d\u043e \u0430\u0443\u0434\u0438\u043e\u0444\u0430\u0439\u043b \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u0432 {path}. \u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u043b\u043e\u0433 \u0432\u044b\u0448\u0435.",
+    },
+    "synth.test_next_step": {
+        "en": "If the test sounds right, save the voice; the app will switch to that saved voice for the full synthesis.",
+        "ru": "\u0415\u0441\u043b\u0438 \u0442\u0435\u0441\u0442 \u0437\u0432\u0443\u0447\u0438\u0442 \u0445\u043e\u0440\u043e\u0448\u043e, \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u0435 \u0433\u043e\u043b\u043e\u0441; \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435 \u0441\u0430\u043c\u043e \u043f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442 \u043f\u043e\u043b\u043d\u044b\u0439 \u0441\u0438\u043d\u0442\u0435\u0437 \u043d\u0430 \u044d\u0442\u043e\u0442 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0439 \u0433\u043e\u043b\u043e\u0441.",
     },
     "synth.done_detail": {
         "en": (

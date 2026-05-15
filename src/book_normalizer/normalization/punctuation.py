@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Punctuation normalization for Russian text."""
 
 from __future__ import annotations

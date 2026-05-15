@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 
 from book_normalizer.memory.stress_store import StressStore
 from book_normalizer.models.memory import StressMemoryEntry

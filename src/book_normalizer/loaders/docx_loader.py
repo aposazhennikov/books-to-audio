@@ -61,7 +61,6 @@ class DocxLoader(BaseLoader):
     @staticmethod
     def _extract_metadata(doc: object, path: Path) -> Metadata:
         """Extract metadata from DOCX core properties."""
-        from docx import Document
 
         props = doc.core_properties
 
@@ -83,7 +82,6 @@ class DocxLoader(BaseLoader):
     @classmethod
     def _extract_chapters(cls, doc: object) -> list[Chapter]:
         """Split document into chapters based on heading styles."""
-        from docx import Document
 
         chapters: list[Chapter] = []
         current_title = ""
@@ -135,7 +133,6 @@ class DocxLoader(BaseLoader):
     @staticmethod
     def _extract_all_paragraphs(doc: object) -> list[Paragraph]:
         """Fallback: extract all paragraphs as a flat list."""
-        from docx import Document
 
         paragraphs: list[Paragraph] = []
         for idx, doc_para in enumerate(doc.paragraphs):

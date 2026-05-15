@@ -7,7 +7,6 @@ from typing import Protocol
 
 from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.models.review import IssueSeverity, IssueType, ReviewIssue
-from book_normalizer.stress.dictionary import is_russian_word
 
 
 class IssueDetector(Protocol):
@@ -164,9 +163,6 @@ class OcrSpellingDetector:
         results: list[ReviewIssue] = []
         for match in self._MIXED_SCRIPT.finditer(text):
             ctx_before, ctx_after = _extract_context(text, match.start(), match.end())
-            word_start = max(0, match.start() - 10)
-            word_end = min(len(text), match.end() + 10)
-            word_context = text[word_start:word_end]
 
             results.append(
                 ReviewIssue(
@@ -282,7 +278,7 @@ class OcrSpellingDetector:
     @staticmethod
     def _transliterate_to_cyrillic(text: str) -> str:
         """Best-effort transliteration of Latin lookalikes to Cyrillic."""
-        _MAP = {
+        transliteration_map = {
             "a": "\u0430", "A": "\u0410",
             "e": "\u0435", "E": "\u0415",
             "o": "\u043e", "O": "\u041e",
@@ -296,4 +292,4 @@ class OcrSpellingDetector:
             "B": "\u0412",
             "y": "\u0443",
         }
-        return "".join(_MAP.get(ch, ch) for ch in text)
+        return "".join(transliteration_map.get(ch, ch) for ch in text)

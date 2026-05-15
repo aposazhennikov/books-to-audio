@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import json
-import math
 import random
 import re
-from dataclasses import dataclass, asdict
+from collections.abc import Iterable, Sequence
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
 
-from book_normalizer.models.book import Book, Chapter, Paragraph
-
+from book_normalizer.models.book import Book, Paragraph
 
 RE_HEADING_CANDIDATE = re.compile(
     r"^\s*(?:глава|часть|пролог|эпилог|введение|заключение|предисловие|послесловие)\b",
@@ -224,7 +222,7 @@ def _detect_suspicious_changes(before: Book, after: Book) -> list[SuspiciousChan
                     )
                 )
 
-        very_long_after = [l for l in after_lens if l > max(2000, 4 * after_med)]
+        very_long_after = [length for length in after_lens if length > max(2000, 4 * after_med)]
         if very_long_after:
             changes.append(
                 SuspiciousChange(
@@ -234,7 +232,7 @@ def _detect_suspicious_changes(before: Book, after: Book) -> list[SuspiciousChan
                 )
             )
 
-        very_short_after = [l for l in after_lens if l < min(10, 0.25 * after_med)]
+        very_short_after = [length for length in after_lens if length < min(10, 0.25 * after_med)]
         if very_short_after and len(very_short_after) > len(after_lens) * 0.3:
             changes.append(
                 SuspiciousChange(
@@ -498,4 +496,3 @@ def generate_reports(
         samples=samples,
         artifacts=artifacts,
     )
-

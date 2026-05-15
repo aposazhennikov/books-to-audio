@@ -26,7 +26,11 @@ class TestPunctuationIssueDetector:
         book = _make_book("слово,,слово")
         detector = PunctuationIssueDetector()
         issues = detector.detect(book)
-        assert any("comma" in (i.suggested_fragment or i.original_fragment) or i.original_fragment == ",," for i in issues)
+        assert any(
+            "comma" in (i.suggested_fragment or i.original_fragment)
+            or i.original_fragment == ",,"
+            for i in issues
+        )
 
     def test_space_before_comma(self) -> None:
         book = _make_book("слово , слово")

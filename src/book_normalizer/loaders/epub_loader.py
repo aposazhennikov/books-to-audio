@@ -31,7 +31,6 @@ class EpubLoader(BaseLoader):
             raise FileNotFoundError(f"File not found: {resolved}")
 
         try:
-            import ebooklib
             from ebooklib import epub
         except ImportError as exc:
             raise ImportError(

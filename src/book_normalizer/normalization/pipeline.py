@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Callable
+from collections.abc import Callable
 
 from book_normalizer.models.book import Book
 from book_normalizer.normalization.abbreviations import expand_abbreviations
 from book_normalizer.normalization.cleanup import remove_inline_footnotes, remove_page_numbers, remove_repeated_headers
+from book_normalizer.normalization.encoding import fix_common_mojibake, normalize_encoding_artifacts
 from book_normalizer.normalization.numbers import expand_numbers
 from book_normalizer.normalization.ocr_fixes import fix_mixed_script, fix_ocr_artifacts
-from book_normalizer.normalization.encoding import fix_common_mojibake, normalize_encoding_artifacts
 from book_normalizer.normalization.paragraphs import collapse_empty_lines, strip_paragraph_indents
 from book_normalizer.normalization.punctuation import (
     adapt_punctuation_for_tts,

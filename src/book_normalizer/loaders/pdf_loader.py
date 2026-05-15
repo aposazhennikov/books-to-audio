@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple
+from importlib.util import find_spec
+from pathlib import Path
+from typing import Any
 
+from book_normalizer.config import OcrMode
 from book_normalizer.loaders.base import BaseLoader
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 from book_normalizer.normalization.cleanup import remove_repeated_headers
-from book_normalizer.config import OcrMode
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +34,10 @@ class PdfLoader(BaseLoader):
         if not resolved.is_file():
             raise FileNotFoundError(f"File not found: {resolved}")
 
-        try:
-            import fitz  # PyMuPDF.
-        except ImportError as exc:
+        if find_spec("fitz") is None:
             raise ImportError(
                 "PyMuPDF is required for PDF loading. Install it: pip install PyMuPDF"
-            ) from exc
+            )
 
         text = self._extract_text(resolved)
         logger.info("Extracted %d characters from '%s'", len(text), resolved.name)
@@ -375,7 +374,7 @@ def _cyrillic_ratio(text: str) -> float:
 def select_pdf_text_for_mode(
     compare: PdfOcrCompareResult,
     mode: OcrMode,
-) -> Tuple[PdfTextVariant, Dict[str, Any]]:
+) -> tuple[PdfTextVariant, dict[str, Any]]:
     """
     Select which text variant to use for downstream processing.
 
@@ -386,7 +385,7 @@ def select_pdf_text_for_mode(
 
     native_cyr = _cyrillic_ratio(native.text)
 
-    stats: Dict[str, Any] = {
+    stats: dict[str, Any] = {
         "mode": mode.value,
         "native_len": len(native.text),
         "ocr_len": len(ocr.text) if ocr else 0,
@@ -427,7 +426,7 @@ def select_pdf_text_for_mode(
 def write_pdf_compare_report(
     output_dir: Path,
     compare: PdfOcrCompareResult,
-    stats: Dict[str, Any],
+    stats: dict[str, Any],
 ) -> None:
     """
     Write simple compare artifacts for OCR COMPARE mode.

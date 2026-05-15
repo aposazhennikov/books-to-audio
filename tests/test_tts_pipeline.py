@@ -8,26 +8,21 @@ without requiring GPU or actual TTS model weights.
 from __future__ import annotations
 
 import json
-import struct
 import wave
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from book_normalizer.chunking.voice_splitter import chunk_annotated_book
 from book_normalizer.dialogue.attribution import (
     HeuristicAttributor,
-    SpeakerMode,
-    create_attributor,
 )
 from book_normalizer.dialogue.detector import DialogueDetector
-from book_normalizer.dialogue.models import SpeakerRole, VoiceAnnotatedChunk
+from book_normalizer.dialogue.models import SpeakerRole
 from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.tts.assembler import AudioAssembler
 from book_normalizer.tts.synthesizer import SynthesisProgress
 from book_normalizer.tts.voice_config import VoiceConfig, VoiceMethod, VoiceProfile
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -265,7 +260,6 @@ class TestAudioAssembler:
         chapter_wav = result["chapter_001"]
         with wave.open(str(chapter_wav), "rb") as w:
             n_frames = w.getnframes()
-            sr = w.getframerate()
 
         # 50ms + 50ms audio + 500ms pause ≈ 600ms → ~14400 frames at 24kHz.
         expected_min = int(24000 * 0.55)
@@ -280,6 +274,7 @@ class TestCliInitVoices:
 
     def test_init_voices_creates_config(self, tmp_path: Path) -> None:
         from click.testing import CliRunner
+
         from book_normalizer.cli import main
 
         runner = CliRunner()
@@ -289,6 +284,7 @@ class TestCliInitVoices:
 
     def test_init_voices_custom_preset(self, tmp_path: Path) -> None:
         from click.testing import CliRunner
+
         from book_normalizer.cli import main
 
         runner = CliRunner()

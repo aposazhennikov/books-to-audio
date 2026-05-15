@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from book_normalizer.gui.i18n import get_language, set_language, t
+from book_normalizer.gui.i18n import set_language, t
 from book_normalizer.gui.pages.assembly_page import AssemblyPage
 from book_normalizer.gui.pages.normalize_page import NormalizePage
 from book_normalizer.gui.pages.synthesis_page import SynthesisPage

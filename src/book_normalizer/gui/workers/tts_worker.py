@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-import time
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -200,6 +199,8 @@ class TTSSynthesisWorker(QThread):
         resume: bool = False,
         chunk_timeout: int = 300,
         use_compile: bool = False,
+        clone_config: str = "",
+        use_sage_attention: bool = False,
         parent=None,
     ):
         super().__init__(parent)
@@ -211,6 +212,8 @@ class TTSSynthesisWorker(QThread):
         self._resume = resume
         self._chunk_timeout = chunk_timeout
         self._use_compile = use_compile
+        self._clone_config = clone_config
+        self._use_sage_attention = use_sage_attention
         self._process: subprocess.Popen | None = None
         self._cancelled = False
 
@@ -249,6 +252,12 @@ class TTSSynthesisWorker(QThread):
             log_flag = f" --log-file {self._wsl_path(log_path)}"
             timeout_flag = f" --chunk-timeout {self._chunk_timeout}"
             compile_flag = " --compile" if self._use_compile else ""
+            clone_flag = ""
+            if self._clone_config:
+                clone_flag = (
+                    f" --clone-config {self._wsl_path(Path(self._clone_config))}"
+                )
+            sage_flag = " --sage-attention" if self._use_sage_attention else ""
             cmd = [
                 "wsl", "-e", "bash", "-c",
                 f"source ~/venvs/qwen3tts/bin/activate && "
@@ -258,7 +267,8 @@ class TTSSynthesisWorker(QThread):
                 f"--out {self._wsl_path(self._output_dir)} "
                 f"--model {self._model} "
                 f"--batch-size {self._batch_size}"
-                f"{resume_flag}{chapter_flag}{log_flag}{timeout_flag}{compile_flag}",
+                f"{resume_flag}{chapter_flag}{log_flag}"
+                f"{timeout_flag}{compile_flag}{clone_flag}{sage_flag}",
             ]
 
             self._process = subprocess.Popen(

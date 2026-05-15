@@ -5,6 +5,19 @@ Usage:
     source ~/venvs/qwen3tts/bin/activate
     python scripts/tts_runner.py --chunks-json output/chunks_manifest.json --out output/master_magii_1_pdf
 
+Voice cloning:
+    python scripts/tts_runner.py --chunks-json ... --out ... \
+        --clone-config clone_voices.json
+
+    clone_voices.json example:
+    {
+      "narrator_calm": {"ref_audio": "/path/to/ref.wav", "ref_text": "Transcript."},
+      "male_young":    {"ref_audio": "/path/to/ref2.wav", "ref_text": "Transcript 2."}
+    }
+
+    Voices listed in clone-config use the Base model (voice cloning).
+    All other voices fall back to CustomVoice presets as before.
+
 This script runs inside WSL with CUDA access. It reads a JSON manifest
 produced by the book normalizer pipeline and generates WAV files for
 each chunk using the appropriate voice.
@@ -16,6 +29,7 @@ from __future__ import annotations
 # OnnxRuntime: DRM device discovery fails in WSL2 (CUDA works via separate path).
 # Transformers: flash_attn dtype advisory is a false positive when using Qwen3TTSModel.
 import os
+
 os.environ.setdefault("ORT_LOGGING_LEVEL", "3")          # OnnxRuntime: errors only.
 os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")  # HuggingFace: no tips.
 
@@ -67,6 +81,9 @@ VOICE_PRESETS = {
     "female_gentle": ("Sohee", "Нежный, мелодичный женский голос. Говори спокойно и ласково."),
 }
 
+# Default Base model for voice cloning.
+BASE_MODEL_NAME = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+
 
 def resolve_voice(voice_id: str, speaker_map: dict) -> tuple[str, str]:
     """Resolve voice_id to (speaker, instruct), supporting both legacy and new presets."""
@@ -77,8 +94,15 @@ def resolve_voice(voice_id: str, speaker_map: dict) -> tuple[str, str]:
     return speaker, instruct
 
 
-def _detect_attn_impl() -> str:
-    """Pick the best attention implementation available."""
+def _detect_attn_impl(use_sage: bool = False) -> str:
+    """Pick the best attention implementation available.
+
+    Priority: flash_attention_2 > sdpa.
+    When use_sage=True, we always return 'sdpa' because SageAttention
+    replaces the SDPA kernel via monkey-patch.
+    """
+    if use_sage:
+        return "sdpa"
     try:
         import flash_attn  # noqa: F401
         return "flash_attention_2"
@@ -86,13 +110,174 @@ def _detect_attn_impl() -> str:
         return "sdpa"
 
 
-def load_model(model_name: str, device: str = "cuda:0"):
+_sage_enabled = False
+
+# Ordered preference list for SageAttention kernels.
+#   v2-only functions (available from GitHub install) first,
+#   then v1 sageattn (available from pip install sageattention==1.0.6).
+#
+# PyPI ships v1.0.6 which has ONLY sageattn() — INT8 QK + FP16 PV natively.
+# GitHub v2+ adds separate kernels with FP8 PV / configurable accumulators.
+#
+# smooth_k=False is critical for autoregressive TTS: smooth_k subtracts
+# the K-mean at each step, which drifts as the KV-cache grows and causes
+# accumulated quantization error → NaN in logits → CUDA device assert.
+_SAGE_CANDIDATES = [
+    # (function_name, extra_kwargs, label).
+    # v2: FP16 PV + FP32 accumulator — most numerically stable.
+    (
+        "sageattn_qk_int8_pv_fp16_cuda",
+        {"pv_accum_dtype": "fp32", "smooth_k": False},
+        "v2 qk_int8_pv_fp16_cuda (pv_accum=fp32, no_smooth)",
+    ),
+    # v2: FP16 PV via pure Triton — no compiled CUDA modules needed.
+    (
+        "sageattn_qk_int8_pv_fp16_triton",
+        {"smooth_k": False},
+        "v2 qk_int8_pv_fp16_triton (no_smooth)",
+    ),
+    # v1 (PyPI 1.0.6): INT8 QK + FP16 PV + Triton kernels.
+    (
+        "sageattn",
+        {"smooth_k": False},
+        "v1 sageattn (qk_int8_pv_fp16, no_smooth)",
+    ),
+]
+
+
+def _resolve_sage_fn():
+    """Find the best available SageAttention kernel function.
+
+    Probes sageattention.core first (v2 has all functions there),
+    then the package root. Uses getattr so missing symbols never raise.
+    Returns (callable, extra_kwargs_dict, label) or (None, {}, "").
+    """
+    import importlib
+
+    modules_to_check = []
+    for mod_name in ("sageattention.core", "sageattention"):
+        try:
+            modules_to_check.append(importlib.import_module(mod_name))
+        except Exception:
+            pass
+
+    if not modules_to_check:
+        return None, {}, ""
+
+    for func_name, extra_kw, label in _SAGE_CANDIDATES:
+        for mod in modules_to_check:
+            fn = getattr(mod, func_name, None)
+            if fn is not None:
+                print(f"[sage] Found {func_name} in {mod.__name__}.")
+                sys.stdout.flush()
+                return fn, extra_kw, label
+
+    avail = []
+    for mod in modules_to_check:
+        avail.extend(
+            n for n in dir(mod)
+            if n.startswith("sage") and callable(getattr(mod, n, None))
+        )
+    print(f"[sage] No candidate matched. Available: {avail}")
+    sys.stdout.flush()
+    return None, {}, ""
+
+
+def _apply_sage_attention() -> bool:
+    """Replace F.scaled_dot_product_attention with a SageAttention wrapper.
+
+    Searches for the most numerically-stable kernel available:
+      1) sageattn_qk_int8_pv_fp16_cuda  — v2 FP16 PV, FP32 accumulator.
+      2) sageattn_qk_int8_pv_fp16_triton — v2 FP16 PV, pure Triton.
+      3) sageattn                        — v1 INT8 QK + FP16 PV (PyPI 1.0.6).
+
+    Falls back to the original SDPA when attn_mask or dropout is present.
+
+    Returns True if SageAttention was installed successfully.
+    """
+    global _sage_enabled  # noqa: PLW0603
+    try:
+        import torch  # noqa: F401
+        import torch.nn.functional as F  # noqa: N812
+
+        chosen_fn, extra_kw, variant = _resolve_sage_fn()
+
+        if chosen_fn is None:
+            print(
+                "[sage] WARNING: sageattention is installed but no stable "
+                "kernel found. Using default SDPA."
+            )
+            sys.stdout.flush()
+            return False
+
+        _original_sdpa = F.scaled_dot_product_attention
+
+        def _sage_wrapper(
+            query, key, value,
+            attn_mask=None, dropout_p=0.0, is_causal=False, scale=None,
+            **kwargs,
+        ):
+            if attn_mask is not None or dropout_p > 0.0:
+                return _original_sdpa(
+                    query, key, value,
+                    attn_mask=attn_mask, dropout_p=dropout_p,
+                    is_causal=is_causal, scale=scale, **kwargs,
+                )
+            try:
+                return chosen_fn(
+                    query, key, value,
+                    tensor_layout="HND",
+                    is_causal=is_causal,
+                    sm_scale=scale,
+                    **extra_kw,
+                )
+            except Exception:
+                return _original_sdpa(
+                    query, key, value,
+                    attn_mask=attn_mask, dropout_p=dropout_p,
+                    is_causal=is_causal, scale=scale, **kwargs,
+                )
+
+        F.scaled_dot_product_attention = _sage_wrapper
+        _sage_enabled = True
+        print(f"[sage] SageAttention installed: {variant}.")
+        sys.stdout.flush()
+        return True
+    except ImportError:
+        print("[sage] sageattention not installed, using default SDPA.")
+        sys.stdout.flush()
+        return False
+
+
+def _try_cuda_recover():
+    """Attempt to recover CUDA state after a device-side error.
+
+    Clears the CUDA cache and resets error state. This does NOT guarantee
+    recovery — a device-side assert often corrupts the context permanently.
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
+    except Exception:
+        pass
+
+
+def load_model(
+    model_name: str,
+    device: str = "cuda:0",
+    use_sage: bool = False,
+):
     """Load a Qwen3-TTS model with the best available attention."""
     import torch
     from qwen_tts import Qwen3TTSModel
 
+    if use_sage:
+        _apply_sage_attention()
+
     want_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
-    attn = _detect_attn_impl()
+    attn = _detect_attn_impl(use_sage=use_sage)
     print(f"Loading {model_name} on {device} ({want_dtype}, attn={attn})...")
     model = Qwen3TTSModel.from_pretrained(
         model_name,
@@ -103,9 +288,10 @@ def load_model(model_name: str, device: str = "cuda:0"):
 
     import importlib
     fa_ok = importlib.util.find_spec("flash_attn") is not None
+    sage_ok = importlib.util.find_spec("sageattention") is not None
     print(
         f"[OK] bfloat16={want_dtype}, flash_attn={fa_ok}, "
-        f"attn_impl={attn}"
+        f"sage_attn={sage_ok}, attn_impl={attn}"
     )
 
     print("Model loaded.")
@@ -113,11 +299,62 @@ def load_model(model_name: str, device: str = "cuda:0"):
     return model
 
 
-def maybe_compile_model(model: Any, enable: bool) -> Any:
+def load_clone_config(config_path: str | None) -> dict[str, dict]:
+    """Load voice clone configuration from a JSON file.
+
+    Returns a dict mapping voice_id -> {"ref_audio": str, "ref_text": str}.
+    """
+    if not config_path:
+        return {}
+    path = Path(config_path)
+    if not path.exists():
+        print(f"WARNING: clone config {config_path} not found, skipping voice cloning.")
+        sys.stdout.flush()
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    print(f"Loaded clone config with {len(data)} voice(s): {list(data.keys())}")
+    sys.stdout.flush()
+    return data
+
+
+def build_clone_prompts(
+    base_model: Any,
+    clone_config: dict[str, dict],
+) -> dict[str, Any]:
+    """Build reusable voice_clone_prompt for each cloned voice."""
+    prompts: dict[str, Any] = {}
+    for voice_id, cfg in clone_config.items():
+        ref_audio = cfg.get("ref_audio", "")
+        ref_text = cfg.get("ref_text", "")
+        if not ref_audio or not ref_text:
+            print(
+                f"  WARNING: clone voice '{voice_id}' missing ref_audio or ref_text, skipping."
+            )
+            continue
+        if not Path(ref_audio).exists():
+            print(f"  WARNING: ref_audio '{ref_audio}' not found for '{voice_id}', skipping.")
+            continue
+        print(f"  Building clone prompt for '{voice_id}' from {ref_audio}...")
+        sys.stdout.flush()
+        prompt = base_model.create_voice_clone_prompt(
+            ref_audio=ref_audio,
+            ref_text=ref_text,
+        )
+        prompts[voice_id] = prompt
+        print(f"  Clone prompt ready for '{voice_id}'.")
+        sys.stdout.flush()
+    return prompts
+
+
+def maybe_compile_model(model: Any, enable: bool, use_sage: bool = False) -> Any:
     """Optionally apply torch.compile for ~20-40% inference speedup.
 
     Note: the first chunk will take longer due to JIT compilation,
     but subsequent chunks benefit from the optimized code.
+
+    When SageAttention is active, ``reduce-overhead`` mode (CUDA Graphs) is
+    downgraded to ``default`` because the monkey-patched SDPA wrapper
+    contains Python-level conditionals that break CUDA Graph capture.
     """
     if not enable:
         return model
@@ -125,16 +362,25 @@ def maybe_compile_model(model: Any, enable: bool) -> Any:
     if not hasattr(torch, "compile"):
         print("[compile] torch.compile not available (requires PyTorch >= 2.0), skipping.")
         return model
-    print("[compile] Applying torch.compile(mode='reduce-overhead')…")
+
+    if use_sage:
+        print(
+            "[compile] Skipping torch.compile — SageAttention provides its "
+            "own acceleration and is incompatible with torch.compile tracing."
+        )
+        sys.stdout.flush()
+        return model
+
+    mode = "reduce-overhead"
+    print(f"[compile] Applying torch.compile(mode='{mode}')…")
     sys.stdout.flush()
     try:
         import torch.nn as nn
-        # Compile inner nn.Module sub-components that own actual parameters.
         compiled_any = False
         for name, val in vars(model).items():
             if isinstance(val, nn.Module):
                 try:
-                    compiled = torch.compile(val, mode="reduce-overhead", dynamic=True)
+                    compiled = torch.compile(val, mode=mode, dynamic=True)
                     setattr(model, name, compiled)
                     print(f"[compile] Compiled model.{name}")
                     compiled_any = True
@@ -153,12 +399,25 @@ def synthesize_chunk(
     text: str,
     voice_id: str,
     speaker_map: dict[str, str],
+    clone_prompts: dict[str, Any] | None = None,
+    clone_model: Any | None = None,
     instruct_map: dict[str, str] | None = None,
     language: str = "Russian",
 ) -> tuple[Any, int]:
-    """Generate audio for a single chunk using CustomVoice."""
-    speaker, instruct = resolve_voice(voice_id, speaker_map)
+    """Generate audio for a single chunk.
 
+    Uses voice cloning if the voice_id has a clone prompt,
+    otherwise falls back to CustomVoice.
+    """
+    if clone_prompts and voice_id in clone_prompts and clone_model is not None:
+        wavs, sr = clone_model.generate_voice_clone(
+            text=text,
+            language=language,
+            voice_clone_prompt=clone_prompts[voice_id],
+        )
+        return wavs, sr
+
+    speaker, instruct = resolve_voice(voice_id, speaker_map)
     wavs, sr = model.generate_custom_voice(
         text=text,
         language=language,
@@ -173,22 +432,56 @@ def synthesize_batch(
     texts: list[str],
     voice_ids: list[str],
     speaker_map: dict[str, str],
+    clone_prompts: dict[str, Any] | None = None,
+    clone_model: Any | None = None,
     instruct_map: dict[str, str] | None = None,
     language: str = "Russian",
 ) -> list[tuple[Any, int]]:
-    """Generate audio for multiple chunks in a single batch call."""
-    resolved = [resolve_voice(vid, speaker_map) for vid in voice_ids]
-    speakers = [r[0] for r in resolved]
-    instructs = [r[1] for r in resolved]
-    langs = [language] * len(texts)
+    """Generate audio for multiple chunks in a single batch call.
 
-    wavs, sr = model.generate_custom_voice(
-        text=texts,
-        language=langs,
-        speaker=speakers,
-        instruct=instructs,
-    )
-    return [(w, sr) for w in wavs]
+    Falls back to one-by-one synthesis when the batch mixes
+    cloned and custom voices.
+    """
+    has_clone = clone_prompts and clone_model is not None
+    clone_ids = set(clone_prompts.keys()) if clone_prompts else set()
+    all_clone = has_clone and all(vid in clone_ids for vid in voice_ids)
+    all_custom = not has_clone or all(vid not in clone_ids for vid in voice_ids)
+
+    if all_custom:
+        resolved = [resolve_voice(vid, speaker_map) for vid in voice_ids]
+        speakers = [r[0] for r in resolved]
+        instructs = [r[1] for r in resolved]
+        langs = [language] * len(texts)
+        wavs, sr = model.generate_custom_voice(
+            text=texts,
+            language=langs,
+            speaker=speakers,
+            instruct=instructs,
+        )
+        return [(w, sr) for w in wavs]
+
+    if all_clone:
+        results = []
+        for txt, vid in zip(texts, voice_ids):
+            wavs, sr = clone_model.generate_voice_clone(
+                text=txt,
+                language=language,
+                voice_clone_prompt=clone_prompts[vid],
+            )
+            results.append((wavs[0], sr))
+        return results
+
+    # Mixed batch: synthesize one by one.
+    results = []
+    for txt, vid in zip(texts, voice_ids):
+        wavs, sr = synthesize_chunk(
+            model, txt, vid, speaker_map,
+            clone_prompts=clone_prompts,
+            clone_model=clone_model,
+            language=language,
+        )
+        results.append((wavs[0], sr))
+    return results
 
 
 def _format_eta(seconds: float) -> str:
@@ -261,6 +554,18 @@ def main() -> None:
         "--compile", action="store_true",
         help="Apply torch.compile for ~20-40%% speedup (first chunk will be slower).",
     )
+    parser.add_argument(
+        "--clone-config", type=str, default=None,
+        help="Path to JSON with voice clone configs (ref_audio + ref_text per voice_id).",
+    )
+    parser.add_argument(
+        "--clone-model", type=str, default=BASE_MODEL_NAME,
+        help=f"Base model for voice cloning (default: {BASE_MODEL_NAME}).",
+    )
+    parser.add_argument(
+        "--sage-attention", action="store_true",
+        help="Use SageAttention (monkey-patches SDPA for ~2-3x speedup).",
+    )
     args = parser.parse_args()
 
     _log_file = None
@@ -312,14 +617,49 @@ def _main_impl(args: argparse.Namespace) -> None:
     }
     print(f"Speakers: {speaker_map}")
     print(f"Batch size: {args.batch_size}")
+    if args.sage_attention:
+        print("SageAttention: enabled")
 
-    model = load_model(args.model, args.device)
-    model = maybe_compile_model(model, enable=args.compile)
+    # Load voice clone config if provided.
+    clone_config = load_clone_config(args.clone_config)
+    clone_model = None
+    clone_prompts: dict[str, Any] = {}
+
+    if clone_config:
+        print(f"Loading Base model for voice cloning: {args.clone_model}")
+        clone_model = load_model(
+            args.clone_model, args.device, use_sage=args.sage_attention,
+        )
+        clone_model = maybe_compile_model(
+            clone_model, enable=args.compile, use_sage=args.sage_attention,
+        )
+        print("Building clone prompts...")
+        sys.stdout.flush()
+        clone_prompts = build_clone_prompts(clone_model, clone_config)
+        print(f"Clone prompts ready: {list(clone_prompts.keys())}")
+        sys.stdout.flush()
+
+    # Determine which voice_ids actually need the CustomVoice model.
+    voice_ids_in_manifest = {c.get("voice_id", "narrator") for c in chunks}
+    needs_custom = any(vid not in clone_prompts for vid in voice_ids_in_manifest)
+
+    if needs_custom:
+        model = load_model(args.model, args.device, use_sage=args.sage_attention)
+        model = maybe_compile_model(
+            model, enable=args.compile, use_sage=args.sage_attention,
+        )
+    else:
+        # All voices are cloned; no need for CustomVoice model.
+        print("All voices use cloning, skipping CustomVoice model load.")
+        model = clone_model
 
     total = len(chunks)
     total_chars = sum(len(c.get("text", "")) for c in chunks)
     done = 0
     skipped = 0
+    errors = 0
+    consecutive_errors = 0
+    max_consecutive_errors = 3
     processed_chars = 0
     start = time.time()
     chunk_times: list[tuple[float, int]] = []
@@ -385,9 +725,19 @@ def _main_impl(args: argparse.Namespace) -> None:
                 try:
                     wavs, sr = synthesize_chunk(
                         model, chunk["text"], chunk["voice_id"], speaker_map,
+                        clone_prompts=clone_prompts,
+                        clone_model=clone_model,
                     )
-                    sf.write(str(batch_paths[0]), wavs[0], sr)
+                    wav_data = wavs[0]
+                    if hasattr(wav_data, "cpu"):
+                        wav_data = wav_data.cpu().numpy()
+                    wav_file = str(batch_paths[0])
+                    sf.write(wav_file, wav_data, sr)
+                    fsize = batch_paths[0].stat().st_size
+                    print(f"  [OK] Wrote {wav_file} ({fsize} bytes, sr={sr})")
+                    sys.stdout.flush()
                     done += 1
+                    consecutive_errors = 0
                     completed_keys.add(batch_keys[0])
                     manifest_out.append({
                         **chunk, "file": str(batch_paths[0].relative_to(out_dir)),
@@ -410,11 +760,28 @@ def _main_impl(args: argparse.Namespace) -> None:
                     **chunk, "file": "", "error": f"timeout after {elapsed:.0f}s",
                 })
             except Exception as exc:
+                err_str = str(exc)
+                is_cuda = "CUDA" in err_str or "cuda" in err_str
                 print(f"  ERROR {batch_keys[0]}: {exc}")
                 sys.stdout.flush()
                 skipped += 1
+                errors += 1
                 processed_chars += len(chunk.get("text", ""))
-                manifest_out.append({**chunk, "file": "", "error": str(exc)})
+                manifest_out.append({**chunk, "file": "", "error": err_str})
+                if is_cuda:
+                    consecutive_errors += 1
+                    _try_cuda_recover()
+                    if consecutive_errors >= max_consecutive_errors:
+                        print(
+                            f"\n  FATAL: {consecutive_errors} consecutive CUDA errors. "
+                            "GPU context is likely corrupted. Aborting synthesis.\n"
+                            "  Hint: try disabling SageAttention — it may be "
+                            "incompatible with this model/GPU."
+                        )
+                        sys.stdout.flush()
+                        break
+                else:
+                    consecutive_errors = 0
         else:
             batch_timeout = timeout * len(batch_chunks)
             try:
@@ -423,10 +790,17 @@ def _main_impl(args: argparse.Namespace) -> None:
                 try:
                     texts = [c["text"] for c in batch_chunks]
                     vids = [c["voice_id"] for c in batch_chunks]
-                    results = synthesize_batch(model, texts, vids, speaker_map)
-                    for j, (wav_data, sr) in enumerate(results):
-                        sf.write(str(batch_paths[j]), wav_data, sr)
+                    results = synthesize_batch(
+                        model, texts, vids, speaker_map,
+                        clone_prompts=clone_prompts,
+                        clone_model=clone_model,
+                    )
+                    for j, (wav_data_j, sr) in enumerate(results):
+                        if hasattr(wav_data_j, "cpu"):
+                            wav_data_j = wav_data_j.cpu().numpy()
+                        sf.write(str(batch_paths[j]), wav_data_j, sr)
                         done += 1
+                        consecutive_errors = 0
                         completed_keys.add(batch_keys[j])
                         manifest_out.append({
                             **batch_chunks[j],
@@ -449,8 +823,13 @@ def _main_impl(args: argparse.Namespace) -> None:
                         try:
                             wavs, sr = synthesize_chunk(
                                 model, chunk["text"], chunk["voice_id"], speaker_map,
+                                clone_prompts=clone_prompts,
+                                clone_model=clone_model,
                             )
-                            sf.write(str(batch_paths[j]), wavs[0], sr)
+                            wav_fb = wavs[0]
+                            if hasattr(wav_fb, "cpu"):
+                                wav_fb = wav_fb.cpu().numpy()
+                            sf.write(str(batch_paths[j]), wav_fb, sr)
                             done += 1
                             completed_keys.add(batch_keys[j])
                             manifest_out.append({
@@ -472,22 +851,58 @@ def _main_impl(args: argparse.Namespace) -> None:
                             "error": f"timeout after {elapsed2:.0f}s",
                         })
                     except Exception as exc2:
+                        err_str2 = str(exc2)
+                        is_cuda2 = "CUDA" in err_str2 or "cuda" in err_str2
                         print(f"  ERROR {batch_keys[j]}: {exc2}")
                         sys.stdout.flush()
                         skipped += 1
+                        errors += 1
                         processed_chars += len(chunk.get("text", ""))
                         manifest_out.append({
-                            **chunk, "file": "", "error": str(exc2),
+                            **chunk, "file": "", "error": err_str2,
                         })
+                        if is_cuda2:
+                            consecutive_errors += 1
+                            _try_cuda_recover()
+                            if consecutive_errors >= max_consecutive_errors:
+                                break
+                        else:
+                            consecutive_errors = 0
+                if consecutive_errors >= max_consecutive_errors:
+                    print(
+                        f"\n  FATAL: {consecutive_errors} consecutive CUDA errors. "
+                        "GPU context is likely corrupted. Aborting synthesis.\n"
+                        "  Hint: try disabling SageAttention — it may be "
+                        "incompatible with this model/GPU."
+                    )
+                    sys.stdout.flush()
+                    break
             except Exception as exc:
+                err_str = str(exc)
+                is_cuda = "CUDA" in err_str or "cuda" in err_str
                 print(f"  ERROR batch: {exc}")
                 sys.stdout.flush()
                 for chunk in batch_chunks:
                     skipped += 1
+                    errors += 1
                     processed_chars += len(chunk.get("text", ""))
                 manifest_out.append({
-                    **batch_chunks[-1], "file": "", "error": str(exc),
+                    **batch_chunks[-1], "file": "", "error": err_str,
                 })
+                if is_cuda:
+                    consecutive_errors += len(batch_chunks)
+                    _try_cuda_recover()
+                    if consecutive_errors >= max_consecutive_errors:
+                        print(
+                            f"\n  FATAL: {consecutive_errors} consecutive CUDA "
+                            "errors. Aborting synthesis.\n"
+                            "  Hint: try disabling SageAttention — it may be "
+                            "incompatible with this model/GPU."
+                        )
+                        sys.stdout.flush()
+                        break
+                else:
+                    consecutive_errors = 0
 
         elapsed_chunk = time.time() - t0
         print(f"  [INFO] Batch done in {elapsed_chunk:.1f}s")
@@ -552,7 +967,11 @@ def _main_impl(args: argparse.Namespace) -> None:
     )
 
     elapsed = time.time() - start
-    print(f"\nDone: {done} synthesized, {skipped} skipped, {_format_eta(elapsed)} total.")
+    err_part = f", {errors} errors" if errors else ""
+    print(
+        f"\nDone: {done} synthesized, {skipped} skipped{err_part}, "
+        f"{_format_eta(elapsed)} total."
+    )
     print(f"Manifest: {synth_manifest}")
 
 

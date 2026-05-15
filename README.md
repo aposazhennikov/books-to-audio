@@ -44,8 +44,12 @@ Full-pipeline Russian audiobook generator: from book files (PDF/TXT/EPUB/FB2/DOC
 | **WSL 2** | `wsl --install` (restart if needed). Default Ubuntu is fine. |
 | **Python 3.10+** | Install on Windows from [python.org](https://www.python.org/downloads/) or `winget install Python.Python.3.12` |
 | **NVIDIA GPU** | Drivers with CUDA support. 6+ GB VRAM for 1.7B model. |
+| **Ollama** | [ollama.com/download](https://ollama.com/download) — for LLM-based chunking |
+| **ComfyUI** | Running locally with Qwen3-TTS custom nodes installed |
 
 ### 2. Install on Windows
+
+**Option A — via requirements.txt (simplest):**
 
 ```powershell
 cd C:\path\to\books-to-audio
@@ -53,12 +57,43 @@ cd C:\path\to\books-to-audio
 python -m venv .venv
 .venv\Scripts\activate
 
-pip install -e ".[ocr,gui]"
+pip install -r requirements.txt
+pip install -e "."
 ```
 
-### 3. WSL setup for TTS (one-time)
+**Option B — via pip extras (full control):**
 
-TTS runs in WSL to access the GPU. In **WSL terminal**:
+```powershell
+pip install -e ".[ocr,gui,llm]"     # GUI + OCR + LLM (recommended)
+pip install -e ".[ocr,gui,llm,dev]" # + dev tools (pytest, ruff)
+```
+
+### 3. Ollama setup (for LLM-based chunking)
+
+LLM chunking uses a local Ollama model to split text into TTS chunks with
+voice assignment (narrator/male/female) and mood detection.
+
+**Install Ollama:** [ollama.com/download](https://ollama.com/download)
+
+**Pull a model** (run in PowerShell after Ollama is installed):
+
+```powershell
+# Recommended: best balance of speed and quality for Russian text
+ollama pull gemma3:4b
+
+# Better quality, slower (~10-15s/window instead of 2-5s):
+ollama pull gemma3:12b
+```
+
+Ollama starts automatically as a background service. Default endpoint:
+`http://localhost:11434`
+
+### 4. WSL setup for TTS via WSL runner (one-time, legacy path)
+
+The WSL path (`tts_runner.py`) is kept for backward compatibility.
+For new workflows, use the **ComfyUI path** (see Step 5).
+
+In **WSL terminal**:
 
 ```bash
 sudo apt update && sudo apt install python3.10 python3.10-venv
@@ -72,7 +107,30 @@ pip install qwen-tts torch soundfile numpy
 pip install flash-attn --no-build-isolation
 ```
 
-### 4. Run the GUI
+### 5. ComfyUI setup for TTS (recommended path)
+
+ComfyUI with Qwen3-TTS nodes provides streaming synthesis and better
+integration with the new v2 manifest pipeline.
+
+**One-time workflow template setup:**
+
+1. Open ComfyUI (default: `http://localhost:8188`)
+2. Build your Qwen3-TTS workflow in the UI
+3. Click **Save** → **Save (API Format)** → download the JSON
+4. Open the JSON and replace static input values with these placeholder strings:
+   - `"{{TEXT}}"` — the text to synthesize
+   - `"{{VOICE_ID}}"` — voice preset (e.g. `narrator_calm`, `male_young`)
+   - `"{{INSTRUCT}}"` — style/mood instruct prompt
+   - `"{{OUTPUT_FILENAME}}"` — output filename prefix
+5. Save as `comfyui_workflows/qwen3_tts_template.json` in the project root
+
+**Create the workflows directory:**
+
+```powershell
+mkdir comfyui_workflows
+```
+
+### 6. Run the GUI
 
 From **Windows PowerShell** (not WSL):
 
@@ -82,16 +140,7 @@ cd C:\path\to\books-to-audio
 python -m book_normalizer.gui.app
 ```
 
-> GUI runs on Windows. WSL is used internally only for TTS synthesis and assembly.
-
-### Installation variants
-
-```powershell
-pip install -e "."              # Core only
-pip install -e ".[ocr]"         # + OCR for scanned PDFs
-pip install -e ".[ocr,gui]"     # + GUI (recommended)
-pip install -e ".[ocr,gui,llm,dev]"  # Full
-```
+> GUI runs on Windows. WSL is used internally only for the legacy TTS path.
 
 ## Full Pipeline: Step-by-Step
 
@@ -147,18 +196,56 @@ Page Segmentation Mode controls how Tesseract analyzes the page layout:
 
 ### Step 2. Export voice-annotated chunks
 
+**Option A — Heuristic (fast, rule-based):**
+
 ```bash
 python scripts/export_chunks.py --book-dir output/mybook_pdf --speaker-mode heuristic --max-chunk-chars 600
 ```
 
+Output: `output/mybook_pdf/chunks_manifest.json` (v1 format)
+
+**Option B — LLM chunking (recommended, voice + mood detection):**
+
+```bash
+# Using gemma3:4b (fast, good quality):
+python scripts/export_chunks.py --book-dir output/mybook_pdf --mode llm --llm-model gemma3:4b --max-chunk-chars 400
+
+# Using gemma3:12b (slower, better quality for complex dialogues):
+python scripts/export_chunks.py --book-dir output/mybook_pdf --mode llm --llm-model gemma3:12b
+```
+
+Output: `output/mybook_pdf/chunks_manifest_v2.json` (v2 format with voice + mood)
+
+LLM chunking options:
+- `--mode llm|heuristic` — chunking mode
+- `--llm-model gemma3:4b` — Ollama model (default: gemma3:4b)
+- `--llm-endpoint http://localhost:11434/v1` — Ollama endpoint
+- `--max-chunk-chars N` — soft chunk size limit. Splitting prefers sentence/clause boundaries and does not cut inside a word.
+
+### Step 3a. Synthesize audio via ComfyUI (recommended)
+
+Requires: ComfyUI running + workflow template at `comfyui_workflows/qwen3_tts_template.json`
+
+```bash
+python scripts/synthesize_comfyui.py \
+    --chunks-json output/mybook_pdf/chunks_manifest_v2.json \
+    --out output/mybook_pdf/audio_chunks \
+    --workflow comfyui_workflows/qwen3_tts_template.json
+
+# Only one chapter:
+python scripts/synthesize_comfyui.py \
+    --chunks-json output/mybook_pdf/chunks_manifest_v2.json \
+    --out output/mybook_pdf/audio_chunks \
+    --workflow comfyui_workflows/qwen3_tts_template.json \
+    --chapter 3
+```
+
 Options:
-- `--speaker-mode heuristic|llm|manual` — voice attribution mode
-- `--max-chunk-chars 600` — shorter chunks = more stable intonation
-- `--stress-mode strip|keep_acute` — keep stress marks for TTS
+- `--comfyui-url http://localhost:8188` — ComfyUI server URL
+- `--chapter N` — synthesize only chapter N (1-based)
+- `--chunk-timeout 300` — max seconds per chunk
 
-Output: `output/mybook_pdf/chunks_manifest.json`
-
-### Step 3. Synthesize audio (runs in WSL)
+### Step 3b. Synthesize audio via WSL runner (legacy)
 
 ```bash
 wsl -e bash scripts/run_tts.sh             # All chapters
@@ -186,8 +273,24 @@ Options:
 
 ### Step 4. Assemble audio
 
+**From v2 manifest (ComfyUI path):**
+
 ```bash
-# In WSL:
+python scripts/assemble_chapter.py \
+    --manifest output/mybook_pdf/chunks_manifest_v2.json \
+    --out output/mybook_pdf \
+    --all
+
+# Single chapter:
+python scripts/assemble_chapter.py \
+    --manifest output/mybook_pdf/chunks_manifest_v2.json \
+    --out output/mybook_pdf \
+    --chapter 3
+```
+
+**From audio directory (WSL path, backward compatible):**
+
+```bash
 python scripts/assemble_chapter.py \
     --audio-dir output/mybook_pdf/audio_chunks \
     --out output/mybook_pdf \
@@ -310,7 +413,7 @@ Merge individual audio chunks into full chapter WAV files:
 ## TTS Quality Tips
 
 1. **Use the 1.7B model** — 18% better WER than 0.6B for Russian. Worth the extra time for final audio.
-2. **Keep chunks short** — `--max-chunk-chars 600` for stable intonation. Longer chunks may drift in tone.
+2. **Keep chunks short** — `--max-chunk-chars 300`–`600` for stable intonation. Smaller values create more chunks; splitting prefers sentence/clause boundaries and does not cut inside a word.
 3. **Start with batch=1** — increase only if your GPU has enough VRAM (see Batch Size Guide above).
 4. **Install flash-attention** — `pip install flash-attn --no-build-isolation` for 1.5-2x speedup. Highly recommended for production runs.
 5. **Use `--resume`** — always add `--resume` when running TTS from CLI. It skips already generated chunks, saving hours on interrupted runs.
@@ -345,8 +448,12 @@ output/mybook_pdf/
 ├── qwen_full.txt                   # TTS-optimized full text
 ├── qwen_chapter_01.txt             # TTS-optimized chapters
 ├── qwen_chunks/                    # Pre-split TTS chunks
-├── chunks_manifest.json            # Voice-annotated chunk manifest
+├── chunks_manifest.json            # Voice-annotated chunk manifest (v1, heuristic)
+├── chunks_manifest_v2.json         # LLM chunk manifest with voice + mood (v2)
 ├── book_structure.json             # Machine-readable structure
+├── speaker_cache/                  # LLM chunking cache (per chapter window)
+│   ├── llm_chunks_ch000_win000.json
+│   └── ...
 ├── audio_chunks/
 │   ├── chapter_001/
 │   │   ├── chunk_001_narrator.wav
@@ -355,11 +462,42 @@ output/mybook_pdf/
 │   └── chapter_002/
 ├── chapter_001.wav                 # Assembled chapter audio
 ├── chapter_002.wav
-├── synthesis_progress.json         # Resume checkpoint
-├── synthesis_manifest.json         # Audio generation log
+├── synthesis_progress.json         # Resume checkpoint (WSL path)
+├── synthesis_manifest.json         # Audio generation log (WSL path)
 ├── voice_config_template.json      # Voice configuration
 └── audit_log.json                  # Processing audit trail
 ```
+
+## New LLM Pipeline: Full Workflow
+
+The recommended end-to-end flow for a Russian book with ComfyUI:
+
+```
+Step 1: normalize text
+    python -m book_normalizer.cli process books/mybook.pdf --out output
+
+Step 2: LLM chunking (Ollama + gemma3)
+    python scripts/export_chunks.py --book-dir output/mybook_pdf --mode llm --llm-model gemma3:4b --max-chunk-chars 400
+
+Step 3: synthesize via ComfyUI
+    python scripts/synthesize_comfyui.py \
+        --chunks-json output/mybook_pdf/chunks_manifest_v2.json \
+        --out output/mybook_pdf/audio_chunks \
+        --workflow comfyui_workflows/qwen3_tts_template.json
+
+Step 4: assemble chapters
+    python scripts/assemble_chapter.py \
+        --manifest output/mybook_pdf/chunks_manifest_v2.json \
+        --out output/mybook_pdf \
+        --all
+```
+
+| Step | Tool | Input | Output |
+|------|------|-------|--------|
+| Normalize | `cli process` | Book file | `chapter_NNN.txt` |
+| LLM Chunk | `export_chunks.py --mode llm` | Chapter TXTs | `chunks_manifest_v2.json` |
+| Synthesize | `synthesize_comfyui.py` | Manifest v2 + workflow | `audio_chunks/chapter_NNN/*.wav` |
+| Assemble | `assemble_chapter.py --manifest` | Manifest v2 | `chapter_NNN.wav` |
 
 ## Normalization Pipeline
 
@@ -394,6 +532,15 @@ pytest tests/ -v          # Verbose
 ```
 
 ## Recent Updates
+
+**2026-04-01**:
+- Added **LLM-based chunking** via Ollama (`export_chunks.py --mode llm`): splits text into TTS chunks with voice (narrator/male/female) and mood (neutral/happy/sad/angry/tense/whisper) annotation in one LLM pass
+- Added **ComfyUI integration** (`synthesize_comfyui.py`): synthesize via ComfyUI REST API with resume support and manifest updates
+- Added **v2 manifest format** (`chunks_manifest_v2.json`) with voice, mood, synthesized status, and audio_file paths
+- Updated **`assemble_chapter.py`**: now supports `--manifest` mode for v2 manifests in addition to `--audio-dir` file-scan mode
+- Added **`requirements.txt`** for simplified installation (`pip install -r requirements.txt`)
+- Added **Ollama + ComfyUI setup** instructions to README
+- Recommended model for LLM chunking: `gemma3:4b` (fast) or `gemma3:12b` (quality)
 
 **2026-03-17**:
 - Added **yofication** (ё restoration) to normalization pipeline

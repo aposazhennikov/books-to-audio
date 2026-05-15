@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from book_normalizer.chunking.voice_splitter import (
     chunk_annotated_book,
     chunk_annotated_chapter,
@@ -13,7 +11,6 @@ from book_normalizer.dialogue.models import (
     AnnotatedParagraph,
     DialogueLine,
     SpeakerRole,
-    VoiceAnnotatedChunk,
 )
 
 
@@ -46,7 +43,11 @@ class TestVoiceAnnotatedChunking:
         ch = _chapter([
             _line("\u041d\u0430\u0440\u0440\u0430\u0442\u043e\u0440.", SpeakerRole.NARRATOR, False),
             _line("\u041f\u0440\u0438\u0432\u0435\u0442!", SpeakerRole.MALE, True),
-            _line("\u0417\u0434\u0440\u0430\u0432\u0441\u0442\u0432\u0443\u0439\u0442\u0435!", SpeakerRole.FEMALE, True),
+            _line(
+                "\u0417\u0434\u0440\u0430\u0432\u0441\u0442\u0432\u0443\u0439\u0442\u0435!",
+                SpeakerRole.FEMALE,
+                True,
+            ),
         ])
         chunks = chunk_annotated_chapter(ch)
         assert len(chunks) == 3
@@ -67,7 +68,12 @@ class TestVoiceAnnotatedChunking:
         assert "Second" in chunks[0].text
 
     def test_long_text_split_into_sub_chunks(self) -> None:
-        long_text = "\u041f\u0440\u0435\u0434\u043b\u043e\u0436\u0435\u043d\u0438\u0435 \u043d\u043e\u043c\u0435\u0440 \u043e\u0434\u0438\u043d. " * 200
+        sentence = (
+            "\u041f\u0440\u0435\u0434\u043b\u043e\u0436\u0435\u043d\u0438\u0435 "
+            "\u043d\u043e\u043c\u0435\u0440 "
+            "\u043e\u0434\u0438\u043d. "
+        )
+        long_text = sentence * 200
         ch = _chapter([
             _line(long_text, SpeakerRole.NARRATOR, False),
         ])

@@ -1,5 +1,7 @@
 """Internationalization (i18n) support for GUI — Russian / English."""
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 from typing import Any
@@ -172,6 +174,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "voice.max_chunk": {
         "en": "Max Chunk Chars:",
         "ru": "Макс. символов в чанке:",
+    },
+    "voice.max_chunk_hint": {
+        "en": (
+            "Soft chunk size limit. Splitting prefers sentence and clause "
+            "boundaries and never cuts inside a word."
+        ),
+        "ru": (
+            "Мягкий лимит размера чанка. Разбиение старается идти по "
+            "предложениям и фразам и не режет слова."
+        ),
     },
     "voice.detect": {
         "en": "Detect Segments",
@@ -559,6 +571,68 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "все последующие — быстрее. "
             "Требует PyTorch 2.0+."
         ),
+    },
+    "synth.sage_attention": {
+        "en": "SageAttention:",
+        "ru": "SageAttention:",
+    },
+    "synth.sage_check": {
+        "en": "Enable SageAttention (~2-3x faster attention)",
+        "ru": "Включить SageAttention (~2-3x быстрее attention)",
+    },
+    "synth.sage_hint": {
+        "en": (
+            "SageAttention replaces SDPA with quantized attention kernels.\n"
+            "Requires SageAttention v2 from GitHub (v1 from PyPI is NOT compatible):\n"
+            "  pip install git+https://github.com/thu-ml/SageAttention.git\n"
+            "GPU: NVIDIA Ampere (30xx), Ada (40xx), Hopper, Blackwell."
+        ),
+        "ru": (
+            "SageAttention заменяет SDPA квантованными attention-ядрами.\n"
+            "Требуется SageAttention v2 с GitHub (v1 с PyPI НЕ совместим):\n"
+            "  pip install git+https://github.com/thu-ml/SageAttention.git\n"
+            "GPU: NVIDIA Ampere (30xx), Ada (40xx), Hopper, Blackwell."
+        ),
+    },
+    "synth.clone_enable": {
+        "en": "Voice Cloning — use a real audio sample as voice",
+        "ru": "Клонирование голоса — использовать реальный аудио-образец",
+    },
+    "synth.clone_title": {
+        "en": "🎤  Voice Cloning",
+        "ru": "🎤  Клонирование голоса",
+    },
+    "synth.clone_desc": {
+        "en": (
+            "Load a short audio clip (5–15 sec) of any voice + its transcript. "
+            "The model will synthesize the entire book in that voice. "
+            "You can add multiple voices for narrator / characters."
+        ),
+        "ru": (
+            "Загрузите короткий аудио-фрагмент (5–15 сек) любого голоса + транскрипт. "
+            "Модель озвучит всю книгу этим голосом. "
+            "Можно добавить несколько голосов для диктора и персонажей."
+        ),
+    },
+    "synth.clone_add_voice": {
+        "en": "+ Add voice",
+        "ru": "+ Добавить голос",
+    },
+    "synth.clone_col_role": {
+        "en": "Voice role",
+        "ru": "Роль голоса",
+    },
+    "synth.clone_col_wav": {
+        "en": "Audio file (WAV/MP3/FLAC)",
+        "ru": "Аудиофайл (WAV/MP3/FLAC)",
+    },
+    "synth.clone_col_transcript": {
+        "en": "↳ Transcript: exactly what is said in the audio clip",
+        "ru": "↳ Транскрипт: точный текст, который произносится в аудиофрагменте",
+    },
+    "synth.clone_transcript_ph": {
+        "en": "Type the exact words spoken in the audio file…",
+        "ru": "Введите точный текст, который произносится в аудиофайле…",
     },
     "synth.loading_model": {
         "en": "Loading TTS model\u2026 (may take 1\u20132 min)",

@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from book_normalizer.models.book import Book, Paragraph
+from book_normalizer.models.book import Book
 from book_normalizer.stress.annotator import AnnotationResult
 from book_normalizer.stress.dictionary import (
     COMBINING_ACUTE,
@@ -192,7 +192,7 @@ class StressResolver:
             else:
                 display.append(ch)
 
-        self._console.print(f"  Vowels: ", end="")
+        self._console.print("  Vowels: ", end="")
         self._console.print(display)
         return vowel_positions
 

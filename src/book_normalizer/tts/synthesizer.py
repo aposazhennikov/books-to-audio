@@ -8,8 +8,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from book_normalizer.dialogue.models import SpeakerRole, VoiceAnnotatedChunk
-from book_normalizer.tts.voice_config import VoiceConfig, VoiceMethod
+from book_normalizer.dialogue.models import VoiceAnnotatedChunk
+from book_normalizer.tts.voice_config import VoiceMethod
 from book_normalizer.tts.voice_manager import VoiceManager
 
 logger = logging.getLogger(__name__)

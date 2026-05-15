@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from book_normalizer.memory.correction_store import CorrectionStore
 from book_normalizer.memory.punctuation_store import PunctuationStore
 from book_normalizer.models.book import Book, Chapter, Paragraph
-from book_normalizer.models.memory import CorrectionMemoryEntry, PunctuationMemoryEntry
+from book_normalizer.models.memory import PunctuationMemoryEntry
 from book_normalizer.models.review import IssueType, ReviewAction, ReviewDecision
 from book_normalizer.review.reviewer import Reviewer
 from book_normalizer.review.session import ReviewSession
@@ -93,7 +92,7 @@ class TestReviewer:
             ],
         )
 
-        from book_normalizer.models.review import ReviewIssue, IssueSeverity
+        from book_normalizer.models.review import IssueSeverity, ReviewIssue
 
         resolved_issue = ReviewIssue(
             id="i1",

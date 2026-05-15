@@ -83,9 +83,9 @@ class VoicesPage(QWidget):
 
         # Max chunk chars.
         self._chunk_size = QSpinBox()
-        self._chunk_size.setRange(100, 2000)
+        self._chunk_size.setRange(30, 2000)
         self._chunk_size.setValue(600)
-        self._chunk_size.setSingleStep(50)
+        self._chunk_size.setSingleStep(10)
         self._chunk_size_label = QLabel()
         settings.addRow(self._chunk_size_label, self._chunk_size)
 
@@ -259,6 +259,7 @@ class VoicesPage(QWidget):
         self._speaker_mode_label.setToolTip(t("voice.speaker_mode_hint"))
         self._update_speaker_mode_hint()
         self._chunk_size_label.setText(t("voice.max_chunk"))
+        self._chunk_size.setToolTip(t("voice.max_chunk_hint"))
         self._btn_detect.setText(t("voice.detect"))
         self._btn_load.setText(t("voice.load_manifest"))
         self._btn_save.setText(t("voice.save_manifest"))

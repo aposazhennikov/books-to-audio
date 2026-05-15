@@ -6,7 +6,6 @@ import json
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -30,6 +29,7 @@ class VoiceProfile(BaseModel):
     ref_text: str = ""
     design_instruct: str = ""
     speaker: str = ""
+    instruct: str = ""
     language: str = "Russian"
 
     def validate_for_method(self) -> list[str]:
@@ -49,6 +49,13 @@ class VoiceProfile(BaseModel):
             if not self.speaker:
                 errors.append(f"Voice '{self.name}': custom method requires speaker.")
         return errors
+
+    def to_clone_config_entry(self) -> dict:
+        """Export this profile as a clone config entry for tts_runner.py."""
+        return {
+            "ref_audio": self.ref_audio,
+            "ref_text": self.ref_text,
+        }
 
 
 class VoiceConfig(BaseModel):
@@ -96,6 +103,24 @@ class VoiceConfig(BaseModel):
             self.model_dump_json(indent=2, exclude_none=True),
             encoding="utf-8",
         )
+
+    def export_clone_config(self, path: Path) -> int:
+        """Export clone voices as a JSON config for tts_runner.py.
+
+        Returns the number of clone voices exported.
+        """
+        entries: dict[str, dict] = {}
+        for voice_id in ("narrator", "male", "female"):
+            profile = self.get_profile(voice_id)
+            if profile.method == VoiceMethod.CLONE and profile.ref_audio:
+                entries[voice_id] = profile.to_clone_config_entry()
+        if entries:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps(entries, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        return len(entries)
 
     @classmethod
     def default_clone_config(cls) -> VoiceConfig:

@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from pathlib import Path
 
 from book_normalizer.memory.correction_store import CorrectionStore
 from book_normalizer.memory.punctuation_store import PunctuationStore
 from book_normalizer.models.book import Book
-from book_normalizer.models.memory import CorrectionMemoryEntry, PunctuationMemoryEntry
 from book_normalizer.models.review import (
     IssueType,
     ReviewAction,

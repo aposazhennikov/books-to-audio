@@ -5,7 +5,7 @@ from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.models.memory import CorrectionMemoryEntry
 from book_normalizer.models.review import IssueSeverity, IssueType, ReviewIssue
 from book_normalizer.review.reviewer import Reviewer
-from book_normalizer.review.session import ReviewDecision, ReviewSession
+from book_normalizer.review.session import ReviewDecision
 
 
 def _make_book(text: str) -> Book:

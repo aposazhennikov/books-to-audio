@@ -12,7 +12,6 @@ from book_normalizer.loaders.docx_loader import DocxLoader
 def _create_test_docx(path: Path, with_headings: bool = True) -> Path:
     """Create a test DOCX file with optional heading-based chapters."""
     from docx import Document
-    from docx.shared import Pt
 
     doc = Document()
     doc.core_properties.title = "Test Document"

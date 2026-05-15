@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from book_normalizer.models.book import Book, Chapter, Paragraph, Segment
-from book_normalizer.stress.dictionary import COMBINING_ACUTE, StressDictionary, is_russian_word
+from book_normalizer.stress.dictionary import COMBINING_ACUTE, StressDictionary
 from book_normalizer.stress.resolver import StressResolver, _find_context_for_word
 
 

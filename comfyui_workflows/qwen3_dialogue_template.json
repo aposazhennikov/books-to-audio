@@ -1,0 +1,69 @@
+{
+  "1": {
+    "class_type": "FB_Qwen3TTSLoadSpeaker",
+    "_comment": "Load pre-saved narrator voice (.qvp). {{NARRATOR_SPEAKER}} is the name used when saving.",
+    "inputs": {
+      "filename": "{{NARRATOR_SPEAKER}}"
+    }
+  },
+  "2": {
+    "class_type": "FB_Qwen3TTSLoadSpeaker",
+    "_comment": "Load pre-saved male character voice (.qvp).",
+    "inputs": {
+      "filename": "{{MEN_SPEAKER}}"
+    }
+  },
+  "3": {
+    "class_type": "FB_Qwen3TTSLoadSpeaker",
+    "_comment": "Load pre-saved female character voice (.qvp).",
+    "inputs": {
+      "filename": "{{WOMEN_SPEAKER}}"
+    }
+  },
+  "4": {
+    "class_type": "FB_Qwen3TTSRoleBank",
+    "_comment": "Maps role names used in {{SCRIPT}} to loaded voice prompts. Names must match script prefixes exactly.",
+    "inputs": {
+      "role_name_1": "narrator",
+      "prompt_1": ["1", 0],
+      "role_name_2": "men",
+      "prompt_2": ["2", 0],
+      "role_name_3": "women",
+      "prompt_3": ["3", 0]
+    }
+  },
+  "5": {
+    "class_type": "FB_Qwen3TTSDialogueInference",
+    "_comment": "Synthesizes all roles in one pass. merge_outputs=true produces a single merged audio file.",
+    "inputs": {
+      "script": "{{SCRIPT}}",
+      "role_bank": ["4", 0],
+      "model_choice": "1.7B",
+      "device": "auto",
+      "precision": "bf16",
+      "language": "Russian",
+      "pause_linebreak": 0.5,
+      "period_pause": 0.4,
+      "comma_pause": 0.2,
+      "question_pause": 0.6,
+      "hyphen_pause": 0.3,
+      "merge_outputs": true,
+      "batch_size": 4,
+      "max_new_tokens_per_line": 2048,
+      "top_p": 0.8,
+      "top_k": 20,
+      "temperature": 1.0,
+      "repetition_penalty": 1.05,
+      "attention": "auto",
+      "unload_model_after_generate": true
+    }
+  },
+  "6": {
+    "class_type": "SaveAudio",
+    "_comment": "Saves the merged chapter audio. {{OUTPUT_FILENAME}} is the filename prefix.",
+    "inputs": {
+      "audio": ["5", 0],
+      "filename_prefix": "{{OUTPUT_FILENAME}}"
+    }
+  }
+}

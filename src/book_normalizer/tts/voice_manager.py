@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from book_normalizer.tts.voice_config import VoiceConfig, VoiceMethod, VoiceProfile

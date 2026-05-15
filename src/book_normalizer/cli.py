@@ -166,8 +166,9 @@ def process_command(
             )
             chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, config.ocr_mode)
 
-            from book_normalizer.models.book import Book as BookModel, Chapter, Metadata, Paragraph
             from book_normalizer.loaders.pdf_loader import PdfLoader
+            from book_normalizer.models.book import Book as BookModel
+            from book_normalizer.models.book import Chapter, Metadata
 
             paragraphs = PdfLoader._split_paragraphs(chosen_variant.text)
             chapter = Chapter(title="Full Text", index=0, paragraphs=paragraphs)
@@ -346,7 +347,6 @@ def _scan_book(
     punctuation_store: PunctuationStore,
 ) -> ReviewSession:
     """Run detectors on the book and return a session."""
-    from book_normalizer.models.book import Book
 
     reviewer = Reviewer(
         correction_store=correction_store,
@@ -601,7 +601,8 @@ def synthesize_command(
             )
             chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, ocr)
 
-            from book_normalizer.models.book import Book as BookModel, Chapter, Metadata, Paragraph
+            from book_normalizer.models.book import Book as BookModel
+            from book_normalizer.models.book import Chapter, Metadata
 
             paragraphs = PdfLoader._split_paragraphs(chosen_variant.text)
             chapter = Chapter(title="Full Text", index=0, paragraphs=paragraphs)

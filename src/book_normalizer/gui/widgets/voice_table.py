@@ -234,7 +234,6 @@ class VoiceTableWidget(QWidget):
 
     def _populate_table(self) -> None:
         self._table.setRowCount(len(self._segments))
-        lang = get_language()
 
         for row, seg in enumerate(self._segments):
             is_dlg = seg.get("is_dialogue", False)

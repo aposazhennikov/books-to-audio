@@ -409,9 +409,40 @@ Start/stop TTS generation with real-time progress:
 - **Models dir** points to the shared ComfyUI models directory, defaulting to `D:\ComfyUI-external\models`
 - **Batch Size** (see batch size guide below)
 - **Chapter** filter: synthesize all or a specific chapter
+- **Custom Voice** can use a new sample once, reuse a saved local voice, or map saved voices by role
 - **ComfyUI Saved Voice** saves a reusable custom voice through `voice_setup_template.json`
 - Progress bar with ETA and chunk counter
 - **Stop** button to cancel mid-synthesis
+
+#### Local Saved Voice Library
+
+The direct WSL runner can persist Qwen `voice_clone_prompt` objects in
+`output/voices` so prompt extraction does not run on every book:
+
+```bash
+python scripts/tts_runner.py \
+    --save-voice ilya_isaev \
+    --save-ref-audio /path/to/sample.wav \
+    --save-ref-text "Exact words spoken in the sample."
+```
+
+This creates `output/voices/ilya_isaev.voice.pt` plus
+`ilya_isaev.voice.json`. During synthesis, clone configs can reuse it:
+
+```json
+{
+  "__all__": {"saved_voice": "ilya_isaev"},
+  "narrator": {"saved_voice": "ilya_isaev"},
+  "male": {"saved_voice": "male_actor"},
+  "female_warm": {"saved_voice": "female_actor"}
+}
+```
+
+`__all__` means one saved voice for the whole book. Role keys such as
+`narrator`, `male`, and `female` apply to all matching GUI presets
+(`male_young`, `female_warm`, etc.). Any role or preset not listed falls back
+to the built-in Qwen speaker selected in the Voices step, so mixed mode is
+supported.
 
 The saved ComfyUI voice flow uploads a reference audio clip, extracts the
 voice prompt with `FB_Qwen3TTSVoiceClonePrompt`, then saves it with

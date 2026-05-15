@@ -18,6 +18,7 @@ class VoiceMethod(str, Enum):
     CLONE = "clone"
     DESIGN = "design"
     CUSTOM = "custom"
+    SAVED = "saved"
 
 
 class VoiceProfile(BaseModel):
@@ -27,6 +28,8 @@ class VoiceProfile(BaseModel):
     method: VoiceMethod = VoiceMethod.CLONE
     ref_audio: str = ""
     ref_text: str = ""
+    saved_voice: str = ""
+    voice_prompt_path: str = ""
     design_instruct: str = ""
     speaker: str = ""
     instruct: str = ""
@@ -48,14 +51,24 @@ class VoiceProfile(BaseModel):
         elif self.method == VoiceMethod.CUSTOM:
             if not self.speaker:
                 errors.append(f"Voice '{self.name}': custom method requires speaker.")
+        elif self.method == VoiceMethod.SAVED:
+            if not self.saved_voice and not self.voice_prompt_path:
+                errors.append(
+                    f"Voice '{self.name}': saved method requires saved_voice "
+                    "or voice_prompt_path."
+                )
         return errors
 
     def to_clone_config_entry(self) -> dict:
         """Export this profile as a clone config entry for tts_runner.py."""
-        return {
-            "ref_audio": self.ref_audio,
-            "ref_text": self.ref_text,
-        }
+        if self.method == VoiceMethod.SAVED:
+            entry = {}
+            if self.saved_voice:
+                entry["saved_voice"] = self.saved_voice
+            if self.voice_prompt_path:
+                entry["voice_prompt_path"] = self.voice_prompt_path
+            return entry
+        return {"ref_audio": self.ref_audio, "ref_text": self.ref_text}
 
 
 class VoiceConfig(BaseModel):
@@ -112,7 +125,9 @@ class VoiceConfig(BaseModel):
         entries: dict[str, dict] = {}
         for voice_id in ("narrator", "male", "female"):
             profile = self.get_profile(voice_id)
-            if profile.method == VoiceMethod.CLONE and profile.ref_audio:
+            if profile.method == VoiceMethod.SAVED:
+                entries[voice_id] = profile.to_clone_config_entry()
+            elif profile.method == VoiceMethod.CLONE and profile.ref_audio:
                 entries[voice_id] = profile.to_clone_config_entry()
         if entries:
             path.parent.mkdir(parents=True, exist_ok=True)

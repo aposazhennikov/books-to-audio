@@ -1,4 +1,4 @@
-﻿"""Synthesis page — TTS generation with progress and ETA."""
+"""Synthesis page — TTS generation with progress and ETA."""
 
 from __future__ import annotations
 
@@ -32,8 +32,15 @@ from PyQt6.QtWidgets import (
 
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
-from book_normalizer.gui.workers.tts_worker import TTSSynthesisWorker
+from book_normalizer.gui.workers.tts_worker import (
+    TTSSynthesisWorker,
+    VoicePromptSaveWorker,
+)
 from book_normalizer.tts.model_paths import default_comfyui_models_dir
+from book_normalizer.tts.voice_library import (
+    default_voice_library_dir,
+    list_saved_voices,
+)
 
 MODELS = [
     "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
@@ -110,12 +117,14 @@ class _CloneVoiceRow(QWidget):
         )
         row1.addWidget(self._wav_edit, stretch=1)
 
-        self._btn_wav = QPushButton("WAV...")
+        self._btn_wav = QPushButton("WAV…")
+        self._btn_wav.setText("WAV...")
         self._btn_wav.setMaximumWidth(72)
         self._btn_wav.clicked.connect(self._browse_wav)
         row1.addWidget(self._btn_wav)
 
-        self._btn_remove = QPushButton("x")
+        self._btn_remove = QPushButton("✕")
+        self._btn_remove.setText("x")
         self._btn_remove.setMaximumWidth(34)
         self._btn_remove.setStyleSheet(
             "QPushButton { color: rgba(252,165,165,0.86); font-weight: 700;"
@@ -180,6 +189,7 @@ class SynthesisPage(QWidget):
         self._manifest_path: Path | None = None
         self._output_dir: Path | None = None
         self._worker: TTSSynthesisWorker | None = None
+        self._save_voice_worker: VoicePromptSaveWorker | None = None
         self._chapter_map: dict[int, int] = {}
         self._phase = "idle"
         self._phase_start = 0.0
@@ -193,6 +203,7 @@ class SynthesisPage(QWidget):
         self._sample_player.setAudioOutput(self._sample_audio)
         self._help_buttons: list[tuple[QToolButton, str]] = []
         self._voice_mode = "custom"
+        self._saved_voices = []
         self._setup_ui()
 
     # ── UI construction ──────────────────────────────────────────────────────
@@ -299,6 +310,8 @@ class SynthesisPage(QWidget):
         outer.addLayout(bottom)
 
         self.retranslate()
+        self._refresh_saved_voices()
+        self._update_custom_voice_controls()
 
     def _build_sample_voice_panel(self) -> QFrame:
         """Build the direct CustomVoice sample panel."""
@@ -328,7 +341,45 @@ class SynthesisPage(QWidget):
         )
         outer.addWidget(self._sample_desc)
 
-        form = QFormLayout()
+        mode_form = QFormLayout()
+        mode_form.setHorizontalSpacing(14)
+        mode_form.setVerticalSpacing(6)
+
+        self._custom_strategy_combo = QComboBox()
+        self._custom_strategy_combo.currentIndexChanged.connect(
+            self._update_custom_voice_controls,
+        )
+        self._custom_strategy_label = QLabel()
+        mode_form.addRow(self._custom_strategy_label, self._custom_strategy_combo)
+
+        saved_row = QHBoxLayout()
+        saved_row.setSpacing(6)
+        self._saved_voice_combo = QComboBox()
+        saved_row.addWidget(self._saved_voice_combo, stretch=1)
+        self._btn_refresh_saved_voices = QPushButton()
+        self._btn_refresh_saved_voices.clicked.connect(self._refresh_saved_voices)
+        saved_row.addWidget(self._btn_refresh_saved_voices)
+        self._saved_voice_label = QLabel()
+        mode_form.addRow(self._saved_voice_label, saved_row)
+
+        outer.addLayout(mode_form)
+
+        self._role_mapping_widget = QWidget()
+        role_form = QFormLayout(self._role_mapping_widget)
+        role_form.setHorizontalSpacing(14)
+        role_form.setVerticalSpacing(6)
+        self._role_voice_combos: dict[str, QComboBox] = {}
+        self._role_voice_labels: dict[str, QLabel] = {}
+        for role in ("narrator", "male", "female"):
+            combo = QComboBox()
+            self._role_voice_combos[role] = combo
+            label = QLabel()
+            self._role_voice_labels[role] = label
+            role_form.addRow(label, combo)
+        outer.addWidget(self._role_mapping_widget)
+
+        self._sample_fields = QWidget()
+        form = QFormLayout(self._sample_fields)
         form.setHorizontalSpacing(14)
         form.setVerticalSpacing(6)
 
@@ -378,7 +429,18 @@ class SynthesisPage(QWidget):
             self._sample_transcript_edit,
         )
 
-        outer.addLayout(form)
+        save_row = QHBoxLayout()
+        save_row.setSpacing(6)
+        self._voice_name_edit = QLineEdit()
+        self._voice_name_edit.setPlaceholderText("voice_name")
+        save_row.addWidget(self._voice_name_edit, stretch=1)
+        self._btn_save_sample_voice = QPushButton()
+        self._btn_save_sample_voice.clicked.connect(self._save_sample_voice)
+        save_row.addWidget(self._btn_save_sample_voice)
+        self._save_voice_label = QLabel()
+        form.addRow(self._save_voice_label, save_row)
+
+        outer.addWidget(self._sample_fields)
 
         controls = QFormLayout()
         controls.setHorizontalSpacing(14)
@@ -531,6 +593,24 @@ class SynthesisPage(QWidget):
         form.addRow(
             self._label_with_help(self._models_dir_label, "synth.models_dir_help"),
             model_dir_row,
+        )
+
+        voice_lib_row = QHBoxLayout()
+        voice_lib_row.setSpacing(6)
+        self._voice_library_dir_edit = QLineEdit(str(default_voice_library_dir()))
+        self._voice_library_dir_edit.setMinimumWidth(180)
+        self._voice_library_dir_edit.editingFinished.connect(self._refresh_saved_voices)
+        voice_lib_row.addWidget(self._voice_library_dir_edit, stretch=1)
+        self._btn_voice_library_dir = QPushButton()
+        self._btn_voice_library_dir.clicked.connect(self._browse_voice_library_dir)
+        voice_lib_row.addWidget(self._btn_voice_library_dir)
+        self._voice_library_dir_label = QLabel()
+        form.addRow(
+            self._label_with_help(
+                self._voice_library_dir_label,
+                "synth.voice_library_dir_help",
+            ),
+            voice_lib_row,
         )
 
         self._output_format_combo = QComboBox()
@@ -789,6 +869,9 @@ class SynthesisPage(QWidget):
         self._models_dir_label.setText(t("synth.models_dir"))
         self._models_dir_edit.setToolTip(t("synth.models_dir_help"))
         self._btn_models_dir.setText(t("synth.choose_dir"))
+        self._voice_library_dir_label.setText(t("synth.voice_library_dir"))
+        self._voice_library_dir_edit.setToolTip(t("synth.voice_library_dir_help"))
+        self._btn_voice_library_dir.setText(t("synth.choose_dir"))
         self._batch_label.setText(t("synth.batch_size"))
         self._batch_size.setToolTip(t("synth.batch_help"))
         self._chunk_timeout_label.setText(t("synth.chunk_timeout"))
@@ -806,6 +889,13 @@ class SynthesisPage(QWidget):
 
         self._sample_title.setText(t("synth.sample_title"))
         self._sample_desc.setText(t("synth.sample_desc"))
+        self._populate_custom_strategy_combo()
+        self._custom_strategy_label.setText(t("synth.custom_strategy"))
+        self._saved_voice_label.setText(t("synth.saved_voice"))
+        self._btn_refresh_saved_voices.setText(t("synth.refresh_saved_voices"))
+        self._role_voice_labels["narrator"].setText(t("synth.role_narrator"))
+        self._role_voice_labels["male"].setText(t("synth.role_male"))
+        self._role_voice_labels["female"].setText(t("synth.role_female"))
         self._sample_audio_label.setText(t("synth.sample_audio"))
         self._btn_sample_audio.setText(t("synth.browse_audio"))
         self._sample_preview_label.setText(t("synth.sample_preview"))
@@ -814,6 +904,8 @@ class SynthesisPage(QWidget):
         self._sample_transcript_edit.setPlaceholderText(
             t("synth.clone_transcript_ph"),
         )
+        self._save_voice_label.setText(t("synth.saved_voice_name"))
+        self._btn_save_sample_voice.setText(t("synth.save_local_voice"))
         self._temperature_label.setText(t("synth.temperature"))
         self._top_p_label.setText(t("synth.top_p"))
         self._top_k_label.setText(t("synth.top_k"))
@@ -881,7 +973,147 @@ class SynthesisPage(QWidget):
         tmp.close()
         return tmp.name
 
-    # Sample voice logic
+    # Saved/sample voice logic
+
+    def _populate_custom_strategy_combo(self) -> None:
+        """Populate Custom Voice strategy choices without losing selection."""
+        current = self._custom_strategy_combo.currentData() or "sample_all"
+        self._custom_strategy_combo.blockSignals(True)
+        self._custom_strategy_combo.clear()
+        self._custom_strategy_combo.addItem(
+            t("synth.strategy_sample_all"),
+            "sample_all",
+        )
+        self._custom_strategy_combo.addItem(
+            t("synth.strategy_saved_all"),
+            "saved_all",
+        )
+        self._custom_strategy_combo.addItem(
+            t("synth.strategy_saved_roles"),
+            "saved_roles",
+        )
+        idx = self._custom_strategy_combo.findData(current)
+        self._custom_strategy_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._custom_strategy_combo.blockSignals(False)
+
+    def _voice_library_dir(self) -> Path:
+        """Return the configured voice library directory."""
+        text = self._voice_library_dir_edit.text().strip()
+        return Path(text) if text else default_voice_library_dir()
+
+    def _browse_voice_library_dir(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self,
+            t("synth.voice_library_dir"),
+            str(self._voice_library_dir()),
+        )
+        if path:
+            self._voice_library_dir_edit.setText(path)
+            self._refresh_saved_voices()
+
+    def _refresh_saved_voices(self) -> None:
+        """Reload saved voice metadata from disk and refresh all selectors."""
+        current_global = self._saved_voice_combo.currentData() or ""
+        current_roles = {
+            role: combo.currentData() or ""
+            for role, combo in getattr(self, "_role_voice_combos", {}).items()
+        }
+        self._saved_voices = list_saved_voices(self._voice_library_dir())
+        self._populate_saved_voice_combo(self._saved_voice_combo, current_global)
+        for role, combo in self._role_voice_combos.items():
+            self._populate_saved_voice_combo(
+                combo,
+                current_roles.get(role, ""),
+                include_builtin=True,
+            )
+        self._update_custom_voice_controls()
+
+    def _populate_saved_voice_combo(
+        self,
+        combo: QComboBox,
+        selected: str = "",
+        include_builtin: bool = False,
+    ) -> None:
+        """Populate one saved voice selector."""
+        combo.blockSignals(True)
+        combo.clear()
+        if include_builtin:
+            combo.addItem(t("synth.role_builtin"), "")
+        elif not self._saved_voices:
+            combo.addItem(t("synth.no_saved_voices"), "")
+        for voice in self._saved_voices:
+            combo.addItem(f"{voice.name} ({voice.voice_id})", voice.voice_id)
+        idx = combo.findData(selected)
+        combo.setCurrentIndex(idx if idx >= 0 else 0)
+        combo.blockSignals(False)
+
+    def _update_custom_voice_controls(self) -> None:
+        """Show controls relevant to the selected Custom Voice strategy."""
+        if not hasattr(self, "_custom_strategy_combo"):
+            return
+        strategy = self._custom_strategy_combo.currentData() or "sample_all"
+        sample_mode = strategy == "sample_all"
+        saved_all_mode = strategy == "saved_all"
+        saved_roles_mode = strategy == "saved_roles"
+        self._sample_fields.setVisible(sample_mode)
+        self._saved_voice_combo.setVisible(saved_all_mode)
+        self._saved_voice_label.setVisible(saved_all_mode)
+        self._btn_refresh_saved_voices.setVisible(
+            saved_all_mode or saved_roles_mode,
+        )
+        self._role_mapping_widget.setVisible(saved_roles_mode)
+        if sample_mode and not self._sample_status.text():
+            self._sample_status.setText(t("synth.sample_idle"))
+        elif saved_all_mode:
+            self._sample_status.setText(t("synth.saved_voice_all_hint"))
+        elif saved_roles_mode:
+            self._sample_status.setText(t("synth.saved_voice_roles_hint"))
+
+    def _selected_saved_voice(self) -> str:
+        """Return the globally selected saved voice id."""
+        return str(self._saved_voice_combo.currentData() or "")
+
+    def _save_sample_voice(self) -> None:
+        """Save the current sample as a reusable local voice prompt."""
+        audio = self._sample_audio_edit.text().strip()
+        ref_text = self._sample_transcript_edit.toPlainText().strip()
+        name = self._voice_name_edit.text().strip()
+        if not audio or not ref_text or not name:
+            self._sample_status.setText(t("synth.saved_voice_missing"))
+            return
+
+        self._btn_save_sample_voice.setEnabled(False)
+        self._save_voice_worker = VoicePromptSaveWorker(
+            audio_path=Path(audio),
+            voice_name=name,
+            ref_text=ref_text,
+            voice_library_dir=self._voice_library_dir(),
+            models_dir=self._models_dir_edit.text().strip(),
+        )
+        self._save_voice_worker.status.connect(self._sample_status.setText)
+        self._save_voice_worker.finished.connect(self._on_sample_voice_saved)
+        self._save_voice_worker.error.connect(self._on_sample_voice_save_error)
+        self._save_voice_worker.start()
+
+    def _on_sample_voice_saved(self, name: str, _library_dir: str) -> None:
+        self._btn_save_sample_voice.setEnabled(True)
+        self._refresh_saved_voices()
+        saved_id = ""
+        for i in range(self._saved_voice_combo.count()):
+            item_text = self._saved_voice_combo.itemText(i)
+            if name in item_text:
+                saved_id = str(self._saved_voice_combo.itemData(i) or "")
+                self._saved_voice_combo.setCurrentIndex(i)
+                break
+        if saved_id:
+            idx = self._custom_strategy_combo.findData("saved_all")
+            if idx >= 0:
+                self._custom_strategy_combo.setCurrentIndex(idx)
+        self._sample_status.setText(t("synth.saved_voice_saved", name=name))
+
+    def _on_sample_voice_save_error(self, msg: str) -> None:
+        self._btn_save_sample_voice.setEnabled(True)
+        self._sample_status.setText(t("synth.saved_voice_error", msg=msg))
 
     def _browse_models_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(
@@ -946,16 +1178,31 @@ class SynthesisPage(QWidget):
         return f"{m}:{s:02d}"
 
     def _build_temp_sample_voice_config(self) -> str:
-        """Serialize the selected sample voice as a global clone config."""
+        """Serialize the selected Custom Voice strategy as a clone config."""
         if not self._is_custom_voice_mode():
             return ""
 
-        audio = self._sample_audio_edit.text().strip()
-        ref_text = self._sample_transcript_edit.toPlainText().strip()
-        if not audio or not ref_text:
-            raise ValueError(t("synth.sample_missing"))
+        strategy = self._custom_strategy_combo.currentData() or "sample_all"
+        if strategy == "sample_all":
+            audio = self._sample_audio_edit.text().strip()
+            ref_text = self._sample_transcript_edit.toPlainText().strip()
+            if not audio or not ref_text:
+                raise ValueError(t("synth.sample_missing"))
+            cfg = {"__all__": {"ref_audio": audio, "ref_text": ref_text}}
+        elif strategy == "saved_all":
+            saved_voice = self._selected_saved_voice()
+            if not saved_voice:
+                raise ValueError(t("synth.saved_voice_missing"))
+            cfg = {"__all__": {"saved_voice": saved_voice}}
+        else:
+            cfg = {}
+            for role, combo in self._role_voice_combos.items():
+                saved_voice = str(combo.currentData() or "")
+                if saved_voice:
+                    cfg[role] = {"saved_voice": saved_voice}
+            if not cfg:
+                raise ValueError(t("synth.saved_voice_missing"))
 
-        cfg = {"__all__": {"ref_audio": audio, "ref_text": ref_text}}
         tmp = tempfile.NamedTemporaryFile(
             mode="w", suffix=".json", delete=False, encoding="utf-8",
         )
@@ -1067,6 +1314,7 @@ class SynthesisPage(QWidget):
             clone_config=clone_config_path,
             use_sage_attention=self._sage_check.isChecked(),
             models_dir=self._models_dir_edit.text().strip(),
+            voice_library_dir=str(self._voice_library_dir()),
             temperature=self._temperature_spin.value(),
             top_p=self._top_p_spin.value(),
             top_k=self._top_k_spin.value(),

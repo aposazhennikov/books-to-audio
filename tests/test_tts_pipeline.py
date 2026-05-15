@@ -155,6 +155,28 @@ class TestVoiceConfig:
         errors = cfg.validate_all()
         assert errors == []
 
+    def test_valid_saved_voice_config(self) -> None:
+        cfg = VoiceConfig(
+            narrator=VoiceProfile(
+                name="narrator",
+                method=VoiceMethod.SAVED,
+                saved_voice="ilya_isaev",
+            ),
+            male=VoiceProfile(
+                name="male",
+                method=VoiceMethod.CUSTOM,
+                speaker="Ryan",
+            ),
+            female=VoiceProfile(
+                name="female",
+                method=VoiceMethod.CUSTOM,
+                speaker="Serena",
+            ),
+        )
+
+        assert cfg.validate_all() == []
+        assert cfg.narrator.to_clone_config_entry() == {"saved_voice": "ilya_isaev"}
+
     def test_get_profile(self) -> None:
         cfg = VoiceConfig.default_custom_voice_config()
         assert cfg.get_profile("narrator").speaker == "Aiden"

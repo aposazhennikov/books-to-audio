@@ -226,9 +226,11 @@ class TTSSynthesizer:
         self, text: str, profile: Any, voice_id: str
     ) -> tuple[list[Any], int]:
         """Dispatch to the correct Qwen3-TTS generation method."""
-        if profile.method == VoiceMethod.CLONE:
-            return self._generate_clone(text, profile, voice_id)
-        if profile.method == VoiceMethod.DESIGN:
+        if profile.method in {
+            VoiceMethod.CLONE,
+            VoiceMethod.DESIGN,
+            VoiceMethod.SAVED,
+        }:
             return self._generate_clone(text, profile, voice_id)
         if profile.method == VoiceMethod.CUSTOM:
             return self._generate_custom_voice(text, profile)

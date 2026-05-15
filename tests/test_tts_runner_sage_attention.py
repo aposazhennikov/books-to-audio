@@ -101,6 +101,26 @@ def test_global_clone_prompt_matches_any_voice() -> None:
     assert tts_runner._clone_prompt_for_voice("narrator_calm", prompts) is prompts["__all__"]
 
 
+def test_role_clone_prompt_matches_preset_voice_ids() -> None:
+    prompts = {"male": object(), "female": object(), "narrator": object()}
+
+    assert tts_runner._clone_prompt_for_voice("male_young", prompts) is prompts["male"]
+    assert tts_runner._clone_prompt_for_voice("female_warm", prompts) is prompts["female"]
+    assert tts_runner._clone_prompt_for_voice("narrator_wise", prompts) is prompts["narrator"]
+
+
+def test_per_voice_clone_prompt_wins_over_role_prompt() -> None:
+    prompts = {"male": object(), "male_young": object()}
+
+    assert tts_runner._clone_prompt_for_voice("male_young", prompts) is prompts["male_young"]
+
+
+def test_legacy_men_voice_id_resolves_to_male_speaker() -> None:
+    speaker, _instruct = tts_runner.resolve_voice("men", {"male": "Ryan"})
+
+    assert speaker == "Ryan"
+
+
 def test_generation_kwarg_fallback_retries_without_controls() -> None:
     calls: list[dict] = []
 

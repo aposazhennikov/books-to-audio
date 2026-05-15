@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from book_normalizer.tts.model_paths import describe_model_resolution
 from book_normalizer.tts.voice_config import VoiceConfig, VoiceMethod, VoiceProfile
+from book_normalizer.tts.voice_library import (
+    default_voice_library_dir,
+    load_voice_prompt,
+    resolve_saved_voice_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +35,14 @@ class VoiceManager:
         dtype: str = "bfloat16",
         use_flash_attn: bool = True,
         models_dir: str | None = None,
+        voice_library_dir: str | None = None,
     ) -> None:
         self._config = config
         self._device = device
         self._dtype = dtype
         self._use_flash_attn = use_flash_attn
         self._models_dir = models_dir
+        self._voice_library_dir = Path(voice_library_dir) if voice_library_dir else default_voice_library_dir()
         self._base_model: Any = None
         self._design_model: Any = None
         self._custom_model: Any = None
@@ -53,7 +61,11 @@ class VoiceManager:
             self._config.female.method,
         }
 
-        if VoiceMethod.CLONE in methods or VoiceMethod.DESIGN in methods:
+        if (
+            VoiceMethod.CLONE in methods
+            or VoiceMethod.DESIGN in methods
+            or VoiceMethod.SAVED in methods
+        ):
             self._load_base_model()
 
         if VoiceMethod.DESIGN in methods:
@@ -173,6 +185,8 @@ class VoiceManager:
                 self._build_clone_prompt(voice_id, profile)
             elif profile.method == VoiceMethod.DESIGN:
                 self._build_design_then_clone_prompt(voice_id, profile)
+            elif profile.method == VoiceMethod.SAVED:
+                self._load_saved_clone_prompt(voice_id, profile)
 
     def _build_clone_prompt(self, voice_id: str, profile: VoiceProfile) -> None:
         """Create a voice_clone_prompt from a reference audio file."""
@@ -212,6 +226,20 @@ class VoiceManager:
         )
         self._clone_prompts[voice_id] = prompt
         logger.info("Design+clone prompt ready for '%s'.", voice_id)
+
+    def _load_saved_clone_prompt(self, voice_id: str, profile: VoiceProfile) -> None:
+        """Load a persisted voice clone prompt from the local library."""
+        source = profile.voice_prompt_path or profile.saved_voice
+        if not source:
+            logger.warning("Skipping saved voice for '%s': no source configured.", voice_id)
+            return
+        prompt_path = (
+            Path(profile.voice_prompt_path)
+            if profile.voice_prompt_path
+            else resolve_saved_voice_path(profile.saved_voice, self._voice_library_dir)
+        )
+        logger.info("Loading saved voice prompt for '%s' from %s", voice_id, prompt_path)
+        self._clone_prompts[voice_id] = load_voice_prompt(prompt_path, map_location=self._device)
 
     def _resolve_model(self, model_name: str) -> str:
         """Resolve a model id to the shared ComfyUI model folder when present."""

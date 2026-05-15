@@ -225,6 +225,7 @@ class TTSSynthesisWorker(QThread):
         clone_config: str = "",
         use_sage_attention: bool = False,
         models_dir: str = "",
+        voice_library_dir: str = "",
         comfyui_url: str = "http://localhost:8188",
         workflow_path: str = "",
         failed_only: bool = False,
@@ -250,6 +251,7 @@ class TTSSynthesisWorker(QThread):
         self._clone_config = clone_config
         self._use_sage_attention = use_sage_attention
         self._models_dir = models_dir
+        self._voice_library_dir = voice_library_dir
         self._comfyui_url = comfyui_url
         self._workflow_path = workflow_path
         self._failed_only = failed_only
@@ -309,6 +311,12 @@ class TTSSynthesisWorker(QThread):
             models_dir = self._models_dir.strip() or str(default_comfyui_models_dir())
             if models_dir:
                 args.extend(["--models-dir", self._wsl_path_text(models_dir)])
+            voice_library_dir = self._voice_library_dir.strip()
+            if voice_library_dir:
+                args.extend([
+                    "--voice-library-dir",
+                    self._wsl_path_text(voice_library_dir),
+                ])
             if self._chapter is not None:
                 args.extend(["--chapter", str(self._chapter)])
             if self._resume:
@@ -592,6 +600,12 @@ class TTSSynthesisWorker(QThread):
         for cfg in data.values():
             if isinstance(cfg, dict) and cfg.get("ref_audio"):
                 cfg["ref_audio"] = self._wsl_path_text(str(cfg["ref_audio"]))
+            if isinstance(cfg, dict) and cfg.get("voice_prompt_path"):
+                cfg["voice_prompt_path"] = self._wsl_path_text(
+                    str(cfg["voice_prompt_path"]),
+                )
+            if isinstance(cfg, dict) and cfg.get("voice_path"):
+                cfg["voice_path"] = self._wsl_path_text(str(cfg["voice_path"]))
 
         self._output_dir.mkdir(parents=True, exist_ok=True)
         out_path = self._output_dir / ".tts_clone_config.wsl.json"
@@ -632,6 +646,103 @@ class TTSSynthesisWorker(QThread):
             drive = p[0].lower()
             p = f"/mnt/{drive}{p[2:]}"
         return p
+
+
+class VoicePromptSaveWorker(QThread):
+    """Extract and save a reusable Qwen voice prompt through the WSL runner."""
+
+    status = pyqtSignal(str)
+    finished = pyqtSignal(str, str)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        audio_path: Path,
+        voice_name: str,
+        ref_text: str,
+        voice_library_dir: Path,
+        models_dir: str = "",
+        device: str = "cuda:0",
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._audio_path = audio_path
+        self._voice_name = voice_name
+        self._ref_text = ref_text
+        self._voice_library_dir = voice_library_dir
+        self._models_dir = models_dir
+        self._device = device
+        self._process: subprocess.Popen | None = None
+
+    def run(self) -> None:
+        try:
+            if not self._audio_path.exists():
+                self.error.emit(f"Audio file not found: {self._audio_path}")
+                return
+            if not self._voice_name.strip() or not self._ref_text.strip():
+                self.error.emit(t("synth.saved_voice_missing"))
+                return
+
+            script_path = (
+                Path(__file__).resolve().parent.parent.parent.parent.parent
+                / "scripts" / "tts_runner.py"
+            )
+            args = [
+                "python", "-u",
+                TTSSynthesisWorker._wsl_path(script_path),
+                "--save-voice", self._voice_name.strip(),
+                "--save-ref-audio", TTSSynthesisWorker._wsl_path(self._audio_path),
+                "--save-ref-text", self._ref_text.strip(),
+                "--voice-library-dir",
+                TTSSynthesisWorker._wsl_path(self._voice_library_dir),
+                "--device", self._device,
+            ]
+            models_dir = self._models_dir.strip() or str(default_comfyui_models_dir())
+            if models_dir:
+                args.extend([
+                    "--models-dir",
+                    TTSSynthesisWorker._wsl_path_text(models_dir),
+                ])
+
+            bash_cmd = (
+                build_wsl_tts_activation_script()
+                + "\nPYTHONUNBUFFERED=1 "
+                + " ".join(shlex.quote(arg) for arg in args)
+            )
+            self.status.emit(t("synth.saved_voice_saving", name=self._voice_name.strip()))
+            self._process = subprocess.Popen(
+                ["wsl", "-e", "bash", "-c", bash_cmd],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+
+            last_lines: list[str] = []
+            for line in iter(self._process.stdout.readline, ""):
+                line = line.strip()
+                if not line:
+                    continue
+                last_lines.append(line)
+                if len(last_lines) > 20:
+                    last_lines.pop(0)
+                if line.startswith("VOICE_PROMPT "):
+                    self.status.emit(t("synth.sample_extracting"))
+                elif line.startswith("Saved voice id:"):
+                    self.status.emit(line)
+
+            self._process.wait()
+            if self._process.returncode != 0:
+                self.error.emit("\n".join(last_lines[-10:]))
+                return
+
+            self.finished.emit(
+                self._voice_name.strip(),
+                str(self._voice_library_dir),
+            )
+        except Exception as exc:
+            self.error.emit(str(exc))
 
 
 class ComfyVoiceSaveWorker(QThread):

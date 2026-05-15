@@ -551,6 +551,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Models dir:",
         "ru": "Папка моделей:",
     },
+    "synth.voice_library_dir": {
+        "en": "Voice library:",
+        "ru": "Библиотека голосов:",
+    },
     "synth.models_dir_hint": {
         "en": (
             "The WSL runner looks here before HuggingFace. Default points to "
@@ -629,6 +633,73 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "и приложение озвучит все чанки напрямую без ComfyUI-нод."
         ),
     },
+    "synth.custom_strategy": {
+        "en": "Voice source:",
+        "ru": "Источник голоса:",
+    },
+    "synth.strategy_sample_all": {
+        "en": "New sample for whole book",
+        "ru": "Новый sample на всю книгу",
+    },
+    "synth.strategy_saved_all": {
+        "en": "Saved voice for whole book",
+        "ru": "Сохраненный голос на всю книгу",
+    },
+    "synth.strategy_saved_roles": {
+        "en": "Saved voices by role",
+        "ru": "Сохраненные голоса по ролям",
+    },
+    "synth.saved_voice": {
+        "en": "Saved voice:",
+        "ru": "Сохраненный голос:",
+    },
+    "synth.refresh_saved_voices": {
+        "en": "Refresh",
+        "ru": "Обновить",
+    },
+    "synth.no_saved_voices": {
+        "en": "No saved voices yet",
+        "ru": "Сохраненных голосов пока нет",
+    },
+    "synth.role_builtin": {
+        "en": "Use built-in speaker",
+        "ru": "Готовый Qwen-спикер",
+    },
+    "synth.role_narrator": {"en": "Narrator:", "ru": "Диктор:"},
+    "synth.role_male": {"en": "Male roles:", "ru": "Мужские роли:"},
+    "synth.role_female": {"en": "Female roles:", "ru": "Женские роли:"},
+    "synth.saved_voice_name": {
+        "en": "Save as:",
+        "ru": "Сохранить как:",
+    },
+    "synth.save_local_voice": {
+        "en": "Save Voice",
+        "ru": "Сохранить голос",
+    },
+    "synth.saved_voice_all_hint": {
+        "en": "The selected saved voice will be used for every chunk; previous voice markup stays in the manifest but does not affect timbre.",
+        "ru": "Выбранный сохраненный голос будет использован для всех чанков; разметка голосов останется в манифесте, но не повлияет на тембр.",
+    },
+    "synth.saved_voice_roles_hint": {
+        "en": "Mapped roles use saved voices. Roles left on built-in speaker keep their Qwen preset from the Voices step.",
+        "ru": "Назначенные роли используют сохраненные голоса. Роли с готовым спикером сохраняют Qwen-пресет из шага «Голоса».",
+    },
+    "synth.saved_voice_missing": {
+        "en": "Choose a saved voice, or fill sample audio, transcript, and voice name.",
+        "ru": "Выберите сохраненный голос или заполните sample audio, текст и имя голоса.",
+    },
+    "synth.saved_voice_saving": {
+        "en": "Saving reusable voice '{name}'...",
+        "ru": "Сохраняю reusable voice '{name}'...",
+    },
+    "synth.saved_voice_saved": {
+        "en": "Saved reusable voice '{name}'.",
+        "ru": "Голос '{name}' сохранен для повторного использования.",
+    },
+    "synth.saved_voice_error": {
+        "en": "Could not save voice: {msg}",
+        "ru": "Не удалось сохранить голос: {msg}",
+    },
     "synth.sample_audio": {
         "en": "Sample audio:",
         "ru": "Sample audio:",
@@ -704,6 +775,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.models_dir_help": {
         "en": "Folder with downloaded models. The WSL runner checks it before downloading from HuggingFace.",
         "ru": "Папка с уже скачанными моделями. WSL-runner сначала ищет здесь, потом уже в HuggingFace.",
+    },
+    "synth.voice_library_dir_help": {
+        "en": "Shared folder for reusable .voice.pt prompts. Saved voices can be reused across books without prompt extraction.",
+        "ru": "Общая папка для reusable .voice.pt prompt'ов. Сохраненные голоса можно переиспользовать в разных книгах без prompt extraction.",
     },
     "synth.batch_help": {
         "en": "How many chunks to render at once. 1 is safest; larger values can be faster but need more VRAM.",

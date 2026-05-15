@@ -44,16 +44,33 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-import soundfile as sf
+try:
+    import soundfile as sf
+except ImportError:  # pragma: no cover - depends on local optional TTS env
+    sf = None  # type: ignore[assignment]
 
 from book_normalizer.tts.model_paths import (
     default_comfyui_models_dir,
     describe_model_resolution,
 )
+from book_normalizer.tts.voice_library import (
+    default_voice_library_dir,
+    load_voice_prompt,
+    resolve_saved_voice_path,
+    save_voice_prompt,
+)
 
 
 class ChunkTimeoutError(Exception):
     """Raised when a single chunk synthesis exceeds the timeout."""
+
+
+def _require_soundfile() -> Any:
+    """Return soundfile module or exit with a clear setup error."""
+    if sf is None:
+        print("ERROR: soundfile is required for audio IO. Install with: pip install soundfile")
+        sys.exit(1)
+    return sf
 
 
 def _timeout_handler(signum, frame):
@@ -97,9 +114,25 @@ def resolve_voice(voice_id: str, speaker_map: dict) -> tuple[str, str]:
     """Resolve voice_id to (speaker, instruct), supporting both legacy and new presets."""
     if voice_id in VOICE_PRESETS:
         return VOICE_PRESETS[voice_id]
-    speaker = speaker_map.get(voice_id, LEGACY_SPEAKER_MAP.get(voice_id, "Aiden"))
-    instruct = INSTRUCT_MAP.get(voice_id, "")
+    role = role_for_voice_id(voice_id)
+    lookup_id = voice_id if voice_id in speaker_map or voice_id in LEGACY_SPEAKER_MAP else role
+    speaker = speaker_map.get(lookup_id, LEGACY_SPEAKER_MAP.get(lookup_id, "Aiden"))
+    instruct = INSTRUCT_MAP.get(lookup_id, "")
     return speaker, instruct
+
+
+def role_for_voice_id(voice_id: str) -> str:
+    """Infer canonical role from a manifest voice id."""
+    normalized = (voice_id or "").strip().lower()
+    if normalized in {"men", "man"}:
+        return "male"
+    if normalized in {"women", "woman"}:
+        return "female"
+    if normalized == "male" or normalized.startswith("male_"):
+        return "male"
+    if normalized == "female" or normalized.startswith("female_"):
+        return "female"
+    return "narrator"
 
 
 def _detect_attn_impl(use_sage: bool = False) -> str:
@@ -353,7 +386,10 @@ def load_model(
 def load_clone_config(config_path: str | None) -> dict[str, dict]:
     """Load voice clone configuration from a JSON file.
 
-    Returns a dict mapping voice_id -> {"ref_audio": str, "ref_text": str}.
+    Returns a dict mapping voice_id/role/"__all__" to one of:
+      - {"ref_audio": str, "ref_text": str}
+      - {"saved_voice": str}
+      - {"voice_prompt_path": str}
     """
     if not config_path:
         return {}
@@ -435,10 +471,15 @@ def _clone_prompt_for_voice(
     voice_id: str,
     clone_prompts: dict[str, Any] | None,
 ) -> Any | None:
-    """Return a per-voice clone prompt or the global sample voice prompt."""
+    """Return a per-voice, per-role, or global clone prompt."""
     if not clone_prompts:
         return None
-    return clone_prompts.get(voice_id) or clone_prompts.get("__all__")
+    role = role_for_voice_id(voice_id)
+    return (
+        clone_prompts.get(voice_id)
+        or clone_prompts.get(role)
+        or clone_prompts.get("__all__")
+    )
 
 
 def _audio_extension(output_format: str) -> str:
@@ -449,16 +490,67 @@ def _audio_extension(output_format: str) -> str:
 def build_clone_prompts(
     base_model: Any,
     clone_config: dict[str, dict],
+    voice_library_dir: Path | None = None,
+    clone_model_name: str = BASE_MODEL_NAME,
 ) -> dict[str, Any]:
-    """Build reusable voice_clone_prompt for each cloned voice."""
+    """Build or load reusable voice_clone_prompt for each cloned voice."""
     prompts: dict[str, Any] = {}
     total = len(clone_config)
+    library_dir = voice_library_dir or default_voice_library_dir()
     for idx, (voice_id, cfg) in enumerate(clone_config.items(), start=1):
+        if not isinstance(cfg, dict):
+            print(f"  WARNING: clone voice '{voice_id}' config is not an object, skipping.")
+            continue
+        saved_voice = str(
+            cfg.get("saved_voice")
+            or cfg.get("voice")
+            or cfg.get("voice_name")
+            or ""
+        ).strip()
+        prompt_path = str(
+            cfg.get("voice_prompt_path")
+            or cfg.get("prompt_path")
+            or cfg.get("voice_path")
+            or ""
+        ).strip()
+        if saved_voice or prompt_path:
+            try:
+                resolved = (
+                    Path(prompt_path)
+                    if prompt_path
+                    else resolve_saved_voice_path(saved_voice, library_dir)
+                )
+                print(f"  Loading saved voice prompt for '{voice_id}' from {resolved}...")
+                print(f"VOICE_PROMPT event=start done={idx - 1} total={total} voice={voice_id}")
+                sys.stdout.flush()
+                started = time.time()
+                map_location = (
+                    base_model.device if hasattr(base_model, "device") else None
+                )
+                prompts[voice_id] = load_voice_prompt(
+                    resolved,
+                    map_location=map_location,
+                )
+                elapsed = time.time() - started
+                print(f"  Saved voice prompt ready for '{voice_id}' in {elapsed:.1f}s.")
+                print(
+                    f"VOICE_PROMPT event=done done={idx} total={total} "
+                    f"voice={voice_id} sec={elapsed:.1f}"
+                )
+                sys.stdout.flush()
+            except Exception as exc:
+                print(
+                    f"  WARNING: could not load saved voice for '{voice_id}': {exc}"
+                )
+                sys.stdout.flush()
+            continue
+
         ref_audio = cfg.get("ref_audio", "")
         ref_text = cfg.get("ref_text", "")
         if not ref_audio or not ref_text:
             print(
-                f"  WARNING: clone voice '{voice_id}' missing ref_audio or ref_text, skipping."
+                f"  WARNING: clone voice '{voice_id}' missing ref_audio/ref_text "
+                "or saved_voice, skipping."
             )
             continue
         if not Path(ref_audio).exists():
@@ -473,6 +565,23 @@ def build_clone_prompts(
             ref_text=ref_text,
         )
         prompts[voice_id] = prompt
+        save_as = str(cfg.get("save_as") or "").strip()
+        if save_as:
+            try:
+                saved = save_voice_prompt(
+                    prompt,
+                    library_dir=library_dir,
+                    name=save_as,
+                    ref_audio=ref_audio,
+                    ref_text=ref_text,
+                    model=clone_model_name,
+                    overwrite=bool(cfg.get("overwrite", False)),
+                )
+                print(
+                    f"  Saved reusable voice '{saved.name}' to {saved.prompt_path}."
+                )
+            except Exception as exc:
+                print(f"  WARNING: could not save voice '{save_as}': {exc}")
         elapsed = time.time() - started
         print(f"  Clone prompt ready for '{voice_id}' in {elapsed:.1f}s.")
         print(
@@ -667,6 +776,7 @@ def merge_chapter_audio(
     pause_ms: int = 250,
 ) -> dict[str, Path]:
     """Merge synthesized chunks into one audio file per chapter."""
+    soundfile = _require_soundfile()
     try:
         import numpy as np
     except Exception as exc:
@@ -695,7 +805,7 @@ def merge_chapter_audio(
             if not audio_path.exists():
                 print(f"  WARNING: missing chunk for merge: {audio_path}")
                 continue
-            data, sr = sf.read(str(audio_path), always_2d=True)
+            data, sr = soundfile.read(str(audio_path), always_2d=True)
             if sample_rate is None:
                 sample_rate = sr
                 channels = data.shape[1]
@@ -725,7 +835,7 @@ def merge_chapter_audio(
         if joined.shape[1] == 1:
             joined = joined[:, 0]
         chapter_path = chapters_dir / f"chapter_{ch_idx + 1:03d}.{ext}"
-        sf.write(str(chapter_path), joined, sample_rate, format=ext.upper())
+        soundfile.write(str(chapter_path), joined, sample_rate, format=ext.upper())
         key = f"chapter_{ch_idx + 1:03d}"
         merged[key] = chapter_path
         chapter_manifest.append(
@@ -746,14 +856,62 @@ def merge_chapter_audio(
     return merged
 
 
+def save_voice_from_sample(args: argparse.Namespace) -> None:
+    """Extract one voice prompt from a sample and persist it to the library."""
+    if not args.save_ref_audio or not args.save_ref_text:
+        print("ERROR: --save-ref-audio and --save-ref-text are required with --save-voice.")
+        sys.exit(2)
+
+    ref_audio = Path(args.save_ref_audio)
+    if not ref_audio.exists():
+        print(f"ERROR: reference audio not found: {ref_audio}")
+        sys.exit(1)
+
+    library_dir = Path(args.voice_library_dir or default_voice_library_dir())
+    print(f"Saving voice '{args.save_voice}' to {library_dir}")
+    print(f"Loading Base model for voice prompt extraction: {args.clone_model}")
+    model = load_model(
+        args.clone_model,
+        args.device,
+        use_sage=args.sage_attention,
+        models_dir=args.models_dir,
+    )
+
+    print("Building clone prompt from sample...")
+    print(f"VOICE_PROMPT event=start done=0 total=1 voice={args.save_voice}")
+    sys.stdout.flush()
+    started = time.time()
+    prompt = model.create_voice_clone_prompt(
+        ref_audio=str(ref_audio),
+        ref_text=args.save_ref_text,
+    )
+    elapsed = time.time() - started
+    saved = save_voice_prompt(
+        prompt,
+        library_dir=library_dir,
+        name=args.save_voice,
+        ref_audio=str(ref_audio),
+        ref_text=args.save_ref_text,
+        model=args.clone_model,
+        overwrite=args.overwrite_voice,
+    )
+    print(f"VOICE_PROMPT event=done done=1 total=1 voice={saved.voice_id} sec={elapsed:.1f}")
+    print(f"Saved voice id: {saved.voice_id}")
+    print(f"Prompt file: {saved.prompt_path}")
+    print(f"Metadata: {saved.metadata_path}")
+    sys.stdout.flush()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="TTS runner for Qwen3-TTS in WSL")
     parser.add_argument(
-        "--chunks-json", required=True,
+        "--chunks-json",
+        default="",
         help="Path to chunks_manifest.json with voice-annotated chunks.",
     )
     parser.add_argument(
-        "--out", required=True,
+        "--out",
+        default="",
         help="Output directory for audio files.",
     )
     parser.add_argument(
@@ -814,11 +972,43 @@ def main() -> None:
     )
     parser.add_argument(
         "--clone-config", type=str, default=None,
-        help="Path to JSON with voice clone configs (ref_audio + ref_text per voice_id).",
+        help=(
+            "Path to JSON with clone configs. Supports ref_audio/ref_text, "
+            "saved_voice, voice_prompt_path, roles, and __all__."
+        ),
     )
     parser.add_argument(
         "--clone-model", type=str, default=BASE_MODEL_NAME,
         help=f"Base model for voice cloning (default: {BASE_MODEL_NAME}).",
+    )
+    parser.add_argument(
+        "--voice-library-dir",
+        type=str,
+        default=str(default_voice_library_dir()),
+        help="Directory containing saved *.voice.pt prompts and metadata.",
+    )
+    parser.add_argument(
+        "--save-voice",
+        type=str,
+        default="",
+        help="Extract a sample into the voice library and exit.",
+    )
+    parser.add_argument(
+        "--save-ref-audio",
+        type=str,
+        default="",
+        help="Reference audio path for --save-voice.",
+    )
+    parser.add_argument(
+        "--save-ref-text",
+        type=str,
+        default="",
+        help="Exact transcript for --save-voice reference audio.",
+    )
+    parser.add_argument(
+        "--overwrite-voice",
+        action="store_true",
+        help="Overwrite an existing saved voice with the same id.",
     )
     parser.add_argument(
         "--sage-attention", action="store_true",
@@ -876,6 +1066,14 @@ def main() -> None:
 
 
 def _main_impl(args: argparse.Namespace) -> None:
+    if args.save_voice:
+        save_voice_from_sample(args)
+        return
+
+    if not args.chunks_json or not args.out:
+        print("ERROR: --chunks-json and --out are required for synthesis.")
+        sys.exit(2)
+
     manifest_path = Path(args.chunks_json)
     if not manifest_path.exists():
         print(f"ERROR: {manifest_path} not found.")
@@ -908,6 +1106,7 @@ def _main_impl(args: argparse.Namespace) -> None:
     if args.sage_attention:
         print("SageAttention: enabled")
     print(f"Model directory: {args.models_dir}")
+    print(f"Voice library: {args.voice_library_dir}")
     _set_seed(args.seed)
     generation_kwargs = _build_generation_kwargs(args)
 
@@ -929,7 +1128,12 @@ def _main_impl(args: argparse.Namespace) -> None:
         )
         print("Building clone prompts...")
         sys.stdout.flush()
-        clone_prompts = build_clone_prompts(clone_model, clone_config)
+        clone_prompts = build_clone_prompts(
+            clone_model,
+            clone_config,
+            voice_library_dir=Path(args.voice_library_dir),
+            clone_model_name=args.clone_model,
+        )
         print(f"Clone prompts ready: {list(clone_prompts.keys())}")
         sys.stdout.flush()
 
@@ -977,6 +1181,7 @@ def _main_impl(args: argparse.Namespace) -> None:
 
     manifest_out: list[dict[str, Any]] = []
     audio_ext = _audio_extension(args.output_format)
+    soundfile = _require_soundfile()
 
     i = 0
     while i < len(chunks):
@@ -1036,7 +1241,7 @@ def _main_impl(args: argparse.Namespace) -> None:
                     if hasattr(wav_data, "cpu"):
                         wav_data = wav_data.cpu().numpy()
                     wav_file = str(batch_paths[0])
-                    sf.write(wav_file, wav_data, sr, format=audio_ext.upper())
+                    soundfile.write(wav_file, wav_data, sr, format=audio_ext.upper())
                     fsize = batch_paths[0].stat().st_size
                     print(f"  [OK] Wrote {wav_file} ({fsize} bytes, sr={sr})")
                     sys.stdout.flush()
@@ -1103,7 +1308,7 @@ def _main_impl(args: argparse.Namespace) -> None:
                     for j, (wav_data_j, sr) in enumerate(results):
                         if hasattr(wav_data_j, "cpu"):
                             wav_data_j = wav_data_j.cpu().numpy()
-                        sf.write(
+                        soundfile.write(
                             str(batch_paths[j]), wav_data_j, sr,
                             format=audio_ext.upper(),
                         )
@@ -1138,7 +1343,7 @@ def _main_impl(args: argparse.Namespace) -> None:
                             wav_fb = wavs[0]
                             if hasattr(wav_fb, "cpu"):
                                 wav_fb = wav_fb.cpu().numpy()
-                            sf.write(
+                            soundfile.write(
                                 str(batch_paths[j]), wav_fb, sr,
                                 format=audio_ext.upper(),
                             )

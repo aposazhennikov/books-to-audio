@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 )
 
 from book_normalizer.gui.i18n import t
+from book_normalizer.gui.widgets.help_button import label_with_help, set_help_text
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.normalize_worker import NormalizeWorker
 
@@ -67,6 +68,7 @@ class NormalizePage(QWidget):
         self._book = None
         self._worker: NormalizeWorker | None = None
         self._selected_path: str = ""
+        self._help_buttons: dict[str, object] = {}
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -99,37 +101,31 @@ class NormalizePage(QWidget):
         self._ocr_mode = QComboBox()
         self._ocr_mode.addItems(["auto", "off", "force", "compare"])
         self._ocr_mode_label = QLabel()
-        settings.addRow(self._ocr_mode_label, self._ocr_mode)
+        settings.addRow(
+            self._label_with_help(self._ocr_mode_label, "norm.ocr_mode_tip"),
+            self._ocr_mode,
+        )
         self._ocr_widgets.extend([self._ocr_mode_label, self._ocr_mode])
-
-        self._ocr_mode_hint = QLabel()
-        self._ocr_mode_hint.setStyleSheet("color: rgba(226,232,240,0.46); font-size: 11px;")
-        settings.addRow("", self._ocr_mode_hint)
-        self._ocr_widgets.append(self._ocr_mode_hint)
 
         self._ocr_dpi = QSpinBox()
         self._ocr_dpi.setRange(72, 1200)
         self._ocr_dpi.setValue(400)
         self._ocr_dpi_label = QLabel()
-        settings.addRow(self._ocr_dpi_label, self._ocr_dpi)
+        settings.addRow(
+            self._label_with_help(self._ocr_dpi_label, "norm.ocr_dpi_tip"),
+            self._ocr_dpi,
+        )
         self._ocr_widgets.extend([self._ocr_dpi_label, self._ocr_dpi])
-
-        self._ocr_dpi_hint = QLabel()
-        self._ocr_dpi_hint.setStyleSheet("color: rgba(226,232,240,0.46); font-size: 11px;")
-        settings.addRow("", self._ocr_dpi_hint)
-        self._ocr_widgets.append(self._ocr_dpi_hint)
 
         self._ocr_psm = QSpinBox()
         self._ocr_psm.setRange(0, 13)
         self._ocr_psm.setValue(6)
         self._ocr_psm_label = QLabel()
-        settings.addRow(self._ocr_psm_label, self._ocr_psm)
+        settings.addRow(
+            self._label_with_help(self._ocr_psm_label, "norm.ocr_psm_tip"),
+            self._ocr_psm,
+        )
         self._ocr_widgets.extend([self._ocr_psm_label, self._ocr_psm])
-
-        self._ocr_psm_hint = QLabel()
-        self._ocr_psm_hint.setStyleSheet("color: rgba(226,232,240,0.46); font-size: 11px;")
-        settings.addRow("", self._ocr_psm_hint)
-        self._ocr_widgets.append(self._ocr_psm_hint)
 
         self._ocr_not_applicable_label = QLabel()
         self._ocr_not_applicable_label.setStyleSheet(
@@ -141,19 +137,24 @@ class NormalizePage(QWidget):
         self._llm_normalize = QCheckBox()
         self._llm_normalize.stateChanged.connect(self._update_llm_visibility)
         self._llm_normalize_label = QLabel()
-        settings.addRow(self._llm_normalize_label, self._llm_normalize)
+        settings.addRow(
+            self._label_with_help(self._llm_normalize_label, "norm.llm_tip"),
+            self._llm_normalize,
+        )
 
         self._llm_endpoint = QLineEdit("http://localhost:11434/v1")
         self._llm_endpoint_label = QLabel()
-        settings.addRow(self._llm_endpoint_label, self._llm_endpoint)
+        settings.addRow(
+            self._label_with_help(self._llm_endpoint_label, "norm.llm_tip"),
+            self._llm_endpoint,
+        )
 
         self._llm_model = QLineEdit("qwen3:8b")
         self._llm_model_label = QLabel()
-        settings.addRow(self._llm_model_label, self._llm_model)
-
-        self._llm_hint = QLabel()
-        self._llm_hint.setStyleSheet("color: rgba(226,232,240,0.46); font-size: 11px;")
-        settings.addRow("", self._llm_hint)
+        settings.addRow(
+            self._label_with_help(self._llm_model_label, "norm.llm_tip"),
+            self._llm_model,
+        )
 
         layout.addLayout(settings)
 
@@ -226,7 +227,6 @@ class NormalizePage(QWidget):
             self._llm_endpoint,
             self._llm_model_label,
             self._llm_model,
-            self._llm_hint,
         ):
             widget.setVisible(enabled)
             widget.setEnabled(enabled)
@@ -239,15 +239,12 @@ class NormalizePage(QWidget):
         self._ocr_mode_label.setText(t("norm.ocr_mode"))
         self._ocr_mode.setToolTip(t("norm.ocr_mode_tip"))
         self._ocr_mode_label.setToolTip(t("norm.ocr_mode_tip"))
-        self._ocr_mode_hint.setText(t("norm.ocr_mode_hint"))
         self._ocr_dpi_label.setText(t("norm.ocr_dpi"))
         self._ocr_dpi.setToolTip(t("norm.ocr_dpi_tip"))
         self._ocr_dpi_label.setToolTip(t("norm.ocr_dpi_tip"))
-        self._ocr_dpi_hint.setText(t("norm.ocr_dpi_hint"))
         self._ocr_psm_label.setText(t("norm.ocr_psm"))
         self._ocr_psm.setToolTip(t("norm.ocr_psm_tip"))
         self._ocr_psm_label.setToolTip(t("norm.ocr_psm_tip"))
-        self._ocr_psm_hint.setText(t("norm.ocr_psm_hint"))
         self._ocr_not_applicable_label.setText(t("norm.ocr_not_applicable"))
         self._llm_normalize_label.setText(t("norm.llm_normalize"))
         self._llm_normalize.setText(t("norm.llm_normalize_check"))
@@ -259,12 +256,23 @@ class NormalizePage(QWidget):
         self._llm_model_label.setText(t("norm.llm_model"))
         self._llm_model.setToolTip(t("norm.llm_tip"))
         self._llm_model_label.setToolTip(t("norm.llm_tip"))
-        self._llm_hint.setText(t("norm.llm_hint"))
+        self._update_help_buttons()
         self._btn_run.setText(t("norm.run"))
         self._raw_text.setPlaceholderText(t("norm.raw_placeholder"))
         self._norm_text.setPlaceholderText(t("norm.norm_placeholder"))
         self._raw_label.setText(t("norm.raw_placeholder"))
         self._norm_label.setText(t("norm.norm_placeholder"))
+
+    def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
+        """Create a form label with a reusable help button."""
+        wrap, button = label_with_help(label, t(help_key))
+        self._help_buttons[help_key] = button
+        return wrap
+
+    def _update_help_buttons(self) -> None:
+        """Refresh tooltip text after language changes."""
+        for help_key, button in self._help_buttons.items():
+            set_help_text(button, t(help_key))
 
     def _browse_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

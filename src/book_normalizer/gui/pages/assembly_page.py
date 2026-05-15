@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from book_normalizer.gui.i18n import t
+from book_normalizer.gui.widgets.help_button import label_with_help, set_help_text
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 
 
@@ -94,6 +95,7 @@ class AssemblyPage(QWidget):
         self._manifest_path: Path | None = None
         self._output_dir: Path | None = None
         self._worker: AssemblyWorker | None = None
+        self._help_buttons: dict[str, object] = {}
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -126,14 +128,23 @@ class AssemblyPage(QWidget):
         self._pause_same.setValue(300)
         self._pause_same.setSuffix(" ms")
         self._pause_same_label = QLabel()
-        settings.addRow(self._pause_same_label, self._pause_same)
+        settings.addRow(
+            self._label_with_help(self._pause_same_label, "asm.pause_same_help"),
+            self._pause_same,
+        )
 
         self._pause_change = QSpinBox()
         self._pause_change.setRange(0, 5000)
         self._pause_change.setValue(600)
         self._pause_change.setSuffix(" ms")
         self._pause_change_label = QLabel()
-        settings.addRow(self._pause_change_label, self._pause_change)
+        settings.addRow(
+            self._label_with_help(
+                self._pause_change_label,
+                "asm.pause_change_help",
+            ),
+            self._pause_change,
+        )
         layout.addLayout(settings)
 
         # ── Run button ──
@@ -166,7 +177,21 @@ class AssemblyPage(QWidget):
         self._btn_browse.setText(t("asm.select_dir"))
         self._pause_same_label.setText(t("asm.pause_same"))
         self._pause_change_label.setText(t("asm.pause_change"))
+        self._pause_same.setToolTip(t("asm.pause_same_help"))
+        self._pause_change.setToolTip(t("asm.pause_change_help"))
+        self._update_help_buttons()
         self._btn_run.setText(t("asm.run"))
+
+    def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
+        """Create a form label with a reusable help button."""
+        wrap, button = label_with_help(label, t(help_key))
+        self._help_buttons[help_key] = button
+        return wrap
+
+    def _update_help_buttons(self) -> None:
+        """Refresh tooltip text after language changes."""
+        for help_key, button in self._help_buttons.items():
+            set_help_text(button, t(help_key))
 
     def set_audio_dir(self, audio_dir: Path, output_dir: Path) -> None:
         """Set audio chunks directory and output directory."""

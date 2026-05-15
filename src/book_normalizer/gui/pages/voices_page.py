@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
-    QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -47,14 +47,13 @@ class VoicesPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
-        # Top: settings + voice preview side by side.
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(1)
-        splitter.setChildrenCollapsible(False)
+        # Top: settings and preview are separated so the page stays usable on
+        # small screens and high DPI scaling.
+        self._top_tabs = QTabWidget()
+        self._top_tabs.setObjectName("voiceTopTabs")
 
         # Left panel: settings + actions.
         left_panel = QWidget()
-        left_panel.setMinimumWidth(300)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
@@ -190,14 +189,11 @@ class VoicesPage(QWidget):
         left_layout.addWidget(self._manifest_label)
 
         left_layout.addStretch()
-        splitter.addWidget(left_panel)
 
         # Right panel: voice preview (scrollable, vertical only).
         right_panel = QWidget()
-        right_panel.setMinimumWidth(240)
-        right_panel.setMaximumWidth(480)
         right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(4, 0, 0, 0)
+        right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(4)
 
         self._preview_title = QLabel()
@@ -219,16 +215,12 @@ class VoicesPage(QWidget):
             "QScrollArea { border: none; background: transparent; }",
         )
         self._voice_preview = VoicePreviewPanel()
-        self._voice_preview.setMaximumWidth(460)
         scroll.setWidget(self._voice_preview)
         right_layout.addWidget(scroll)
 
-        splitter.addWidget(right_panel)
-        splitter.setSizes([480, 420])
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 0)
-
-        layout.addWidget(splitter, stretch=2)
+        self._top_tabs.addTab(left_panel, "")
+        self._top_tabs.addTab(right_panel, "")
+        layout.addWidget(self._top_tabs, stretch=2)
 
         # Bottom: voice assignment table.
         self._voice_table = VoiceTableWidget()
@@ -249,6 +241,7 @@ class VoicesPage(QWidget):
         layout.addWidget(self._stats_label)
 
         self.retranslate()
+        self._sync_compact_mode()
 
     # ── Translations ──
 
@@ -266,6 +259,8 @@ class VoicesPage(QWidget):
         self._btn_save.setText(t("voice.save_manifest"))
         self._btn_build.setText(t("voice.build_chunks"))
         self._preview_title.setText(t("voice.preview_panel"))
+        self._top_tabs.setTabText(0, t("voice.settings_panel"))
+        self._top_tabs.setTabText(1, t("voice.preview_panel"))
 
         self._llm_provider_label.setText(t("voice.llm_provider"))
         self._llm_provider.clear()
@@ -277,6 +272,16 @@ class VoicesPage(QWidget):
 
         self._voice_table.retranslate()
         self._voice_preview.retranslate()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Keep the voice table readable as the page width changes."""
+        super().resizeEvent(event)
+        self._sync_compact_mode()
+
+    def _sync_compact_mode(self) -> None:
+        """Switch heavy table controls into compact mode on narrow widths."""
+        compact = self.width() < 960
+        self._voice_table.set_compact_mode(compact)
 
     def _current_speaker_mode(self) -> str:
         """Return the internal speaker attribution mode."""

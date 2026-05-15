@@ -116,6 +116,12 @@ class MainWindow(QMainWindow):
         )
         self._lang_combo.setMinimumWidth(max(124, round(136 * scale)))
         self._lang_combo.setMaximumWidth(max(170, round(210 * scale)))
+        self._sync_tab_labels()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Use shorter tab titles on narrow windows."""
+        super().resizeEvent(event)
+        self._sync_tab_labels()
 
     def _connect_signals(self) -> None:
         """Wire up page transitions."""
@@ -146,10 +152,19 @@ class MainWindow(QMainWindow):
         self._lang_label.setText(t("app.lang_label"))
         self._statusbar.showMessage(t("app.ready"))
 
-        self._tabs.setTabText(0, t("tab.normalize"))
-        self._tabs.setTabText(1, t("tab.voices"))
-        self._tabs.setTabText(2, t("tab.synthesize"))
-        self._tabs.setTabText(3, t("tab.assemble"))
+        self._sync_tab_labels()
+
+    def _sync_tab_labels(self) -> None:
+        """Keep the main tabs readable without scroll arrows at small widths."""
+        if not hasattr(self, "_tabs"):
+            return
+
+        compact = self.width() < 860
+        suffix = "_short" if compact else ""
+        self._tabs.setTabText(0, t(f"tab.normalize{suffix}"))
+        self._tabs.setTabText(1, t(f"tab.voices{suffix}"))
+        self._tabs.setTabText(2, t(f"tab.synthesize{suffix}"))
+        self._tabs.setTabText(3, t(f"tab.assemble{suffix}"))
 
     def _on_normalization_done(self, book: object) -> None:
         """Called when normalization completes."""

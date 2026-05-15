@@ -26,13 +26,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "1. Normalize",
         "ru": "1. \u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f",
     },
+    "tab.normalize_short": {
+        "en": "1. Norm.",
+        "ru": "1. \u041d\u043e\u0440\u043c.",
+    },
     "tab.voices": {"en": "2. Voices", "ru": "2. \u0413\u043e\u043b\u043e\u0441\u0430"},
+    "tab.voices_short": {"en": "2. Voices", "ru": "2. \u0413\u043e\u043b\u043e\u0441\u0430"},
     "tab.synthesize": {
         "en": "3. Synthesize",
         "ru": "3. \u0421\u0438\u043d\u0442\u0435\u0437",
     },
+    "tab.synthesize_short": {
+        "en": "3. TTS",
+        "ru": "3. \u0421\u0438\u043d\u0442\u0435\u0437",
+    },
     "tab.assemble": {
         "en": "4. Assemble",
+        "ru": "4. \u0421\u0431\u043e\u0440\u043a\u0430",
+    },
+    "tab.assemble_short": {
+        "en": "4. Build",
         "ru": "4. \u0421\u0431\u043e\u0440\u043a\u0430",
     },
 
@@ -439,6 +452,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Voice Library",
         "ru": "\u0411\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0430 \u0433\u043e\u043b\u043e\u0441\u043e\u0432",
     },
+    "voice.settings_panel": {
+        "en": "Voice Markup",
+        "ru": "\u0420\u0430\u0437\u043c\u0435\u0442\u043a\u0430",
+    },
     "voice.output_dir": {
         "en": "Output folder:",
         "ru": "\u041f\u0430\u043f\u043a\u0430 \u0432\u044b\u0432\u043e\u0434\u0430:",
@@ -699,6 +716,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.saved_voice_error": {
         "en": "Could not save voice: {msg}",
         "ru": "Не удалось сохранить голос: {msg}",
+    },
+    "synth.voice_tuning_show": {
+        "en": "Show fine voice settings",
+        "ru": "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0442\u043e\u043d\u043a\u0443\u044e \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0443 \u0433\u043e\u043b\u043e\u0441\u0430",
+    },
+    "synth.voice_tuning_hide": {
+        "en": "Hide fine voice settings",
+        "ru": "\u0421\u043a\u0440\u044b\u0442\u044c \u0442\u043e\u043d\u043a\u0443\u044e \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0443 \u0433\u043e\u043b\u043e\u0441\u0430",
     },
     "synth.sample_audio": {
         "en": "Sample audio:",
@@ -1152,9 +1177,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Pause (same voice):",
         "ru": "\u041f\u0430\u0443\u0437\u0430 (\u0442\u043e\u0442 \u0436\u0435 \u0433\u043e\u043b\u043e\u0441):",
     },
+    "asm.pause_same_help": {
+        "en": "Pause inserted between adjacent chunks with the same voice. Small values keep narration tight; larger values add breathing room.",
+        "ru": "\u041f\u0430\u0443\u0437\u0430 \u043c\u0435\u0436\u0434\u0443 \u0441\u043e\u0441\u0435\u0434\u043d\u0438\u043c\u0438 \u0447\u0430\u043d\u043a\u0430\u043c\u0438 \u0441 \u0442\u0435\u043c \u0436\u0435 \u0433\u043e\u043b\u043e\u0441\u043e\u043c. \u041c\u0430\u043b\u044b\u0435 \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f \u0434\u0435\u043b\u0430\u044e\u0442 \u0447\u0442\u0435\u043d\u0438\u0435 \u043f\u043b\u043e\u0442\u043d\u0435\u0435, \u0431\u043e\u043b\u044c\u0448\u0438\u0435 \u0434\u043e\u0431\u0430\u0432\u043b\u044f\u044e\u0442 \u0432\u043e\u0437\u0434\u0443\u0445\u0430.",
+    },
     "asm.pause_change": {
         "en": "Pause (voice change):",
         "ru": "\u041f\u0430\u0443\u0437\u0430 (\u0441\u043c\u0435\u043d\u0430 \u0433\u043e\u043b\u043e\u0441\u0430):",
+    },
+    "asm.pause_change_help": {
+        "en": "Pause inserted when the next chunk uses another voice. Usually a bit longer than the same-voice pause so dialogue transitions are clearer.",
+        "ru": "\u041f\u0430\u0443\u0437\u0430 \u043f\u0440\u0438 \u0441\u043c\u0435\u043d\u0435 \u0433\u043e\u043b\u043e\u0441\u0430 \u043c\u0435\u0436\u0434\u0443 \u0447\u0430\u043d\u043a\u0430\u043c\u0438. \u041e\u0431\u044b\u0447\u043d\u043e \u0447\u0443\u0442\u044c \u0434\u043b\u0438\u043d\u043d\u0435\u0435 \u043e\u0431\u044b\u0447\u043d\u043e\u0439 \u043f\u0430\u0443\u0437\u044b, \u0447\u0442\u043e\u0431\u044b \u043f\u0435\u0440\u0435\u0445\u043e\u0434\u044b \u0432 \u0434\u0438\u0430\u043b\u043e\u0433\u0430\u0445 \u0431\u044b\u043b\u0438 \u043f\u043e\u043d\u044f\u0442\u043d\u0435\u0435.",
     },
     "asm.run": {
         "en": "Assemble All Chapters",

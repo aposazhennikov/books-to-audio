@@ -42,7 +42,8 @@ QTabWidget::pane {
     padding: 12px;
 }
 
-QTabWidget#synthesisModeTabs::pane {
+QTabWidget#synthesisModeTabs::pane,
+QTabWidget#voiceTopTabs::pane {
     background: transparent;
     border: none;
     padding: 8px 0 0 0;
@@ -65,7 +66,8 @@ QTabBar::tab {
     border-top-right-radius: 12px;
 }
 
-QTabWidget#synthesisModeTabs QTabBar::tab {
+QTabWidget#synthesisModeTabs QTabBar::tab,
+QTabWidget#voiceTopTabs QTabBar::tab {
     padding: 8px 18px;
     border-radius: 10px;
     border: 1px solid rgba(148, 163, 184, 0.14);
@@ -78,7 +80,8 @@ QTabBar::tab:selected {
     border-bottom: 2px solid #8b5cf6;
 }
 
-QTabWidget#synthesisModeTabs QTabBar::tab:selected {
+QTabWidget#synthesisModeTabs QTabBar::tab:selected,
+QTabWidget#voiceTopTabs QTabBar::tab:selected {
     border: 1px solid rgba(139, 92, 246, 0.42);
     background: rgba(139, 92, 246, 0.18);
 }
@@ -214,6 +217,21 @@ QToolButton[helpButton="true"]:hover {
     color: #ffffff;
     background: rgba(139, 92, 246, 0.30);
     border-color: rgba(34, 211, 238, 0.55);
+}
+
+QToolButton[secondaryToggle="true"] {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 10px;
+    color: rgba(226, 232, 240, 0.82);
+    padding: 7px 12px;
+    text-align: left;
+}
+
+QToolButton[secondaryToggle="true"]:checked {
+    background: rgba(139, 92, 246, 0.14);
+    border-color: rgba(139, 92, 246, 0.36);
+    color: #f8fafc;
 }
 
 QComboBox,

@@ -442,7 +442,14 @@ class SynthesisPage(QWidget):
 
         outer.addWidget(self._sample_fields)
 
-        controls = QFormLayout()
+        self._voice_tuning_toggle = QToolButton()
+        self._voice_tuning_toggle.setCheckable(True)
+        self._voice_tuning_toggle.setProperty("secondaryToggle", True)
+        self._voice_tuning_toggle.toggled.connect(self._on_voice_tuning_toggled)
+        outer.addWidget(self._voice_tuning_toggle)
+
+        self._voice_tuning_panel = QWidget()
+        controls = QFormLayout(self._voice_tuning_panel)
         controls.setHorizontalSpacing(14)
         controls.setVerticalSpacing(6)
 
@@ -513,7 +520,8 @@ class SynthesisPage(QWidget):
             self._seed_spin,
         )
 
-        outer.addLayout(controls)
+        outer.addWidget(self._voice_tuning_panel)
+        self._voice_tuning_panel.setVisible(False)
 
         self._sample_status = QLabel()
         self._sample_status.setWordWrap(True)
@@ -733,6 +741,20 @@ class SynthesisPage(QWidget):
             12000,
         )
 
+    def _on_voice_tuning_toggled(self, checked: bool) -> None:
+        """Show or hide advanced voice generation controls."""
+        self._voice_tuning_panel.setVisible(checked)
+        self._update_voice_tuning_toggle_text()
+
+    def _update_voice_tuning_toggle_text(self) -> None:
+        """Update the collapsed/expanded label for tuning controls."""
+        key = (
+            "synth.voice_tuning_hide"
+            if self._voice_tuning_toggle.isChecked()
+            else "synth.voice_tuning_show"
+        )
+        self._voice_tuning_toggle.setText(t(key))
+
     def _build_clone_panel(self) -> QFrame:
         """Build the voice cloning expandable panel."""
         frame = QFrame()
@@ -889,6 +911,7 @@ class SynthesisPage(QWidget):
 
         self._sample_title.setText(t("synth.sample_title"))
         self._sample_desc.setText(t("synth.sample_desc"))
+        self._update_voice_tuning_toggle_text()
         self._populate_custom_strategy_combo()
         self._custom_strategy_label.setText(t("synth.custom_strategy"))
         self._saved_voice_label.setText(t("synth.saved_voice"))

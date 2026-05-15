@@ -117,6 +117,7 @@ class VoiceTableWidget(QWidget):
         self._segments: list[dict[str, Any]] = []
         self._manifest_meta: dict[str, Any] = {}
         self._manifest_is_v2 = False
+        self._compact_mode = False
         self._player = QSoundEffect(self) if QSoundEffect is not None else None
         self._setup_ui()
 
@@ -200,20 +201,15 @@ class VoiceTableWidget(QWidget):
             QAbstractItemView.SelectionBehavior.SelectRows,
         )
         self._table.setAlternatingRowColors(True)
+        self._table.verticalHeader().setVisible(False)
         layout.addWidget(self._table)
 
         self.retranslate()
+        self._apply_table_layout()
 
     def retranslate(self) -> None:
         """Update translatable strings."""
-        self._btn_all_narrator.setText(t("voice.all_narrator"))
-        self._btn_all_male.setText(t("voice.all_male"))
-        self._btn_all_female.setText(t("voice.all_female"))
-        self._btn_auto.setText(t("voice.auto_detect"))
-
-        self._btn_apply_all.setText(t("voice.apply_all"))
-        self._btn_apply_dialogue.setText(t("voice.apply_dialogue"))
-        self._btn_apply_narrator.setText(t("voice.apply_narrator"))
+        self._apply_toolbar_labels()
 
         self._table.setHorizontalHeaderLabels([
             t("voice.col_num"),
@@ -225,6 +221,82 @@ class VoiceTableWidget(QWidget):
             t("voice.col_audio"),
             t("voice.col_retry"),
         ])
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Fallback compact switching when the table is used outside VoicesPage."""
+        super().resizeEvent(event)
+        self.set_compact_mode(self.width() < 960)
+
+    def set_compact_mode(self, compact: bool) -> None:
+        """Reduce columns and labels for small windows."""
+        if self._compact_mode == compact:
+            return
+        self._compact_mode = compact
+        self._apply_toolbar_labels()
+        self._apply_table_layout()
+
+    def _apply_toolbar_labels(self) -> None:
+        """Use shorter toolbar labels in compact mode."""
+        if not self._compact_mode:
+            self._btn_all_narrator.setText(t("voice.all_narrator"))
+            self._btn_all_male.setText(t("voice.all_male"))
+            self._btn_all_female.setText(t("voice.all_female"))
+            self._btn_auto.setText(t("voice.auto_detect"))
+            self._btn_apply_all.setText(t("voice.apply_all"))
+            self._btn_apply_dialogue.setText(t("voice.apply_dialogue"))
+            self._btn_apply_narrator.setText(t("voice.apply_narrator"))
+            return
+
+        if get_language() == "ru":
+            self._btn_all_narrator.setText("Диктор")
+            self._btn_all_male.setText("Муж.")
+            self._btn_all_female.setText("Жен.")
+            self._btn_auto.setText("Авто")
+            self._btn_apply_all.setText("Все")
+            self._btn_apply_dialogue.setText("Речь")
+            self._btn_apply_narrator.setText("Автор")
+        else:
+            self._btn_all_narrator.setText("Narr.")
+            self._btn_all_male.setText("Male")
+            self._btn_all_female.setText("Female")
+            self._btn_auto.setText("Auto")
+            self._btn_apply_all.setText("All")
+            self._btn_apply_dialogue.setText("Speech")
+            self._btn_apply_narrator.setText("Narr.")
+
+    def _apply_table_layout(self) -> None:
+        """Apply column visibility and widget widths for the current mode."""
+        hidden_cols = {0, 1, 2, 5} if self._compact_mode else set()
+        for col in range(self._table.columnCount()):
+            self._table.setColumnHidden(col, col in hidden_cols)
+
+        header = self._table.horizontalHeader()
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        if self._compact_mode:
+            self._quick_combo.setMinimumWidth(150)
+            self._table.setColumnWidth(4, 170)
+            self._table.setColumnWidth(6, 68)
+            self._table.setColumnWidth(7, 72)
+            self._table.verticalHeader().setDefaultSectionSize(38)
+        else:
+            self._quick_combo.setMinimumWidth(190)
+            self._table.setColumnWidth(0, 36)
+            self._table.setColumnWidth(1, 60)
+            self._table.setColumnWidth(2, 36)
+            self._table.setColumnWidth(4, 220)
+            self._table.setColumnWidth(5, 145)
+            self._table.setColumnWidth(6, 80)
+            self._table.setColumnWidth(7, 80)
+            self._table.verticalHeader().setDefaultSectionSize(34)
+
+        for row in range(self._table.rowCount()):
+            voice_combo = self._table.cellWidget(row, 4)
+            if isinstance(voice_combo, QComboBox):
+                voice_combo.setMinimumWidth(132 if self._compact_mode else 160)
+                voice_combo.view().setMinimumWidth(210 if self._compact_mode else 230)
+            intonation_combo = self._table.cellWidget(row, 5)
+            if isinstance(intonation_combo, QComboBox):
+                intonation_combo.setMinimumWidth(96 if self._compact_mode else 118)
 
     # ── Data loading ──
 
@@ -354,6 +426,8 @@ class VoiceTableWidget(QWidget):
             retry_btn.setEnabled(self._manifest_is_v2)
             retry_btn.clicked.connect(lambda _checked=False, r=row: self._mark_retry(r))
             self._table.setCellWidget(row, 7, retry_btn)
+
+        self._apply_table_layout()
 
     # ── Data change handlers ──
 

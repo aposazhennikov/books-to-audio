@@ -73,6 +73,11 @@ def _require_soundfile() -> Any:
     return sf
 
 
+def _read_json_file(path: Path) -> Any:
+    """Read JSON and tolerate a UTF-8 BOM from Windows-authored files."""
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
 def _timeout_handler(signum, frame):
     raise ChunkTimeoutError("Chunk synthesis timed out.")
 
@@ -398,7 +403,7 @@ def load_clone_config(config_path: str | None) -> dict[str, dict]:
         print(f"WARNING: clone config {config_path} not found, skipping voice cloning.")
         sys.stdout.flush()
         return {}
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = _read_json_file(path)
     print(f"Loaded clone config with {len(data)} voice(s): {list(data.keys())}")
     sys.stdout.flush()
     return data
@@ -1079,7 +1084,7 @@ def _main_impl(args: argparse.Namespace) -> None:
         print(f"ERROR: {manifest_path} not found.")
         sys.exit(1)
 
-    chunks = json.loads(manifest_path.read_text(encoding="utf-8"))
+    chunks = _read_json_file(manifest_path)
     print(f"Loaded {len(chunks)} chunks from manifest.")
 
     if args.chapter is not None:
@@ -1174,7 +1179,7 @@ def _main_impl(args: argparse.Namespace) -> None:
     completed_keys: set[str] = set()
     if args.resume and progress_path.exists():
         try:
-            pdata = json.loads(progress_path.read_text(encoding="utf-8"))
+            pdata = _read_json_file(progress_path)
             completed_keys = set(pdata.get("completed", []))
         except (json.JSONDecodeError, OSError):
             pass

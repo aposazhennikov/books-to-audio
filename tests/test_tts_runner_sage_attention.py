@@ -121,6 +121,13 @@ def test_legacy_men_voice_id_resolves_to_male_speaker() -> None:
     assert speaker == "Ryan"
 
 
+def test_read_json_file_accepts_utf8_bom(tmp_path: Path) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_bytes(b"\xef\xbb\xbf" + b'{"chunks": 1}')
+
+    assert tts_runner._read_json_file(path) == {"chunks": 1}
+
+
 def test_generation_kwarg_fallback_retries_without_controls() -> None:
     calls: list[dict] = []
 

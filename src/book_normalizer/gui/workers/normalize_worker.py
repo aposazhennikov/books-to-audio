@@ -88,6 +88,7 @@ class NormalizeWorker(QThread):
             _ocr_pil_image_with_tesseract,
             _postprocess_ocr_text,
             _prepare_ocr_page_images,
+            _repair_ocr_cross_segment_breaks,
             _should_keep_ocr_text,
             _wsl_tesseract_available,
             remove_repeated_headers,
@@ -147,7 +148,8 @@ class NormalizeWorker(QThread):
                 self.progress.emit(f"OCR: {done}/{total_pages} — ETA: {eta}")
                 self.progress_pct.emit(done, total_pages, eta)
 
-        return remove_repeated_headers("\n\n".join(pages_text), min_occurrences=3)
+        ocr_text = _repair_ocr_cross_segment_breaks("\n\n".join(pages_text))
+        return remove_repeated_headers(ocr_text, min_occurrences=3)
 
     def _normalize_with_progress(self, book):
         """Run normalization pipeline with per-paragraph progress."""

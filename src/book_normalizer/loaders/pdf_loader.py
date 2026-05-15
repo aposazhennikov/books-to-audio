@@ -339,7 +339,14 @@ _CYRILLIC_RE = re.compile(r"[\u0400-\u04ff]")
 _OCR_HYPHEN_LINEBREAK_RE = re.compile(
     r"([\u0400-\u04ff])[-\u00ad\u2010-\u2015]\s*\n\s*([\u0400-\u04ff])"
 )
+_OCR_CROSS_SEGMENT_HYPHEN_RE = re.compile(
+    r"([\u0400-\u04ff])[-\u00ad\u2010-\u2015]\s*\n{2,}\s*([\u0430-\u044fё])"
+)
+_OCR_CROSS_SEGMENT_PARTICIPLE_RE = re.compile(
+    r"([\u0430-\u044fё]+вш)\s*\n{2,}\s*(ееся|аяся|ийся|иеся)\b"
+)
 _OCR_LEADING_ARTIFACT_RE = re.compile(r"^[`'\"_.,:;|\\/\s]+(?=[\u0400-\u04ff])")
+_OCR_TRAILING_PAGE_MARK_RE = re.compile(r"\s+[|\\/_—–-]?\s*\d{1,3}\s*$")
 _OCR_GLAVA_HEADING_RE = re.compile(
     r"^\s*[Гг][Лл][Аа][Вв][Аа]\s+\S{1,20}(?:\s+[Оо0])?\s*$"
 )
@@ -358,8 +365,53 @@ _INLINE_NOISE_BEFORE_DASH_RE = re.compile(
     r"(?:\s+[\u0410-\u042fЁA-Z]{1,3}){0,2}\s*[|_\\/#^]+(?=\s*[—-])"
 )
 _INLINE_HYPHEN_PIPE_RE = re.compile(r"([\u0400-\u04ff])-\s*\|\s*([\u0400-\u04ff])")
+_INLINE_PAGE_MARK_RE = re.compile(r"(?<=[.!?…])\s+[|\\/_—–-]?\s*\d{1,3}\s+(?=[А-ЯЁ])")
+_DIGIT_HYPHENATED_ZA_RE = re.compile(r"\b32-\s+(?=[\u0400-\u04ff])")
 _SPURIOUS_PERIOD_INSIDE_WORD_RE = re.compile(r"(?<=[\u0430-\u044fё])\.\s*(?=[\u0430-\u044fё])")
 _TRAILING_SYMBOL_NOISE_RE = re.compile(r"\s+[\^#*_~|\\/:\s\d]+$")
+_OCR_BACKTICK_NOISE_RE = re.compile(r"[`'\u2018\u2019\u201A]")
+_OCR_BACKTICK_WORD_BOUNDARY_RE = re.compile(
+    r"(?<=[\u0400-\u04ff])"
+    r"[`'\u2018\u2019\u201A]"
+    r"(?=[\u0400-\u04ff])"
+)
+_OCR_COLLAPSED_I_TUT_RE = re.compile(r"\b([Ии])тут\b")
+_OCR_SYMBOL_CLUSTER_RE = re.compile(r"\s+[\^#*_~|\\/`=<>$%]{2,}\s+")
+_OCR_SYMBOL_WORD_NOISE_RE = re.compile(
+    r"\s+[\^#*_~|\\/`=<>$%]+"
+    r"(?:\s+[А-Яа-яЁёA-Za-z\d]{1,3}){0,4}"
+    r"\s*[:;,.!?]*\s+(?=[А-ЯЁ])"
+)
+_OCR_LEFTOVER_FORBIDDEN_SYMBOL_RE = re.compile(
+    r"\s*[|^&®©°№‹›{}<>]\s*[!;:,.»«\"'`-]*\s*"
+)
+_OCR_PAGE_WORD_MARK_RE = re.compile(r"(?:^|\s+)[Сс]траница\s+\d{1,4}\s*:\s*")
+_OCR_PAGE_ABBR_MARK_RE = re.compile(r"\s+[Сс]\.\s*\d{1,4}\s*:\s*")
+_TRAILING_SINGLE_LETTER_PUNCT_RE = re.compile(r"\s+[\u0400-\u04ff]\s*[:;,.!?]+$")
+_OCR_SHORT_TOKEN_RUN_RE = re.compile(
+    r"\s+[;:,.!?-]?\s*"
+    r"(?:\d+\s+){1,3}"
+    r"(?:[\u0400-\u04ffA-Z]{1,3}\s+){2,}"
+    r"(?=[А-ЯЁ])"
+)
+_OCR_SHORT_WORD_RUN_BEFORE_UPPER_RE = re.compile(
+    r"(?<=[.!?])\s+(?:[\u0400-\u04ff]{1,3}\s+){2,}(?=[А-ЯЁ])"
+)
+_OCR_SHORT_WORD_RUN_BEFORE_PLUS_RE = re.compile(
+    r"\s+(?:[\u0400-\u04ff]{1,4}\s+){3,}.{0,80}?\+\s+(?=[А-ЯЁ])"
+)
+_SHORT_SENTENCE_FRAGMENT_RE = re.compile(r"(?<=[.!?])\s+([^.!?]{1,45}[.!?])")
+_OCR_DASH_DOT_SHORT_RE = re.compile(r"\s*[«»“”]?\s+—\.\.\s+[\u0400-\u04ff]\s*\.")
+_OCR_DASH_DOT_WORDS_RE = re.compile(
+    r"\s*[«»“”]?\s+—\.\.[^А-ЯЁ]*"
+    r"(?:[\u0400-\u04ff]{1,8}\s+){0,2}"
+    r"(?=[А-ЯЁ])"
+)
+_OCR_DASH_SPACED_DOT_WORDS_RE = re.compile(
+    r"\s*[«»“”„]?\s+—\s*\.\s*\.[^А-ЯЁ]*"
+    r"(?:[\u0400-\u04ff]{1,8}\s+){0,2}"
+    r"(?=[А-ЯЁ])"
+)
 
 
 def _cyrillic_char_count(text: str) -> int:
@@ -385,6 +437,13 @@ def _is_ocr_noise_line(line: str) -> bool:
 def _is_chapter_heading_line(line: str) -> bool:
     """Return true for short OCR lines that look like a chapter boundary."""
     return bool(_OCR_GLAVA_HEADING_RE.match(line.strip()))
+
+
+def _strip_trailing_page_marker(line: str) -> str:
+    """Remove page numbers glued to the end of an OCR line."""
+    if _cyrillic_char_count(line) < 8:
+        return line
+    return _OCR_TRAILING_PAGE_MARK_RE.sub("", line).strip()
 
 
 def _strip_text_after_inline_heading(text: str) -> str:
@@ -418,6 +477,158 @@ def _split_inline_chapter_headings(paragraph: str) -> list[str]:
     return parts or [paragraph]
 
 
+def _trim_trailing_ocr_garbage(paragraph: str) -> str:
+    """Drop short noisy tails accidentally glued after the last sentence."""
+    for idx in range(len(paragraph) - 1, -1, -1):
+        if paragraph[idx] not in ".!?…":
+            continue
+
+        tail = paragraph[idx + 1:].strip()
+        if not tail or len(tail) > 80:
+            return paragraph
+
+        tail_words = _cyrillic_words(tail)
+        all_short_tail_words = (
+            len(tail_words) >= 2
+            and all(len(word) <= 3 for word in tail_words)
+            and not tail.lstrip().startswith("—")
+        )
+        has_noise_symbol = bool(re.search(r"[\^#*_~|\\/`=<>]", tail))
+        low_word_quality = _readable_cyrillic_word_ratio(tail) < 0.35
+        very_short = _cyrillic_char_count(tail) <= 8
+        if all_short_tail_words and (low_word_quality or very_short):
+            return paragraph[:idx + 1].strip()
+        if has_noise_symbol and (low_word_quality or very_short):
+            return paragraph[:idx + 1].strip()
+
+        return paragraph
+
+    return paragraph
+
+
+def _trim_leading_ocr_garbage(paragraph: str) -> str:
+    """Drop noisy leading token runs before the first readable sentence."""
+    plus = paragraph.find("+ ")
+    if plus < 0 or plus > 90 or plus + 2 >= len(paragraph):
+        return paragraph
+    if not re.match(r"[А-ЯЁ]", paragraph[plus + 2]):
+        return paragraph
+
+    prefix = paragraph[:plus + 1]
+    words = _cyrillic_words(prefix)
+    if not words:
+        return paragraph[plus + 2:].strip()
+
+    short_words = sum(1 for word in words if len(word) <= 3)
+    if short_words / len(words) >= 0.65 and _readable_cyrillic_word_ratio(prefix) < 0.35:
+        return paragraph[plus + 2:].strip()
+
+    return paragraph
+
+
+def _normalize_common_ocr_glitches(paragraph: str) -> str:
+    """Fix high-confidence OCR glitches seen in Russian scanned book pages."""
+    paragraph = _INLINE_PAGE_MARK_RE.sub(" ", paragraph)
+    paragraph = _OCR_SYMBOL_WORD_NOISE_RE.sub(" ", paragraph)
+    paragraph = _OCR_SYMBOL_CLUSTER_RE.sub(" ", paragraph)
+    paragraph = _OCR_SHORT_TOKEN_RUN_RE.sub(" ", paragraph)
+    paragraph = _OCR_SHORT_WORD_RUN_BEFORE_UPPER_RE.sub(" ", paragraph)
+    paragraph = _OCR_SHORT_WORD_RUN_BEFORE_PLUS_RE.sub(" ", paragraph)
+    paragraph = _DIGIT_HYPHENATED_ZA_RE.sub("за", paragraph)
+    paragraph = _OCR_COLLAPSED_I_TUT_RE.sub(r"\1 тут", paragraph)
+    paragraph = re.sub(r"\b([Ии])в\s+помине\b", r"\1 в помине", paragraph)
+    paragraph = _OCR_BACKTICK_WORD_BOUNDARY_RE.sub(" ", paragraph)
+    paragraph = _OCR_BACKTICK_NOISE_RE.sub("", paragraph)
+    paragraph = _OCR_SYMBOL_WORD_NOISE_RE.sub(" ", paragraph)
+    paragraph = _OCR_SYMBOL_CLUSTER_RE.sub(" ", paragraph)
+    paragraph = _OCR_PAGE_WORD_MARK_RE.sub(" ", paragraph)
+    paragraph = _OCR_PAGE_ABBR_MARK_RE.sub(" ", paragraph)
+    paragraph = _OCR_LEFTOVER_FORBIDDEN_SYMBOL_RE.sub(" ", paragraph)
+    paragraph = _TRAILING_SINGLE_LETTER_PUNCT_RE.sub("", paragraph)
+    paragraph = _OCR_DASH_DOT_SHORT_RE.sub(" ", paragraph)
+    paragraph = _OCR_DASH_DOT_WORDS_RE.sub(" ", paragraph)
+    paragraph = _OCR_DASH_SPACED_DOT_WORDS_RE.sub(" ", paragraph)
+    paragraph = _remove_short_noisy_fragments(paragraph)
+    paragraph = _OCR_SHORT_WORD_RUN_BEFORE_UPPER_RE.sub(" ", paragraph)
+    paragraph = _OCR_SHORT_WORD_RUN_BEFORE_PLUS_RE.sub(" ", paragraph)
+    paragraph = _trim_leading_ocr_garbage(paragraph)
+    paragraph = _trim_trailing_ocr_garbage(paragraph)
+    paragraph = _normalize_ocr_punctuation(paragraph)
+    paragraph = re.sub(r"\s{2,}", " ", paragraph)
+    return paragraph.strip()
+
+
+def _normalize_ocr_punctuation(text: str) -> str:
+    """Normalize punctuation combinations that are almost always OCR accidents."""
+    text = re.sub(r"([,;])\1+", r"\1", text)
+    text = re.sub(r"\?+\.", "?", text)
+    text = re.sub(r"\.\s*:", ".", text)
+    text = re.sub(r"\.\s*-\s+(?=[А-ЯЁ])", ". — ", text)
+    text = re.sub(r";\s+(?=[А-ЯЁ])", ". ", text)
+    return text
+
+
+def _remove_short_noisy_fragments(text: str) -> str:
+    """Remove short OCR pseudo-sentences while preserving real short replies."""
+    return _SHORT_SENTENCE_FRAGMENT_RE.sub(
+        lambda match: " " if _is_short_noisy_fragment(match.group(1)) else match.group(0),
+        text,
+    )
+
+
+def _is_short_noisy_fragment(fragment: str) -> bool:
+    """Return true for compact fragments made of OCR debris, not prose."""
+    stripped = fragment.strip()
+    if len(stripped) > 45:
+        return False
+
+    words = _cyrillic_words(stripped)
+    cyr = sum(len(word) for word in words)
+    has_digit = any(ch.isdigit() for ch in stripped)
+    has_noise_symbol = (
+        any(ch in "<>[]{}*_~|\\/^#%$=°" for ch in stripped)
+        or "««" in stripped
+        or "»»" in stripped
+        or ".." in stripped
+    )
+
+    if cyr == 0 and (has_digit or has_noise_symbol):
+        return True
+
+    if cyr <= 4 and len(words) >= 2:
+        return True
+
+    if has_digit and _readable_cyrillic_word_ratio(stripped) < 0.5:
+        return True
+
+    return has_noise_symbol and _readable_cyrillic_word_ratio(stripped) < 0.5
+
+
+def _is_ocr_noise_paragraph(paragraph: str) -> bool:
+    """Return true for short paragraphs that are mostly OCR debris."""
+    if _is_chapter_heading_line(paragraph):
+        return False
+
+    cyr = _cyrillic_char_count(paragraph)
+    if cyr == 0:
+        return True
+
+    if cyr < 8:
+        return True
+
+    word_ratio = _readable_cyrillic_word_ratio(paragraph)
+    symbol_ratio = _ocr_symbol_noise_ratio(paragraph)
+    if len(paragraph) < 90 and word_ratio < 0.25:
+        return True
+    return len(paragraph) < 140 and symbol_ratio > 0.08 and word_ratio < 0.45
+
+
+def _repair_ocr_cross_segment_breaks(text: str) -> str:
+    """Repair words split across OCR page/segment boundaries."""
+    text = _OCR_CROSS_SEGMENT_HYPHEN_RE.sub(r"\1\2", text)
+    return _OCR_CROSS_SEGMENT_PARTICIPLE_RE.sub(r"\1\2", text)
+
+
 def _postprocess_ocr_text(text: str) -> str:
     """Clean OCR text from a single page image before downstream normalization."""
     text = text.replace("\r", "\n").replace("\f", "\n")
@@ -428,6 +639,7 @@ def _postprocess_ocr_text(text: str) -> str:
     for raw_line in text.splitlines():
         line = re.sub(r"\s+", " ", raw_line).strip()
         line = _OCR_LEADING_ARTIFACT_RE.sub("", line).strip()
+        line = _strip_trailing_page_marker(line)
         if not line:
             if not previous_blank:
                 lines.append("")
@@ -464,9 +676,13 @@ def _postprocess_ocr_text(text: str) -> str:
         paragraph = _INLINE_NOISE_BEFORE_DASH_RE.sub("", paragraph)
         if paragraph and re.search(r"[\^#*_~|\\/]", paragraph[-20:]):
             paragraph = _TRAILING_SYMBOL_NOISE_RE.sub("", paragraph)
+        paragraph = _trim_trailing_ocr_garbage(paragraph)
+        paragraph = _normalize_common_ocr_glitches(paragraph)
         paragraph = re.sub(r"\s{2,}", " ", paragraph).strip()
         if paragraph:
-            cleaned_paragraphs.extend(_split_inline_chapter_headings(paragraph))
+            for part in _split_inline_chapter_headings(paragraph):
+                if not _is_ocr_noise_paragraph(part):
+                    cleaned_paragraphs.append(part)
 
     return "\n\n".join(cleaned_paragraphs)
 
@@ -614,7 +830,7 @@ def _ocr_pdf_with_tesseract(
             if (page_num + 1) % 20 == 0 or page_num == total - 1:
                 logger.info("OCR progress: %d/%d pages", page_num + 1, total)
 
-    return "\n\n".join(pages)
+    return _repair_ocr_cross_segment_breaks("\n\n".join(pages))
 
 
 def extract_pdf_with_ocr_mode(

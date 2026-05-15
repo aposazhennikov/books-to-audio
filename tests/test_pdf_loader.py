@@ -15,6 +15,7 @@ from book_normalizer.loaders.pdf_loader import (
     _looks_like_toc,
     _postprocess_ocr_text,
     _prepare_ocr_page_images,
+    _repair_ocr_cross_segment_breaks,
     _should_keep_ocr_text,
     extract_pdf_with_ocr_mode,
     select_pdf_text_for_mode,
@@ -174,6 +175,133 @@ class TestOcrImagePreparation:
         assert "Он нахватался зайчиков. Фаланга пошла." in cleaned
         assert "Песок: — Гера, ты помнишь?" in cleaned
         assert "под прикрытием" in cleaned
+
+    def test_postprocess_ocr_text_removes_glued_page_numbers(self) -> None:
+        raw = (
+            "снежный ком. | 5\n"
+            "Сергей представил себе картину битвы."
+        )
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "| 5" not in cleaned
+        assert "ком. Сергей" in cleaned
+        assert "ком. 5 Сергей" not in cleaned
+
+    def test_postprocess_ocr_text_drops_short_debris_paragraphs(self) -> None:
+        raw = (
+            "Сергей открыл дверь. ^ й В по\n\n"
+            "и. = т р. НН: | с.\n\n"
+            "Затем он вернулся на кухню."
+        )
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "^ й В по" not in cleaned
+        assert "НН:" not in cleaned
+        assert "Сергей открыл дверь." in cleaned
+        assert "Затем он вернулся на кухню." in cleaned
+
+    def test_postprocess_ocr_text_removes_inline_symbol_clusters(self) -> None:
+        raw = (
+            "Это же Геркулес, - закричали воины. ^ г: Сергей поднялся.\n"
+            "Он за него возьмусь. ^ :` | Гроза началась."
+        )
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "^" not in cleaned
+        assert "|" not in cleaned
+        assert "воины. Сергей поднялся" in cleaned
+        assert "возьмусь. Гроза началась" in cleaned
+
+    def test_postprocess_ocr_text_uses_backtick_as_word_boundary(self) -> None:
+        raw = "Сергей`поднял руку. Герасим меж ТЕМ‘трансформировал облик."
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "Сергей поднял" in cleaned
+        assert "ТЕМ трансформировал" in cleaned
+
+    def test_postprocess_ocr_text_removes_short_token_runs(self) -> None:
+        raw = "Уходите, там смерть, туда нельзя, — крикнул он; 2 3 КО и СР НЕ Воспоминание окончилось."
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "2 3" not in cleaned
+        assert "СР НЕ" not in cleaned
+        assert "он. Воспоминание" in cleaned
+
+    def test_postprocess_ocr_text_removes_leftover_forbidden_symbols(self) -> None:
+        raw = (
+            "Льготы? — переспросил старший монах. |!\n\n"
+            "Сатисфакции? ®› и. Нет мадам.\n\n"
+            "Ответил Сергей с. 7:\n\n"
+            "Подземных {сооружений и церквей №.\n\n"
+            "Конец первой части & ^ © ° < > и:\n\n"
+            "страница 7:"
+        )
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "|" not in cleaned
+        assert "^" not in cleaned
+        assert "&" not in cleaned
+        assert "®" not in cleaned
+        assert "№" not in cleaned
+        assert "{" not in cleaned
+        assert "©" not in cleaned
+        assert "страница 7" not in cleaned
+        assert "с. 7" not in cleaned
+        assert "Льготы? — переспросил старший монах." in cleaned
+        assert "Ответил Сергей" in cleaned
+        assert "Конец первой части" in cleaned
+        assert "части и:" not in cleaned
+
+    def test_postprocess_ocr_text_removes_short_noisy_fragments(self) -> None:
+        raw = (
+            "Герасим меж ТЕМ‘трансформировал облик. ««- 1. тЫ РИ. - Это же Геркулес.\n"
+            "Рыжую шевелюру.“ —.. и . — Феб здесь.: Сергей`поднял руку.\n"
+            "Габриель, деточка, разберись с этими жуликами. Бет а\n"
+            "Ангел появился с мечом. . . И у. ЕО С ЕЁ\n"
+            "дей ии р один р: к « Н к,. + Вы больше не требуете сатисфакции?\n"
+            "Нет мадам, совершенно точно нет. „ — . .# г о . Из разговора.\n"
+            "Уходите, там смерть, туда нельзя, — крикнул он; Воспоминание окончилось.\n"
+            "Он спросил. — Да. Она ответила."
+        )
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "тЫ РИ" not in cleaned
+        assert "—.." not in cleaned
+        assert "Бет а" not in cleaned
+        assert "ЕО С ЕЁ" not in cleaned
+        assert "дей ии" not in cleaned
+        assert "# г о" not in cleaned
+        assert "жуликами. Ангел появился" in cleaned
+        assert "Вы больше не требуете сатисфакции?" in cleaned
+        assert "нет. Из разговора" in cleaned
+        assert "здесь. Сергей поднял" in cleaned
+        assert "крикнул он. Воспоминание" in cleaned
+        assert "Он спросил. — Да. Она ответила." in cleaned
+
+    def test_postprocess_ocr_text_fixes_common_digit_hyphen_glitch(self) -> None:
+        raw = "Ночь влекла вперед к новым 32-\nботам."
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "новым заботам" in cleaned
+        assert "32" not in cleaned
+
+    def test_repair_ocr_cross_segment_breaks_joins_split_words(self) -> None:
+        raw = "Электричество, скопивш\n\nееся в атмосфере.\n\nОн держал при-\n\nкрытие."
+
+        cleaned = _repair_ocr_cross_segment_breaks(raw)
+
+        assert "скопившееся в атмосфере" in cleaned
+        assert "прикрытие" in cleaned
+        assert "скопивш\n\nееся" not in cleaned
+        assert "при-\n\nкрытие" not in cleaned
 
     def test_postprocess_ocr_text_keeps_chapter_heading_separate(self) -> None:
         raw = (

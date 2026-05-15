@@ -23,6 +23,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -187,6 +189,8 @@ class SynthesisPage(QWidget):
         self._sample_audio.setVolume(0.8)
         self._sample_player = QMediaPlayer(self)
         self._sample_player.setAudioOutput(self._sample_audio)
+        self._help_buttons: list[tuple[QToolButton, str]] = []
+        self._voice_mode = "custom"
         self._setup_ui()
 
     # ── UI construction ──────────────────────────────────────────────────────
@@ -228,95 +232,14 @@ class SynthesisPage(QWidget):
         layout.addLayout(file_row)
 
         # ── Main settings form ────────────────────────────────────────────
-        settings = QFormLayout()
-        settings.setHorizontalSpacing(16)
-        settings.setVerticalSpacing(6)
+        self._mode_tabs = QTabWidget()
+        self._mode_tabs.setObjectName("synthesisModeTabs")
+        self._mode_tabs.currentChanged.connect(self._on_mode_changed)
+        self._mode_tabs.addTab(self._build_sample_voice_panel(), "")
+        self._mode_tabs.addTab(self._build_preset_speakers_tab(), "")
+        self._mode_tabs.addTab(self._build_advanced_tab(), "")
+        layout.addWidget(self._mode_tabs)
 
-        self._model_combo = QComboBox()
-        self._model_combo.addItems(MODELS)
-        self._model_label = QLabel()
-        settings.addRow(self._model_label, self._model_combo)
-
-        self._model_hint = self._hint_label()
-        settings.addRow("", self._model_hint)
-
-        model_dir_row = QHBoxLayout()
-        model_dir_row.setSpacing(6)
-        self._models_dir_edit = QLineEdit(str(default_comfyui_models_dir()))
-        self._models_dir_edit.setMinimumWidth(320)
-        model_dir_row.addWidget(self._models_dir_edit, stretch=1)
-        self._btn_models_dir = QPushButton()
-        self._btn_models_dir.clicked.connect(self._browse_models_dir)
-        model_dir_row.addWidget(self._btn_models_dir)
-        self._models_dir_label = QLabel()
-        settings.addRow(self._models_dir_label, model_dir_row)
-
-        self._models_dir_hint = self._hint_label()
-        settings.addRow("", self._models_dir_hint)
-
-        self._batch_size = QSpinBox()
-        self._batch_size.setRange(1, 8)
-        self._batch_size.setValue(1)
-        self._batch_size.setMaximumWidth(120)
-        self._batch_label = QLabel()
-        settings.addRow(self._batch_label, self._batch_size)
-
-        self._batch_hint = self._hint_label()
-        settings.addRow("", self._batch_hint)
-
-        self._chunk_timeout = QSpinBox()
-        self._chunk_timeout.setRange(30, 1800)
-        self._chunk_timeout.setValue(300)
-        self._chunk_timeout.setSingleStep(30)
-        self._chunk_timeout.setSuffix(" с")
-        self._chunk_timeout.setMaximumWidth(120)
-        self._chunk_timeout_label = QLabel()
-        settings.addRow(self._chunk_timeout_label, self._chunk_timeout)
-
-        self._output_format_combo = QComboBox()
-        self._output_format_combo.addItem("FLAC", "flac")
-        self._output_format_combo.addItem("WAV", "wav")
-        self._output_format_label = QLabel()
-        settings.addRow(self._output_format_label, self._output_format_combo)
-
-        self._merge_chapters_check = QCheckBox()
-        self._merge_chapters_check.setChecked(True)
-        self._merge_chapters_label = QLabel()
-        settings.addRow(self._merge_chapters_label, self._merge_chapters_check)
-
-        self._chapter_combo = QComboBox()
-        self._chapter_combo.setMinimumWidth(200)
-        self._chapter_label = QLabel()
-        settings.addRow(self._chapter_label, self._chapter_combo)
-
-        self._chapter_info = self._hint_label()
-        settings.addRow("", self._chapter_info)
-
-        self._resume_check = QCheckBox()
-        self._resume_label = QLabel()
-        settings.addRow(self._resume_label, self._resume_check)
-
-        self._resume_hint = self._hint_label()
-        settings.addRow("", self._resume_hint)
-
-        self._compile_check = QCheckBox()
-        self._compile_label = QLabel()
-        settings.addRow(self._compile_label, self._compile_check)
-
-        self._compile_hint = self._hint_label()
-        settings.addRow("", self._compile_hint)
-
-        self._sage_check = QCheckBox()
-        self._sage_label = QLabel()
-        settings.addRow(self._sage_label, self._sage_check)
-
-        self._sage_hint = self._hint_label()
-        settings.addRow("", self._sage_hint)
-
-        layout.addLayout(settings)
-
-        # ── Voice cloning panel ───────────────────────────────────────────
-        layout.addWidget(self._build_sample_voice_panel())
 
         # ── Action buttons ────────────────────────────────────────────────
         btn_row = QHBoxLayout()
@@ -389,15 +312,11 @@ class SynthesisPage(QWidget):
         outer.setContentsMargins(12, 10, 12, 10)
         outer.setSpacing(8)
 
-        header = QHBoxLayout()
-        self._sample_enable = QCheckBox()
-        header.addWidget(self._sample_enable)
         self._sample_title = QLabel()
         self._sample_title.setStyleSheet(
             "font-weight: 700; font-size: 13px; color: rgba(190,170,255,0.98);"
         )
-        header.addWidget(self._sample_title, stretch=1)
-        outer.addLayout(header)
+        outer.addWidget(self._sample_title)
 
         self._sample_desc = QLabel()
         self._sample_desc.setWordWrap(True)
@@ -419,7 +338,10 @@ class SynthesisPage(QWidget):
         self._btn_sample_audio.clicked.connect(self._browse_sample_audio)
         audio_row.addWidget(self._btn_sample_audio)
         self._sample_audio_label = QLabel()
-        form.addRow(self._sample_audio_label, audio_row)
+        form.addRow(
+            self._label_with_help(self._sample_audio_label, "synth.sample_audio_help"),
+            audio_row,
+        )
 
         playback_row = QHBoxLayout()
         playback_row.setSpacing(8)
@@ -437,12 +359,21 @@ class SynthesisPage(QWidget):
         self._sample_player.positionChanged.connect(self._on_sample_position_changed)
         self._sample_player.playbackStateChanged.connect(self._on_sample_playback_state)
         self._sample_preview_label = QLabel()
-        form.addRow(self._sample_preview_label, playback_row)
+        form.addRow(
+            self._label_with_help(self._sample_preview_label, "synth.sample_preview_help"),
+            playback_row,
+        )
 
         self._sample_transcript_edit = QPlainTextEdit()
         self._sample_transcript_edit.setMaximumHeight(92)
         self._sample_transcript_label = QLabel()
-        form.addRow(self._sample_transcript_label, self._sample_transcript_edit)
+        form.addRow(
+            self._label_with_help(
+                self._sample_transcript_label,
+                "synth.sample_transcript_help",
+            ),
+            self._sample_transcript_edit,
+        )
 
         outer.addLayout(form)
 
@@ -456,7 +387,10 @@ class SynthesisPage(QWidget):
         self._temperature_spin.setDecimals(2)
         self._temperature_spin.setValue(1.0)
         self._temperature_label = QLabel()
-        controls.addRow(self._temperature_label, self._temperature_spin)
+        controls.addRow(
+            self._label_with_help(self._temperature_label, "synth.temperature_help"),
+            self._temperature_spin,
+        )
 
         self._top_p_spin = QDoubleSpinBox()
         self._top_p_spin.setRange(0.1, 1.0)
@@ -464,13 +398,19 @@ class SynthesisPage(QWidget):
         self._top_p_spin.setDecimals(2)
         self._top_p_spin.setValue(0.80)
         self._top_p_label = QLabel()
-        controls.addRow(self._top_p_label, self._top_p_spin)
+        controls.addRow(
+            self._label_with_help(self._top_p_label, "synth.top_p_help"),
+            self._top_p_spin,
+        )
 
         self._top_k_spin = QSpinBox()
         self._top_k_spin.setRange(1, 200)
         self._top_k_spin.setValue(20)
         self._top_k_label = QLabel()
-        controls.addRow(self._top_k_label, self._top_k_spin)
+        controls.addRow(
+            self._label_with_help(self._top_k_label, "synth.top_k_help"),
+            self._top_k_spin,
+        )
 
         self._repetition_penalty_spin = QDoubleSpinBox()
         self._repetition_penalty_spin.setRange(0.8, 2.0)
@@ -478,20 +418,35 @@ class SynthesisPage(QWidget):
         self._repetition_penalty_spin.setDecimals(2)
         self._repetition_penalty_spin.setValue(1.05)
         self._repetition_penalty_label = QLabel()
-        controls.addRow(self._repetition_penalty_label, self._repetition_penalty_spin)
+        controls.addRow(
+            self._label_with_help(
+                self._repetition_penalty_label,
+                "synth.repetition_penalty_help",
+            ),
+            self._repetition_penalty_spin,
+        )
 
         self._max_new_tokens_spin = QSpinBox()
         self._max_new_tokens_spin.setRange(128, 8192)
         self._max_new_tokens_spin.setSingleStep(128)
         self._max_new_tokens_spin.setValue(2048)
         self._max_new_tokens_label = QLabel()
-        controls.addRow(self._max_new_tokens_label, self._max_new_tokens_spin)
+        controls.addRow(
+            self._label_with_help(
+                self._max_new_tokens_label,
+                "synth.max_new_tokens_help",
+            ),
+            self._max_new_tokens_spin,
+        )
 
         self._seed_spin = QSpinBox()
         self._seed_spin.setRange(-1, 2_147_483_647)
         self._seed_spin.setValue(-1)
         self._seed_label = QLabel()
-        controls.addRow(self._seed_label, self._seed_spin)
+        controls.addRow(
+            self._label_with_help(self._seed_label, "synth.seed_help"),
+            self._seed_spin,
+        )
 
         outer.addLayout(controls)
 
@@ -502,6 +457,188 @@ class SynthesisPage(QWidget):
         )
         outer.addWidget(self._sample_status)
         return frame
+
+    def _build_preset_speakers_tab(self) -> QWidget:
+        """Build the built-in speaker synthesis mode."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
+
+        self._preset_title = QLabel()
+        self._preset_title.setStyleSheet(
+            "font-weight: 700; font-size: 13px; color: rgba(190,170,255,0.98);"
+        )
+        layout.addWidget(self._preset_title)
+
+        self._preset_desc = QLabel()
+        self._preset_desc.setWordWrap(True)
+        self._preset_desc.setStyleSheet(
+            "color: rgba(255,255,255,0.58); font-size: 11px;"
+        )
+        layout.addWidget(self._preset_desc)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(8)
+        self._model_combo = QComboBox()
+        self._model_combo.addItems(MODELS[:2])
+        self._model_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._model_label, "synth.model_help"),
+            self._model_combo,
+        )
+        layout.addLayout(form)
+        layout.addStretch()
+        return tab
+
+    def _build_advanced_tab(self) -> QWidget:
+        """Build advanced settings shared by all synthesis modes."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
+
+        self._advanced_title = QLabel()
+        self._advanced_title.setStyleSheet(
+            "font-weight: 700; font-size: 13px; color: rgba(190,170,255,0.98);"
+        )
+        layout.addWidget(self._advanced_title)
+
+        self._advanced_desc = QLabel()
+        self._advanced_desc.setWordWrap(True)
+        self._advanced_desc.setStyleSheet(
+            "color: rgba(255,255,255,0.58); font-size: 11px;"
+        )
+        layout.addWidget(self._advanced_desc)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(8)
+
+        model_dir_row = QHBoxLayout()
+        model_dir_row.setSpacing(6)
+        self._models_dir_edit = QLineEdit(str(default_comfyui_models_dir()))
+        self._models_dir_edit.setMinimumWidth(320)
+        model_dir_row.addWidget(self._models_dir_edit, stretch=1)
+        self._btn_models_dir = QPushButton()
+        self._btn_models_dir.clicked.connect(self._browse_models_dir)
+        model_dir_row.addWidget(self._btn_models_dir)
+        self._models_dir_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._models_dir_label, "synth.models_dir_help"),
+            model_dir_row,
+        )
+
+        self._output_format_combo = QComboBox()
+        self._output_format_combo.addItem("FLAC", "flac")
+        self._output_format_combo.addItem("WAV", "wav")
+        self._output_format_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._output_format_label, "synth.output_format_help"),
+            self._output_format_combo,
+        )
+
+        self._merge_chapters_check = QCheckBox()
+        self._merge_chapters_check.setChecked(True)
+        self._merge_chapters_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._merge_chapters_label, "synth.merge_chapters_help"),
+            self._merge_chapters_check,
+        )
+
+        self._chapter_combo = QComboBox()
+        self._chapter_combo.setMinimumWidth(200)
+        self._chapter_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._chapter_label, "synth.chapter_help"),
+            self._chapter_combo,
+        )
+
+        self._resume_check = QCheckBox()
+        self._resume_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._resume_label, "synth.resume_help"),
+            self._resume_check,
+        )
+
+        self._batch_size = QSpinBox()
+        self._batch_size.setRange(1, 8)
+        self._batch_size.setValue(1)
+        self._batch_size.setMaximumWidth(120)
+        self._batch_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._batch_label, "synth.batch_help"),
+            self._batch_size,
+        )
+
+        self._chunk_timeout = QSpinBox()
+        self._chunk_timeout.setRange(30, 1800)
+        self._chunk_timeout.setValue(300)
+        self._chunk_timeout.setSingleStep(30)
+        self._chunk_timeout.setSuffix(" s")
+        self._chunk_timeout.setMaximumWidth(120)
+        self._chunk_timeout_label = QLabel()
+        form.addRow(
+            self._label_with_help(
+                self._chunk_timeout_label,
+                "synth.chunk_timeout_help",
+            ),
+            self._chunk_timeout,
+        )
+
+        self._compile_check = QCheckBox()
+        self._compile_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._compile_label, "synth.compile_help"),
+            self._compile_check,
+        )
+
+        self._sage_check = QCheckBox()
+        self._sage_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._sage_label, "synth.sage_help"),
+            self._sage_check,
+        )
+
+        layout.addLayout(form)
+        self._chapter_info = QLabel()
+        self._chapter_info.setStyleSheet(
+            "color: rgba(255,255,255,0.42); font-size: 11px;"
+        )
+        layout.addWidget(self._chapter_info)
+        layout.addStretch()
+        return tab
+
+    def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
+        """Return a compact form label with a hover help button."""
+        wrap = QWidget()
+        row = QHBoxLayout(wrap)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        row.addWidget(label)
+        row.addWidget(self._help_button(help_key))
+        row.addStretch()
+        return wrap
+
+    def _help_button(self, help_key: str) -> QToolButton:
+        btn = QToolButton()
+        btn.setText("?")
+        btn.setAutoRaise(True)
+        btn.setCursor(Qt.CursorShape.WhatsThisCursor)
+        btn.setFixedSize(20, 20)
+        btn.setStyleSheet(
+            "QToolButton {"
+            "  color: rgba(255,255,255,0.72);"
+            "  border: 1px solid rgba(255,255,255,0.24);"
+            "  border-radius: 10px;"
+            "  background: rgba(255,255,255,0.06);"
+            "  font-weight: 700;"
+            "}"
+            "QToolButton:hover { background: rgba(124,92,252,0.28); }"
+        )
+        self._help_buttons.append((btn, help_key))
+        return btn
 
     def _build_clone_panel(self) -> QFrame:
         """Build the voice cloning expandable panel."""
@@ -629,33 +766,30 @@ class SynthesisPage(QWidget):
         if not self._manifest_path:
             self._manifest_label.setText(t("synth.no_manifest"))
         self._btn_load.setText(t("synth.load_manifest"))
+        self._mode_tabs.setTabText(0, t("synth.mode_custom_voice"))
+        self._mode_tabs.setTabText(1, t("synth.mode_preset_speakers"))
+        self._mode_tabs.setTabText(2, t("synth.mode_advanced"))
+
         self._model_label.setText(t("synth.model"))
-        self._model_hint.setText(t("synth.model_hint"))
-        self._model_combo.setToolTip(t("synth.model_hint"))
+        self._model_combo.setToolTip(t("synth.model_help"))
         self._models_dir_label.setText(t("synth.models_dir"))
-        self._models_dir_hint.setText(t("synth.models_dir_hint"))
-        self._models_dir_edit.setToolTip(t("synth.models_dir_hint"))
+        self._models_dir_edit.setToolTip(t("synth.models_dir_help"))
         self._btn_models_dir.setText(t("synth.choose_dir"))
         self._batch_label.setText(t("synth.batch_size"))
-        self._batch_hint.setText(t("synth.batch_hint"))
-        self._batch_size.setToolTip(t("synth.batch_hint"))
+        self._batch_size.setToolTip(t("synth.batch_help"))
         self._chunk_timeout_label.setText(t("synth.chunk_timeout"))
-        self._chunk_timeout.setToolTip(t("synth.chunk_timeout_hint"))
+        self._chunk_timeout.setToolTip(t("synth.chunk_timeout_help"))
         self._output_format_label.setText(t("synth.output_format"))
         self._merge_chapters_label.setText(t("synth.merge_chapters"))
         self._merge_chapters_check.setText(t("synth.merge_chapters_check"))
         self._chapter_label.setText(t("synth.chapter"))
         self._resume_label.setText(t("synth.resume"))
         self._resume_check.setText(t("synth.resume_check"))
-        self._resume_hint.setText(t("synth.resume_hint"))
         self._compile_label.setText(t("synth.compile"))
         self._compile_check.setText(t("synth.compile_check"))
-        self._compile_hint.setText(t("synth.compile_hint"))
         self._sage_label.setText(t("synth.sage_attention"))
         self._sage_check.setText(t("synth.sage_check"))
-        self._sage_hint.setText(t("synth.sage_hint"))
 
-        self._sample_enable.setText(t("synth.sample_enable"))
         self._sample_title.setText(t("synth.sample_title"))
         self._sample_desc.setText(t("synth.sample_desc"))
         self._sample_audio_label.setText(t("synth.sample_audio"))
@@ -674,6 +808,12 @@ class SynthesisPage(QWidget):
         self._seed_label.setText(t("synth.seed"))
         if not self._sample_status.text():
             self._sample_status.setText(t("synth.sample_idle"))
+        self._preset_title.setText(t("synth.preset_title"))
+        self._preset_desc.setText(t("synth.preset_desc"))
+        self._advanced_title.setText(t("synth.advanced_title"))
+        self._advanced_desc.setText(t("synth.advanced_desc"))
+        for btn, help_key in self._help_buttons:
+            btn.setToolTip(t(help_key))
 
         self._btn_start.setText(t("synth.start"))
         self._btn_stop.setText(t("synth.stop"))
@@ -746,7 +886,6 @@ class SynthesisPage(QWidget):
         )
         if path:
             self._sample_audio_edit.setText(path)
-            self._sample_enable.setChecked(True)
             self._btn_sample_play.setEnabled(True)
             self._sample_player.setSource(QUrl.fromLocalFile(path))
             self._sample_status.setText(t("synth.sample_ready"))
@@ -793,7 +932,7 @@ class SynthesisPage(QWidget):
 
     def _build_temp_sample_voice_config(self) -> str:
         """Serialize the selected sample voice as a global clone config."""
-        if not self._sample_enable.isChecked():
+        if not self._is_custom_voice_mode():
             return ""
 
         audio = self._sample_audio_edit.text().strip()
@@ -808,6 +947,17 @@ class SynthesisPage(QWidget):
         json.dump(cfg, tmp, ensure_ascii=False, indent=2)
         tmp.close()
         return tmp.name
+
+    def _is_custom_voice_mode(self) -> bool:
+        return self._voice_mode == "custom"
+
+    def _on_mode_changed(self, index: int) -> None:
+        if index == 0:
+            self._voice_mode = "custom"
+        elif index == 1:
+            self._voice_mode = "preset"
+        if self._sample_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._sample_player.pause()
 
     # ── Manifest ──────────────────────────────────────────────────────────────
 

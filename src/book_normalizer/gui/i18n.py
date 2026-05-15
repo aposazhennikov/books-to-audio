@@ -436,6 +436,40 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Load Manifest",
         "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
     },
+    "synth.mode_custom_voice": {
+        "en": "Custom Voice",
+        "ru": "Custom Voice",
+    },
+    "synth.mode_preset_speakers": {
+        "en": "Built-in Speakers",
+        "ru": "Готовые спикеры",
+    },
+    "synth.mode_advanced": {
+        "en": "Advanced",
+        "ru": "Дополнительно",
+    },
+    "synth.preset_title": {
+        "en": "Built-in Qwen speakers",
+        "ru": "Готовые голоса Qwen",
+    },
+    "synth.preset_desc": {
+        "en": (
+            "Use the speaker assignments from the Voices step. No reference audio is "
+            "needed; this is the simplest and most stable mode."
+        ),
+        "ru": (
+            "Использует роли и голоса из шага «Голоса». Reference audio не нужен; "
+            "это самый простой и стабильный режим."
+        ),
+    },
+    "synth.advanced_title": {
+        "en": "Advanced run settings",
+        "ru": "Дополнительные настройки запуска",
+    },
+    "synth.advanced_desc": {
+        "en": "These settings affect speed, file layout, and recovery after interruption.",
+        "ru": "Эти параметры влияют на скорость, файлы на выходе и продолжение после обрыва.",
+    },
     "synth.comfyui_url": {"en": "ComfyUI URL:", "ru": "ComfyUI URL:"},
     "synth.workflow": {"en": "Workflow:", "ru": "Workflow:"},
     "synth.choose_file": {"en": "Choose...", "ru": "Выбрать..."},
@@ -615,6 +649,82 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.seed": {
         "en": "Seed:",
         "ru": "Seed:",
+    },
+    "synth.model_help": {
+        "en": "Choose the Qwen CustomVoice model for built-in speakers. 1.7B is better quality; 0.6B is faster and lighter.",
+        "ru": "Модель Qwen CustomVoice для готовых спикеров. 1.7B качественнее; 0.6B быстрее и легче.",
+    },
+    "synth.models_dir_help": {
+        "en": "Folder with downloaded models. The WSL runner checks it before downloading from HuggingFace.",
+        "ru": "Папка с уже скачанными моделями. WSL-runner сначала ищет здесь, потом уже в HuggingFace.",
+    },
+    "synth.batch_help": {
+        "en": "How many chunks to render at once. 1 is safest; larger values can be faster but need more VRAM.",
+        "ru": "Сколько чанков рендерить одновременно. 1 — самый стабильный вариант; больше — быстрее, но требует больше VRAM.",
+    },
+    "synth.chunk_timeout_help": {
+        "en": "Maximum time for one chunk. If the model hangs on bad text, the chunk is skipped instead of blocking the whole book.",
+        "ru": "Максимальное время на один чанк. Если модель зависнет на проблемном тексте, чанк будет пропущен, а книга продолжит рендериться.",
+    },
+    "synth.output_format_help": {
+        "en": "Audio format for generated chunks and merged chapter files. FLAC is compact and lossless; WAV is most compatible.",
+        "ru": "Формат чанков и собранных глав. FLAC компактный и без потерь; WAV максимально совместимый.",
+    },
+    "synth.merge_chapters_help": {
+        "en": "Also create one merged audio file per chapter while keeping individual chunk files.",
+        "ru": "Дополнительно собирать один аудиофайл на главу, сохраняя отдельные чанки.",
+    },
+    "synth.chapter_help": {
+        "en": "Render the whole book or only one selected chapter.",
+        "ru": "Рендерить всю книгу или только выбранную главу.",
+    },
+    "synth.resume_help": {
+        "en": "Skip chunks that already have audio files. Useful after stopping or a crash.",
+        "ru": "Пропускать чанки, для которых уже есть аудио. Полезно после остановки или сбоя.",
+    },
+    "synth.compile_help": {
+        "en": "torch.compile can speed up later chunks after a slower warm-up. Leave it off if you want the most predictable run.",
+        "ru": "torch.compile может ускорить следующие чанки после более медленного прогрева. Оставьте выключенным для максимально предсказуемого запуска.",
+    },
+    "synth.sage_help": {
+        "en": "SageAttention is an optional faster attention kernel in WSL. Enable only if it is installed and tested on your GPU.",
+        "ru": "SageAttention — опциональное ускорение attention в WSL. Включайте только если оно установлено и проверено на вашей GPU.",
+    },
+    "synth.sample_audio_help": {
+        "en": "A short clean recording of the target voice. WAV/FLAC is best; noisy audio gives worse cloning.",
+        "ru": "Короткая чистая запись нужного голоса. Лучше WAV/FLAC; шумный файл ухудшит клонирование.",
+    },
+    "synth.sample_preview_help": {
+        "en": "Play the selected sample so you can verify it is the right voice and text.",
+        "ru": "Прослушивание выбранного sample, чтобы проверить голос и соответствие тексту.",
+    },
+    "synth.sample_transcript_help": {
+        "en": "Exact text spoken in the sample audio. The closer it matches, the better the voice prompt.",
+        "ru": "Точный текст, произнесенный в sample audio. Чем точнее совпадение, тем лучше voice prompt.",
+    },
+    "synth.temperature_help": {
+        "en": "Controls randomness. Lower is steadier; higher is more expressive but can make speech less stable.",
+        "ru": "Случайность генерации. Ниже — ровнее; выше — выразительнее, но речь может стать менее стабильной.",
+    },
+    "synth.top_p_help": {
+        "en": "Limits token sampling to the most likely options. Lower can reduce odd phrasing; default 0.8 is balanced.",
+        "ru": "Ограничивает выбор наиболее вероятными вариантами. Ниже — меньше странностей; 0.8 обычно сбалансировано.",
+    },
+    "synth.top_k_help": {
+        "en": "How many likely options the model may choose from at each step. Lower is safer; higher is more varied.",
+        "ru": "Сколько вероятных вариантов модель может выбирать на каждом шаге. Ниже — безопаснее; выше — разнообразнее.",
+    },
+    "synth.repetition_penalty_help": {
+        "en": "Discourages repeated syllables or words. Increase slightly if the voice loops.",
+        "ru": "Снижает повторы слогов и слов. Немного увеличьте, если голос начинает зацикливаться.",
+    },
+    "synth.max_new_tokens_help": {
+        "en": "Upper limit for generated audio tokens per chunk. Increase only for unusually long chunks.",
+        "ru": "Верхний лимит аудио-токенов на чанк. Увеличивайте только для необычно длинных чанков.",
+    },
+    "synth.seed_help": {
+        "en": "Seed for repeatable generation. -1 means random every run.",
+        "ru": "Seed для повторяемой генерации. -1 означает случайный результат при каждом запуске.",
     },
     "synth.chapter": {
         "en": "Chapter:",

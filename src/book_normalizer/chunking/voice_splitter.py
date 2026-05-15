@@ -64,10 +64,11 @@ def extract_segments_chapter(
         if not combined.strip():
             continue
 
-        effective_role = (
+        is_dialogue = any(ln.is_dialogue for ln in lines)
+        effective_role = role
+        voice_role = (
             role if role != SpeakerRole.UNKNOWN else SpeakerRole.NARRATOR
         )
-        is_dialogue = any(ln.is_dialogue for ln in lines)
 
         segments.append(
             VoiceSegment(
@@ -75,7 +76,7 @@ def extract_segments_chapter(
                 chapter_index=chapter.chapter_index,
                 is_dialogue=is_dialogue,
                 role=effective_role,
-                voice_id=NEW_VOICE_ID_MAP[effective_role],
+                voice_id=NEW_VOICE_ID_MAP[voice_role],
                 intonation="neutral",
                 text=combined,
             )
@@ -123,7 +124,7 @@ def build_chunks_from_segments(
     pending_chapter = segments[0].get("chapter_index", 0)
     pending_voice = segments[0].get("voice_id", "narrator_calm")
     pending_intonation = segments[0].get("intonation", "neutral")
-    pending_role = segments[0].get("role", "narrator")
+    pending_role = _role_from_segment(segments[0])
 
     def _next_chunk_index(chapter_index: int) -> int:
         current = chunk_indices.get(chapter_index, 0)
@@ -163,7 +164,7 @@ def build_chunks_from_segments(
         seg_chapter = seg.get("chapter_index", 0)
         seg_voice = seg.get("voice_id", "narrator_calm")
         seg_intonation = seg.get("intonation", "neutral")
-        seg_role = seg.get("role", "narrator")
+        seg_role = _role_from_segment(seg)
         seg_text = seg.get("text", "").strip()
         if not seg_text:
             continue
@@ -316,9 +317,21 @@ def _group_by_role(
 def _effective_role(line: DialogueLine) -> SpeakerRole:
     """Resolve UNKNOWN to NARRATOR for grouping purposes."""
     if line.is_dialogue:
-        return (
-            line.role
-            if line.role != SpeakerRole.UNKNOWN
-            else SpeakerRole.NARRATOR
-        )
+        return line.role
     return SpeakerRole.NARRATOR
+
+
+def _role_from_segment(seg: dict[str, Any]) -> str:
+    """Infer canonical role from voice_id first, then stale role metadata."""
+    voice_id = str(seg.get("voice_id") or "").strip().lower()
+    if voice_id == "male" or voice_id.startswith("male_"):
+        return "male"
+    if voice_id == "female" or voice_id.startswith("female_"):
+        return "female"
+    if voice_id == "narrator" or voice_id.startswith("narrator_"):
+        return "narrator"
+
+    role = str(seg.get("role") or "narrator").strip().lower()
+    if role in {"narrator", "male", "female", "unknown"}:
+        return role
+    return "narrator"

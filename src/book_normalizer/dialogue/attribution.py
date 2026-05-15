@@ -102,16 +102,22 @@ class HeuristicAttributor(BaseSpeakerAttributor):
         stats = _empty_stats("heuristic")
 
         for chapter in chapters:
+            last_dialogue_role: SpeakerRole | None = None
             for para in chapter.paragraphs:
-                self._attribute_paragraph(para.lines)
+                last_dialogue_role = self._attribute_paragraph(
+                    para.lines,
+                    last_dialogue_role,
+                )
             stats["chapters_processed"] += 1
 
         return _build_result(chapters, stats)
 
-    def _attribute_paragraph(self, lines: list[DialogueLine]) -> None:
+    def _attribute_paragraph(
+        self,
+        lines: list[DialogueLine],
+        last_dialogue_role: SpeakerRole | None = None,
+    ) -> SpeakerRole | None:
         """Attribute speaker roles within a paragraph's lines."""
-        last_dialogue_role: SpeakerRole | None = None
-
         i = 0
         while i < len(lines):
             line = lines[i]
@@ -148,6 +154,8 @@ class HeuristicAttributor(BaseSpeakerAttributor):
 
             i += 1
 
+        return last_dialogue_role
+
 
 # ---------------------------------------------------------------------------
 # LLM attributor
@@ -155,11 +163,12 @@ class HeuristicAttributor(BaseSpeakerAttributor):
 
 _LLM_SYSTEM_PROMPT = (
     "You are a literary text analyst. Given a list of dialogue lines from a "
-    "Russian book, determine the speaker's gender for each dialogue line. "
+    "Russian book with nearby narrator context, determine the speaker's gender "
+    "for each target dialogue line. "
     "Respond with a JSON array of objects: "
     '[{"line_id": "...", "role": "male"|"female"}]. '
-    "Only annotate lines marked as dialogue. "
-    "Use context clues: verb endings, character names, pronouns."
+    "Only annotate lines that have a line_id. "
+    "Use narrator lines, verb endings, character names, and pronouns as context."
 )
 
 
@@ -229,16 +238,11 @@ class LlmAttributor(BaseSpeakerAttributor):
             logger.error("httpx is required for LLM attribution: pip install httpx")
             return []
 
-        lines_payload = [
-            {
-                "line_id": _line_cache_key(line, chapter.chapter_index, i),
-                "text": line.text[:200],
-            }
-            for i, line in enumerate(dialogue_lines)
-        ]
+        lines_payload = self._build_context_payload(chapter, dialogue_lines)
         user_msg = (
             f"Chapter: {chapter.chapter_title}\n\n"
-            f"Dialogue lines:\n{json.dumps(lines_payload, ensure_ascii=False, indent=2)}"
+            f"Ordered context lines:\n"
+            f"{json.dumps(lines_payload, ensure_ascii=False, indent=2)}"
         )
 
         headers: dict[str, str] = {"Content-Type": "application/json"}
@@ -269,6 +273,35 @@ class LlmAttributor(BaseSpeakerAttributor):
             return []
 
     @staticmethod
+    def _build_context_payload(
+        chapter: AnnotatedChapter,
+        dialogue_lines: list[DialogueLine],
+    ) -> list[dict[str, str]]:
+        """Build ordered chapter context for LLM speaker attribution."""
+        target_ordinals = {
+            id(line): i for i, line in enumerate(dialogue_lines)
+        }
+        payload: list[dict[str, str]] = []
+
+        for para in chapter.paragraphs:
+            for line in para.lines:
+                item = {
+                    "kind": "dialogue" if line.is_dialogue else "narrator",
+                    "text": line.text[:500],
+                }
+                if id(line) in target_ordinals:
+                    item["line_id"] = _line_cache_key(
+                        line,
+                        chapter.chapter_index,
+                        target_ordinals[id(line)],
+                    )
+                elif line.is_dialogue:
+                    item["known_role"] = line.role.value
+                payload.append(item)
+
+        return payload
+
+    @staticmethod
     def _parse_llm_response(content: str) -> list[dict[str, str]]:
         """Extract JSON array from LLM response text."""
         content = content.strip()
@@ -288,7 +321,11 @@ class LlmAttributor(BaseSpeakerAttributor):
         chapter_index: int = 0,
     ) -> None:
         """Apply LLM annotations to dialogue lines."""
-        mapping = {a["line_id"]: a.get("role", "") for a in annotations}
+        mapping = {
+            str(a.get("line_id", "")): str(a.get("role", "")).lower()
+            for a in annotations
+            if a.get("line_id")
+        }
         for i, line in enumerate(lines):
             role_str = mapping.get(
                 _line_cache_key(line, chapter_index, i),

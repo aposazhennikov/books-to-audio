@@ -74,18 +74,19 @@ class ExportSegmentsWorker(QThread):
             detector = DialogueDetector()
             annotated = detector.detect_book(self._book)
 
-            self.progress.emit(
-                t("voice.attributing", mode=self._speaker_mode),
-            )
-            attr_mode = SpeakerMode(self._speaker_mode)
-            attributor = create_attributor(
-                attr_mode,
-                cache_dir=self._output_dir / "speaker_cache",
-                llm_endpoint=self._llm_endpoint or "",
-                llm_model=self._llm_model or "qwen3:8b",
-                llm_api_key=self._llm_api_key or "",
-            )
-            attributor.attribute(annotated)
+            if self._speaker_mode != "manual":
+                self.progress.emit(
+                    t("voice.attributing", mode=self._speaker_mode),
+                )
+                attr_mode = SpeakerMode(self._speaker_mode)
+                attributor = create_attributor(
+                    attr_mode,
+                    cache_dir=self._output_dir / "speaker_cache",
+                    llm_endpoint=self._llm_endpoint or "",
+                    llm_model=self._llm_model or "qwen3:8b",
+                    llm_api_key=self._llm_api_key or "",
+                )
+                attributor.attribute(annotated)
 
             self.progress.emit(t("voice.extracting_segments"))
             segments = extract_segments_book(annotated)

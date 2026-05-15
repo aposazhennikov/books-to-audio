@@ -58,6 +58,10 @@ _NARRATOR_REMARK_RE = re.compile(
 _QUOTED_SPEECH_RE = re.compile(
     LEFT_QUOTE + r"([^" + RIGHT_QUOTE + r"]+)" + RIGHT_QUOTE
 )
+_QUOTE_SPEECH_CONTEXT_RE = re.compile(
+    r"\b(?:" + "|".join(_ATTRIBUTION_VERBS) + r")\b",
+    re.IGNORECASE,
+)
 
 
 class DialogueDetector:
@@ -183,7 +187,10 @@ class DialogueDetector:
 
     def _has_quoted_speech(self, line: str) -> bool:
         """Check if line contains quoted speech in guillemets."""
-        return bool(_QUOTED_SPEECH_RE.search(line))
+        return any(
+            self._is_speech_quote(line, match)
+            for match in _QUOTED_SPEECH_RE.finditer(line)
+        )
 
     def _split_quoted_speech(self, line: str) -> list[tuple[str, bool]]:
         """Split a narrator line that contains quoted speech."""
@@ -191,6 +198,8 @@ class DialogueDetector:
         last_end = 0
 
         for m in _QUOTED_SPEECH_RE.finditer(line):
+            if not self._is_speech_quote(line, m):
+                continue
             before = line[last_end:m.start()].strip()
             if before:
                 parts.append((before, False))
@@ -202,3 +211,20 @@ class DialogueDetector:
             parts.append((after, False))
 
         return parts if parts else [(line, False)]
+
+    @staticmethod
+    def _is_speech_quote(line: str, match: re.Match[str]) -> bool:
+        """Return true when a guillemet span is likely direct speech."""
+        before = line[:match.start()]
+        after = line[match.end():]
+        quote_text = match.group(1).strip()
+
+        if before.rstrip().endswith(":"):
+            return True
+
+        context = f"{before[-100:]} {after[:100]}"
+        if _QUOTE_SPEECH_CONTEXT_RE.search(context):
+            return True
+
+        # Punctuation-heavy quoted fragments are usually spoken, not titles.
+        return bool(re.search(r"[!?…]$", quote_text))

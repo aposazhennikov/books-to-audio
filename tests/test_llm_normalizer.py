@@ -369,6 +369,39 @@ class TestLlmChunkerFormat:
         assert [spec.chunk_index for spec in specs] == list(range(len(specs)))
         assert all(len(spec.text) <= 18 for spec in specs)
 
+    def test_chunker_rejects_text_loss_and_falls_back(self, tmp_path: Path) -> None:
+        """LLM chunking must not silently drop source words."""
+        from book_normalizer.chunking.llm_chunker import LlmChunker
+
+        chunker = LlmChunker(
+            model="test-model",
+            cache_dir=tmp_path / "cache",
+            max_retries=1,
+        )
+
+        with patch.object(
+            chunker,
+            "_query_llm",
+            return_value=[{"narrator": "alpha beta", "voice_tone": "calm"}],
+        ):
+            specs = chunker.chunk_chapter(
+                chapter_index=0,
+                chapter_text="alpha beta gamma delta.",
+            )
+
+        assert " ".join(spec.text for spec in specs) == "alpha beta gamma delta."
+        assert specs[0].voice_label == "narrator"
+
+    def test_chunker_keeps_short_dialogue_chunks(self) -> None:
+        """Short replies like 'Да.' are valid chunks and must not be filtered."""
+        from book_normalizer.chunking.llm_chunker import _normalise_llm_items
+
+        items = _normalise_llm_items([
+            {"men": "\u0414\u0430.", "voice_tone": "firm"},
+        ])
+
+        assert items == [{"men": "\u0414\u0430.", "voice_tone": "firm"}]
+
     def test_chunker_cache_key_depends_on_text_and_model(self, tmp_path: Path) -> None:
         from book_normalizer.chunking.llm_chunker import LlmChunker
 

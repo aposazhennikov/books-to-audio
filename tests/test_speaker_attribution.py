@@ -85,6 +85,45 @@ class TestHeuristicAttributor:
         assert lines[2].role == SpeakerRole.FEMALE
         assert lines[3].role == SpeakerRole.MALE
 
+    def test_alternation_carries_across_paragraphs(self) -> None:
+        ch = AnnotatedChapter(
+            chapter_index=0,
+            chapter_title="Chapter 0",
+            paragraphs=[
+                AnnotatedParagraph(
+                    paragraph_id="p0",
+                    chapter_index=0,
+                    lines=[
+                        DialogueLine(
+                            text="First",
+                            role=SpeakerRole.UNKNOWN,
+                            is_dialogue=True,
+                            paragraph_id="p0",
+                        ),
+                    ],
+                ),
+                AnnotatedParagraph(
+                    paragraph_id="p1",
+                    chapter_index=0,
+                    lines=[
+                        DialogueLine(
+                            text="Second",
+                            role=SpeakerRole.UNKNOWN,
+                            is_dialogue=True,
+                            paragraph_id="p1",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        self.attr.attribute([ch])
+
+        first = ch.paragraphs[0].lines[0]
+        second = ch.paragraphs[1].lines[0]
+        assert first.role == SpeakerRole.MALE
+        assert second.role == SpeakerRole.FEMALE
+
     def test_narrator_lines_unchanged(self) -> None:
         chapter = _make_annotated_chapter([
             ("\u041d\u0430\u0440\u0440\u0430\u0442\u043e\u0440 \u0433\u043e\u0432\u043e\u0440\u0438\u0442.", False),
@@ -148,6 +187,22 @@ class TestLlmAttributor:
         LlmAttributor._apply_annotations([line], annotations)
         assert line.role == SpeakerRole.FEMALE
         assert line.attribution_tag == "llm"
+
+    def test_context_payload_includes_narrator_remark(self) -> None:
+        chapter = _make_annotated_chapter([
+            ("\u041f\u0440\u0438\u0432\u0435\u0442", True),
+            ("\u0441\u043a\u0430\u0437\u0430\u043b \u043e\u043d.", False),
+        ])
+        line = chapter.paragraphs[0].lines[0]
+
+        payload = LlmAttributor._build_context_payload(chapter, [line])
+
+        assert payload[0]["kind"] == "dialogue"
+        assert "line_id" in payload[0]
+        assert payload[1] == {
+            "kind": "narrator",
+            "text": "\u0441\u043a\u0430\u0437\u0430\u043b \u043e\u043d.",
+        }
 
     def test_cache_save_and_load(self, tmp_path: Path) -> None:
         attr = LlmAttributor(cache_dir=tmp_path)

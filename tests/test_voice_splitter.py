@@ -6,6 +6,7 @@ from book_normalizer.chunking.voice_splitter import (
     build_chunks_from_segments,
     chunk_annotated_book,
     chunk_annotated_chapter,
+    extract_segments_chapter,
 )
 from book_normalizer.dialogue.models import (
     AnnotatedChapter,
@@ -90,6 +91,21 @@ class TestVoiceAnnotatedChunking:
         chunks = chunk_annotated_chapter(ch)
         assert chunks[0].role == SpeakerRole.NARRATOR
 
+    def test_unknown_dialogue_stays_separate_from_narration(self) -> None:
+        ch = _chapter([
+            _line("Narration.", SpeakerRole.NARRATOR, False),
+            _line("Manual speech.", SpeakerRole.UNKNOWN, True),
+            _line("More narration.", SpeakerRole.NARRATOR, False),
+        ])
+
+        segments = extract_segments_chapter(ch)
+        chunks = chunk_annotated_chapter(ch)
+
+        assert len(segments) == 3
+        assert segments[1].is_dialogue
+        assert segments[1].role == SpeakerRole.UNKNOWN
+        assert len(chunks) == 3
+
     def test_chunk_indices_sequential(self) -> None:
         ch = _chapter([
             _line("\u041d\u0430\u0440\u0440\u0430\u0446\u0438\u044f.", SpeakerRole.NARRATOR, False),
@@ -157,3 +173,18 @@ class TestBuildChunksFromSegments:
 
         assert [chunk["chapter_index"] for chunk in chunks] == [0, 1]
         assert [chunk["chunk_index"] for chunk in chunks] == [0, 0]
+
+    def test_role_is_inferred_from_assigned_voice_id(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "voice_id": "male_young",
+                "intonation": "neutral",
+                "role": "narrator",
+                "text": "Manually assigned dialogue.",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments)
+
+        assert chunks[0]["role"] == "male"

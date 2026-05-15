@@ -36,6 +36,18 @@ INTONATION_KEYS = [
 _DIALOGUE_BG = QColor(124, 92, 252, 25)
 
 
+def _role_from_voice_id(voice_id: str, fallback: str = "narrator") -> str:
+    """Infer canonical role from a GUI voice preset id."""
+    normalized = (voice_id or "").strip().lower()
+    if normalized == "male" or normalized.startswith("male_"):
+        return "male"
+    if normalized == "female" or normalized.startswith("female_"):
+        return "female"
+    if normalized == "narrator" or normalized.startswith("narrator_"):
+        return "narrator"
+    return fallback if fallback in {"narrator", "male", "female", "unknown"} else "narrator"
+
+
 def _make_voice_combo(current: str = "narrator_calm") -> QComboBox:
     """Create a QComboBox with all voice presets, grouped by category."""
     combo = QComboBox()
@@ -348,6 +360,12 @@ class VoiceTableWidget(QWidget):
     def _on_voice_changed(self, row: int, voice_id: str) -> None:
         if voice_id and row < len(self._segments):
             self._segments[row]["voice_id"] = voice_id
+            role = _role_from_voice_id(
+                voice_id,
+                str(self._segments[row].get("role") or "narrator"),
+            )
+            self._segments[row]["role"] = role
+            self._segments[row]["is_dialogue"] = role in ("male", "female")
             self.data_changed.emit()
 
     def _on_intonation_changed(self, row: int, intonation: str) -> None:

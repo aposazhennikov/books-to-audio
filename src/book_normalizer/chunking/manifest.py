@@ -29,13 +29,17 @@ VOICE_ID_BY_LABEL = {
 
 def role_to_voice_label(role: str, voice_id: str = "") -> str:
     """Return the v2 voice label for a role/voice preset pair."""
+    voice_id = (voice_id or "").strip().lower()
+    if voice_id == "male" or voice_id.startswith("male_"):
+        return "men"
+    if voice_id == "female" or voice_id.startswith("female_"):
+        return "women"
+    if voice_id == "narrator" or voice_id.startswith("narrator_"):
+        return "narrator"
+
     normalized = (role or "").strip().lower()
     if normalized in VOICE_LABEL_BY_ROLE:
         return VOICE_LABEL_BY_ROLE[normalized]
-    if voice_id.startswith("male_"):
-        return "men"
-    if voice_id.startswith("female_"):
-        return "women"
     return "narrator"
 
 

@@ -95,6 +95,18 @@ class TestDialogueDetector:
         has_dialogue = any(line.is_dialogue for line in lines)
         assert has_dialogue
 
+    def test_book_title_in_quotes_is_not_dialogue(self) -> None:
+        text = (
+            "\u041e\u043d \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043b "
+            "\u00ab\u0412\u043e\u0439\u043d\u0443 \u0438 \u043c\u0438\u0440\u00bb."
+        )
+        chapter = _make_chapter(text)
+        result = self.detector.detect_chapter(chapter)
+        lines = result.paragraphs[0].lines
+        assert len(lines) == 1
+        assert not lines[0].is_dialogue
+        assert result.dialogue_count == 0
+
     def test_empty_paragraph_skipped(self) -> None:
         para = Paragraph(raw_text="", normalized_text="", index_in_chapter=0)
         chapter = Chapter(title="Empty", index=0, paragraphs=[para])

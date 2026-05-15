@@ -308,6 +308,16 @@ class LlmChunker:
                 continue
 
             if raw:
+                if not _items_preserve_source_text(text, raw):
+                    logger.warning(
+                        "Chapter %d window %d: LLM attempt %d/%d failed text "
+                        "preservation check",
+                        chapter_index,
+                        window_index,
+                        attempt,
+                        self._max_retries,
+                    )
+                    continue
                 logger.debug(
                     "Chapter %d window %d: LLM returned %d chunks (attempt %d)",
                     chapter_index,
@@ -422,7 +432,13 @@ class LlmChunker:
                 loaded = json.loads(path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 return None
-            return _normalise_llm_items(loaded) or None
+            items = _normalise_llm_items(loaded)
+            if items and _items_preserve_source_text(window_text, items):
+                return items
+            logger.warning(
+                "Ignoring stale LLM chunk cache that fails text preservation: %s",
+                path,
+            )
         return None
 
     def _save_cache(
@@ -614,7 +630,7 @@ def _validate_items(items: list[Any]) -> list[dict[str, str]]:
 
         # Detect new format first (voice label is the key).
         voice_label, text = _extract_voice_text(item)
-        if not text or len(text.strip()) < 5:
+        if not text or not text.strip():
             continue
 
         voice_tone = str(item.get("voice_tone", item.get("mood", "calm"))).strip()
@@ -675,6 +691,21 @@ def _build_chunk_specs(
             )
             chunk_index += 1
     return specs
+
+
+def _items_preserve_source_text(source_text: str, items: list[dict[str, str]]) -> bool:
+    """Return true when concatenated chunk text exactly preserves source text."""
+    joined = " ".join(
+        _extract_voice_text(item)[1]
+        for item in items
+    )
+    return _canonical_text_for_preservation(source_text) == _canonical_text_for_preservation(joined)
+
+
+def _canonical_text_for_preservation(text: str) -> str:
+    """Normalize whitespace and dialogue delimiter dashes for preservation checks."""
+    text = re.sub(r"[—–-]", "", text or "")
+    return re.sub(r"\s+", "", text)
 
 
 def _heuristic_chunk_text(

@@ -13,6 +13,9 @@ _CLAUSE_SPLIT_RE = re.compile(r"(?<=[,;])\s+|(?<=\s[—–])\s+")
 
 DEFAULT_MAX_CHUNK_CHARS = 900
 DEFAULT_MAX_SENTENCE_CHARS = 200
+DEFAULT_PARAGRAPH_PAUSE_MS = 450
+DEFAULT_SCENE_PAUSE_MS = 900
+DEFAULT_CHAPTER_PAUSE_MS = 1500
 
 
 @dataclass
@@ -22,6 +25,8 @@ class TextChunk:
     index: int
     text: str
     chapter_index: int
+    pause_after_ms: int = 0
+    boundary_after: str = ""
 
 
 def split_into_sentences(text: str) -> list[str]:
@@ -31,7 +36,20 @@ def split_into_sentences(text: str) -> list[str]:
     Keeps the terminating punctuation with the sentence.
     Handles Russian text conventions (dialogue dashes, ellipsis).
     """
-    parts = _SENTENCE_END_RE.split(text.strip())
+    stripped = text.strip()
+    if not stripped:
+        return []
+
+    try:
+        from razdel import sentenize
+    except ImportError:
+        sentenize = None
+
+    if sentenize is not None:
+        parts = [part.text.strip() for part in sentenize(stripped)]
+        return [p for p in parts if p]
+
+    parts = _SENTENCE_END_RE.split(stripped)
     return [p.strip() for p in parts if p.strip()]
 
 
@@ -120,6 +138,30 @@ def chunk_text(
     return chunks
 
 
+def _is_scene_break(paragraph: str) -> bool:
+    """Return True for common standalone scene-break markers."""
+    stripped = paragraph.strip()
+    return bool(re.fullmatch(r"(?:[*#~]\s*){1,5}", stripped))
+
+
+def _make_chunk(
+    index: int,
+    text: str,
+    chapter_index: int,
+    *,
+    boundary_after: str = "",
+    pause_after_ms: int = 0,
+) -> TextChunk:
+    """Create a TextChunk with optional structural pause metadata."""
+    return TextChunk(
+        index=index,
+        text=text,
+        chapter_index=chapter_index,
+        boundary_after=boundary_after,
+        pause_after_ms=pause_after_ms,
+    )
+
+
 def chunk_chapter(
     chapter_text: str,
     chapter_index: int,
@@ -139,6 +181,23 @@ def chunk_chapter(
     current_len = 0
 
     for para in paragraphs:
+        if _is_scene_break(para):
+            if current_parts:
+                combined = "\n\n".join(current_parts)
+                all_chunks.append(
+                    _make_chunk(
+                        chunk_idx,
+                        combined,
+                        chapter_index,
+                        boundary_after="scene",
+                        pause_after_ms=DEFAULT_SCENE_PAUSE_MS,
+                    )
+                )
+                chunk_idx += 1
+                current_parts = []
+                current_len = 0
+            continue
+
         para_len = len(para)
         separator_len = 2 if current_parts else 0
 
@@ -148,17 +207,27 @@ def chunk_chapter(
                 for ch in chunk_text(
                     "\n\n".join(current_parts), max_chunk_chars, max_sentence_chars
                 ):
-                    all_chunks.append(
-                        TextChunk(index=chunk_idx, text=ch, chapter_index=chapter_index)
-                    )
+                    all_chunks.append(_make_chunk(chunk_idx, ch, chapter_index))
                     chunk_idx += 1
                 current_parts = []
                 current_len = 0
 
             # Chunk the oversized paragraph by itself.
-            for ch in chunk_text(para, max_chunk_chars, max_sentence_chars):
+            para_chunks = chunk_text(para, max_chunk_chars, max_sentence_chars)
+            for offset, ch in enumerate(para_chunks):
+                is_last_para_chunk = offset == len(para_chunks) - 1
                 all_chunks.append(
-                    TextChunk(index=chunk_idx, text=ch, chapter_index=chapter_index)
+                    _make_chunk(
+                        chunk_idx,
+                        ch,
+                        chapter_index,
+                        boundary_after="scene" if is_last_para_chunk and _is_scene_break(para) else (
+                            "paragraph" if is_last_para_chunk else ""
+                        ),
+                        pause_after_ms=DEFAULT_SCENE_PAUSE_MS
+                        if is_last_para_chunk and _is_scene_break(para)
+                        else (DEFAULT_PARAGRAPH_PAUSE_MS if is_last_para_chunk else 0),
+                    )
                 )
                 chunk_idx += 1
 
@@ -166,7 +235,13 @@ def chunk_chapter(
             # Flush current accumulation.
             combined = "\n\n".join(current_parts)
             all_chunks.append(
-                TextChunk(index=chunk_idx, text=combined, chapter_index=chapter_index)
+                _make_chunk(
+                    chunk_idx,
+                    combined,
+                    chapter_index,
+                    boundary_after="paragraph",
+                    pause_after_ms=DEFAULT_PARAGRAPH_PAUSE_MS,
+                )
             )
             chunk_idx += 1
             current_parts = [para]
@@ -178,7 +253,13 @@ def chunk_chapter(
     if current_parts:
         combined = "\n\n".join(current_parts)
         all_chunks.append(
-            TextChunk(index=chunk_idx, text=combined, chapter_index=chapter_index)
+            _make_chunk(
+                chunk_idx,
+                combined,
+                chapter_index,
+                boundary_after="chapter",
+                pause_after_ms=DEFAULT_CHAPTER_PAUSE_MS,
+            )
         )
 
     return all_chunks

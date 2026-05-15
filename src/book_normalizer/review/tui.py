@@ -200,7 +200,11 @@ class InteractiveReviewer:
                 )
             )
 
-        if issue.issue_type in (IssueType.OCR_ARTIFACT, IssueType.SPELLING) and self._correction_store:
+        if issue.issue_type in (
+            IssueType.OCR_ARTIFACT,
+            IssueType.SPELLING,
+            IssueType.YOFICATION,
+        ) and self._correction_store:
             token = decision.original_fragment.strip()
             normalized_token = token.lower()
             auto_apply_safe = _should_mark_auto_apply_safe(issue, token)

@@ -7,6 +7,7 @@ import re
 
 from book_normalizer.memory.stress_store import StressStore
 from book_normalizer.models.memory import StressMemoryEntry
+from book_normalizer.stress.silero import SileroStressPredictor
 
 logger = logging.getLogger(__name__)
 
@@ -119,9 +120,17 @@ class StressDictionary:
     Single-vowel words are auto-resolved (stress is unambiguous).
     """
 
-    def __init__(self, store: StressStore | None = None) -> None:
+    def __init__(
+        self,
+        store: StressStore | None = None,
+        predictor: object | None = None,
+        use_model: bool = True,
+    ) -> None:
         self._store = store
         self._builtin = dict(_BUILTIN_STRESS)
+        self._predictor = predictor if predictor is not None else (
+            SileroStressPredictor() if use_model else None
+        )
 
     @property
     def builtin_count(self) -> int:
@@ -149,12 +158,46 @@ class StressDictionary:
         if count_vowels(normalized) <= 1:
             return normalized
 
-        if self._store:
-            entry = self._store.lookup(normalized)
-            if entry and entry.stressed_form:
-                return entry.stressed_form
+        user_entry = self.lookup_user(normalized)
+        if user_entry:
+            return user_entry
 
+        predicted = self.predict_word(normalized)
+        if predicted:
+            return predicted
+
+        return self.lookup_builtin(normalized)
+
+    def lookup_user(self, word: str) -> str | None:
+        """Return a user override for a word, if one exists."""
+        normalized = word.lower().strip()
+        if not normalized or not self._store:
+            return None
+        entry = self._store.lookup(normalized)
+        if entry and entry.stressed_form:
+            return entry.stressed_form
+        return None
+
+    def lookup_builtin(self, word: str) -> str | None:
+        """Return a built-in stress entry for a word, if one exists."""
+        normalized = word.lower().strip()
         return self._builtin.get(normalized)
+
+    def predict_text(self, text: str) -> str | None:
+        """Predict stress for full text with the optional model."""
+        if self._predictor is None:
+            return None
+        accent_text = getattr(self._predictor, "accent_text", None)
+        if not callable(accent_text):
+            return None
+        return accent_text(text)
+
+    def predict_word(self, word: str) -> str | None:
+        """Predict stress for a single word with the optional model."""
+        stressed = self.predict_text(word)
+        if not stressed or stressed == word:
+            return None
+        return stressed
 
     def is_known(self, word: str) -> bool:
         """Check if a word exists in any dictionary source."""

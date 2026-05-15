@@ -37,6 +37,7 @@ class IssueType(str, enum.Enum):
     FORMATTING = "formatting"
     ENCODING = "encoding"
     STRESS = "stress"
+    YOFICATION = "yofication"
     OTHER = "other"
 
 

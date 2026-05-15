@@ -26,6 +26,11 @@ class TestSplitIntoSentences:
         result = split_into_sentences("Он думал… Потом ушёл.")
         assert len(result) == 2
 
+    def test_razdel_handles_abbreviations(self) -> None:
+        """Rule-based razdel keeps common Russian abbreviations together."""
+        result = split_into_sentences("И т. д. Потом ушёл.")
+        assert result == ["И т. д.", "Потом ушёл."]
+
     def test_empty_text(self) -> None:
         """Empty text returns empty list."""
         assert split_into_sentences("") == []
@@ -107,3 +112,13 @@ class TestChunkChapter:
         chunks = chunk_chapter(text, chapter_index=0, max_chunk_chars=900)
         assert len(chunks) == 1
         assert "\n\n" in chunks[0].text
+
+    def test_scene_break_becomes_pause_metadata_not_spoken_text(self) -> None:
+        text = "Первая сцена.\n\n***\n\nВторая сцена."
+        chunks = chunk_chapter(text, chapter_index=0, max_chunk_chars=900)
+
+        assert len(chunks) == 2
+        assert "***" not in " ".join(chunk.text for chunk in chunks)
+        assert chunks[0].boundary_after == "scene"
+        assert chunks[0].pause_after_ms > 0
+        assert chunks[1].boundary_after == "chapter"

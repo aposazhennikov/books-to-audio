@@ -47,6 +47,11 @@ class CorrectionStore:
             return None
         return entry
 
+    def lookup_any(self, original: str) -> CorrectionMemoryEntry | None:
+        """Find a stored correction without applying auto-safety filtering."""
+        cache = self._ensure_loaded()
+        return cache.get(original)
+
     def has(self, original: str) -> bool:
         """Check if a correction exists for the given original."""
         return self.lookup(original) is not None

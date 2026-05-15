@@ -14,7 +14,7 @@ from book_normalizer.models.review import (
     ReviewDecision,
     ReviewIssue,
 )
-from book_normalizer.review.issues import OcrSpellingDetector, PunctuationIssueDetector
+from book_normalizer.review.issues import OcrSpellingDetector, PunctuationIssueDetector, YoAmbiguityDetector
 from book_normalizer.review.session import ReviewSession
 
 logger = logging.getLogger(__name__)
@@ -64,6 +64,11 @@ class Reviewer:
             issues = detector.detect(book)
             logger.info("OCR/spelling detector found %d issue(s).", len(issues))
             all_issues.extend(issues)
+
+            yo_detector = YoAmbiguityDetector()
+            yo_issues = yo_detector.detect(book)
+            logger.info("Ё ambiguity detector found %d issue(s).", len(yo_issues))
+            all_issues.extend(yo_issues)
 
         pending, resolved, auto_decisions = self._apply_memory(all_issues)
 
@@ -127,7 +132,11 @@ class Reviewer:
                     user_note="auto-resolved from punctuation memory",
                 )
 
-        if issue.issue_type in (IssueType.OCR_ARTIFACT, IssueType.SPELLING) and self._correction_store:
+        if issue.issue_type in (
+            IssueType.OCR_ARTIFACT,
+            IssueType.SPELLING,
+            IssueType.YOFICATION,
+        ) and self._correction_store:
             entry = self._correction_store.lookup(issue.original_fragment)
             if entry and entry.confirmed and entry.auto_apply_safe:
                 return ReviewDecision(
@@ -136,6 +145,22 @@ class Reviewer:
                     original_fragment=issue.original_fragment,
                     final_fragment=entry.replacement,
                     user_note="auto-resolved from correction memory",
+                )
+
+            entry = self._correction_store.lookup_any(issue.original_fragment)
+            if (
+                issue.issue_type == IssueType.YOFICATION
+                and entry
+                and entry.confirmed
+                and entry.issue_type == IssueType.YOFICATION.value
+                and _context_hint_matches_issue(entry.context_hint, issue)
+            ):
+                return ReviewDecision(
+                    issue_id=issue.id,
+                    action=ReviewAction.ACCEPT,
+                    original_fragment=issue.original_fragment,
+                    final_fragment=entry.replacement,
+                    user_note="auto-resolved from yofication memory",
                 )
 
         return None
@@ -233,3 +258,12 @@ def _replace_issue_fragment(
 
     pos = positions[0]
     return text[:pos] + replacement + text[pos + len(original):]
+
+
+def _context_hint_matches_issue(context_hint: str, issue: ReviewIssue, window: int = 20) -> bool:
+    """Return True when a stored compact context matches the current issue."""
+    if not context_hint:
+        return False
+    before = issue.context_before[-window:] if issue.context_before else ""
+    after = issue.context_after[:window] if issue.context_after else ""
+    return context_hint == (f"{before}|{after}" if before or after else "")

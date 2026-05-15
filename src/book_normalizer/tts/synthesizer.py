@@ -200,7 +200,7 @@ class TTSSynthesizer:
         out_path: Path,
     ) -> dict[str, Any]:
         """Build a synthesis manifest entry for a chunk."""
-        return {
+        entry = {
             "chapter_index": chunk.chapter_index,
             "chunk_index": chunk.index,
             "voice_id": chunk.voice_id,
@@ -208,6 +208,11 @@ class TTSSynthesizer:
             "text_len": len(chunk.text),
             "file": out_path.relative_to(self._output_dir).as_posix(),
         }
+        if chunk.pause_after_ms:
+            entry["pause_after_ms"] = chunk.pause_after_ms
+        if chunk.boundary_after:
+            entry["boundary_after"] = chunk.boundary_after
+        return entry
 
     def _upsert_manifest_entry(self, entry: dict[str, Any]) -> None:
         """Insert or replace a manifest entry by chapter/chunk index."""

@@ -78,12 +78,14 @@ class AudioAssembler:
         """Concatenate chunk WAVs for a single chapter."""
         chunk_files: list[Path] = []
         voice_ids: list[str] = []
+        pause_after_ms: list[int] = []
 
         for entry in sorted(entries, key=lambda e: e["chunk_index"]):
             fpath = self._output_dir / entry["file"]
             if fpath.exists():
                 chunk_files.append(fpath)
                 voice_ids.append(entry.get("voice_id", ""))
+                pause_after_ms.append(int(entry.get("pause_after_ms") or 0))
             else:
                 chunk_num = entry.get("chunk_index")
                 chunk_label = (
@@ -106,6 +108,7 @@ class AudioAssembler:
         self._concatenate_wavs(
             chunk_files, out_path, voice_ids,
             self._pause_phrase_ms, self._pause_speaker_ms,
+            pause_after_ms=pause_after_ms,
         )
         return out_path
 
@@ -125,6 +128,7 @@ class AudioAssembler:
         voice_ids: list[str] | None = None,
         pause_between_ms: int = 0,
         pause_speaker_change_ms: int = 0,
+        pause_after_ms: list[int] | None = None,
     ) -> None:
         """Concatenate multiple WAV files with silence pauses.
 
@@ -158,6 +162,9 @@ class AudioAssembler:
                         and voice_ids[i] != prev_voice
                     ):
                         use_pause = max(use_pause, pause_speaker_change_ms)
+
+                    if pause_after_ms and i - 1 < len(pause_after_ms):
+                        use_pause = max(use_pause, pause_after_ms[i - 1])
 
                     if use_pause > 0:
                         silence = self._generate_silence(

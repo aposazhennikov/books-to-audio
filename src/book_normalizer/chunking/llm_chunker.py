@@ -134,6 +134,8 @@ class ChunkSpec:
     text: str
     audio_file: str | None = None
     synthesized: bool = False
+    pause_after_ms: int = 0
+    boundary_after: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to manifest dict.
@@ -143,7 +145,7 @@ class ChunkSpec:
 
             {"narrator": "text", "voice_tone": "calm", ...}
         """
-        return {
+        result = {
             "chapter_index": self.chapter_index,
             "chunk_index": self.chunk_index,
             self.voice_label: self.text,   # narrator/men/women: text
@@ -154,6 +156,11 @@ class ChunkSpec:
             "audio_file": self.audio_file,
             "synthesized": self.synthesized,
         }
+        if self.pause_after_ms:
+            result["pause_after_ms"] = self.pause_after_ms
+        if self.boundary_after:
+            result["boundary_after"] = self.boundary_after
+        return result
 
 
 # ── LlmChunker ────────────────────────────────────────────────────────────────

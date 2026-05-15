@@ -18,6 +18,7 @@ from book_normalizer.stress.dictionary import (
     count_vowels,
     is_russian_word,
 )
+from book_normalizer.stress.silero import convert_external_stress_marks
 
 logger = logging.getLogger(__name__)
 
@@ -207,8 +208,8 @@ class StressResolver:
         if not raw:
             return ""
 
-        if "'" in raw:
-            return self._convert_apostrophe_to_acute(raw)
+        if "'" in raw or "+" in raw:
+            return convert_external_stress_marks(raw)
 
         if COMBINING_ACUTE in raw:
             return raw

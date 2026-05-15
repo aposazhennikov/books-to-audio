@@ -7,6 +7,7 @@ from typing import Protocol
 
 from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.models.review import IssueSeverity, IssueType, ReviewIssue
+from book_normalizer.normalization.yoficator import collect_yo_suggestions
 
 
 class IssueDetector(Protocol):
@@ -293,3 +294,44 @@ class OcrSpellingDetector:
             "y": "\u0443",
         }
         return "".join(transliteration_map.get(ch, ch) for ch in text)
+
+
+class YoAmbiguityDetector:
+    """Detect peyo not_safe ё suggestions for user review."""
+
+    def detect(self, book: Book) -> list[ReviewIssue]:
+        """Scan normalized text for ambiguous ё candidates."""
+        issues: list[ReviewIssue] = []
+
+        for chapter in book.chapters:
+            for para in chapter.paragraphs:
+                text = para.normalized_text or para.raw_text
+                if not text:
+                    continue
+
+                for suggestion in collect_yo_suggestions(text):
+                    start = suggestion.index
+                    end = start + len(suggestion.before)
+                    if text[start:end] != suggestion.before:
+                        found_at = text.find(suggestion.before, max(0, start - 10))
+                        if found_at < 0:
+                            continue
+                        start = found_at
+                        end = start + len(suggestion.before)
+
+                    ctx_before, ctx_after = _extract_context(text, start, end)
+                    issues.append(
+                        ReviewIssue(
+                            issue_type=IssueType.YOFICATION,
+                            severity=IssueSeverity.LOW,
+                            original_fragment=suggestion.before,
+                            suggested_fragment=suggestion.after,
+                            context_before=ctx_before,
+                            context_after=ctx_after,
+                            chapter_id=chapter.id,
+                            paragraph_id=para.id,
+                            confidence=0.55,
+                        )
+                    )
+
+        return issues

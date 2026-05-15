@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.models.review import IssueType
-from book_normalizer.review.issues import OcrSpellingDetector, PunctuationIssueDetector
+from book_normalizer.review.issues import OcrSpellingDetector, PunctuationIssueDetector, YoAmbiguityDetector
 
 
 def _make_book(text: str) -> Book:
@@ -125,3 +125,17 @@ class TestOcrSpellingDetector:
         detector = OcrSpellingDetector()
         result = detector._transliterate_to_cyrillic("a")
         assert result == "\u0430"
+
+
+class TestYoAmbiguityDetector:
+    def test_detects_not_safe_yo_candidate(self) -> None:
+        book = _make_book("На этом все.")
+        detector = YoAmbiguityDetector()
+        issues = detector.detect(book)
+
+        assert any(
+            i.issue_type == IssueType.YOFICATION
+            and i.original_fragment == "все"
+            and i.suggested_fragment == "всё"
+            for i in issues
+        )

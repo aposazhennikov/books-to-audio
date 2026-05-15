@@ -148,3 +148,30 @@ class TestTuiMemoryPersistence:
         entries = {e.token: e for e in correction_store.all_entries()}
         assert entries["М4А1"].auto_apply_safe is False
         assert entries["RTX3060"].auto_apply_safe is False
+
+    def test_yofication_decision_stored_as_contextual_review_memory(self, tmp_path: Path) -> None:
+        correction_store = CorrectionStore(tmp_path / "corr.json")
+        punct_store = PunctuationStore(tmp_path / "punct.json")
+        console = _make_console()
+        reviewer = InteractiveReviewer(
+            correction_store=correction_store,
+            punctuation_store=punct_store,
+            console=console,
+        )
+
+        issue = _make_issue(IssueType.YOFICATION, original="все", suggested="всё")
+        decision = ReviewDecision(
+            issue_id=issue.id,
+            action=ReviewAction.ACCEPT,
+            original_fragment=issue.original_fragment,
+            final_fragment=issue.suggested_fragment,
+            timestamp=datetime.now(timezone.utc),
+        )
+
+        reviewer._persist_to_memory(issue, decision)  # type: ignore[attr-defined]
+
+        entry = correction_store.all_entries()[0]
+        assert entry.issue_type == IssueType.YOFICATION.value
+        assert entry.replacement == "всё"
+        assert entry.auto_apply_safe is False
+        assert entry.context_hint

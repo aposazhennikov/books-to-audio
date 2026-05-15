@@ -79,6 +79,8 @@ class VoiceAnnotatedChunk(BaseModel):
     role: SpeakerRole = SpeakerRole.NARRATOR
     voice_id: str = ""
     intonation: str = "neutral"
+    pause_after_ms: int = 0
+    boundary_after: str = ""
 
 
 class VoiceSegment(BaseModel):

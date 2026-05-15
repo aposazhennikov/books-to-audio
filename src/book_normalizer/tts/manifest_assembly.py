@@ -74,6 +74,7 @@ def assemble_from_manifest(
 
         wav_files: list[Path] = []
         voice_labels: list[str] = []
+        pause_after_ms: list[int] = []
         messages: list[str] = []
         missing = 0
         for chunk in chunks:
@@ -87,6 +88,7 @@ def assemble_from_manifest(
                 continue
             wav_files.append(audio_path)
             voice_labels.append(str(chunk.get("voice", chunk.get("voice_label", "narrator"))))
+            pause_after_ms.append(int(chunk.get("pause_after_ms") or 0))
 
         if not wav_files:
             results.append(
@@ -108,6 +110,7 @@ def assemble_from_manifest(
             pause_same_voice_ms=pause_same_voice_ms,
             pause_voice_change_ms=pause_voice_change_ms,
             voice_labels=voice_labels,
+            pause_after_ms=pause_after_ms,
         )
         results.append(
             ChapterAssemblyResult(
@@ -129,6 +132,7 @@ def assemble_wav_files(
     pause_same_voice_ms: int = 300,
     pause_voice_change_ms: int = 600,
     voice_labels: list[str] | None = None,
+    pause_after_ms: list[int] | None = None,
 ) -> int:
     """Concatenate WAV files with silence between chunks."""
     if not wav_files:
@@ -154,6 +158,8 @@ def assemble_wav_files(
                     )
                 if prev_voice is not None:
                     pause_ms = pause_voice_change_ms if voice != prev_voice else pause_same_voice_ms
+                    if pause_after_ms and idx - 1 < len(pause_after_ms):
+                        pause_ms = max(pause_ms, pause_after_ms[idx - 1])
                     out_wav.writeframes(_silence_bytes(pause_ms, first_params))
                 out_wav.writeframes(in_wav.readframes(in_wav.getnframes()))
                 written += 1

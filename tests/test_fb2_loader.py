@@ -56,6 +56,39 @@ MINIMAL_FB2_NO_SECTIONS = """\
 </FictionBook>
 """
 
+FB2_WITH_GENERATED_FRONT_MATTER = """\
+<?xml version="1.0" encoding="utf-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0">
+  <description>
+    <title-info>
+      <book-title>Generated Front Matter</book-title>
+      <author><first-name>Boris</first-name><last-name>Monosov</last-name></author>
+      <lang>ru</lang>
+    </title-info>
+  </description>
+  <body>
+    <section>
+      <p><strong>Annotation</strong></p>
+      <p>Служебная аннотация из карточки книги.</p>
+      <p>ГЛАВА ПЕРВАЯ</p>
+      <p>ГЛАВА ВТОРАЯ</p>
+      <p>ГЛАВА ТРЕТЬЯ</p>
+      <p>Автор</p>
+      <p>Название книги</p>
+      <p><strong>ГЛАВА ПЕРВАЯ</strong></p>
+      <p><strong>В которой описывается первая глава</strong></p>
+      <p>Первый настоящий абзац.</p>
+      <p><strong>ГЛАВА ВТОРАЯ</strong></p>
+      <p><strong>В которой описывается вторая глава</strong></p>
+      <p>Второй настоящий абзац.</p>
+      <p><strong>ГЛАВА ТРЕТЬЯ</strong></p>
+      <p><strong>В которой описывается третья глава</strong></p>
+      <p>Третий настоящий абзац.</p>
+    </section>
+  </body>
+</FictionBook>
+"""
+
 
 class TestFb2Loader:
     def test_supported_extensions(self) -> None:
@@ -99,6 +132,23 @@ class TestFb2Loader:
         assert book.metadata.title == "Flat Book"
         assert len(book.chapters) == 1
         assert len(book.chapters[0].paragraphs) == 2
+
+    def test_load_trims_generated_front_matter_before_repeated_headings(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        fb2_file = tmp_path / "front_matter.fb2"
+        fb2_file.write_text(FB2_WITH_GENERATED_FRONT_MATTER, encoding="utf-8")
+
+        loader = Fb2Loader()
+        book = loader.load(fb2_file)
+
+        texts = [p.raw_text for p in book.chapters[0].paragraphs]
+        assert texts[:2] == ["ГЛАВА ПЕРВАЯ", "Первый настоящий абзац."]
+        assert "Annotation" not in texts
+        assert "Служебная аннотация из карточки книги." not in texts
+        assert "Название книги" not in texts
+        assert "В которой описывается первая глава" not in texts
 
     def test_paragraph_text_content(self, tmp_path: Path) -> None:
         fb2_file = tmp_path / "test.fb2"

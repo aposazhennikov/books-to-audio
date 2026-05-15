@@ -29,14 +29,14 @@ from book_normalizer.gui.workers.normalize_worker import NormalizeWorker
 _PDF_EXTENSIONS = {".pdf"}
 
 
-def _book_preview_lines(book: object, limit: int = 30) -> tuple[list[str], list[str]]:
-    """Return raw/normalized preview lines across chapters, not only chapter zero."""
+def _book_preview_lines(book: object, limit: int | None = None) -> tuple[list[str], list[str]]:
+    """Return raw/normalized preview lines across chapters, optionally capped."""
     raw_lines: list[str] = []
     norm_lines: list[str] = []
     paragraph_count = 0
 
     for chapter in getattr(book, "chapters", []):
-        if paragraph_count >= limit:
+        if limit is not None and paragraph_count >= limit:
             break
 
         title = getattr(chapter, "title", "").strip()
@@ -54,7 +54,7 @@ def _book_preview_lines(book: object, limit: int = 30) -> tuple[list[str], list[
             raw_lines.append(raw)
             norm_lines.append(norm)
             paragraph_count += 1
-            if paragraph_count >= limit:
+            if limit is not None and paragraph_count >= limit:
                 break
 
     return raw_lines, norm_lines
@@ -316,7 +316,7 @@ class NormalizePage(QWidget):
         self._btn_run.setEnabled(True)
 
         if book.chapters:
-            raw_lines, norm_lines = _book_preview_lines(book, limit=30)
+            raw_lines, norm_lines = _book_preview_lines(book)
             self._raw_text.setPlainText("\n\n".join(raw_lines))
             self._norm_text.setPlainText("\n\n".join(norm_lines))
 

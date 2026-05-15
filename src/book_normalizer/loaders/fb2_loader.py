@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from book_normalizer.loaders.base import BaseLoader
@@ -121,6 +122,7 @@ class Fb2Loader(BaseLoader):
         for idx, section in enumerate(sections):
             title = cls._extract_section_title(section)
             paragraphs = cls._extract_section_paragraphs(section)
+            paragraphs = cls._trim_leading_front_matter(paragraphs)
 
             if not paragraphs:
                 continue
@@ -169,6 +171,8 @@ class Fb2Loader(BaseLoader):
             if tag == "p":
                 text = "".join(elem.itertext()).strip()
                 if text:
+                    if cls._is_chapter_description_paragraph(paragraphs, elem, text):
+                        continue
                     paragraphs.append(
                         Paragraph(raw_text=text, normalized_text="", index_in_chapter=idx)
                     )
@@ -219,6 +223,115 @@ class Fb2Loader(BaseLoader):
                     idx += 1
 
         return paragraphs
+
+    @classmethod
+    def _is_chapter_description_paragraph(
+        cls,
+        paragraphs: list[Paragraph],
+        elem: object,
+        text: str,
+    ) -> bool:
+        """Return true for FB2 bold one-line subtitles right after chapter headings."""
+        if not paragraphs:
+            return False
+        if not cls._chapter_heading_key(paragraphs[-1].raw_text):
+            return False
+        if cls._chapter_heading_key(text):
+            return False
+        if not cls._is_strong_only_paragraph(elem):
+            return False
+
+        words = text.split()
+        return 1 < len(words) <= 18 and len(text) <= 180
+
+    @staticmethod
+    def _is_strong_only_paragraph(elem: object) -> bool:
+        """Return true when an FB2 paragraph only wraps text in <strong>."""
+        from lxml import etree
+
+        child_tags: list[str] = []
+        for child in elem:
+            if not isinstance(child.tag, str):
+                continue
+            child_tags.append(etree.QName(child.tag).localname)
+
+        return bool(child_tags) and set(child_tags) == {"strong"}
+
+    @classmethod
+    def _trim_leading_front_matter(cls, paragraphs: list[Paragraph]) -> list[Paragraph]:
+        """
+        Drop generated FB2 front matter before the real first chapter.
+
+        Some Calibre/Litmir FB2 files put annotation, a plain chapter list, and
+        title-page lines into the first body section before repeating the same
+        chapter headings again for the actual book text.  Keep the repeated
+        heading onward so chapter detection sees the real book body.
+        """
+        if len(paragraphs) < 6:
+            return paragraphs
+
+        heading_indices: dict[str, list[int]] = {}
+        for idx, para in enumerate(paragraphs):
+            key = cls._chapter_heading_key(para.raw_text)
+            if key:
+                heading_indices.setdefault(key, []).append(idx)
+
+        duplicate_starts = [
+            indices[1]
+            for indices in heading_indices.values()
+            if len(indices) >= 2
+        ]
+        if not duplicate_starts:
+            return paragraphs
+
+        trim_at = min(duplicate_starts)
+        if trim_at <= 0:
+            return paragraphs
+
+        leading = paragraphs[:trim_at]
+        leading_heading_count = sum(
+            1 for para in leading if cls._chapter_heading_key(para.raw_text)
+        )
+        has_front_marker = any(
+            cls._looks_like_front_matter_marker(para.raw_text)
+            for para in leading[:10]
+        )
+        if leading_heading_count < 3 and not has_front_marker:
+            return paragraphs
+
+        trimmed = paragraphs[trim_at:]
+        for idx, para in enumerate(trimmed):
+            para.index_in_chapter = idx
+        return trimmed
+
+    @staticmethod
+    def _chapter_heading_key(text: str) -> str:
+        """Return a normalized heading key for duplicate chapter-list detection."""
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if len(lines) != 1:
+            return ""
+
+        from book_normalizer.chaptering.patterns import match_chapter_heading
+
+        line = lines[0]
+        match = match_chapter_heading(line)
+        if not match:
+            return ""
+
+        heading, _label = match
+        return re.sub(r"\s+", " ", heading.casefold()).strip(" .,:;!?")
+
+    @staticmethod
+    def _looks_like_front_matter_marker(text: str) -> bool:
+        """Return true for short labels commonly found in generated FB2 prefaces."""
+        normalized = re.sub(r"\s+", " ", text.casefold()).strip(" .,:;!?")
+        return normalized in {
+            "annotation",
+            "table of contents",
+            "аннотация",
+            "содержание",
+            "оглавление",
+        }
 
     @staticmethod
     def _extract_all_text(tree: object) -> str:

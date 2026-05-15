@@ -87,7 +87,7 @@ class NormalizePage(QWidget):
 
         self._ocr_psm = QSpinBox()
         self._ocr_psm.setRange(0, 13)
-        self._ocr_psm.setValue(4)
+        self._ocr_psm.setValue(6)
         self._ocr_psm_label = QLabel()
         settings.addRow(self._ocr_psm_label, self._ocr_psm)
         self._ocr_widgets.extend([self._ocr_psm_label, self._ocr_psm])

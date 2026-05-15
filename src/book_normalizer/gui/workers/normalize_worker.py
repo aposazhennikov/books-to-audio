@@ -69,7 +69,7 @@ class NormalizeWorker(QThread):
         input_path: Path,
         ocr_mode: str = "auto",
         ocr_dpi: int = 400,
-        ocr_psm: int = 4,
+        ocr_psm: int = 6,
         skip_stress: bool = False,
         parent=None,
     ):

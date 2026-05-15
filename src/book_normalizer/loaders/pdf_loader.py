@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 MIN_READABLE_CYRILLIC_RATIO = 0.3
 MIN_OCR_CYRILLIC_CHARS = 80
+MIN_OCR_READABLE_WORD_RATIO = 0.35
+MAX_OCR_SYMBOL_NOISE_RATIO = 0.06
 SPREAD_PAGE_RATIO = 1.2
 
 
@@ -337,6 +339,27 @@ _CYRILLIC_RE = re.compile(r"[\u0400-\u04ff]")
 _OCR_HYPHEN_LINEBREAK_RE = re.compile(
     r"([\u0400-\u04ff])[-\u00ad\u2010-\u2015]\s*\n\s*([\u0400-\u04ff])"
 )
+_OCR_LEADING_ARTIFACT_RE = re.compile(r"^[`'\"_.,:;|\\/\s]+(?=[\u0400-\u04ff])")
+_OCR_GLAVA_HEADING_RE = re.compile(
+    r"^\s*[Гг][Лл][Аа][Вв][Аа]\s+\S{1,20}(?:\s+[Оо0])?\s*$"
+)
+_INLINE_GLAVA_HEADING_RE = re.compile(
+    r"(?<![\u0400-\u04ff])(?P<heading>ГЛАВА\s+(?:[А-ЯЁ]{3,}|[IVXLCDMl|]{1,8}|\d+))"
+)
+_CHAPTER_AFTER_LEADING_NOISE_RE = re.compile(
+    r"^[\s,.;:!?\"'`«»()[\]{}|\\/_^#*~—–-]+"
+)
+_CHAPTER_TITLE_LEADING_OCR_RE = re.compile(r"^(?:[Оо0]\s+){1,2}(?=[А-ЯЁ])")
+_INLINE_PIPE_NOISE_RE = re.compile(
+    r"\s+[\u0400-\u04ffA-Za-z]{1,3}\s*\|\s+(?=[\u0400-\u04ffA-Z])"
+)
+_INLINE_NOISE_BEFORE_DASH_RE = re.compile(
+    r"\s+(?:[оОoO]\s+)?[\u0410-\u042fЁA-Z]{1,3}"
+    r"(?:\s+[\u0410-\u042fЁA-Z]{1,3}){0,2}\s*[|_\\/#^]+(?=\s*[—-])"
+)
+_INLINE_HYPHEN_PIPE_RE = re.compile(r"([\u0400-\u04ff])-\s*\|\s*([\u0400-\u04ff])")
+_SPURIOUS_PERIOD_INSIDE_WORD_RE = re.compile(r"(?<=[\u0430-\u044fё])\.\s*(?=[\u0430-\u044fё])")
+_TRAILING_SYMBOL_NOISE_RE = re.compile(r"\s+[\^#*_~|\\/:\s\d]+$")
 
 
 def _cyrillic_char_count(text: str) -> int:
@@ -359,6 +382,42 @@ def _is_ocr_noise_line(line: str) -> bool:
     return cyr == 0 and punctuation / max(1, len(stripped)) > 0.35
 
 
+def _is_chapter_heading_line(line: str) -> bool:
+    """Return true for short OCR lines that look like a chapter boundary."""
+    return bool(_OCR_GLAVA_HEADING_RE.match(line.strip()))
+
+
+def _strip_text_after_inline_heading(text: str) -> str:
+    """Remove OCR crumbs commonly glued between a chapter heading and title."""
+    text = _CHAPTER_AFTER_LEADING_NOISE_RE.sub("", text.strip())
+    text = _CHAPTER_TITLE_LEADING_OCR_RE.sub("", text).strip()
+    return text
+
+
+def _split_inline_chapter_headings(paragraph: str) -> list[str]:
+    """Split paragraphs where OCR glued a chapter heading into surrounding text."""
+    if _is_chapter_heading_line(paragraph):
+        return [paragraph]
+
+    parts: list[str] = []
+    pos = 0
+    for match in _INLINE_GLAVA_HEADING_RE.finditer(paragraph):
+        before = paragraph[pos:match.start()].strip()
+        if before:
+            parts.append(before)
+        parts.append(match.group("heading").strip())
+        pos = match.end()
+
+    tail = paragraph[pos:].strip()
+    if tail:
+        if parts and parts[-1].startswith("ГЛАВА"):
+            tail = _strip_text_after_inline_heading(tail)
+        if tail:
+            parts.append(tail)
+
+    return parts or [paragraph]
+
+
 def _postprocess_ocr_text(text: str) -> str:
     """Clean OCR text from a single page image before downstream normalization."""
     text = text.replace("\r", "\n").replace("\f", "\n")
@@ -368,6 +427,7 @@ def _postprocess_ocr_text(text: str) -> str:
     previous_blank = False
     for raw_line in text.splitlines():
         line = re.sub(r"\s+", " ", raw_line).strip()
+        line = _OCR_LEADING_ARTIFACT_RE.sub("", line).strip()
         if not line:
             if not previous_blank:
                 lines.append("")
@@ -386,11 +446,29 @@ def _postprocess_ocr_text(text: str) -> str:
                 paragraphs.append(" ".join(current).strip())
                 current = []
             continue
+        if _is_chapter_heading_line(line):
+            if current:
+                paragraphs.append(" ".join(current).strip())
+                current = []
+            paragraphs.append(line.strip())
+            continue
         current.append(line)
     if current:
         paragraphs.append(" ".join(current).strip())
 
-    return "\n\n".join(p for p in paragraphs if p)
+    cleaned_paragraphs: list[str] = []
+    for paragraph in paragraphs:
+        paragraph = _INLINE_HYPHEN_PIPE_RE.sub(r"\1\2", paragraph)
+        paragraph = _SPURIOUS_PERIOD_INSIDE_WORD_RE.sub(" ", paragraph)
+        paragraph = _INLINE_PIPE_NOISE_RE.sub(" ", paragraph)
+        paragraph = _INLINE_NOISE_BEFORE_DASH_RE.sub("", paragraph)
+        if paragraph and re.search(r"[\^#*_~|\\/]", paragraph[-20:]):
+            paragraph = _TRAILING_SYMBOL_NOISE_RE.sub("", paragraph)
+        paragraph = re.sub(r"\s{2,}", " ", paragraph).strip()
+        if paragraph:
+            cleaned_paragraphs.extend(_split_inline_chapter_headings(paragraph))
+
+    return "\n\n".join(cleaned_paragraphs)
 
 
 def _looks_like_toc(text: str) -> bool:
@@ -408,6 +486,8 @@ def _ocr_text_is_usable(text: str) -> bool:
     return (
         _cyrillic_char_count(text) >= MIN_OCR_CYRILLIC_CHARS
         and _page_text_quality(text) >= 0.3
+        and _readable_cyrillic_word_ratio(text) >= MIN_OCR_READABLE_WORD_RATIO
+        and _ocr_symbol_noise_ratio(text) <= MAX_OCR_SYMBOL_NOISE_RATIO
     )
 
 
@@ -430,11 +510,49 @@ def _page_text_quality(text: str) -> float:
     return cyrillic / len(alpha)
 
 
+def _cyrillic_words(text: str) -> list[str]:
+    """Extract Cyrillic word runs without relying on locale-specific regex classes."""
+    words: list[str] = []
+    current: list[str] = []
+    for ch in text:
+        if "\u0400" <= ch <= "\u04ff":
+            current.append(ch)
+            continue
+        if current:
+            words.append("".join(current))
+            current = []
+    if current:
+        words.append("".join(current))
+    return words
+
+
+def _readable_cyrillic_word_ratio(text: str) -> float:
+    """Estimate whether OCR output is made of real words instead of short debris."""
+    words = _cyrillic_words(text)
+    if not words:
+        return 0.0
+    readable = sum(1 for word in words if len(word) >= 4)
+    return readable / len(words)
+
+
+def _ocr_symbol_noise_ratio(text: str) -> float:
+    """Estimate how much non-text scan debris survived OCR post-processing."""
+    if not text:
+        return 0.0
+    allowed = set(".,:;!?—–-«»\"()[]…")
+    noisy = sum(
+        1
+        for ch in text
+        if not ch.isalnum() and not ch.isspace() and ch not in allowed
+    )
+    return noisy / len(text)
+
+
 def _ocr_pdf_with_tesseract(
     path: Path,
     lang: str = "rus",
     dpi: int = 400,
-    psm: int = 4,
+    psm: int = 6,
     preprocess: bool = True,
 ) -> str:
     """OCR a PDF file page-by-page using PyMuPDF + Tesseract.
@@ -503,7 +621,7 @@ def extract_pdf_with_ocr_mode(
     path: Path,
     mode: OcrMode,
     dpi: int = 400,
-    psm: int = 4,
+    psm: int = 6,
     preprocess: bool = True,
 ) -> PdfOcrCompareResult:
     """Extract PDF text according to the requested OCR mode.

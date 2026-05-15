@@ -152,12 +152,74 @@ class TestOcrImagePreparation:
         assert all(segment.size[0] < img.size[0] for segment in segments)
 
     def test_postprocess_ocr_text_drops_noise_and_joins_hyphenation(self) -> None:
-        raw = "' \\\\ . p .\nСОДЕРЖА-\nЩАЯ ГЛУБОКОЕ\nисследование предмета"
+        raw = "' \\\\ . p .\nСОДЕРЖА-\nЩАЯ ГЛУБОКОЕ\nисследование предмета ^^: #2"
 
         cleaned = _postprocess_ocr_text(raw)
 
         assert "p ." not in cleaned
         assert "СОДЕРЖАЩАЯ ГЛУБОКОЕ исследование предмета" in cleaned
+        assert "#2" not in cleaned
+
+    def test_postprocess_ocr_text_removes_inline_pipe_noise_before_dialogue(self) -> None:
+        raw = (
+            "Он нахватался зайчиков. Го | Фаланга пошла.\n"
+            "Песок: о РЕ Г | — Гера, ты помнишь?\n"
+            "воины под.при- | крытием щитов"
+        )
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "Го |" not in cleaned
+        assert "РЕ Г |" not in cleaned
+        assert "Он нахватался зайчиков. Фаланга пошла." in cleaned
+        assert "Песок: — Гера, ты помнишь?" in cleaned
+        assert "под прикрытием" in cleaned
+
+    def test_postprocess_ocr_text_keeps_chapter_heading_separate(self) -> None:
+        raw = (
+            "_ Веревка есть вервие простое\n"
+            "Из учебного наставления для палачей\n"
+            "ГЛАВА ПЕРВАЯ О\n"
+            "ПОВЕСТВУЮЩАЯ, В ОБЩЕМ-ТО, НИ О ЧЕМ\n"
+            "Сергей сидел за столом."
+        )
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert cleaned.split("\n\n") == [
+            "Веревка есть вервие простое Из учебного наставления для палачей",
+            "ГЛАВА ПЕРВАЯ О",
+            "ПОВЕСТВУЮЩАЯ, В ОБЩЕМ-ТО, НИ О ЧЕМ Сергей сидел за столом.",
+        ]
+
+    def test_postprocess_ocr_text_splits_inline_chapter_heading(self) -> None:
+        raw = (
+            "Из библии для чиновников ГЛАВА ТРЕТЬЯ -. "
+            "СОБЫТИЯ В КОТОРОЙ РАЗВИВАЮТСЯ ВО СНЕ"
+        )
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert cleaned.split("\n\n") == [
+            "Из библии для чиновников",
+            "ГЛАВА ТРЕТЬЯ",
+            "СОБЫТИЯ В КОТОРОЙ РАЗВИВАЮТСЯ ВО СНЕ",
+        ]
+
+    def test_should_keep_ocr_text_rejects_title_page_debris(self) -> None:
+        debris = (
+            "Б. М. Моносов Часть первая ‚ИТ о о ИТ ‚аа ся к о УЗО у о ВОт ли "
+            "Кр а О р о Я к а с ы т два че У ть Ре ФЕ с Л Я ВЫ три процента "
+            "Санкт-Петербург две тысячи шесть"
+        )
+        body = (
+            "Сергей сидел за столом и пил чай с малиновым вареньем. "
+            "Состояние было весьма тоскливым. Болели старые раны, знаменуя "
+            "собой приближение грозы. С улицы парило через открытое окно."
+        )
+
+        assert _should_keep_ocr_text(debris) is False
+        assert _should_keep_ocr_text(body) is True
 
     def test_should_keep_ocr_text_rejects_toc_blocks(self) -> None:
         toc = (

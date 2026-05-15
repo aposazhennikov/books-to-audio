@@ -43,6 +43,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from book_normalizer.comfyui.client import ComfyUIClient, ComfyUIError
+from book_normalizer.comfyui.synthesis import load_manifest as load_manifest_v2
+from book_normalizer.comfyui.synthesis import synthesize_manifest
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder, WorkflowBuilderError
 
 # ── Manifest helpers ──────────────────────────────────────────────────────────
@@ -252,6 +254,10 @@ def main() -> None:
         "--chunk-timeout", type=float, default=300.0,
         help="Max seconds to wait for a single chunk synthesis (default: 300).",
     )
+    parser.add_argument(
+        "--failed-only", action="store_true",
+        help="Retry only chunks previously marked as failed.",
+    )
     args = parser.parse_args()
 
     manifest_path = Path(args.chunks_json)
@@ -259,7 +265,11 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Load manifest.
-    manifest = load_manifest(manifest_path)
+    try:
+        manifest = load_manifest_v2(manifest_path)
+    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR: {exc}")
+        sys.exit(1)
     book_title = manifest.get("book_title", manifest_path.parent.name)
     print(f"Book: {book_title}")
     print(f"Manifest version: {manifest.get('version', '?')}, chunker: {manifest.get('chunker', '?')}")
@@ -281,7 +291,7 @@ def main() -> None:
     print(f"Workflow template: {args.workflow}")
 
     # Run synthesis.
-    synthesize_all(
+    synthesize_manifest(
         manifest=manifest,
         manifest_path=manifest_path,
         client=client,
@@ -289,6 +299,8 @@ def main() -> None:
         out_dir=out_dir,
         chapter_filter=args.chapter,
         chunk_timeout=args.chunk_timeout,
+        failed_only=args.failed_only,
+        progress=print,
     )
 
 

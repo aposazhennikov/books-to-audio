@@ -6,6 +6,7 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -223,6 +224,9 @@ class TTSSynthesisWorker(QThread):
         clone_config: str = "",
         use_sage_attention: bool = False,
         models_dir: str = "",
+        comfyui_url: str = "http://localhost:8188",
+        workflow_path: str = "",
+        failed_only: bool = False,
         parent=None,
     ):
         super().__init__(parent)
@@ -237,6 +241,9 @@ class TTSSynthesisWorker(QThread):
         self._clone_config = clone_config
         self._use_sage_attention = use_sage_attention
         self._models_dir = models_dir
+        self._comfyui_url = comfyui_url
+        self._workflow_path = workflow_path
+        self._failed_only = failed_only
         self._process: subprocess.Popen | None = None
         self._cancelled = False
 
@@ -248,6 +255,11 @@ class TTSSynthesisWorker(QThread):
 
     def run(self) -> None:
         try:
+            data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and data.get("version", 1) != 1:
+                self._run_comfyui_v2(data)
+                return
+
             runner_manifest_path, manifest = self._prepare_runner_manifest()
             total = len(manifest)
             if self._chapter is not None:
@@ -404,6 +416,111 @@ class TTSSynthesisWorker(QThread):
 
         except Exception as exc:
             self.error.emit(str(exc))
+
+    def _run_comfyui_v2(self, manifest: dict) -> None:
+        """Run the recommended v2 manifest -> ComfyUI synthesis path."""
+        total = len(_flatten_manifest_chunks(manifest))
+        if self._chapter is not None:
+            total = sum(
+                1
+                for c in _flatten_manifest_chunks(manifest)
+                if c.get("chapter_index") == self._chapter - 1
+            )
+
+        if total == 0:
+            self.error.emit(t("synth.err_no_chunks"))
+            return
+
+        done_start = sum(
+            1
+            for c in _flatten_manifest_chunks(manifest)
+            if c.get("synthesized", False)
+            and (self._chapter is None or c.get("chapter_index") == self._chapter - 1)
+        )
+
+        workflow_path = Path(self._workflow_path) if self._workflow_path else (
+            Path(__file__).resolve().parent.parent.parent.parent.parent
+            / "comfyui_workflows"
+            / "qwen3_tts_template.json"
+        )
+        if not workflow_path.exists():
+            self.error.emit(f"ComfyUI workflow not found: {workflow_path}")
+            return
+
+        script_path = (
+            Path(__file__).resolve().parent.parent.parent.parent.parent
+            / "scripts" / "synthesize_comfyui.py"
+        )
+        audio_dir = self._output_dir / "audio_chunks"
+        args = [
+            sys.executable,
+            "-u",
+            str(script_path),
+            "--chunks-json",
+            str(self._manifest_path),
+            "--out",
+            str(audio_dir),
+            "--workflow",
+            str(workflow_path),
+            "--comfyui-url",
+            self._comfyui_url or "http://localhost:8188",
+            "--chunk-timeout",
+            str(self._chunk_timeout),
+        ]
+        if self._chapter is not None:
+            args.extend(["--chapter", str(self._chapter)])
+        if self._failed_only:
+            args.append("--failed-only")
+
+        self._process = subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+        self.status.emit("__loading__")
+        current_done = done_start
+        last_lines: list[str] = []
+        for line in iter(self._process.stdout.readline, ""):
+            if self._cancelled:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            self.log_line.emit(line)
+            last_lines.append(line)
+            if len(last_lines) > 50:
+                last_lines.pop(0)
+
+            if "ComfyUI: connected" in line or "Workflow template:" in line:
+                self.status.emit("__model_ready__")
+
+            progress_match = re.match(r"PROGRESS\s+(\d+)/(\d+)", line)
+            if progress_match:
+                current_done = int(progress_match.group(1))
+                total_val = int(progress_match.group(2))
+                self.progress.emit(
+                    current_done, total_val, "", 0,
+                    0, 0.0, max(0, total_val - current_done), 0, 0,
+                )
+
+        self._process.wait()
+        rc = self._process.returncode
+        if self._cancelled:
+            self.error.emit(t("synth.cancelled"))
+        elif rc != 0:
+            tail = "\n".join(last_lines[-10:])
+            self.error.emit(t("synth.err_exit_code", code=rc) + f"\n{tail}")
+        else:
+            self.progress.emit(total, total, "0s", 0, 0, 0.0, 0, 0, 0)
+            self.finished.emit(
+                str(audio_dir),
+                max(0, current_done - done_start),
+                done_start,
+            )
 
     def _prepare_runner_manifest(self) -> tuple[Path, list[dict]]:
         """Load v1/v2 manifest and return a v1-compatible runner path."""

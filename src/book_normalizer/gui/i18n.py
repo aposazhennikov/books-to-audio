@@ -80,23 +80,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "norm.ocr_psm": {"en": "Tesseract PSM:", "ru": "Tesseract PSM:"},
     "norm.ocr_psm_hint": {
-        "en": "4 = single scanned book page (recommended) | 6 = cropped text block | 3 = auto",
-        "ru": "4 = \u043e\u0434\u043d\u0430 \u0441\u043a\u0430\u043d-\u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u043a\u043d\u0438\u0433\u0438 (\u0440\u0435\u043a\u043e\u043c.) | 6 = \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 | 3 = \u0430\u0432\u0442\u043e",
+        "en": "6 = cropped text block (recommended) | 4 = single column | 3 = auto",
+        "ru": "6 = \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u043d\u044b\u0439 \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 (\u0440\u0435\u043a\u043e\u043c.) | 4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 | 3 = \u0430\u0432\u0442\u043e",
     },
     "norm.ocr_psm_tip": {
         "en": (
             "Tesseract Page Segmentation Mode (PSM):\n"
             "3 = fully automatic (default Tesseract)\n"
-            "4 = single column / scanned book page (recommended)\n"
-            "6 = uniform cropped text block\n"
+            "4 = single column of variable-size text\n"
+            "6 = uniform cropped text block (recommended after auto spread splitting)\n"
             "11 = sparse text, find as much as possible\n"
             "13 = raw line, treat as single text line"
         ),
         "ru": (
             "\u0420\u0435\u0436\u0438\u043c \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0430\u0446\u0438\u0438 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b Tesseract (PSM):\n"
             "3 = \u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439\n"
-            "4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 / \u0441\u043a\u0430\u043d-\u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u043a\u043d\u0438\u0433\u0438 (\u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0443\u0435\u0442\u0441\u044f)\n"
-            "6 = \u0440\u043e\u0432\u043d\u044b\u0439 \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u043d\u044b\u0439 \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430\n"
+            "4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 \u0442\u0435\u043a\u0441\u0442\u0430\n"
+            "6 = \u0440\u043e\u0432\u043d\u044b\u0439 \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u043d\u044b\u0439 \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 (\u0440\u0435\u043a\u043e\u043c. \u043f\u043e\u0441\u043b\u0435 \u0430\u0432\u0442\u043e-\u0440\u0430\u0437\u0434\u0435\u043b\u0435\u043d\u0438\u044f \u0440\u0430\u0437\u0432\u043e\u0440\u043e\u0442\u043e\u0432)\n"
             "11 = \u0440\u0430\u0437\u0440\u0435\u0436\u0435\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442\n"
             "13 = \u043e\u0434\u043d\u0430 \u0441\u0442\u0440\u043e\u043a\u0430 \u0442\u0435\u043a\u0441\u0442\u0430"
         ),
@@ -263,6 +263,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Intonation",
         "ru": "Интонация",
     },
+    "voice.col_audio": {"en": "Audio", "ru": "Аудио"},
+    "voice.col_retry": {"en": "Retry", "ru": "Повтор"},
+    "voice.play_audio": {"en": "Play", "ru": "Play"},
+    "voice.mark_retry": {"en": "Retry", "ru": "Повтор"},
     "voice.type_speech": {"en": "Speech", "ru": "Речь"},
     "voice.type_narrator": {"en": "Narr.", "ru": "Автор"},
     "voice.stats_segments": {
@@ -418,6 +422,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.load_manifest": {
         "en": "Load Manifest",
         "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
+    },
+    "synth.comfyui_url": {"en": "ComfyUI URL:", "ru": "ComfyUI URL:"},
+    "synth.workflow": {"en": "Workflow:", "ru": "Workflow:"},
+    "synth.choose_file": {"en": "Choose...", "ru": "Выбрать..."},
+    "synth.workflow_hint": {
+        "en": (
+            "Recommended path: v2 manifests are synthesized through ComfyUI. "
+            "The template must contain {{TEXT}}, {{SPEAKER}}, {{INSTRUCT}}, "
+            "and {{OUTPUT_FILENAME}} placeholders."
+        ),
+        "ru": (
+            "Рекомендуемый путь: v2-манифесты синтезируются через ComfyUI. "
+            "Шаблон должен содержать {{TEXT}}, {{SPEAKER}}, {{INSTRUCT}} "
+            "и {{OUTPUT_FILENAME}}."
+        ),
     },
     "synth.model": {"en": "Model:", "ru": "\u041c\u043e\u0434\u0435\u043b\u044c:"},
     "synth.model_hint": {
@@ -583,6 +602,21 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": (
             "Если включено, чанки с уже готовыми WAV-файлами "
             "будут пропущены. Полезно для продолжения после обрыва."
+        ),
+    },
+    "synth.retry_failed": {"en": "Retry:", "ru": "Повтор:"},
+    "synth.retry_failed_check": {
+        "en": "Retry failed chunks only",
+        "ru": "Повторить только упавшие чанки",
+    },
+    "synth.retry_failed_hint": {
+        "en": (
+            "For ComfyUI v2 manifests, run only chunks marked failed=true. "
+            "Leave off for normal resume."
+        ),
+        "ru": (
+            "Для ComfyUI v2-манифестов запускает только чанки с failed=true. "
+            "Для обычного продолжения оставьте выключенным."
         ),
     },
     "synth.compile": {

@@ -223,6 +223,11 @@ class WorkflowBuilder:
         }
         return _deep_replace(copy.deepcopy(self._template), replacements)
 
+    def missing_placeholders(self) -> list[str]:
+        """Return synthesis placeholders missing from the loaded template."""
+        template_str = json.dumps(self._template)
+        return [p for p in _ALL_PLACEHOLDERS if p not in template_str]
+
     @staticmethod
     def voice_tone_to_instruct(voice_label: str, voice_tone: str) -> str:
         """Translate a voice_label + voice_tone pair to a Russian instruct string."""
@@ -253,8 +258,7 @@ class WorkflowBuilder:
 
     def _warn_missing_placeholders(self) -> None:
         """Log a warning for each placeholder that is absent from the template."""
-        template_str = json.dumps(self._template)
-        missing = [p for p in _ALL_PLACEHOLDERS if p not in template_str]
+        missing = self.missing_placeholders()
         if missing:
             logger.warning(
                 "Workflow template %s is missing placeholder(s): %s — "

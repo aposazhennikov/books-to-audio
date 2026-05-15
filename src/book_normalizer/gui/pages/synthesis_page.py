@@ -227,6 +227,29 @@ class SynthesisPage(QWidget):
         settings.setHorizontalSpacing(16)
         settings.setVerticalSpacing(6)
 
+        self._comfyui_url_edit = QLineEdit("http://localhost:8188")
+        self._comfyui_url_label = QLabel()
+        settings.addRow(self._comfyui_url_label, self._comfyui_url_edit)
+
+        workflow_row = QHBoxLayout()
+        workflow_row.setSpacing(6)
+        default_workflow = (
+            Path(__file__).resolve().parent.parent.parent.parent.parent
+            / "comfyui_workflows"
+            / "qwen3_tts_template.json"
+        )
+        self._workflow_edit = QLineEdit(str(default_workflow))
+        self._workflow_edit.setMinimumWidth(320)
+        workflow_row.addWidget(self._workflow_edit, stretch=1)
+        self._btn_workflow = QPushButton()
+        self._btn_workflow.clicked.connect(self._browse_workflow)
+        workflow_row.addWidget(self._btn_workflow)
+        self._workflow_label = QLabel()
+        settings.addRow(self._workflow_label, workflow_row)
+
+        self._workflow_hint = self._hint_label()
+        settings.addRow("", self._workflow_hint)
+
         self._model_combo = QComboBox()
         self._model_combo.addItems(MODELS)
         self._model_label = QLabel()
@@ -282,6 +305,13 @@ class SynthesisPage(QWidget):
 
         self._resume_hint = self._hint_label()
         settings.addRow("", self._resume_hint)
+
+        self._retry_failed_check = QCheckBox()
+        self._retry_failed_label = QLabel()
+        settings.addRow(self._retry_failed_label, self._retry_failed_check)
+
+        self._retry_failed_hint = self._hint_label()
+        settings.addRow("", self._retry_failed_hint)
 
         self._compile_check = QCheckBox()
         self._compile_label = QLabel()
@@ -558,6 +588,10 @@ class SynthesisPage(QWidget):
         if not self._manifest_path:
             self._manifest_label.setText(t("synth.no_manifest"))
         self._btn_load.setText(t("synth.load_manifest"))
+        self._comfyui_url_label.setText(t("synth.comfyui_url"))
+        self._workflow_label.setText(t("synth.workflow"))
+        self._btn_workflow.setText(t("synth.choose_file"))
+        self._workflow_hint.setText(t("synth.workflow_hint"))
         self._model_label.setText(t("synth.model"))
         self._model_hint.setText(t("synth.model_hint"))
         self._model_combo.setToolTip(t("synth.model_hint"))
@@ -574,6 +608,9 @@ class SynthesisPage(QWidget):
         self._resume_label.setText(t("synth.resume"))
         self._resume_check.setText(t("synth.resume_check"))
         self._resume_hint.setText(t("synth.resume_hint"))
+        self._retry_failed_label.setText(t("synth.retry_failed"))
+        self._retry_failed_check.setText(t("synth.retry_failed_check"))
+        self._retry_failed_hint.setText(t("synth.retry_failed_hint"))
         self._compile_label.setText(t("synth.compile"))
         self._compile_check.setText(t("synth.compile_check"))
         self._compile_hint.setText(t("synth.compile_hint"))
@@ -665,6 +702,16 @@ class SynthesisPage(QWidget):
         )
         if path:
             self._models_dir_edit.setText(path)
+
+    def _browse_workflow(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            t("synth.workflow"),
+            self._workflow_edit.text().strip(),
+            "JSON (*.json);;All (*)",
+        )
+        if path:
+            self._workflow_edit.setText(path)
 
     def _browse_train_audio(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -803,6 +850,9 @@ class SynthesisPage(QWidget):
             clone_config=clone_config_path,
             use_sage_attention=self._sage_check.isChecked(),
             models_dir=self._models_dir_edit.text().strip(),
+            comfyui_url=self._comfyui_url_edit.text().strip(),
+            workflow_path=self._workflow_edit.text().strip(),
+            failed_only=self._retry_failed_check.isChecked(),
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.status.connect(self._on_status)

@@ -38,20 +38,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
+import wave
 from pathlib import Path
 
-import numpy as np
-import soundfile as sf
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from book_normalizer.tts.manifest_assembly import assemble_from_manifest as assemble_manifest_v2
+from book_normalizer.tts.manifest_assembly import assemble_wav_files
 
 # ── Audio helpers ─────────────────────────────────────────────────────────────
-
-
-def add_silence(duration_ms: int, sample_rate: int) -> np.ndarray:
-    """Generate silence of given duration in milliseconds."""
-    n_samples = int(sample_rate * duration_ms / 1000)
-    return np.zeros(n_samples, dtype=np.float32)
 
 
 def assemble_from_wav_files(
@@ -75,43 +71,24 @@ def assemble_from_wav_files(
         print(f"  No WAV files to assemble for {out_path.name}")
         return
 
-    segments: list[np.ndarray] = []
-    sample_rate: int | None = None
-    prev_voice: str | None = None
-
-    for idx, wav_path in enumerate(wav_files):
-        if voice_labels:
-            voice = voice_labels[idx]
-        else:
-            match = re.search(r"chunk_\d+_(\w+)\.wav", wav_path.name)
-            voice = match.group(1) if match else "unknown"
-
-        data, sr = sf.read(str(wav_path), dtype="float32")
-        if sample_rate is None:
-            sample_rate = sr
-
-        if prev_voice is not None:
-            pause_ms = (
-                pause_voice_change_ms if voice != prev_voice else pause_same_voice_ms
-            )
-            segments.append(add_silence(pause_ms, sample_rate))
-
-        # Mono-fy stereo audio for consistent concatenation.
-        if data.ndim > 1:
-            data = data.mean(axis=1)
-        segments.append(data)
-        prev_voice = voice
-
-    if not segments or sample_rate is None:
-        return
-
-    full_audio = np.concatenate(segments)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    sf.write(str(out_path), full_audio, sample_rate)
-
-    duration = len(full_audio) / sample_rate
+    written = assemble_wav_files(
+        wav_files,
+        out_path,
+        pause_same_voice_ms=pause_same_voice_ms,
+        pause_voice_change_ms=pause_voice_change_ms,
+        voice_labels=voice_labels,
+    )
+    duration = _wav_duration(out_path)
     size_mb = out_path.stat().st_size / 1024 / 1024
-    print(f"  {out_path.name}: {len(wav_files)} chunks → {duration:.1f}s ({size_mb:.1f} MB)")
+    print(f"  {out_path.name}: {written} chunks → {duration:.1f}s ({size_mb:.1f} MB)")
+
+
+def _wav_duration(path: Path) -> float:
+    try:
+        with wave.open(str(path), "rb") as wav:
+            return wav.getnframes() / wav.getframerate()
+    except (wave.Error, OSError, ZeroDivisionError):
+        return 0.0
 
 
 # ── File-scan mode ────────────────────────────────────────────────────────────
@@ -265,9 +242,25 @@ def main() -> None:
             print("ERROR: Specify --all or --chapter N when using --manifest.")
             sys.exit(1)
 
-        assemble_from_manifest(
-            manifest, out_dir, args.pause_same, args.pause_change, chapter_filter
+        results = assemble_manifest_v2(
+            manifest,
+            out_dir,
+            pause_same_voice_ms=args.pause_same,
+            pause_voice_change_ms=args.pause_change,
+            chapter_filter=chapter_filter,
         )
+        for result in results:
+            for message in result.messages:
+                print(f"  {message}")
+            if result.output_path:
+                duration = _wav_duration(result.output_path)
+                size_mb = result.output_path.stat().st_size / 1024 / 1024
+                print(
+                    f"  {result.output_path.name}: {result.chunks} chunks → "
+                    f"{duration:.1f}s ({size_mb:.1f} MB)"
+                )
+            elif result.skipped:
+                print(f"  Chapter {result.chapter_number:03d}: no synthesized chunks found, skipping.")
         return
 
     # ── File-scan mode ─────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -117,6 +118,148 @@ def main() -> None:
     """Semi-automatic Russian book normalizer for TTS pipelines."""
 
 
+@main.command(name="pipeline")
+@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--out", "-o", type=click.Path(path_type=Path), default=Path("output"), help="Output root directory.")
+@click.option("--llm-model", default="gemma3:4b", show_default=True, help="Ollama model for chunking.")
+@click.option(
+    "--llm-endpoint",
+    default="http://localhost:11434/v1",
+    show_default=True,
+    help="OpenAI-compatible LLM endpoint.",
+)
+@click.option("--llm-normalize", is_flag=True, default=False, help="Run LLM normalization before chunking.")
+@click.option("--max-chunk-chars", type=int, default=400, show_default=True, help="Soft max chars per LLM chunk.")
+@click.option("--synthesize", is_flag=True, default=False, help="Run ComfyUI synthesis after chunking.")
+@click.option("--workflow", type=click.Path(path_type=Path), default=None, help="ComfyUI workflow template.")
+@click.option("--comfyui-url", default="http://localhost:8188", show_default=True, help="ComfyUI server URL.")
+@click.option("--assemble", is_flag=True, default=False, help="Assemble synthesized chunks via v2 manifest.")
+@click.option("--chapter", type=int, default=None, help="Only process one chapter number (1-based).")
+@click.option("--skip-stage1", is_flag=True, default=False, help="Use existing normalized chapter files.")
+@click.option(
+    "--ocr-mode",
+    type=click.Choice(["auto", "off", "force"]),
+    default="auto",
+    show_default=True,
+    help="PDF OCR mode.",
+)
+def pipeline_command(
+    input_path: Path,
+    out: Path,
+    llm_model: str,
+    llm_endpoint: str,
+    llm_normalize: bool,
+    max_chunk_chars: int,
+    synthesize: bool,
+    workflow: Path | None,
+    comfyui_url: str,
+    assemble: bool,
+    chapter: int | None,
+    skip_stage1: bool,
+    ocr_mode: str,
+) -> None:
+    """Run the recommended normalize -> v2 chunks -> ComfyUI -> manifest assembly pipeline."""
+    script = Path(__file__).resolve().parents[2] / "scripts" / "run_pipeline.py"
+    cmd = [
+        sys.executable,
+        str(script),
+        "--book",
+        str(input_path),
+        "--out",
+        str(out),
+        "--llm-model",
+        llm_model,
+        "--llm-endpoint",
+        llm_endpoint,
+        "--max-chunk-chars",
+        str(max_chunk_chars),
+        "--ocr-mode",
+        ocr_mode,
+    ]
+    if llm_normalize:
+        cmd.append("--llm-normalize")
+    if synthesize:
+        cmd.append("--synthesize")
+        if not workflow:
+            workflow = Path("comfyui_workflows/qwen3_tts_template.json")
+        cmd.extend(["--workflow", str(workflow), "--comfyui-url", comfyui_url])
+    if assemble:
+        cmd.append("--assemble")
+    if chapter is not None:
+        cmd.extend(["--chapter", str(chapter)])
+    if skip_stage1:
+        cmd.append("--skip-stage1")
+
+    result = subprocess.run(cmd, check=False)
+    if result.returncode != 0:
+        raise click.ClickException(f"Pipeline exited with code {result.returncode}")
+
+
+@main.command(name="doctor")
+@click.option("--comfyui-url", default="http://localhost:8188", show_default=True, help="ComfyUI server URL.")
+@click.option(
+    "--llm-endpoint",
+    default="http://localhost:11434/v1",
+    show_default=True,
+    help="OpenAI-compatible LLM endpoint.",
+)
+@click.option(
+    "--workflow",
+    type=click.Path(path_type=Path),
+    default=Path("comfyui_workflows/qwen3_tts_template.json"),
+    help="ComfyUI workflow template.",
+)
+@click.option("--models-dir", type=click.Path(path_type=Path), default=None, help="Shared ComfyUI models directory.")
+@click.option("--skip-network", is_flag=True, default=False, help="Skip Ollama and ComfyUI HTTP checks.")
+@click.option("--json-output", is_flag=True, default=False, help="Print machine-readable JSON.")
+def doctor_command(
+    comfyui_url: str,
+    llm_endpoint: str,
+    workflow: Path,
+    models_dir: Path | None,
+    skip_network: bool,
+    json_output: bool,
+) -> None:
+    """Check local dependencies before running OCR/LLM/TTS."""
+    from book_normalizer.diagnostics.doctor import checks_to_json, run_doctor
+
+    checks = run_doctor(
+        comfyui_url=comfyui_url,
+        llm_endpoint=llm_endpoint,
+        workflow_path=workflow,
+        models_dir=models_dir,
+        skip_network=skip_network,
+    )
+    if json_output:
+        click.echo(checks_to_json(checks))
+        return
+
+    for check in checks:
+        click.echo(f"[{check.status.upper():4}] {check.name}: {check.detail}")
+
+
+@main.command(name="audio-qa")
+@click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--report", type=click.Path(path_type=Path), default=None, help="Write JSON QA report.")
+def audio_qa_command(manifest_path: Path, report: Path | None) -> None:
+    """Run QA checks for synthesized audio in a v2 manifest."""
+    from book_normalizer.tts.audio_qa import load_manifest, run_audio_qa
+
+    result = run_audio_qa(load_manifest(manifest_path))
+    click.echo(
+        f"Audio QA: checked {result.checked_files}/{result.synthesized_chunks} synthesized "
+        f"chunks, {len(result.issues)} issue(s)."
+    )
+    for issue in result.issues:
+        location = ""
+        if issue.chapter_index is not None and issue.chunk_index is not None:
+            location = f" ch{issue.chapter_index + 1:03d}/chunk{issue.chunk_index + 1:03d}"
+        click.echo(f"[{issue.severity.upper()}] {issue.kind}{location}: {issue.message}")
+    if report:
+        report.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        click.echo(f"Report: {report}")
+
+
 @main.command(name="process")
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--out", "-o", type=click.Path(path_type=Path), default=Path("output"), help="Output directory.")
@@ -149,7 +292,7 @@ def main() -> None:
     help="Number of random paragraph samples in verification report.",
 )
 @click.option("--ocr-dpi", type=int, default=400, show_default=True, help="DPI for OCR rendering.")
-@click.option("--ocr-psm", type=int, default=4, show_default=True, help="Tesseract PSM mode.")
+@click.option("--ocr-psm", type=int, default=6, show_default=True, help="Tesseract PSM mode.")
 def process_command(
     input_path: Path,
     out: Path,
@@ -587,7 +730,7 @@ def _parse_chapter_range(value: str) -> tuple[int, int] | None:
     help="OCR execution mode for PDF files.",
 )
 @click.option("--ocr-dpi", type=int, default=400, show_default=True, help="DPI for OCR rendering.")
-@click.option("--ocr-psm", type=int, default=4, show_default=True, help="Tesseract PSM mode.")
+@click.option("--ocr-psm", type=int, default=6, show_default=True, help="Tesseract PSM mode.")
 @click.option("--llm-api-key", default="", help="API key for LLM speaker attribution (OpenAI, etc.).")
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Verbose logging output.")
 def synthesize_command(

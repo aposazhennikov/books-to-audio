@@ -159,5 +159,8 @@ class MainWindow(QMainWindow):
         out_dir = self._output_dir or mp.parent
         self._synthesis_page.set_manifest(mp, out_dir)
         audio_dir = out_dir / "audio_chunks"
-        self._assembly_page.set_audio_dir(audio_dir, out_dir)
+        if mp.name.endswith("_v2.json") or mp.name == "chunks_manifest_v2.json":
+            self._assembly_page.set_manifest(mp, out_dir)
+        else:
+            self._assembly_page.set_audio_dir(audio_dir, out_dir)
         self._statusbar.showMessage(t("status.voices_done"))

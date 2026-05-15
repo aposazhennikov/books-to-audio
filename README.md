@@ -35,6 +35,16 @@ Full-pipeline Russian audiobook generator: from book files (PDF/TXT/EPUB/FB2/DOC
 - **GUI application**: PyQt6 desktop app with all features
 - **CLI interface**: full-featured command-line tools
 
+## Documentation
+
+Focused docs live in `docs/`:
+
+- `docs/architecture.md` — pipeline shape and main modules
+- `docs/manifest-v2.md` — v2 manifest contract
+- `docs/comfyui-setup.md` — ComfyUI workflow and model setup
+- `docs/troubleshooting.md` — common failure modes
+- `docs/smoke-test.md` — quick regression checklist
+
 ## Quick Start (from scratch)
 
 ### 1. Prerequisites
@@ -171,7 +181,7 @@ python -m book_normalizer.cli process books/mybook.pdf --out output -v --ocr-mod
 Options:
 - `--ocr-mode auto|off|force|compare` — OCR mode for PDF (see below)
 - `--ocr-dpi 400` — DPI for OCR rendering (see below)
-- `--ocr-psm 4` — Tesseract page segmentation mode (see below)
+- `--ocr-psm 6` — Tesseract page segmentation mode (see below)
 - `--interactive` — enable interactive review
 - `--skip-stress` — skip stress annotation
 
@@ -207,8 +217,8 @@ Page Segmentation Mode controls how Tesseract analyzes the page layout:
 | PSM | Description | When to use |
 |-----|-------------|-------------|
 | 3 | Fully automatic page segmentation | Mixed content (images + text) |
-| 4 (default) | Single column of variable-size text | **Recommended for scanned book pages** |
-| 6 | Uniform block of text | Already cropped, clean text blocks |
+| 4 | Single column of variable-size text | Alternative for difficult single-column scans |
+| 6 (default) | Uniform block of text | **Recommended after automatic spread splitting/cropping** |
 | 11 | Sparse text, find as much as possible | Pages with scattered text fragments |
 | 13 | Raw line, treat as single text line | Processing individual lines |
 
@@ -379,7 +389,7 @@ Load a book file, configure OCR settings, run the full normalization pipeline.
 |-------|-------------|
 | **OCR Mode** | How text is extracted from PDF (auto/off/force/compare — see OCR Mode table above) |
 | **OCR DPI** | Resolution for PDF-to-image rendering before OCR (300-600, default 400 — see DPI table above) |
-| **Tesseract PSM** | Page layout analysis mode (0-13, default 4 for scanned book pages — see PSM table above) |
+| **Tesseract PSM** | Page layout analysis mode (0-13, default 6 after automatic spread splitting/cropping — see PSM table above) |
 
 **Progress**: Shows per-page OCR progress with ETA (e.g., "OCR: page 45/120 — ETA: 2m 30s"), then normalization stages, then chapter detection. After completion, shows a before/after text comparison panel.
 

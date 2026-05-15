@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -20,6 +20,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+try:
+    from PyQt6.QtMultimedia import QSoundEffect
+except ImportError:  # pragma: no cover - depends on local PyQt6 multimedia build
+    QSoundEffect = None  # type: ignore[assignment]
+
+from book_normalizer.chunking.manifest import chunks_to_v2_manifest, flatten_v2_manifest
 from book_normalizer.gui.i18n import get_language, t
 from book_normalizer.gui.voice_presets import VOICE_PRESETS
 
@@ -97,6 +103,9 @@ class VoiceTableWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._segments: list[dict[str, Any]] = []
+        self._manifest_meta: dict[str, Any] = {}
+        self._manifest_is_v2 = False
+        self._player = QSoundEffect(self) if QSoundEffect is not None else None
         self._setup_ui()
 
     # ── UI setup ──
@@ -164,7 +173,7 @@ class VoiceTableWidget(QWidget):
 
         # Table.
         self._table = QTableWidget()
-        self._table.setColumnCount(6)
+        self._table.setColumnCount(8)
         self._table.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeMode.Stretch,
         )
@@ -173,6 +182,8 @@ class VoiceTableWidget(QWidget):
         self._table.setColumnWidth(2, 36)
         self._table.setColumnWidth(4, 220)
         self._table.setColumnWidth(5, 145)
+        self._table.setColumnWidth(6, 80)
+        self._table.setColumnWidth(7, 80)
         self._table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows,
         )
@@ -199,6 +210,8 @@ class VoiceTableWidget(QWidget):
             t("voice.col_text"),
             t("voice.col_voice"),
             t("voice.col_intonation"),
+            t("voice.col_audio"),
+            t("voice.col_retry"),
         ])
 
     # ── Data loading ──
@@ -206,12 +219,16 @@ class VoiceTableWidget(QWidget):
     def load_manifest(self, manifest_path: Path) -> None:
         """Load segments from a manifest JSON file."""
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self._segments = data
+        self._manifest_is_v2 = isinstance(data, dict) and data.get("version") == 2
+        self._manifest_meta = data if isinstance(data, dict) else {}
+        self._segments = flatten_v2_manifest(data) if self._manifest_is_v2 else data
         self._migrate_legacy()
         self._populate_table()
 
     def set_segments(self, segments: list[dict[str, Any]]) -> None:
         """Set segments directly from worker output."""
+        self._manifest_is_v2 = False
+        self._manifest_meta = {}
         self._segments = segments
         self._migrate_legacy()
         self._populate_table()
@@ -224,7 +241,10 @@ class VoiceTableWidget(QWidget):
             if vid in LEGACY_VOICE_MAP:
                 seg["voice_id"] = LEGACY_VOICE_MAP[vid]
             if "intonation" not in seg:
-                seg["intonation"] = "neutral"
+                seg["intonation"] = seg.get("voice_tone", "neutral")
+            if "role" not in seg:
+                voice = seg.get("voice", "narrator")
+                seg["role"] = {"male": "male", "female": "female"}.get(voice, "narrator")
             if "is_dialogue" not in seg:
                 seg["is_dialogue"] = seg.get(
                     "role", "narrator",
@@ -310,6 +330,19 @@ class VoiceTableWidget(QWidget):
             )
             self._table.setCellWidget(row, 5, inton_combo)
 
+            # Column 6: play synthesized chunk audio when available.
+            play_btn = QPushButton(t("voice.play_audio"))
+            audio_path = str(seg.get("audio_file") or "")
+            play_btn.setEnabled(bool(audio_path and Path(audio_path).exists() and self._player is not None))
+            play_btn.clicked.connect(lambda _checked=False, p=audio_path: self._play_audio(p))
+            self._table.setCellWidget(row, 6, play_btn)
+
+            # Column 7: mark a synthesized chunk for retry in ComfyUI failed-only mode.
+            retry_btn = QPushButton(t("voice.mark_retry"))
+            retry_btn.setEnabled(self._manifest_is_v2)
+            retry_btn.clicked.connect(lambda _checked=False, r=row: self._mark_retry(r))
+            self._table.setCellWidget(row, 7, retry_btn)
+
     # ── Data change handlers ──
 
     def _on_voice_changed(self, row: int, voice_id: str) -> None:
@@ -320,7 +353,28 @@ class VoiceTableWidget(QWidget):
     def _on_intonation_changed(self, row: int, intonation: str) -> None:
         if intonation and row < len(self._segments):
             self._segments[row]["intonation"] = intonation
+            self._segments[row]["voice_tone"] = intonation
             self.data_changed.emit()
+
+    def _play_audio(self, audio_path: str) -> None:
+        """Play a synthesized WAV/AIFF chunk from the table."""
+        if not audio_path or self._player is None:
+            return
+        path = Path(audio_path)
+        if not path.exists():
+            return
+        self._player.stop()
+        self._player.setSource(QUrl.fromLocalFile(str(path)))
+        self._player.play()
+
+    def _mark_retry(self, row: int) -> None:
+        """Mark a v2 manifest row for retry-failed synthesis."""
+        if row >= len(self._segments):
+            return
+        self._segments[row]["synthesized"] = False
+        self._segments[row]["failed"] = True
+        self._segments[row]["error"] = "Marked for retry in GUI."
+        self.data_changed.emit()
 
     # ── Bulk operations ──
 
@@ -399,7 +453,16 @@ class VoiceTableWidget(QWidget):
 
     def save_to_file(self, path: Path) -> None:
         """Save current voice assignments to a manifest file."""
+        data: object = self._segments
+        if self._manifest_is_v2 or path.name.endswith("_v2.json"):
+            data = chunks_to_v2_manifest(
+                self._segments,
+                book_title=str(self._manifest_meta.get("book_title") or path.parent.name),
+                chunker=str(self._manifest_meta.get("chunker") or "gui"),
+                model=str(self._manifest_meta.get("model") or ""),
+                max_chunk_chars=self._manifest_meta.get("max_chunk_chars"),
+            )
         path.write_text(
-            json.dumps(self._segments, ensure_ascii=False, indent=2),
+            json.dumps(data, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )

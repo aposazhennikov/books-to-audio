@@ -381,6 +381,7 @@ class VoicesPage(QWidget):
 
     def _build_tts_chunks(self) -> None:
         """Group user-assigned segments into TTS-ready chunks."""
+        from book_normalizer.chunking.manifest import chunks_to_v2_manifest
         from book_normalizer.chunking.voice_splitter import (
             build_chunks_from_segments,
         )
@@ -402,9 +403,15 @@ class VoicesPage(QWidget):
             self._output_dir = Path(".")
 
         self._output_dir.mkdir(parents=True, exist_ok=True)
-        chunks_path = self._output_dir / "chunks_manifest.json"
+        chunks_path = self._output_dir / "chunks_manifest_v2.json"
+        manifest = chunks_to_v2_manifest(
+            chunks,
+            book_title=self._output_dir.name,
+            chunker="gui",
+            max_chunk_chars=self._chunk_size.value(),
+        )
         chunks_path.write_text(
-            json.dumps(chunks, ensure_ascii=False, indent=2),
+            json.dumps(manifest, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 

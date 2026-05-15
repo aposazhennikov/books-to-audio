@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
 
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
-from book_normalizer.tts.wsl_runtime import build_wsl_tts_activation_script
 
 
 class AssemblyWorker(QThread):
@@ -36,6 +35,7 @@ class AssemblyWorker(QThread):
         output_dir: Path,
         pause_same: int,
         pause_change: int,
+        manifest_path: Path | None = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -43,6 +43,7 @@ class AssemblyWorker(QThread):
         self._output_dir = output_dir
         self._pause_same = pause_same
         self._pause_change = pause_change
+        self._manifest_path = manifest_path
 
     def run(self) -> None:
         try:
@@ -52,20 +53,24 @@ class AssemblyWorker(QThread):
                 / "assemble_chapter.py"
             )
 
-            wsl_script = self._to_wsl(script)
-            wsl_audio = self._to_wsl(self._audio_dir)
-            wsl_out = self._to_wsl(self._output_dir)
+            source_args = (
+                ["--manifest", str(self._manifest_path)]
+                if self._manifest_path
+                else ["--audio-dir", str(self._audio_dir)]
+            )
 
             cmd = [
-                "wsl", "-e", "bash", "-c",
-                build_wsl_tts_activation_script()
-                + "\nPYTHONUNBUFFERED=1 "
-                f"python -u {shlex.quote(wsl_script)} "
-                f"--audio-dir {shlex.quote(wsl_audio)} "
-                f"--out {shlex.quote(wsl_out)} "
-                f"--all "
-                f"--pause-same {self._pause_same} "
-                f"--pause-change {self._pause_change}",
+                sys.executable,
+                "-u",
+                str(script),
+                *source_args,
+                "--out",
+                str(self._output_dir),
+                "--all",
+                "--pause-same",
+                str(self._pause_same),
+                "--pause-change",
+                str(self._pause_change),
             ]
 
             self.progress.emit(t("asm.assembling"))
@@ -79,15 +84,6 @@ class AssemblyWorker(QThread):
         except Exception as exc:
             self.error.emit(str(exc))
 
-    @staticmethod
-    def _to_wsl(path: Path) -> str:
-        """Convert Windows path to WSL path."""
-        p = str(path.resolve()).replace("\\", "/")
-        if len(p) >= 2 and p[1] == ":":
-            drive = p[0].lower()
-            p = f"/mnt/{drive}{p[2:]}"
-        return p
-
 
 class AssemblyPage(QWidget):
     """Page for assembling audio chunks into full chapter/book files."""
@@ -95,6 +91,7 @@ class AssemblyPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._audio_dir: Path | None = None
+        self._manifest_path: Path | None = None
         self._output_dir: Path | None = None
         self._worker: AssemblyWorker | None = None
         self._setup_ui()
@@ -173,14 +170,24 @@ class AssemblyPage(QWidget):
     def set_audio_dir(self, audio_dir: Path, output_dir: Path) -> None:
         """Set audio chunks directory and output directory."""
         self._audio_dir = audio_dir
+        self._manifest_path = None
         self._output_dir = output_dir
         self._dir_label.setText(str(audio_dir))
+        self._btn_run.setEnabled(True)
+
+    def set_manifest(self, manifest_path: Path, output_dir: Path) -> None:
+        """Set a v2 manifest for manifest-ordered assembly."""
+        self._manifest_path = manifest_path
+        self._audio_dir = output_dir / "audio_chunks"
+        self._output_dir = output_dir
+        self._dir_label.setText(str(manifest_path))
         self._btn_run.setEnabled(True)
 
     def _browse_dir(self) -> None:
         d = QFileDialog.getExistingDirectory(self, t("asm.select_dir"))
         if d:
             self._audio_dir = Path(d)
+            self._manifest_path = None
             self._output_dir = Path(d).parent
             self._dir_label.setText(d)
             self._btn_run.setEnabled(True)
@@ -197,6 +204,7 @@ class AssemblyPage(QWidget):
             self._output_dir,
             self._pause_same.value(),
             self._pause_change.value(),
+            manifest_path=self._manifest_path,
         )
         self._worker.progress.connect(self._progress.set_status)
         self._worker.finished.connect(self._on_finished)

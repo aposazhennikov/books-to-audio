@@ -35,6 +35,7 @@ os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")  # HuggingFace: 
 
 import argparse
 import json
+import random
 import signal
 import sys
 import time
@@ -367,13 +368,92 @@ def load_clone_config(config_path: str | None) -> dict[str, dict]:
     return data
 
 
+GENERATION_KWARG_NAMES = (
+    "max_new_tokens",
+    "top_p",
+    "top_k",
+    "temperature",
+    "repetition_penalty",
+)
+
+
+def _build_generation_kwargs(args: argparse.Namespace) -> dict[str, Any]:
+    """Collect generation controls shared by CustomVoice and VoiceClone calls."""
+    return {
+        "max_new_tokens": args.max_new_tokens,
+        "top_p": args.top_p,
+        "top_k": args.top_k,
+        "temperature": args.temperature,
+        "repetition_penalty": args.repetition_penalty,
+    }
+
+
+def _set_seed(seed: int) -> None:
+    """Set common RNG seeds when the user wants repeatable output."""
+    if seed < 0:
+        return
+    random.seed(seed)
+    try:
+        import numpy as np
+
+        np.random.seed(seed % (2**32 - 1))
+    except Exception:
+        pass
+    try:
+        import torch
+
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    except Exception:
+        pass
+    print(f"Seed: {seed}")
+    sys.stdout.flush()
+
+
+def _call_with_generation_kwargs(method: Any, kwargs: dict[str, Any]) -> Any:
+    """Call Qwen generation while tolerating older package versions."""
+    try:
+        return method(**kwargs)
+    except TypeError as exc:
+        if not any(name in kwargs for name in GENERATION_KWARG_NAMES):
+            raise
+        fallback_kwargs = {
+            key: value
+            for key, value in kwargs.items()
+            if key not in GENERATION_KWARG_NAMES
+        }
+        print(
+            "  WARNING: installed qwen_tts rejected generation controls; "
+            f"retrying with defaults ({exc})."
+        )
+        sys.stdout.flush()
+        return method(**fallback_kwargs)
+
+
+def _clone_prompt_for_voice(
+    voice_id: str,
+    clone_prompts: dict[str, Any] | None,
+) -> Any | None:
+    """Return a per-voice clone prompt or the global sample voice prompt."""
+    if not clone_prompts:
+        return None
+    return clone_prompts.get(voice_id) or clone_prompts.get("__all__")
+
+
+def _audio_extension(output_format: str) -> str:
+    fmt = output_format.lower().strip()
+    return "flac" if fmt == "flac" else "wav"
+
+
 def build_clone_prompts(
     base_model: Any,
     clone_config: dict[str, dict],
 ) -> dict[str, Any]:
     """Build reusable voice_clone_prompt for each cloned voice."""
     prompts: dict[str, Any] = {}
-    for voice_id, cfg in clone_config.items():
+    total = len(clone_config)
+    for idx, (voice_id, cfg) in enumerate(clone_config.items(), start=1):
         ref_audio = cfg.get("ref_audio", "")
         ref_text = cfg.get("ref_text", "")
         if not ref_audio or not ref_text:
@@ -385,13 +465,20 @@ def build_clone_prompts(
             print(f"  WARNING: ref_audio '{ref_audio}' not found for '{voice_id}', skipping.")
             continue
         print(f"  Building clone prompt for '{voice_id}' from {ref_audio}...")
+        print(f"VOICE_PROMPT event=start done={idx - 1} total={total} voice={voice_id}")
         sys.stdout.flush()
+        started = time.time()
         prompt = base_model.create_voice_clone_prompt(
             ref_audio=ref_audio,
             ref_text=ref_text,
         )
         prompts[voice_id] = prompt
-        print(f"  Clone prompt ready for '{voice_id}'.")
+        elapsed = time.time() - started
+        print(f"  Clone prompt ready for '{voice_id}' in {elapsed:.1f}s.")
+        print(
+            f"VOICE_PROMPT event=done done={idx} total={total} "
+            f"voice={voice_id} sec={elapsed:.1f}"
+        )
         sys.stdout.flush()
     return prompts
 
@@ -453,26 +540,37 @@ def synthesize_chunk(
     clone_model: Any | None = None,
     instruct_map: dict[str, str] | None = None,
     language: str = "Russian",
+    generation_kwargs: dict[str, Any] | None = None,
 ) -> tuple[Any, int]:
     """Generate audio for a single chunk.
 
     Uses voice cloning if the voice_id has a clone prompt,
     otherwise falls back to CustomVoice.
     """
-    if clone_prompts and voice_id in clone_prompts and clone_model is not None:
-        wavs, sr = clone_model.generate_voice_clone(
-            text=text,
-            language=language,
-            voice_clone_prompt=clone_prompts[voice_id],
+    generation_kwargs = generation_kwargs or {}
+    clone_prompt = _clone_prompt_for_voice(voice_id, clone_prompts)
+    if clone_prompt is not None and clone_model is not None:
+        wavs, sr = _call_with_generation_kwargs(
+            clone_model.generate_voice_clone,
+            {
+                "text": text,
+                "language": language,
+                "voice_clone_prompt": clone_prompt,
+                **generation_kwargs,
+            },
         )
         return wavs, sr
 
     speaker, instruct = resolve_voice(voice_id, speaker_map)
-    wavs, sr = model.generate_custom_voice(
-        text=text,
-        language=language,
-        speaker=speaker,
-        instruct=instruct,
+    wavs, sr = _call_with_generation_kwargs(
+        model.generate_custom_voice,
+        {
+            "text": text,
+            "language": language,
+            "speaker": speaker,
+            "instruct": instruct,
+            **generation_kwargs,
+        },
     )
     return wavs, sr
 
@@ -486,37 +584,52 @@ def synthesize_batch(
     clone_model: Any | None = None,
     instruct_map: dict[str, str] | None = None,
     language: str = "Russian",
+    generation_kwargs: dict[str, Any] | None = None,
 ) -> list[tuple[Any, int]]:
     """Generate audio for multiple chunks in a single batch call.
 
     Falls back to one-by-one synthesis when the batch mixes
     cloned and custom voices.
     """
+    generation_kwargs = generation_kwargs or {}
     has_clone = clone_prompts and clone_model is not None
-    clone_ids = set(clone_prompts.keys()) if clone_prompts else set()
-    all_clone = has_clone and all(vid in clone_ids for vid in voice_ids)
-    all_custom = not has_clone or all(vid not in clone_ids for vid in voice_ids)
+    all_clone = bool(has_clone) and all(
+        _clone_prompt_for_voice(vid, clone_prompts) is not None
+        for vid in voice_ids
+    )
+    all_custom = not has_clone or all(
+        _clone_prompt_for_voice(vid, clone_prompts) is None
+        for vid in voice_ids
+    )
 
     if all_custom:
         resolved = [resolve_voice(vid, speaker_map) for vid in voice_ids]
         speakers = [r[0] for r in resolved]
         instructs = [r[1] for r in resolved]
         langs = [language] * len(texts)
-        wavs, sr = model.generate_custom_voice(
-            text=texts,
-            language=langs,
-            speaker=speakers,
-            instruct=instructs,
+        wavs, sr = _call_with_generation_kwargs(
+            model.generate_custom_voice,
+            {
+                "text": texts,
+                "language": langs,
+                "speaker": speakers,
+                "instruct": instructs,
+                **generation_kwargs,
+            },
         )
         return [(w, sr) for w in wavs]
 
     if all_clone:
         results = []
         for txt, vid in zip(texts, voice_ids):
-            wavs, sr = clone_model.generate_voice_clone(
-                text=txt,
-                language=language,
-                voice_clone_prompt=clone_prompts[vid],
+            wavs, sr = _call_with_generation_kwargs(
+                clone_model.generate_voice_clone,
+                {
+                    "text": txt,
+                    "language": language,
+                    "voice_clone_prompt": _clone_prompt_for_voice(vid, clone_prompts),
+                    **generation_kwargs,
+                },
             )
             results.append((wavs[0], sr))
         return results
@@ -529,6 +642,7 @@ def synthesize_batch(
             clone_prompts=clone_prompts,
             clone_model=clone_model,
             language=language,
+            generation_kwargs=generation_kwargs,
         )
         results.append((wavs[0], sr))
     return results
@@ -544,6 +658,92 @@ def _format_eta(seconds: float) -> str:
     if m > 0:
         return f"{m}m{s:02d}s"
     return f"{s}s"
+
+
+def merge_chapter_audio(
+    out_dir: Path,
+    manifest: list[dict[str, Any]],
+    output_format: str,
+    pause_ms: int = 250,
+) -> dict[str, Path]:
+    """Merge synthesized chunks into one audio file per chapter."""
+    try:
+        import numpy as np
+    except Exception as exc:
+        print(f"WARNING: numpy unavailable, skipping chapter merge: {exc}")
+        sys.stdout.flush()
+        return {}
+
+    ext = _audio_extension(output_format)
+    chapters_dir = out_dir / "chapters"
+    chapters_dir.mkdir(parents=True, exist_ok=True)
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for item in manifest:
+        if not item.get("file"):
+            continue
+        grouped.setdefault(int(item.get("chapter_index", 0)), []).append(item)
+
+    merged: dict[str, Path] = {}
+    chapter_manifest: list[dict[str, Any]] = []
+    for ch_idx in sorted(grouped):
+        items = sorted(grouped[ch_idx], key=lambda c: int(c.get("chunk_index", 0)))
+        arrays = []
+        sample_rate = None
+        channels = 1
+        for item in items:
+            audio_path = out_dir / item["file"]
+            if not audio_path.exists():
+                print(f"  WARNING: missing chunk for merge: {audio_path}")
+                continue
+            data, sr = sf.read(str(audio_path), always_2d=True)
+            if sample_rate is None:
+                sample_rate = sr
+                channels = data.shape[1]
+            elif sr != sample_rate:
+                print(
+                    f"  WARNING: skipping {audio_path}; sample rate {sr} "
+                    f"!= chapter rate {sample_rate}."
+                )
+                continue
+            if data.shape[1] != channels:
+                if data.shape[1] == 1 and channels > 1:
+                    data = np.repeat(data, channels, axis=1)
+                elif data.shape[1] > channels == 1:
+                    data = data.mean(axis=1, keepdims=True)
+                else:
+                    data = data[:, :channels]
+            arrays.append(data)
+            pause_frames = int((sample_rate or sr) * (pause_ms / 1000))
+            if pause_frames > 0:
+                arrays.append(np.zeros((pause_frames, channels), dtype=data.dtype))
+
+        if not arrays or sample_rate is None:
+            continue
+        if len(arrays) > 1:
+            arrays = arrays[:-1]
+        joined = np.concatenate(arrays, axis=0)
+        if joined.shape[1] == 1:
+            joined = joined[:, 0]
+        chapter_path = chapters_dir / f"chapter_{ch_idx + 1:03d}.{ext}"
+        sf.write(str(chapter_path), joined, sample_rate, format=ext.upper())
+        key = f"chapter_{ch_idx + 1:03d}"
+        merged[key] = chapter_path
+        chapter_manifest.append(
+            {
+                "chapter_index": ch_idx,
+                "file": str(chapter_path.relative_to(out_dir)),
+                "chunks": len(items),
+            }
+        )
+        print(f"  [OK] Merged {key}: {chapter_path}")
+        sys.stdout.flush()
+
+    if chapter_manifest:
+        (out_dir / "chapters_manifest.json").write_text(
+            json.dumps(chapter_manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    return merged
 
 
 def main() -> None:
@@ -627,6 +827,26 @@ def main() -> None:
             "exits if no compatible kernel is installed)."
         ),
     )
+    parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument("--top-p", type=float, default=0.8)
+    parser.add_argument("--top-k", type=int, default=20)
+    parser.add_argument("--repetition-penalty", type=float, default=1.05)
+    parser.add_argument("--max-new-tokens", type=int, default=2048)
+    parser.add_argument(
+        "--seed", type=int, default=-1,
+        help="Random seed for repeatable generation (-1 = random).",
+    )
+    parser.add_argument(
+        "--output-format",
+        choices=("wav", "flac"),
+        default="wav",
+        help="Audio format for chunks and merged chapters.",
+    )
+    parser.add_argument(
+        "--merge-chapters",
+        action="store_true",
+        help="Also write merged chapter audio files under out/chapters.",
+    )
     args = parser.parse_args()
 
     _log_file = None
@@ -678,9 +898,18 @@ def _main_impl(args: argparse.Namespace) -> None:
     }
     print(f"Speakers: {speaker_map}")
     print(f"Batch size: {args.batch_size}")
+    print(f"Output format: {args.output_format}")
+    print(
+        "Generation controls: "
+        f"temperature={args.temperature}, top_p={args.top_p}, top_k={args.top_k}, "
+        f"repetition_penalty={args.repetition_penalty}, "
+        f"max_new_tokens={args.max_new_tokens}"
+    )
     if args.sage_attention:
         print("SageAttention: enabled")
     print(f"Model directory: {args.models_dir}")
+    _set_seed(args.seed)
+    generation_kwargs = _build_generation_kwargs(args)
 
     # Load voice clone config if provided.
     clone_config = load_clone_config(args.clone_config)
@@ -706,7 +935,10 @@ def _main_impl(args: argparse.Namespace) -> None:
 
     # Determine which voice_ids actually need the CustomVoice model.
     voice_ids_in_manifest = {c.get("voice_id", "narrator") for c in chunks}
-    needs_custom = any(vid not in clone_prompts for vid in voice_ids_in_manifest)
+    needs_custom = any(
+        _clone_prompt_for_voice(vid, clone_prompts) is None
+        for vid in voice_ids_in_manifest
+    )
 
     if needs_custom:
         model = load_model(
@@ -744,6 +976,7 @@ def _main_impl(args: argparse.Namespace) -> None:
             pass
 
     manifest_out: list[dict[str, Any]] = []
+    audio_ext = _audio_extension(args.output_format)
 
     i = 0
     while i < len(chunks):
@@ -761,7 +994,7 @@ def _main_impl(args: argparse.Namespace) -> None:
 
             ch_dir = out_dir / "audio_chunks" / f"chapter_{ch_idx + 1:03d}"
             ch_dir.mkdir(parents=True, exist_ok=True)
-            wav_path = ch_dir / f"chunk_{ck_idx + 1:03d}_{voice_id}.wav"
+            wav_path = ch_dir / f"chunk_{ck_idx + 1:03d}_{voice_id}.{audio_ext}"
 
             if args.resume and (key in completed_keys or wav_path.exists()):
                 skipped += 1
@@ -797,12 +1030,13 @@ def _main_impl(args: argparse.Namespace) -> None:
                         model, chunk["text"], chunk["voice_id"], speaker_map,
                         clone_prompts=clone_prompts,
                         clone_model=clone_model,
+                        generation_kwargs=generation_kwargs,
                     )
                     wav_data = wavs[0]
                     if hasattr(wav_data, "cpu"):
                         wav_data = wav_data.cpu().numpy()
                     wav_file = str(batch_paths[0])
-                    sf.write(wav_file, wav_data, sr)
+                    sf.write(wav_file, wav_data, sr, format=audio_ext.upper())
                     fsize = batch_paths[0].stat().st_size
                     print(f"  [OK] Wrote {wav_file} ({fsize} bytes, sr={sr})")
                     sys.stdout.flush()
@@ -864,11 +1098,15 @@ def _main_impl(args: argparse.Namespace) -> None:
                         model, texts, vids, speaker_map,
                         clone_prompts=clone_prompts,
                         clone_model=clone_model,
+                        generation_kwargs=generation_kwargs,
                     )
                     for j, (wav_data_j, sr) in enumerate(results):
                         if hasattr(wav_data_j, "cpu"):
                             wav_data_j = wav_data_j.cpu().numpy()
-                        sf.write(str(batch_paths[j]), wav_data_j, sr)
+                        sf.write(
+                            str(batch_paths[j]), wav_data_j, sr,
+                            format=audio_ext.upper(),
+                        )
                         done += 1
                         consecutive_errors = 0
                         completed_keys.add(batch_keys[j])
@@ -895,11 +1133,15 @@ def _main_impl(args: argparse.Namespace) -> None:
                                 model, chunk["text"], chunk["voice_id"], speaker_map,
                                 clone_prompts=clone_prompts,
                                 clone_model=clone_model,
+                                generation_kwargs=generation_kwargs,
                             )
                             wav_fb = wavs[0]
                             if hasattr(wav_fb, "cpu"):
                                 wav_fb = wav_fb.cpu().numpy()
-                            sf.write(str(batch_paths[j]), wav_fb, sr)
+                            sf.write(
+                                str(batch_paths[j]), wav_fb, sr,
+                                format=audio_ext.upper(),
+                            )
                             done += 1
                             completed_keys.add(batch_keys[j])
                             manifest_out.append({
@@ -1035,6 +1277,11 @@ def _main_impl(args: argparse.Namespace) -> None:
         json.dumps(manifest_out, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+    if args.merge_chapters:
+        merged = merge_chapter_audio(out_dir, manifest_out, args.output_format)
+        if merged:
+            print(f"Chapters: {out_dir / 'chapters'}")
 
     elapsed = time.time() - start
     err_part = f", {errors} errors" if errors else ""

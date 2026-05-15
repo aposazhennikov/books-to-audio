@@ -227,6 +227,14 @@ class TTSSynthesisWorker(QThread):
         comfyui_url: str = "http://localhost:8188",
         workflow_path: str = "",
         failed_only: bool = False,
+        temperature: float = 1.0,
+        top_p: float = 0.8,
+        top_k: int = 20,
+        repetition_penalty: float = 1.05,
+        max_new_tokens: int = 2048,
+        seed: int = -1,
+        output_format: str = "flac",
+        merge_chapters: bool = True,
         parent=None,
     ):
         super().__init__(parent)
@@ -244,6 +252,14 @@ class TTSSynthesisWorker(QThread):
         self._comfyui_url = comfyui_url
         self._workflow_path = workflow_path
         self._failed_only = failed_only
+        self._temperature = temperature
+        self._top_p = top_p
+        self._top_k = top_k
+        self._repetition_penalty = repetition_penalty
+        self._max_new_tokens = max_new_tokens
+        self._seed = seed
+        self._output_format = output_format
+        self._merge_chapters = merge_chapters
         self._process: subprocess.Popen | None = None
         self._cancelled = False
 
@@ -255,11 +271,6 @@ class TTSSynthesisWorker(QThread):
 
     def run(self) -> None:
         try:
-            data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and data.get("version", 1) != 1:
-                self._run_comfyui_v2(data)
-                return
-
             runner_manifest_path, manifest = self._prepare_runner_manifest()
             total = len(manifest)
             if self._chapter is not None:
@@ -286,6 +297,13 @@ class TTSSynthesisWorker(QThread):
                 "--batch-size", str(self._batch_size),
                 "--log-file", self._wsl_path(self._output_dir / "synthesis_log.txt"),
                 "--chunk-timeout", str(self._chunk_timeout),
+                "--temperature", str(self._temperature),
+                "--top-p", str(self._top_p),
+                "--top-k", str(self._top_k),
+                "--repetition-penalty", str(self._repetition_penalty),
+                "--max-new-tokens", str(self._max_new_tokens),
+                "--seed", str(self._seed),
+                "--output-format", self._output_format,
             ]
             models_dir = self._models_dir.strip() or str(default_comfyui_models_dir())
             if models_dir:
@@ -296,13 +314,16 @@ class TTSSynthesisWorker(QThread):
                 args.append("--resume")
             if self._use_compile:
                 args.append("--compile")
-            if self._clone_config:
+            clone_config_path = self._prepare_clone_config()
+            if clone_config_path:
                 args.extend([
                     "--clone-config",
-                    self._wsl_path(Path(self._clone_config)),
+                    self._wsl_path(clone_config_path),
                 ])
             if self._use_sage_attention:
                 args.append("--sage-attention")
+            if self._merge_chapters:
+                args.append("--merge-chapters")
 
             bash_cmd = (
                 build_wsl_tts_activation_script()
@@ -343,7 +364,27 @@ class TTSSynthesisWorker(QThread):
                 if "Model loaded" in line:
                     self.status.emit("__model_ready__")
 
-                if line.startswith("PROGRESS "):
+                if line.startswith("VOICE_PROMPT "):
+                    try:
+                        kv = dict(re.findall(r"(\w+)=([^\s]+)", line))
+                        event = kv.get("event", "")
+                        done_val = int(kv.get("done", "0"))
+                        total_val = int(kv.get("total", "1"))
+                        if event == "start":
+                            self.status.emit(t("synth.sample_extracting"))
+                        elif event == "done":
+                            sec = float(kv.get("sec", "0"))
+                            self.status.emit(
+                                t(
+                                    "synth.sample_extracted",
+                                    done=done_val,
+                                    total=total_val,
+                                    sec=sec,
+                                ),
+                            )
+                    except (ValueError, TypeError):
+                        pass
+                elif line.startswith("PROGRESS "):
                     try:
                         kv = dict(
                             re.findall(r"(\w+)=([\d.]+)", line),
@@ -536,6 +577,28 @@ class TTSSynthesisWorker(QThread):
             encoding="utf-8",
         )
         return runner_manifest_path, chunks
+
+    def _prepare_clone_config(self) -> Path | None:
+        """Write a WSL-readable clone config with converted audio paths."""
+        if not self._clone_config:
+            return None
+
+        src = Path(self._clone_config)
+        data = json.loads(src.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return src
+
+        for cfg in data.values():
+            if isinstance(cfg, dict) and cfg.get("ref_audio"):
+                cfg["ref_audio"] = self._wsl_path_text(str(cfg["ref_audio"]))
+
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+        out_path = self._output_dir / ".tts_clone_config.wsl.json"
+        out_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return out_path
 
     @staticmethod
     def _format_eta(seconds: int) -> str:

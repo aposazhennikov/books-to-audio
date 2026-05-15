@@ -93,3 +93,34 @@ def test_apply_sage_attention_required_raises_without_kernel(
 
     with pytest.raises(tts_runner.SageAttentionUnavailableError):
         tts_runner._apply_sage_attention(required=True)
+
+
+def test_global_clone_prompt_matches_any_voice() -> None:
+    prompts = {"__all__": object()}
+
+    assert tts_runner._clone_prompt_for_voice("narrator_calm", prompts) is prompts["__all__"]
+
+
+def test_generation_kwarg_fallback_retries_without_controls() -> None:
+    calls: list[dict] = []
+
+    def method(**kwargs):
+        calls.append(kwargs)
+        if "temperature" in kwargs:
+            raise TypeError("unexpected keyword argument 'temperature'")
+        return "ok"
+
+    result = tts_runner._call_with_generation_kwargs(
+        method,
+        {
+            "text": "hello",
+            "temperature": 1.0,
+            "top_p": 0.8,
+        },
+    )
+
+    assert result == "ok"
+    assert calls == [
+        {"text": "hello", "temperature": 1.0, "top_p": 0.8},
+        {"text": "hello"},
+    ]

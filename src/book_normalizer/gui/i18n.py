@@ -518,6 +518,104 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "По умолчанию: 300 с (5 мин). Увеличьте для очень длинных чанков."
         ),
     },
+    "synth.output_format": {
+        "en": "Output format:",
+        "ru": "Формат аудио:",
+    },
+    "synth.merge_chapters": {
+        "en": "Chapters:",
+        "ru": "Главы:",
+    },
+    "synth.merge_chapters_check": {
+        "en": "Merge chunks into chapter files",
+        "ru": "Собрать чанки в файлы глав",
+    },
+    "synth.sample_enable": {
+        "en": "Use sample voice for this book",
+        "ru": "Использовать sample voice для этой книги",
+    },
+    "synth.sample_title": {
+        "en": "CustomVoice Sample",
+        "ru": "CustomVoice Sample",
+    },
+    "synth.sample_desc": {
+        "en": (
+            "Choose an audio sample, listen to it, enter the exact spoken text, "
+            "then synthesize all chunks directly in this app without ComfyUI nodes."
+        ),
+        "ru": (
+            "Выберите аудио-образец, прослушайте его, введите точный произнесенный текст, "
+            "и приложение озвучит все чанки напрямую без ComfyUI-нод."
+        ),
+    },
+    "synth.sample_audio": {
+        "en": "Sample audio:",
+        "ru": "Sample audio:",
+    },
+    "synth.sample_preview": {
+        "en": "Preview:",
+        "ru": "Прослушать:",
+    },
+    "synth.sample_play": {
+        "en": "Play",
+        "ru": "Play",
+    },
+    "synth.sample_pause": {
+        "en": "Pause",
+        "ru": "Pause",
+    },
+    "synth.sample_transcript": {
+        "en": "Sample text:",
+        "ru": "Текст sample voice:",
+    },
+    "synth.sample_idle": {
+        "en": "Sample voice is optional; when enabled, prompt extraction runs before chunks.",
+        "ru": "Sample voice необязателен; если включен, prompt extraction выполнится перед чанками.",
+    },
+    "synth.sample_ready": {
+        "en": "Sample audio loaded. Enter the exact transcript before synthesis.",
+        "ru": "Sample audio загружен. Перед синтезом введите точный текст образца.",
+    },
+    "synth.sample_duration": {
+        "en": "Sample length: {sec}s. Prompt extraction estimate: {eta}.",
+        "ru": "Длина sample: {sec} с. Оценка prompt extraction: {eta}.",
+    },
+    "synth.sample_missing": {
+        "en": "Choose sample audio and enter the exact sample text.",
+        "ru": "Выберите sample audio и введите точный текст образца.",
+    },
+    "synth.sample_extracting": {
+        "en": "Extracting voice prompt from sample audio...",
+        "ru": "Извлекаю voice prompt из sample audio...",
+    },
+    "synth.sample_extracted": {
+        "en": "Voice prompt {done}/{total} ready in {sec:.1f}s.",
+        "ru": "Voice prompt {done}/{total} готов за {sec:.1f} с.",
+    },
+    "synth.temperature": {
+        "en": "Temperature:",
+        "ru": "Temperature:",
+    },
+    "synth.top_p": {
+        "en": "Top-p:",
+        "ru": "Top-p:",
+    },
+    "synth.top_k": {
+        "en": "Top-k:",
+        "ru": "Top-k:",
+    },
+    "synth.repetition_penalty": {
+        "en": "Repetition penalty:",
+        "ru": "Repetition penalty:",
+    },
+    "synth.max_new_tokens": {
+        "en": "Max new tokens:",
+        "ru": "Max new tokens:",
+    },
+    "synth.seed": {
+        "en": "Seed:",
+        "ru": "Seed:",
+    },
     "synth.chapter": {
         "en": "Chapter:",
         "ru": "Глава:",

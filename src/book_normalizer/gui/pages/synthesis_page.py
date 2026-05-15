@@ -7,10 +7,12 @@ import tempfile
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
+from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -27,7 +29,7 @@ from PyQt6.QtWidgets import (
 
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
-from book_normalizer.gui.workers.tts_worker import ComfyVoiceSaveWorker, TTSSynthesisWorker
+from book_normalizer.gui.workers.tts_worker import TTSSynthesisWorker
 from book_normalizer.tts.model_paths import default_comfyui_models_dir
 
 MODELS = [
@@ -174,7 +176,6 @@ class SynthesisPage(QWidget):
         self._manifest_path: Path | None = None
         self._output_dir: Path | None = None
         self._worker: TTSSynthesisWorker | None = None
-        self._voice_save_worker: ComfyVoiceSaveWorker | None = None
         self._chapter_map: dict[int, int] = {}
         self._phase = "idle"
         self._phase_start = 0.0
@@ -182,6 +183,10 @@ class SynthesisPage(QWidget):
         self._tick_timer.setInterval(1000)
         self._tick_timer.timeout.connect(self._on_tick)
         self._clone_rows: list[_CloneVoiceRow] = []
+        self._sample_audio = QAudioOutput(self)
+        self._sample_audio.setVolume(0.8)
+        self._sample_player = QMediaPlayer(self)
+        self._sample_player.setAudioOutput(self._sample_audio)
         self._setup_ui()
 
     # ── UI construction ──────────────────────────────────────────────────────
@@ -227,29 +232,6 @@ class SynthesisPage(QWidget):
         settings.setHorizontalSpacing(16)
         settings.setVerticalSpacing(6)
 
-        self._comfyui_url_edit = QLineEdit("http://localhost:8188")
-        self._comfyui_url_label = QLabel()
-        settings.addRow(self._comfyui_url_label, self._comfyui_url_edit)
-
-        workflow_row = QHBoxLayout()
-        workflow_row.setSpacing(6)
-        default_workflow = (
-            Path(__file__).resolve().parent.parent.parent.parent.parent
-            / "comfyui_workflows"
-            / "qwen3_tts_template.json"
-        )
-        self._workflow_edit = QLineEdit(str(default_workflow))
-        self._workflow_edit.setMinimumWidth(320)
-        workflow_row.addWidget(self._workflow_edit, stretch=1)
-        self._btn_workflow = QPushButton()
-        self._btn_workflow.clicked.connect(self._browse_workflow)
-        workflow_row.addWidget(self._btn_workflow)
-        self._workflow_label = QLabel()
-        settings.addRow(self._workflow_label, workflow_row)
-
-        self._workflow_hint = self._hint_label()
-        settings.addRow("", self._workflow_hint)
-
         self._model_combo = QComboBox()
         self._model_combo.addItems(MODELS)
         self._model_label = QLabel()
@@ -291,6 +273,17 @@ class SynthesisPage(QWidget):
         self._chunk_timeout_label = QLabel()
         settings.addRow(self._chunk_timeout_label, self._chunk_timeout)
 
+        self._output_format_combo = QComboBox()
+        self._output_format_combo.addItem("FLAC", "flac")
+        self._output_format_combo.addItem("WAV", "wav")
+        self._output_format_label = QLabel()
+        settings.addRow(self._output_format_label, self._output_format_combo)
+
+        self._merge_chapters_check = QCheckBox()
+        self._merge_chapters_check.setChecked(True)
+        self._merge_chapters_label = QLabel()
+        settings.addRow(self._merge_chapters_label, self._merge_chapters_check)
+
         self._chapter_combo = QComboBox()
         self._chapter_combo.setMinimumWidth(200)
         self._chapter_label = QLabel()
@@ -305,13 +298,6 @@ class SynthesisPage(QWidget):
 
         self._resume_hint = self._hint_label()
         settings.addRow("", self._resume_hint)
-
-        self._retry_failed_check = QCheckBox()
-        self._retry_failed_label = QLabel()
-        settings.addRow(self._retry_failed_label, self._retry_failed_check)
-
-        self._retry_failed_hint = self._hint_label()
-        settings.addRow("", self._retry_failed_hint)
 
         self._compile_check = QCheckBox()
         self._compile_label = QLabel()
@@ -330,8 +316,7 @@ class SynthesisPage(QWidget):
         layout.addLayout(settings)
 
         # ── Voice cloning panel ───────────────────────────────────────────
-        layout.addWidget(self._build_clone_panel())
-        layout.addWidget(self._build_comfy_voice_panel())
+        layout.addWidget(self._build_sample_voice_panel())
 
         # ── Action buttons ────────────────────────────────────────────────
         btn_row = QHBoxLayout()
@@ -388,6 +373,135 @@ class SynthesisPage(QWidget):
         outer.addLayout(bottom)
 
         self.retranslate()
+
+    def _build_sample_voice_panel(self) -> QFrame:
+        """Build the direct CustomVoice sample panel."""
+        frame = QFrame()
+        frame.setObjectName("sampleVoicePanel")
+        frame.setStyleSheet(
+            "QFrame#sampleVoicePanel {"
+            "  background: rgba(124,92,252,0.07);"
+            "  border: 1px solid rgba(124,92,252,0.25);"
+            "  border-radius: 8px;"
+            "}"
+        )
+        outer = QVBoxLayout(frame)
+        outer.setContentsMargins(12, 10, 12, 10)
+        outer.setSpacing(8)
+
+        header = QHBoxLayout()
+        self._sample_enable = QCheckBox()
+        header.addWidget(self._sample_enable)
+        self._sample_title = QLabel()
+        self._sample_title.setStyleSheet(
+            "font-weight: 700; font-size: 13px; color: rgba(190,170,255,0.98);"
+        )
+        header.addWidget(self._sample_title, stretch=1)
+        outer.addLayout(header)
+
+        self._sample_desc = QLabel()
+        self._sample_desc.setWordWrap(True)
+        self._sample_desc.setStyleSheet(
+            "color: rgba(255,255,255,0.55); font-size: 11px;"
+        )
+        outer.addWidget(self._sample_desc)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(6)
+
+        audio_row = QHBoxLayout()
+        audio_row.setSpacing(6)
+        self._sample_audio_edit = QLineEdit()
+        self._sample_audio_edit.setReadOnly(True)
+        audio_row.addWidget(self._sample_audio_edit, stretch=1)
+        self._btn_sample_audio = QPushButton()
+        self._btn_sample_audio.clicked.connect(self._browse_sample_audio)
+        audio_row.addWidget(self._btn_sample_audio)
+        self._sample_audio_label = QLabel()
+        form.addRow(self._sample_audio_label, audio_row)
+
+        playback_row = QHBoxLayout()
+        playback_row.setSpacing(8)
+        self._btn_sample_play = QPushButton()
+        self._btn_sample_play.setEnabled(False)
+        self._btn_sample_play.clicked.connect(self._toggle_sample_playback)
+        playback_row.addWidget(self._btn_sample_play)
+        self._sample_duration_label = QLabel("0:00 / 0:00")
+        self._sample_duration_label.setStyleSheet(
+            "color: rgba(255,255,255,0.7); font-size: 12px;"
+        )
+        playback_row.addWidget(self._sample_duration_label)
+        playback_row.addStretch()
+        self._sample_player.durationChanged.connect(self._on_sample_duration_changed)
+        self._sample_player.positionChanged.connect(self._on_sample_position_changed)
+        self._sample_player.playbackStateChanged.connect(self._on_sample_playback_state)
+        self._sample_preview_label = QLabel()
+        form.addRow(self._sample_preview_label, playback_row)
+
+        self._sample_transcript_edit = QPlainTextEdit()
+        self._sample_transcript_edit.setMaximumHeight(92)
+        self._sample_transcript_label = QLabel()
+        form.addRow(self._sample_transcript_label, self._sample_transcript_edit)
+
+        outer.addLayout(form)
+
+        controls = QFormLayout()
+        controls.setHorizontalSpacing(14)
+        controls.setVerticalSpacing(6)
+
+        self._temperature_spin = QDoubleSpinBox()
+        self._temperature_spin.setRange(0.1, 2.0)
+        self._temperature_spin.setSingleStep(0.05)
+        self._temperature_spin.setDecimals(2)
+        self._temperature_spin.setValue(1.0)
+        self._temperature_label = QLabel()
+        controls.addRow(self._temperature_label, self._temperature_spin)
+
+        self._top_p_spin = QDoubleSpinBox()
+        self._top_p_spin.setRange(0.1, 1.0)
+        self._top_p_spin.setSingleStep(0.05)
+        self._top_p_spin.setDecimals(2)
+        self._top_p_spin.setValue(0.80)
+        self._top_p_label = QLabel()
+        controls.addRow(self._top_p_label, self._top_p_spin)
+
+        self._top_k_spin = QSpinBox()
+        self._top_k_spin.setRange(1, 200)
+        self._top_k_spin.setValue(20)
+        self._top_k_label = QLabel()
+        controls.addRow(self._top_k_label, self._top_k_spin)
+
+        self._repetition_penalty_spin = QDoubleSpinBox()
+        self._repetition_penalty_spin.setRange(0.8, 2.0)
+        self._repetition_penalty_spin.setSingleStep(0.01)
+        self._repetition_penalty_spin.setDecimals(2)
+        self._repetition_penalty_spin.setValue(1.05)
+        self._repetition_penalty_label = QLabel()
+        controls.addRow(self._repetition_penalty_label, self._repetition_penalty_spin)
+
+        self._max_new_tokens_spin = QSpinBox()
+        self._max_new_tokens_spin.setRange(128, 8192)
+        self._max_new_tokens_spin.setSingleStep(128)
+        self._max_new_tokens_spin.setValue(2048)
+        self._max_new_tokens_label = QLabel()
+        controls.addRow(self._max_new_tokens_label, self._max_new_tokens_spin)
+
+        self._seed_spin = QSpinBox()
+        self._seed_spin.setRange(-1, 2_147_483_647)
+        self._seed_spin.setValue(-1)
+        self._seed_label = QLabel()
+        controls.addRow(self._seed_label, self._seed_spin)
+
+        outer.addLayout(controls)
+
+        self._sample_status = QLabel()
+        self._sample_status.setWordWrap(True)
+        self._sample_status.setStyleSheet(
+            "color: rgba(255,255,255,0.62); font-size: 11px;"
+        )
+        outer.addWidget(self._sample_status)
+        return frame
 
     def _build_clone_panel(self) -> QFrame:
         """Build the voice cloning expandable panel."""
@@ -498,79 +612,6 @@ class SynthesisPage(QWidget):
         self._clone_body.setVisible(False)
         return frame
 
-    def _build_comfy_voice_panel(self) -> QFrame:
-        """Build the ComfyUI saved-voice training panel."""
-        frame = QFrame()
-        frame.setObjectName("comfyVoicePanel")
-        frame.setStyleSheet(
-            "QFrame#comfyVoicePanel {"
-            "  background: rgba(124,92,252,0.06);"
-            "  border: 1px solid rgba(124,92,252,0.22);"
-            "  border-radius: 8px;"
-            "  padding: 0px;"
-            "}"
-        )
-        outer = QVBoxLayout(frame)
-        outer.setContentsMargins(12, 8, 12, 8)
-        outer.setSpacing(6)
-
-        self._train_title = QLabel()
-        self._train_title.setStyleSheet(
-            "font-weight: 700; font-size: 13px; color: rgba(170,145,255,0.95);"
-        )
-        outer.addWidget(self._train_title)
-
-        self._train_desc = QLabel()
-        self._train_desc.setWordWrap(True)
-        self._train_desc.setStyleSheet(
-            "color: rgba(255,255,255,0.5); font-size: 11px; padding: 0 0 4px 0;"
-        )
-        outer.addWidget(self._train_desc)
-
-        form = QFormLayout()
-        form.setHorizontalSpacing(14)
-        form.setVerticalSpacing(6)
-
-        self._train_url_edit = QLineEdit("http://localhost:8188")
-        self._train_url_label = QLabel()
-        form.addRow(self._train_url_label, self._train_url_edit)
-
-        self._train_name_edit = QLineEdit("narrator")
-        self._train_name_label = QLabel()
-        form.addRow(self._train_name_label, self._train_name_edit)
-
-        audio_row = QHBoxLayout()
-        audio_row.setSpacing(6)
-        self._train_audio_edit = QLineEdit()
-        self._train_audio_edit.setReadOnly(True)
-        audio_row.addWidget(self._train_audio_edit, stretch=1)
-        self._btn_train_audio = QPushButton()
-        self._btn_train_audio.clicked.connect(self._browse_train_audio)
-        audio_row.addWidget(self._btn_train_audio)
-        self._train_audio_label = QLabel()
-        form.addRow(self._train_audio_label, audio_row)
-
-        self._train_transcript_edit = QLineEdit()
-        self._train_transcript_label = QLabel()
-        form.addRow(self._train_transcript_label, self._train_transcript_edit)
-
-        outer.addLayout(form)
-
-        action_row = QHBoxLayout()
-        self._btn_train_voice = QPushButton()
-        self._btn_train_voice.clicked.connect(self._start_voice_training)
-        action_row.addWidget(self._btn_train_voice)
-        action_row.addStretch()
-        outer.addLayout(action_row)
-
-        self._train_status = QLabel()
-        self._train_status.setWordWrap(True)
-        self._train_status.setStyleSheet(
-            "color: rgba(255,255,255,0.62); font-size: 11px;"
-        )
-        outer.addWidget(self._train_status)
-        return frame
-
     @staticmethod
     def _hint_label() -> QLabel:
         lbl = QLabel()
@@ -588,10 +629,6 @@ class SynthesisPage(QWidget):
         if not self._manifest_path:
             self._manifest_label.setText(t("synth.no_manifest"))
         self._btn_load.setText(t("synth.load_manifest"))
-        self._comfyui_url_label.setText(t("synth.comfyui_url"))
-        self._workflow_label.setText(t("synth.workflow"))
-        self._btn_workflow.setText(t("synth.choose_file"))
-        self._workflow_hint.setText(t("synth.workflow_hint"))
         self._model_label.setText(t("synth.model"))
         self._model_hint.setText(t("synth.model_hint"))
         self._model_combo.setToolTip(t("synth.model_hint"))
@@ -604,13 +641,13 @@ class SynthesisPage(QWidget):
         self._batch_size.setToolTip(t("synth.batch_hint"))
         self._chunk_timeout_label.setText(t("synth.chunk_timeout"))
         self._chunk_timeout.setToolTip(t("synth.chunk_timeout_hint"))
+        self._output_format_label.setText(t("synth.output_format"))
+        self._merge_chapters_label.setText(t("synth.merge_chapters"))
+        self._merge_chapters_check.setText(t("synth.merge_chapters_check"))
         self._chapter_label.setText(t("synth.chapter"))
         self._resume_label.setText(t("synth.resume"))
         self._resume_check.setText(t("synth.resume_check"))
         self._resume_hint.setText(t("synth.resume_hint"))
-        self._retry_failed_label.setText(t("synth.retry_failed"))
-        self._retry_failed_check.setText(t("synth.retry_failed_check"))
-        self._retry_failed_hint.setText(t("synth.retry_failed_hint"))
         self._compile_label.setText(t("synth.compile"))
         self._compile_check.setText(t("synth.compile_check"))
         self._compile_hint.setText(t("synth.compile_hint"))
@@ -618,28 +655,25 @@ class SynthesisPage(QWidget):
         self._sage_check.setText(t("synth.sage_check"))
         self._sage_hint.setText(t("synth.sage_hint"))
 
-        self._clone_enable.setText(t("synth.clone_enable"))
-        self._clone_title.setText(t("synth.clone_title"))
-        self._clone_desc.setText(t("synth.clone_desc"))
-        self._btn_add_clone.setText(t("synth.clone_add_voice"))
-        self._clone_col_role.setText(t("synth.clone_col_role"))
-        self._clone_col_wav.setText(t("synth.clone_col_wav"))
-        self._clone_col_transcript.setText(t("synth.clone_col_transcript"))
-
-        self._train_title.setText(t("synth.train_title"))
-        self._train_desc.setText(t("synth.train_desc"))
-        self._train_url_label.setText(t("synth.train_url"))
-        self._train_name_label.setText(t("synth.train_name"))
-        self._train_audio_label.setText(t("synth.train_audio"))
-        self._train_transcript_label.setText(t("synth.train_transcript"))
-        self._train_transcript_edit.setPlaceholderText(t("synth.clone_transcript_ph"))
-        self._btn_train_audio.setText(t("synth.browse_audio"))
-        self._btn_train_voice.setText(t("synth.train_start"))
-        if not self._train_status.text():
-            self._train_status.setText(t("synth.train_idle"))
-
-        for row in self._clone_rows:
-            row.retranslate()
+        self._sample_enable.setText(t("synth.sample_enable"))
+        self._sample_title.setText(t("synth.sample_title"))
+        self._sample_desc.setText(t("synth.sample_desc"))
+        self._sample_audio_label.setText(t("synth.sample_audio"))
+        self._btn_sample_audio.setText(t("synth.browse_audio"))
+        self._sample_preview_label.setText(t("synth.sample_preview"))
+        self._btn_sample_play.setText(t("synth.sample_play"))
+        self._sample_transcript_label.setText(t("synth.sample_transcript"))
+        self._sample_transcript_edit.setPlaceholderText(
+            t("synth.clone_transcript_ph"),
+        )
+        self._temperature_label.setText(t("synth.temperature"))
+        self._top_p_label.setText(t("synth.top_p"))
+        self._top_k_label.setText(t("synth.top_k"))
+        self._repetition_penalty_label.setText(t("synth.repetition_penalty"))
+        self._max_new_tokens_label.setText(t("synth.max_new_tokens"))
+        self._seed_label.setText(t("synth.seed"))
+        if not self._sample_status.text():
+            self._sample_status.setText(t("synth.sample_idle"))
 
         self._btn_start.setText(t("synth.start"))
         self._btn_stop.setText(t("synth.stop"))
@@ -692,7 +726,7 @@ class SynthesisPage(QWidget):
         tmp.close()
         return tmp.name
 
-    # ComfyUI saved voice logic
+    # Sample voice logic
 
     def _browse_models_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(
@@ -703,62 +737,77 @@ class SynthesisPage(QWidget):
         if path:
             self._models_dir_edit.setText(path)
 
-    def _browse_workflow(self) -> None:
+    def _browse_sample_audio(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            t("synth.workflow"),
-            self._workflow_edit.text().strip(),
-            "JSON (*.json);;All (*)",
-        )
-        if path:
-            self._workflow_edit.setText(path)
-
-    def _browse_train_audio(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            t("synth.train_audio"),
+            t("synth.sample_audio"),
             "",
             "Audio (*.wav *.mp3 *.flac *.ogg);;All (*)",
         )
         if path:
-            self._train_audio_edit.setText(path)
+            self._sample_audio_edit.setText(path)
+            self._sample_enable.setChecked(True)
+            self._btn_sample_play.setEnabled(True)
+            self._sample_player.setSource(QUrl.fromLocalFile(path))
+            self._sample_status.setText(t("synth.sample_ready"))
 
-    def _start_voice_training(self) -> None:
-        audio = self._train_audio_edit.text().strip()
-        name = self._train_name_edit.text().strip()
-        ref_text = self._train_transcript_edit.text().strip()
-        if not audio or not name:
-            self._train_status.setText(t("synth.train_missing"))
+    def _toggle_sample_playback(self) -> None:
+        if not self._sample_audio_edit.text().strip():
             return
+        if self._sample_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._sample_player.pause()
+        else:
+            self._sample_player.play()
 
-        self._btn_train_voice.setEnabled(False)
-        self._train_status.setText(t("synth.train_starting"))
-        self._voice_save_worker = ComfyVoiceSaveWorker(
-            audio_path=Path(audio),
-            voice_name=name,
-            ref_text=ref_text,
-            comfyui_url=self._train_url_edit.text().strip() or "http://localhost:8188",
-            timeout=float(self._chunk_timeout.value()),
+    def _on_sample_duration_changed(self, _duration: int) -> None:
+        self._update_sample_duration_label()
+
+    def _on_sample_position_changed(self, _position: int) -> None:
+        self._update_sample_duration_label()
+
+    def _on_sample_playback_state(self, state: QMediaPlayer.PlaybackState) -> None:
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self._btn_sample_play.setText(t("synth.sample_pause"))
+        else:
+            self._btn_sample_play.setText(t("synth.sample_play"))
+
+    def _update_sample_duration_label(self) -> None:
+        pos = self._sample_player.position()
+        duration = self._sample_player.duration()
+        self._sample_duration_label.setText(
+            f"{self._format_msec(pos)} / {self._format_msec(duration)}",
         )
-        self._voice_save_worker.status.connect(self._on_voice_train_status)
-        self._voice_save_worker.finished.connect(self._on_voice_train_finished)
-        self._voice_save_worker.error.connect(self._on_voice_train_error)
-        self._voice_save_worker.start()
+        if duration > 0:
+            sec = max(1, int(round(duration / 1000)))
+            eta_min = max(20, sec * 2)
+            eta_max = max(45, sec * 4)
+            self._sample_status.setText(
+                t("synth.sample_duration", sec=sec, eta=f"{eta_min}-{eta_max}s"),
+            )
 
-    def _on_voice_train_status(self, msg: str) -> None:
-        self._train_status.setText(msg)
-        self._log_edit.appendPlainText(msg)
+    @staticmethod
+    def _format_msec(value: int) -> str:
+        seconds = max(0, value // 1000)
+        m, s = divmod(seconds, 60)
+        return f"{m}:{s:02d}"
 
-    def _on_voice_train_finished(self, name: str, speakers: list) -> None:
-        self._btn_train_voice.setEnabled(True)
-        speakers_text = ", ".join(str(s) for s in speakers) if speakers else t("synth.train_none")
-        self._train_status.setText(
-            t("synth.train_done", name=name, speakers=speakers_text),
+    def _build_temp_sample_voice_config(self) -> str:
+        """Serialize the selected sample voice as a global clone config."""
+        if not self._sample_enable.isChecked():
+            return ""
+
+        audio = self._sample_audio_edit.text().strip()
+        ref_text = self._sample_transcript_edit.toPlainText().strip()
+        if not audio or not ref_text:
+            raise ValueError(t("synth.sample_missing"))
+
+        cfg = {"__all__": {"ref_audio": audio, "ref_text": ref_text}}
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8",
         )
-
-    def _on_voice_train_error(self, msg: str) -> None:
-        self._btn_train_voice.setEnabled(True)
-        self._train_status.setText(t("synth.train_error", msg=msg))
+        json.dump(cfg, tmp, ensure_ascii=False, indent=2)
+        tmp.close()
+        return tmp.name
 
     # ── Manifest ──────────────────────────────────────────────────────────────
 
@@ -830,9 +879,12 @@ class SynthesisPage(QWidget):
         selected = self._chapter_combo.currentData()
         chapter = selected if selected and selected > 0 else None
 
-        clone_config_path = ""
-        if self._clone_enable.isChecked():
-            clone_config_path = self._build_temp_clone_config()
+        try:
+            clone_config_path = self._build_temp_sample_voice_config()
+        except ValueError as exc:
+            self._status.setText(str(exc))
+            self._progress.set_status(str(exc))
+            return
 
         self._btn_start.setEnabled(False)
         self._btn_stop.setEnabled(True)
@@ -850,9 +902,14 @@ class SynthesisPage(QWidget):
             clone_config=clone_config_path,
             use_sage_attention=self._sage_check.isChecked(),
             models_dir=self._models_dir_edit.text().strip(),
-            comfyui_url=self._comfyui_url_edit.text().strip(),
-            workflow_path=self._workflow_edit.text().strip(),
-            failed_only=self._retry_failed_check.isChecked(),
+            temperature=self._temperature_spin.value(),
+            top_p=self._top_p_spin.value(),
+            top_k=self._top_k_spin.value(),
+            repetition_penalty=self._repetition_penalty_spin.value(),
+            max_new_tokens=self._max_new_tokens_spin.value(),
+            seed=self._seed_spin.value(),
+            output_format=str(self._output_format_combo.currentData() or "flac"),
+            merge_chapters=self._merge_chapters_check.isChecked(),
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.status.connect(self._on_status)
@@ -944,6 +1001,7 @@ class SynthesisPage(QWidget):
             self._tick_timer.start()
             self._progress.set_busy(t("synth.model_ready", sec=elapsed))
         else:
+            self._tick_timer.stop()
             self._progress.set_busy(msg)
 
     def _on_finished(self, output_dir: str, synthesized: int, skipped: int) -> None:

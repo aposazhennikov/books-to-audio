@@ -99,6 +99,7 @@ def test_global_clone_prompt_matches_any_voice() -> None:
     prompts = {"__all__": object()}
 
     assert tts_runner._clone_prompt_for_voice("narrator_calm", prompts) is prompts["__all__"]
+    assert tts_runner._clone_prompt_key_for_voice("narrator_calm", prompts) == "__all__"
 
 
 def test_role_clone_prompt_matches_preset_voice_ids() -> None:
@@ -113,6 +114,37 @@ def test_per_voice_clone_prompt_wins_over_role_prompt() -> None:
     prompts = {"male": object(), "male_young": object()}
 
     assert tts_runner._clone_prompt_for_voice("male_young", prompts) is prompts["male_young"]
+
+
+def test_clone_output_voice_id_uses_saved_voice_name() -> None:
+    prompts = {"__all__": object()}
+    config = {"__all__": {"saved_voice": "дикторский средний темп"}}
+
+    assert (
+        tts_runner._clone_output_voice_id("narrator_calm", prompts, config)
+        == "дикторский_средний_темп"
+    )
+
+
+def test_clone_output_voice_id_uses_custom_tag_for_unsaved_global_clone() -> None:
+    prompts = {"__all__": object()}
+    config = {"__all__": {"ref_audio": "/tmp/ref.wav", "ref_text": "Sample"}}
+
+    assert (
+        tts_runner._clone_output_voice_id("narrator_calm", prompts, config)
+        == "custom_voice"
+    )
+    assert (
+        tts_runner._display_voice_id("narrator_calm", prompts, config)
+        == "narrator_calm->clone:custom_voice"
+    )
+
+
+def test_missing_clone_prompt_keys_are_fatal_candidates() -> None:
+    config = {"__all__": {"saved_voice": "missing"}, "male": {"saved_voice": "ok"}}
+    prompts = {"male": object()}
+
+    assert tts_runner._missing_clone_prompt_keys(config, prompts) == ["__all__"]
 
 
 def test_legacy_men_voice_id_resolves_to_male_speaker() -> None:

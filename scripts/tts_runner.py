@@ -57,6 +57,7 @@ from book_normalizer.tts.voice_library import (
     default_voice_library_dir,
     load_voice_prompt,
     resolve_saved_voice_path,
+    sanitize_voice_id,
     save_voice_prompt,
 )
 
@@ -543,14 +544,72 @@ def _clone_prompt_for_voice(
     clone_prompts: dict[str, Any] | None,
 ) -> Any | None:
     """Return a per-voice, per-role, or global clone prompt."""
+    key = _clone_prompt_key_for_voice(voice_id, clone_prompts)
+    return clone_prompts.get(key) if key and clone_prompts else None
+
+
+def _clone_prompt_key_for_voice(
+    voice_id: str,
+    clone_prompts: dict[str, Any] | None,
+) -> str | None:
+    """Return the clone prompt key that applies to a voice."""
     if not clone_prompts:
         return None
     role = role_for_voice_id(voice_id)
-    return (
-        clone_prompts.get(voice_id)
-        or clone_prompts.get(role)
-        or clone_prompts.get("__all__")
+    for key in (voice_id, role, "__all__"):
+        if key in clone_prompts:
+            return key
+    return None
+
+
+def _clone_output_voice_id(
+    voice_id: str,
+    clone_prompts: dict[str, Any] | None,
+    clone_config: dict[str, dict] | None,
+) -> str:
+    """Return the voice tag to use in output filenames."""
+    key = _clone_prompt_key_for_voice(voice_id, clone_prompts)
+    if key is None:
+        return sanitize_voice_id(voice_id)
+
+    cfg = clone_config.get(key, {}) if clone_config else {}
+    saved_voice = str(
+        cfg.get("saved_voice")
+        or cfg.get("voice")
+        or cfg.get("voice_name")
+        or cfg.get("save_as")
+        or ""
+    ).strip()
+    if saved_voice:
+        return sanitize_voice_id(saved_voice)
+    if key == "__all__":
+        return "custom_voice"
+    return f"custom_{sanitize_voice_id(key)}"
+
+
+def _display_voice_id(
+    voice_id: str,
+    clone_prompts: dict[str, Any] | None,
+    clone_config: dict[str, dict] | None,
+) -> str:
+    """Return a log-friendly voice label showing when cloning is active."""
+    key = _clone_prompt_key_for_voice(voice_id, clone_prompts)
+    if key is None:
+        return voice_id
+    output_voice_id = _clone_output_voice_id(
+        voice_id,
+        clone_prompts,
+        clone_config,
     )
+    return f"{voice_id}->clone:{output_voice_id}"
+
+
+def _missing_clone_prompt_keys(
+    clone_config: dict[str, dict],
+    clone_prompts: dict[str, Any],
+) -> list[str]:
+    """Return configured clone keys that failed to produce/load a prompt."""
+    return [voice_id for voice_id in clone_config if voice_id not in clone_prompts]
 
 
 def _clone_config_for_voice(
@@ -1261,6 +1320,17 @@ def _main_impl(args: argparse.Namespace) -> None:
             voice_library_dir=Path(args.voice_library_dir),
             clone_model_name=args.clone_model,
         )
+        missing_clone_keys = _missing_clone_prompt_keys(clone_config, clone_prompts)
+        if missing_clone_keys:
+            print(
+                "ERROR: selected CustomVoice prompt(s) could not be loaded: "
+                + ", ".join(missing_clone_keys)
+            )
+            print(
+                "Refusing to fall back to built-in narrator presets because "
+                "CustomVoice was requested."
+            )
+            sys.exit(1)
         print(f"Clone prompts ready: {list(clone_prompts.keys())}")
         sys.stdout.flush()
 
@@ -1326,9 +1396,14 @@ def _main_impl(args: argparse.Namespace) -> None:
 
             ch_dir = out_dir / "audio_chunks" / f"chapter_{ch_idx + 1:03d}"
             ch_dir.mkdir(parents=True, exist_ok=True)
-            wav_path = ch_dir / f"chunk_{ck_idx + 1:03d}_{voice_id}.{audio_ext}"
+            output_voice_id = _clone_output_voice_id(
+                voice_id,
+                clone_prompts,
+                clone_config,
+            )
+            wav_path = ch_dir / f"chunk_{ck_idx + 1:03d}_{output_voice_id}.{audio_ext}"
 
-            if args.resume and (key in completed_keys or wav_path.exists()):
+            if args.resume and wav_path.exists():
                 skipped += 1
                 processed_chars += len(chunk.get("text", ""))
                 manifest_out.append({**chunk, "file": str(wav_path.relative_to(out_dir))})
@@ -1595,10 +1670,15 @@ def _main_impl(args: argparse.Namespace) -> None:
 
         c = batch_chunks[-1]
         chunk_chars = len(c.get("text", ""))
+        display_voice = _display_voice_id(
+            c["voice_id"],
+            clone_prompts,
+            clone_config,
+        )
         print(
             f"  [{done + skipped}/{total}] "
             f"ch{c['chapter_index']+1} chunk{c['chunk_index']+1} "
-            f"[{c['voice_id']}] {chunk_chars}ch "
+            f"[{display_voice}] {chunk_chars}ch "
             f"({elapsed_chunk:.1f}s, ETA: {_format_eta(eta)})"
         )
         sys.stdout.flush()

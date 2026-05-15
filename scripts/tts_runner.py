@@ -472,6 +472,72 @@ def _call_with_generation_kwargs(method: Any, kwargs: dict[str, Any]) -> Any:
         return method(**fallback_kwargs)
 
 
+def _speech_rate_arg(value: str) -> float:
+    """Parse post-generation speech rate for argparse."""
+    rate = float(value)
+    if not 0.5 <= rate <= 1.5:
+        raise argparse.ArgumentTypeError("speech rate must be between 0.50 and 1.50")
+    return rate
+
+
+def _apply_speech_rate(wav_data: Any, speech_rate: float) -> Any:
+    """Time-stretch generated audio while preserving pitch."""
+    if abs(speech_rate - 1.0) < 0.005:
+        return wav_data
+
+    try:
+        import librosa
+        import numpy as np
+    except Exception as exc:
+        print(
+            f"  WARNING: speech-rate={speech_rate:.2f}x requested, "
+            f"but librosa/numpy is unavailable ({exc}); writing original speed."
+        )
+        sys.stdout.flush()
+        return wav_data
+
+    arr = np.asarray(wav_data)
+    if arr.size == 0:
+        return wav_data
+    if arr.ndim == 1:
+        return librosa.effects.time_stretch(
+            arr.astype(np.float32, copy=False),
+            rate=speech_rate,
+        )
+    if arr.ndim == 2:
+        channels = [
+            librosa.effects.time_stretch(
+                arr[:, channel].astype(np.float32, copy=False),
+                rate=speech_rate,
+            )
+            for channel in range(arr.shape[1])
+        ]
+        min_len = min(len(channel) for channel in channels)
+        return np.stack([channel[:min_len] for channel in channels], axis=1)
+
+    print(
+        f"  WARNING: speech-rate={speech_rate:.2f}x skipped for unsupported "
+        f"audio shape {arr.shape}."
+    )
+    sys.stdout.flush()
+    return wav_data
+
+
+def _write_generated_audio(
+    soundfile: Any,
+    path: Path,
+    wav_data: Any,
+    sample_rate: int,
+    audio_ext: str,
+    speech_rate: float,
+) -> None:
+    """Normalize generated audio and write it to disk."""
+    if hasattr(wav_data, "cpu"):
+        wav_data = wav_data.cpu().numpy()
+    wav_data = _apply_speech_rate(wav_data, speech_rate)
+    soundfile.write(str(path), wav_data, sample_rate, format=audio_ext.upper())
+
+
 def _clone_prompt_for_voice(
     voice_id: str,
     clone_prompts: dict[str, Any] | None,
@@ -485,6 +551,35 @@ def _clone_prompt_for_voice(
         or clone_prompts.get(role)
         or clone_prompts.get("__all__")
     )
+
+
+def _clone_config_for_voice(
+    voice_id: str,
+    clone_config: dict[str, dict] | None,
+) -> dict[str, Any]:
+    """Return the clone config entry that applies to a voice."""
+    if not clone_config:
+        return {}
+    role = role_for_voice_id(voice_id)
+    return (
+        clone_config.get(voice_id)
+        or clone_config.get(role)
+        or clone_config.get("__all__")
+        or {}
+    )
+
+
+def _speech_rate_for_voice(
+    voice_id: str,
+    clone_config: dict[str, dict] | None,
+    default_rate: float,
+) -> float:
+    """Return per-voice speech rate, falling back to the run default."""
+    cfg = _clone_config_for_voice(voice_id, clone_config)
+    try:
+        return _speech_rate_arg(str(cfg.get("speech_rate", default_rate)))
+    except (TypeError, ValueError, argparse.ArgumentTypeError):
+        return default_rate
 
 
 def _audio_extension(output_format: str) -> str:
@@ -525,6 +620,15 @@ def build_clone_prompts(
                     if prompt_path
                     else resolve_saved_voice_path(saved_voice, library_dir)
                 )
+                metadata_path = resolved.with_suffix(".json")
+                if "speech_rate" not in cfg and metadata_path.exists():
+                    try:
+                        metadata = _read_json_file(metadata_path)
+                        cfg["speech_rate"] = _speech_rate_arg(
+                            str(metadata.get("speech_rate", 1.0)),
+                        )
+                    except Exception:
+                        pass
                 print(f"  Loading saved voice prompt for '{voice_id}' from {resolved}...")
                 print(f"VOICE_PROMPT event=start done={idx - 1} total={total} voice={voice_id}")
                 sys.stdout.flush()
@@ -581,6 +685,13 @@ def build_clone_prompts(
                     ref_text=ref_text,
                     model=clone_model_name,
                     overwrite=bool(cfg.get("overwrite", False)),
+                    extra={
+                        "speech_rate": _speech_rate_for_voice(
+                            voice_id,
+                            clone_config,
+                            1.0,
+                        ),
+                    },
                 )
                 print(
                     f"  Saved reusable voice '{saved.name}' to {saved.prompt_path}."
@@ -899,6 +1010,7 @@ def save_voice_from_sample(args: argparse.Namespace) -> None:
         ref_text=args.save_ref_text,
         model=args.clone_model,
         overwrite=args.overwrite_voice,
+        extra={"speech_rate": args.speech_rate},
     )
     print(f"VOICE_PROMPT event=done done=1 total=1 voice={saved.voice_id} sec={elapsed:.1f}")
     print(f"Saved voice id: {saved.voice_id}")
@@ -1028,6 +1140,15 @@ def main() -> None:
     parser.add_argument("--repetition-penalty", type=float, default=1.05)
     parser.add_argument("--max-new-tokens", type=int, default=2048)
     parser.add_argument(
+        "--speech-rate",
+        type=_speech_rate_arg,
+        default=1.0,
+        help=(
+            "Post-process speech tempo while preserving pitch. "
+            "1.00 = original, 0.90 = slower, 1.10 = faster."
+        ),
+    )
+    parser.add_argument(
         "--seed", type=int, default=-1,
         help="Random seed for repeatable generation (-1 = random).",
     )
@@ -1108,6 +1229,7 @@ def _main_impl(args: argparse.Namespace) -> None:
         f"repetition_penalty={args.repetition_penalty}, "
         f"max_new_tokens={args.max_new_tokens}"
     )
+    print(f"Speech rate: {args.speech_rate:.2f}x")
     if args.sage_attention:
         print("SageAttention: enabled")
     print(f"Model directory: {args.models_dir}")
@@ -1243,10 +1365,19 @@ def _main_impl(args: argparse.Namespace) -> None:
                         generation_kwargs=generation_kwargs,
                     )
                     wav_data = wavs[0]
-                    if hasattr(wav_data, "cpu"):
-                        wav_data = wav_data.cpu().numpy()
+                    _write_generated_audio(
+                        soundfile,
+                        batch_paths[0],
+                        wav_data,
+                        sr,
+                        audio_ext,
+                        _speech_rate_for_voice(
+                            chunk["voice_id"],
+                            clone_config,
+                            args.speech_rate,
+                        ),
+                    )
                     wav_file = str(batch_paths[0])
-                    soundfile.write(wav_file, wav_data, sr, format=audio_ext.upper())
                     fsize = batch_paths[0].stat().st_size
                     print(f"  [OK] Wrote {wav_file} ({fsize} bytes, sr={sr})")
                     sys.stdout.flush()
@@ -1311,11 +1442,17 @@ def _main_impl(args: argparse.Namespace) -> None:
                         generation_kwargs=generation_kwargs,
                     )
                     for j, (wav_data_j, sr) in enumerate(results):
-                        if hasattr(wav_data_j, "cpu"):
-                            wav_data_j = wav_data_j.cpu().numpy()
-                        soundfile.write(
-                            str(batch_paths[j]), wav_data_j, sr,
-                            format=audio_ext.upper(),
+                        _write_generated_audio(
+                            soundfile,
+                            batch_paths[j],
+                            wav_data_j,
+                            sr,
+                            audio_ext,
+                            _speech_rate_for_voice(
+                                batch_chunks[j]["voice_id"],
+                                clone_config,
+                                args.speech_rate,
+                            ),
                         )
                         done += 1
                         consecutive_errors = 0
@@ -1346,11 +1483,17 @@ def _main_impl(args: argparse.Namespace) -> None:
                                 generation_kwargs=generation_kwargs,
                             )
                             wav_fb = wavs[0]
-                            if hasattr(wav_fb, "cpu"):
-                                wav_fb = wav_fb.cpu().numpy()
-                            soundfile.write(
-                                str(batch_paths[j]), wav_fb, sr,
-                                format=audio_ext.upper(),
+                            _write_generated_audio(
+                                soundfile,
+                                batch_paths[j],
+                                wav_fb,
+                                sr,
+                                audio_ext,
+                                _speech_rate_for_voice(
+                                    chunk["voice_id"],
+                                    clone_config,
+                                    args.speech_rate,
+                                ),
                             )
                             done += 1
                             completed_keys.add(batch_keys[j])

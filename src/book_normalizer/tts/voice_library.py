@@ -27,6 +27,7 @@ class SavedVoice:
     model: str = ""
     ref_audio: str = ""
     ref_audio_sha256: str = ""
+    speech_rate: float = 1.0
 
 
 def default_voice_library_dir() -> Path:
@@ -38,7 +39,7 @@ def sanitize_voice_id(name: str) -> str:
     """Create a filesystem-safe id for a saved voice."""
     value = name.strip().lower()
     value = re.sub(r"\s+", "_", value)
-    value = re.sub(r"[^a-z0-9_.-]+", "_", value)
+    value = re.sub(r"[^\w.-]+", "_", value, flags=re.UNICODE)
     value = re.sub(r"_+", "_", value).strip("._-")
     return value or "voice"
 
@@ -137,6 +138,7 @@ def save_voice_prompt(
         model=str(metadata.get("model") or ""),
         ref_audio=str(metadata.get("ref_audio") or ""),
         ref_audio_sha256=str(metadata.get("ref_audio_sha256") or ""),
+        speech_rate=float(metadata.get("speech_rate") or 1.0),
     )
 
 
@@ -184,6 +186,7 @@ def list_saved_voices(library_dir: Path) -> list[SavedVoice]:
                 model=str(metadata.get("model") or ""),
                 ref_audio=str(metadata.get("ref_audio") or ""),
                 ref_audio_sha256=str(metadata.get("ref_audio_sha256") or ""),
+                speech_rate=float(metadata.get("speech_rate") or 1.0),
             )
         )
     return sorted(voices, key=lambda item: item.name.lower())

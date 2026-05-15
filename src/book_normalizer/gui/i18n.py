@@ -789,6 +789,22 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Max new tokens (128-8192):",
         "ru": "Max new tokens (128-8192):",
     },
+    "synth.speech_rate": {
+        "en": "Speech speed:",
+        "ru": "\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c \u0440\u0435\u0447\u0438:",
+    },
+    "synth.speech_rate_slow": {
+        "en": "slower",
+        "ru": "\u043c\u0435\u0434\u043b\u0435\u043d\u043d\u0435\u0435",
+    },
+    "synth.speech_rate_normal": {
+        "en": "normal",
+        "ru": "\u0441\u0440\u0435\u0434\u043d\u0435",
+    },
+    "synth.speech_rate_fast": {
+        "en": "faster",
+        "ru": "\u0431\u044b\u0441\u0442\u0440\u0435\u0435",
+    },
     "synth.seed": {
         "en": "Seed (-1=random):",
         "ru": "Seed (-1=random):",
@@ -915,6 +931,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "Слишком низко - фраза может обрезаться. Повышайте только если длинные чанки заканчиваются раньше текста."
         ),
     },
+    "synth.speech_rate_help": {
+        "en": (
+            "Post-process tempo for generated speech. 1.00x keeps the model output, "
+            "0.85-0.95x is useful for slower narration, and 1.05-1.15x makes it faster. "
+            "When you save a custom voice, this value is stored with that voice."
+        ),
+        "ru": (
+            "\u0422\u0435\u043c\u043f \u0433\u043e\u0442\u043e\u0432\u043e\u0439 \u0440\u0435\u0447\u0438 \u043f\u043e\u0441\u043b\u0435 \u0433\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u0438. "
+            "1.00x \u043e\u0441\u0442\u0430\u0432\u043b\u044f\u0435\u0442 \u0432\u044b\u0445\u043e\u0434 \u043c\u043e\u0434\u0435\u043b\u0438 \u043a\u0430\u043a \u0435\u0441\u0442\u044c; "
+            "0.85-0.95x \u0443\u0434\u043e\u0431\u043d\u043e \u0434\u043b\u044f \u0431\u043e\u043b\u0435\u0435 \u043c\u0435\u0434\u043b\u0435\u043d\u043d\u043e\u0433\u043e \u0434\u0438\u043a\u0442\u043e\u0440\u0430; "
+            "1.05-1.15x \u0443\u0441\u043a\u043e\u0440\u044f\u0435\u0442. "
+            "\u041f\u0440\u0438 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0438 custom voice \u044d\u0442\u043e \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0437\u0430\u043f\u0438\u0448\u0435\u0442\u0441\u044f \u0432 \u0433\u043e\u043b\u043e\u0441."
+        ),
+    },
     "synth.seed_help": {
         "en": (
             "Range: -1 or 0-2147483647. Default: -1.\n"
@@ -948,6 +978,62 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.chunks_word": {
         "en": "chunks",
         "ru": "чанков",
+    },
+    "synth.test_source_title": {
+        "en": "Test fragment source",
+        "ru": "\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a \u0442\u0435\u0441\u0442\u043e\u0432\u043e\u0433\u043e \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u0430",
+    },
+    "synth.test_source_desc": {
+        "en": "Choose an exact book chunk for preview, or paste custom text to test the current CustomVoice settings.",
+        "ru": "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0447\u043d\u044b\u0439 \u0447\u0430\u043d\u043a \u0438\u0437 \u043a\u043d\u0438\u0433\u0438 \u0438\u043b\u0438 \u0432\u0441\u0442\u0430\u0432\u044c\u0442\u0435 \u0441\u0432\u043e\u0439 \u0442\u0435\u043a\u0441\u0442 \u0434\u043b\u044f \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438 \u0442\u0435\u043a\u0443\u0449\u0438\u0445 CustomVoice-\u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043a.",
+    },
+    "synth.test_source": {
+        "en": "Test from:",
+        "ru": "\u0422\u0435\u0441\u0442 \u0438\u0437:",
+    },
+    "synth.test_source_chunk": {
+        "en": "Book chunk",
+        "ru": "\u0427\u0430\u043d\u043a \u043a\u043d\u0438\u0433\u0438",
+    },
+    "synth.test_source_custom": {
+        "en": "Custom text",
+        "ru": "\u0421\u0432\u043e\u0439 \u0442\u0435\u043a\u0441\u0442",
+    },
+    "synth.test_source_help": {
+        "en": "Book chunk uses the selected chunk exactly as it appears in the manifest. Custom text creates a one-off preview chunk.",
+        "ru": "\u0427\u0430\u043d\u043a \u043a\u043d\u0438\u0433\u0438 \u0431\u0435\u0440\u0435\u0442\u0441\u044f \u0440\u043e\u0432\u043d\u043e \u0438\u0437 \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442\u0430. \u0421\u0432\u043e\u0439 \u0442\u0435\u043a\u0441\u0442 \u0441\u043e\u0437\u0434\u0430\u0435\u0442 \u0440\u0430\u0437\u043e\u0432\u044b\u0439 preview-\u0447\u0430\u043d\u043a.",
+    },
+    "synth.test_chunk": {
+        "en": "Book chunk:",
+        "ru": "\u0427\u0430\u043d\u043a \u043a\u043d\u0438\u0433\u0438:",
+    },
+    "synth.test_chunk_item": {
+        "en": "Chunk {num} ({voice}, {chars} chars): {preview}",
+        "ru": "\u0427\u0430\u043d\u043a {num} ({voice}, {chars} \u0441\u0438\u043c\u0432.): {preview}",
+    },
+    "synth.test_voice": {
+        "en": "Voice for custom text:",
+        "ru": "\u0413\u043e\u043b\u043e\u0441 \u0434\u043b\u044f \u0441\u0432\u043e\u0435\u0433\u043e \u0442\u0435\u043a\u0441\u0442\u0430:",
+    },
+    "synth.test_chunk_text": {
+        "en": "Selected chunk text:",
+        "ru": "\u0422\u0435\u043a\u0441\u0442 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u043e\u0433\u043e \u0447\u0430\u043d\u043a\u0430:",
+    },
+    "synth.test_custom_text": {
+        "en": "Custom text:",
+        "ru": "\u0421\u0432\u043e\u0439 \u0442\u0435\u043a\u0441\u0442:",
+    },
+    "synth.test_custom_placeholder": {
+        "en": "Paste any text you want to test with the current voice settings.",
+        "ru": "\u0412\u0441\u0442\u0430\u0432\u044c\u0442\u0435 \u043b\u044e\u0431\u043e\u0439 \u0442\u0435\u043a\u0441\u0442, \u043a\u043e\u0442\u043e\u0440\u044b\u0439 \u043d\u0443\u0436\u043d\u043e \u043f\u0440\u043e\u0433\u043d\u0430\u0442\u044c \u0441 \u0442\u0435\u043a\u0443\u0449\u0438\u043c\u0438 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430\u043c\u0438 \u0433\u043e\u043b\u043e\u0441\u0430.",
+    },
+    "synth.test_custom_missing": {
+        "en": "Enter custom text for the test fragment.",
+        "ru": "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0441\u0432\u043e\u0439 \u0442\u0435\u043a\u0441\u0442 \u0434\u043b\u044f \u0442\u0435\u0441\u0442\u043e\u0432\u043e\u0433\u043e \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u0430.",
+    },
+    "synth.no_test_chunks": {
+        "en": "No chunks loaded",
+        "ru": "\u0427\u0430\u043d\u043a\u0438 \u043d\u0435 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d\u044b",
     },
     "synth.start": {
         "en": "Start Synthesis",

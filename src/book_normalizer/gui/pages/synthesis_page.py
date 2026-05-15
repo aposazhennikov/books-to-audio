@@ -22,7 +22,10 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
+    QSlider,
     QSpinBox,
+    QStackedWidget,
     QTabWidget,
     QToolButton,
     QToolTip,
@@ -66,6 +69,23 @@ VOICE_IDS = [
 ]
 
 _TEST_FRAGMENT_MAX_CHARS = 420
+_TEST_CHUNK_LABEL_MAX_CHARS = 64
+
+
+def _make_combo_compact(combo: QComboBox, min_chars: int = 18) -> None:
+    """Keep long combo entries from increasing the whole page width."""
+    combo.setMinimumContentsLength(min_chars)
+    combo.setSizeAdjustPolicy(
+        QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
+    )
+    combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+
+def _make_text_edit_compact(edit: QPlainTextEdit) -> None:
+    """Wrap long lines and prevent horizontal scrolling inside text boxes."""
+    edit.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+    edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
 
 def _iter_manifest_chunks(data: object) -> list[dict]:
@@ -130,6 +150,48 @@ def _build_test_manifest_chunks(data: object, chapter: int | None = None) -> lis
     return []
 
 
+def _role_for_voice_id(voice_id: str) -> str:
+    """Infer a manifest role from a Qwen voice preset id."""
+    normalized = (voice_id or "").strip().lower()
+    if normalized.startswith("male_") or normalized in {"male", "men"}:
+        return "male"
+    if normalized.startswith("female_") or normalized in {"female", "women"}:
+        return "female"
+    return "narrator"
+
+
+def _chunk_preview_text(text: str, max_chars: int = _TEST_CHUNK_LABEL_MAX_CHARS) -> str:
+    """Return a single-line preview for chunk selectors."""
+    normalized = " ".join(str(text or "").split())
+    if len(normalized) <= max_chars:
+        return normalized
+    return normalized[:max_chars].rstrip() + "..."
+
+
+def _test_manifest_chunk_from_chunk(chunk: dict) -> dict:
+    """Build a single-chunk preview manifest entry from an existing chunk."""
+    preview = dict(chunk)
+    preview["text"] = str(preview.get("text") or "").strip()
+    preview["chapter_index"] = int(preview.get("chapter_index", 0))
+    preview["chunk_index"] = int(preview.get("chunk_index", 0))
+    voice_id = str(preview.get("voice_id") or "narrator_calm")
+    preview["voice_id"] = voice_id
+    preview["role"] = str(preview.get("role") or _role_for_voice_id(voice_id))
+    return preview
+
+
+def _test_manifest_chunk_from_text(text: str, voice_id: str) -> dict:
+    """Build a one-off preview manifest entry from manually entered text."""
+    selected_voice = voice_id or "narrator_calm"
+    return {
+        "chapter_index": 0,
+        "chunk_index": 0,
+        "role": _role_for_voice_id(selected_voice),
+        "voice_id": selected_voice,
+        "text": text.strip(),
+    }
+
+
 class _CloneVoiceRow(QWidget):
     """A single voice clone entry: voice_id selector + WAV path + transcript."""
 
@@ -152,6 +214,7 @@ class _CloneVoiceRow(QWidget):
         self._voice_combo = QComboBox()
         self._voice_combo.addItems(voice_ids)
         self._voice_combo.setMinimumWidth(128)
+        _make_combo_compact(self._voice_combo, min_chars=14)
         row1.addWidget(self._voice_combo)
 
         self._wav_edit = QLineEdit()
@@ -238,6 +301,7 @@ class SynthesisPage(QWidget):
         self._worker: TTSSynthesisWorker | None = None
         self._save_voice_worker: VoicePromptSaveWorker | None = None
         self._chapter_map: dict[int, int] = {}
+        self._manifest_chunks: list[dict] = []
         self._phase = "idle"
         self._phase_start = 0.0
         self._tick_timer = QTimer(self)
@@ -273,9 +337,15 @@ class SynthesisPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.horizontalScrollBar().setEnabled(False)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
         container = QWidget()
+        container.setMinimumWidth(0)
+        container.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         layout = QVBoxLayout(container)
         layout.setSpacing(10)
         layout.setContentsMargins(0, 4, 6, 4)
@@ -308,6 +378,7 @@ class SynthesisPage(QWidget):
         self._mode_tabs.addTab(self._build_preset_speakers_tab(), "")
         self._mode_tabs.addTab(self._build_advanced_tab(), "")
         layout.addWidget(self._mode_tabs)
+        layout.addWidget(self._build_test_fragment_panel())
 
 
         # ── Action buttons ────────────────────────────────────────────────
@@ -358,6 +429,7 @@ class SynthesisPage(QWidget):
         self._log_edit = QPlainTextEdit()
         self._log_edit.setReadOnly(True)
         self._log_edit.setMaximumHeight(104)
+        _make_text_edit_compact(self._log_edit)
         self._log_edit.setStyleSheet(
             "font-family: 'Cascadia Code', Consolas, monospace;"
             "font-size: 11px; background: rgba(9,14,24,0.86);"
@@ -380,6 +452,103 @@ class SynthesisPage(QWidget):
         self.retranslate()
         self._refresh_saved_voices()
         self._update_custom_voice_controls()
+
+    def _build_test_fragment_panel(self) -> QFrame:
+        """Build controls for selecting the exact preview text."""
+        frame = QFrame()
+        frame.setObjectName("testFragmentPanel")
+        frame.setStyleSheet(
+            "QFrame#testFragmentPanel {"
+            "  background: rgba(15,23,42,0.72);"
+            "  border: 1px solid rgba(148,163,184,0.14);"
+            "  border-radius: 12px;"
+            "}"
+        )
+        outer = QVBoxLayout(frame)
+        outer.setContentsMargins(14, 10, 14, 10)
+        outer.setSpacing(8)
+
+        self._test_source_title = QLabel()
+        self._test_source_title.setStyleSheet(
+            "font-weight: 800; font-size: 13px; color: #ddd6fe;",
+        )
+        outer.addWidget(self._test_source_title)
+
+        self._test_source_desc = QLabel()
+        self._test_source_desc.setWordWrap(True)
+        self._test_source_desc.setStyleSheet(
+            "color: rgba(226,232,240,0.62); font-size: 11px;",
+        )
+        outer.addWidget(self._test_source_desc)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(7)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+
+        self._test_source_combo = QComboBox()
+        _make_combo_compact(self._test_source_combo, min_chars=18)
+        self._test_source_combo.currentIndexChanged.connect(
+            self._update_test_source_controls,
+        )
+        self._test_source_label = QLabel()
+        form.addRow(
+            self._label_with_help(
+                self._test_source_label,
+                "synth.test_source_help",
+            ),
+            self._test_source_combo,
+        )
+
+        chunk_row = QHBoxLayout()
+        chunk_row.setSpacing(6)
+        self._test_chapter_combo = QComboBox()
+        _make_combo_compact(self._test_chapter_combo, min_chars=14)
+        self._test_chapter_combo.currentIndexChanged.connect(
+            self._refresh_test_chunk_combo,
+        )
+        chunk_row.addWidget(self._test_chapter_combo)
+        self._test_chunk_combo = QComboBox()
+        _make_combo_compact(self._test_chunk_combo, min_chars=20)
+        self._test_chunk_combo.currentIndexChanged.connect(
+            self._update_test_chunk_preview,
+        )
+        chunk_row.addWidget(self._test_chunk_combo, stretch=1)
+        self._test_chunk_controls = QWidget()
+        self._test_chunk_controls.setLayout(chunk_row)
+        self._test_chunk_label = QLabel()
+        form.addRow(self._test_chunk_label, self._test_chunk_controls)
+
+        self._test_voice_combo = QComboBox()
+        self._test_voice_combo.addItems(VOICE_IDS)
+        _make_combo_compact(self._test_voice_combo, min_chars=18)
+        self._test_voice_label = QLabel()
+        form.addRow(self._test_voice_label, self._test_voice_combo)
+
+        self._test_chunk_preview = QPlainTextEdit()
+        self._test_chunk_preview.setReadOnly(True)
+        self._test_chunk_preview.setMaximumHeight(94)
+        _make_text_edit_compact(self._test_chunk_preview)
+        self._test_chunk_preview.setStyleSheet(
+            "color: rgba(226,232,240,0.76); font-size: 12px;"
+        )
+        self._test_custom_text_edit = QPlainTextEdit()
+        self._test_custom_text_edit.setMaximumHeight(118)
+        _make_text_edit_compact(self._test_custom_text_edit)
+        self._test_text_stack = QStackedWidget()
+        self._test_text_stack.setMinimumWidth(0)
+        self._test_text_stack.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        self._test_text_stack.addWidget(self._test_chunk_preview)
+        self._test_text_stack.addWidget(self._test_custom_text_edit)
+        self._test_text_label = QLabel()
+        form.addRow(self._test_text_label, self._test_text_stack)
+
+        outer.addLayout(form)
+        return frame
 
     def _build_sample_voice_panel(self) -> QFrame:
         """Build the direct CustomVoice sample panel."""
@@ -412,8 +581,11 @@ class SynthesisPage(QWidget):
         mode_form = QFormLayout()
         mode_form.setHorizontalSpacing(14)
         mode_form.setVerticalSpacing(6)
+        mode_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        mode_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         self._custom_strategy_combo = QComboBox()
+        _make_combo_compact(self._custom_strategy_combo, min_chars=20)
         self._custom_strategy_combo.currentIndexChanged.connect(
             self._update_custom_voice_controls,
         )
@@ -423,6 +595,10 @@ class SynthesisPage(QWidget):
         saved_row = QHBoxLayout()
         saved_row.setSpacing(6)
         self._saved_voice_combo = QComboBox()
+        _make_combo_compact(self._saved_voice_combo, min_chars=22)
+        self._saved_voice_combo.currentIndexChanged.connect(
+            self._apply_selected_saved_voice_rate,
+        )
         saved_row.addWidget(self._saved_voice_combo, stretch=1)
         self._btn_refresh_saved_voices = QPushButton()
         self._btn_refresh_saved_voices.clicked.connect(self._refresh_saved_voices)
@@ -436,10 +612,13 @@ class SynthesisPage(QWidget):
         role_form = QFormLayout(self._role_mapping_widget)
         role_form.setHorizontalSpacing(14)
         role_form.setVerticalSpacing(6)
+        role_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        role_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self._role_voice_combos: dict[str, QComboBox] = {}
         self._role_voice_labels: dict[str, QLabel] = {}
         for role in ("narrator", "male", "female"):
             combo = QComboBox()
+            _make_combo_compact(combo, min_chars=22)
             self._role_voice_combos[role] = combo
             label = QLabel()
             self._role_voice_labels[role] = label
@@ -450,6 +629,8 @@ class SynthesisPage(QWidget):
         form = QFormLayout(self._sample_fields)
         form.setHorizontalSpacing(14)
         form.setVerticalSpacing(6)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         audio_row = QHBoxLayout()
         audio_row.setSpacing(6)
@@ -488,6 +669,7 @@ class SynthesisPage(QWidget):
 
         self._sample_transcript_edit = QPlainTextEdit()
         self._sample_transcript_edit.setMaximumHeight(110)
+        _make_text_edit_compact(self._sample_transcript_edit)
         self._sample_transcript_label = QLabel()
         form.addRow(
             self._label_with_help(
@@ -520,6 +702,8 @@ class SynthesisPage(QWidget):
         controls = QFormLayout(self._voice_tuning_panel)
         controls.setHorizontalSpacing(14)
         controls.setVerticalSpacing(6)
+        controls.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        controls.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         self._temperature_spin = QDoubleSpinBox()
         self._temperature_spin.setRange(0.1, 2.0)
@@ -579,6 +763,34 @@ class SynthesisPage(QWidget):
             self._max_new_tokens_spin,
         )
 
+        speech_rate_row = QHBoxLayout()
+        speech_rate_row.setSpacing(8)
+        self._speech_rate_slider = QSlider(Qt.Orientation.Horizontal)
+        self._speech_rate_slider.setRange(50, 150)
+        self._speech_rate_slider.setSingleStep(5)
+        self._speech_rate_slider.setPageStep(5)
+        self._speech_rate_slider.setTickInterval(10)
+        self._speech_rate_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self._speech_rate_slider.setValue(100)
+        self._speech_rate_slider.valueChanged.connect(
+            self._on_speech_rate_changed,
+        )
+        speech_rate_row.addWidget(self._speech_rate_slider, stretch=1)
+        self._speech_rate_value_label = QLabel("1.00x")
+        self._speech_rate_value_label.setMinimumWidth(96)
+        self._speech_rate_value_label.setStyleSheet(
+            "color: rgba(226,232,240,0.76); font-size: 12px;"
+        )
+        speech_rate_row.addWidget(self._speech_rate_value_label)
+        self._speech_rate_label = QLabel()
+        controls.addRow(
+            self._label_with_help(
+                self._speech_rate_label,
+                "synth.speech_rate_help",
+            ),
+            speech_rate_row,
+        )
+
         self._seed_spin = QSpinBox()
         self._seed_spin.setRange(-1, 2_147_483_647)
         self._seed_spin.setValue(-1)
@@ -623,8 +835,11 @@ class SynthesisPage(QWidget):
         form = QFormLayout()
         form.setHorizontalSpacing(14)
         form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self._model_combo = QComboBox()
         self._model_combo.addItems(MODELS[:2])
+        _make_combo_compact(self._model_combo, min_chars=24)
         self._model_label = QLabel()
         form.addRow(
             self._label_with_help(self._model_label, "synth.model_help"),
@@ -657,6 +872,8 @@ class SynthesisPage(QWidget):
         form = QFormLayout()
         form.setHorizontalSpacing(14)
         form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         model_dir_row = QHBoxLayout()
         model_dir_row.setSpacing(6)
@@ -693,6 +910,7 @@ class SynthesisPage(QWidget):
         self._output_format_combo = QComboBox()
         self._output_format_combo.addItem("FLAC", "flac")
         self._output_format_combo.addItem("WAV", "wav")
+        _make_combo_compact(self._output_format_combo, min_chars=8)
         self._output_format_label = QLabel()
         form.addRow(
             self._label_with_help(self._output_format_label, "synth.output_format_help"),
@@ -709,6 +927,7 @@ class SynthesisPage(QWidget):
 
         self._chapter_combo = QComboBox()
         self._chapter_combo.setMinimumWidth(150)
+        _make_combo_compact(self._chapter_combo, min_chars=16)
         self._chapter_label = QLabel()
         form.addRow(
             self._label_with_help(self._chapter_label, "synth.chapter_help"),
@@ -823,6 +1042,39 @@ class SynthesisPage(QWidget):
             else "synth.voice_tuning_show"
         )
         self._voice_tuning_toggle.setText(t(key))
+
+    def _speech_rate_value(self) -> float:
+        """Return the selected speech rate multiplier."""
+        return self._speech_rate_slider.value() / 100.0
+
+    def _set_speech_rate_value(self, value: float) -> None:
+        """Set speech rate slider from a saved voice or default."""
+        bounded = min(1.50, max(0.50, float(value or 1.0)))
+        self._speech_rate_slider.setValue(int(round(bounded * 100)))
+
+    def _on_speech_rate_changed(self, _value: int) -> None:
+        rate = self._speech_rate_value()
+        if rate < 0.97:
+            label_key = "synth.speech_rate_slow"
+        elif rate > 1.03:
+            label_key = "synth.speech_rate_fast"
+        else:
+            label_key = "synth.speech_rate_normal"
+        self._speech_rate_value_label.setText(f"{rate:.2f}x  {t(label_key)}")
+        self._test_player.setPlaybackRate(rate)
+
+    def _saved_voice_rate(self, voice_id: str) -> float | None:
+        for voice in self._saved_voices:
+            if voice.voice_id == voice_id:
+                return voice.speech_rate
+        return None
+
+    def _apply_selected_saved_voice_rate(self) -> None:
+        """Load the saved rate for the globally selected voice."""
+        voice_id = self._selected_saved_voice()
+        rate = self._saved_voice_rate(voice_id)
+        if rate is not None:
+            self._set_speech_rate_value(rate)
 
     def _build_clone_panel(self) -> QFrame:
         """Build the voice cloning expandable panel."""
@@ -1003,13 +1255,26 @@ class SynthesisPage(QWidget):
         self._top_k_label.setText(t("synth.top_k"))
         self._repetition_penalty_label.setText(t("synth.repetition_penalty"))
         self._max_new_tokens_label.setText(t("synth.max_new_tokens"))
+        self._speech_rate_label.setText(t("synth.speech_rate"))
         self._seed_label.setText(t("synth.seed"))
         self._temperature_spin.setToolTip(t("synth.temperature_help"))
         self._top_p_spin.setToolTip(t("synth.top_p_help"))
         self._top_k_spin.setToolTip(t("synth.top_k_help"))
         self._repetition_penalty_spin.setToolTip(t("synth.repetition_penalty_help"))
         self._max_new_tokens_spin.setToolTip(t("synth.max_new_tokens_help"))
+        self._speech_rate_slider.setToolTip(t("synth.speech_rate_help"))
         self._seed_spin.setToolTip(t("synth.seed_help"))
+        self._on_speech_rate_changed(self._speech_rate_slider.value())
+        self._test_source_title.setText(t("synth.test_source_title"))
+        self._test_source_desc.setText(t("synth.test_source_desc"))
+        self._test_source_label.setText(t("synth.test_source"))
+        self._test_chunk_label.setText(t("synth.test_chunk"))
+        self._test_voice_label.setText(t("synth.test_voice"))
+        self._test_custom_text_edit.setPlaceholderText(
+            t("synth.test_custom_placeholder"),
+        )
+        self._populate_test_source_combo()
+        self._refresh_test_chapter_combo()
         if not self._sample_status.text():
             self._sample_status.setText(t("synth.sample_idle"))
         self._preset_title.setText(t("synth.preset_title"))
@@ -1166,6 +1431,7 @@ class SynthesisPage(QWidget):
         if sample_mode and not self._sample_status.text():
             self._sample_status.setText(t("synth.sample_idle"))
         elif saved_all_mode:
+            self._apply_selected_saved_voice_rate()
             self._sample_status.setText(t("synth.saved_voice_all_hint"))
         elif saved_roles_mode:
             self._sample_status.setText(t("synth.saved_voice_roles_hint"))
@@ -1190,6 +1456,7 @@ class SynthesisPage(QWidget):
             ref_text=ref_text,
             voice_library_dir=self._voice_library_dir(),
             models_dir=self._models_dir_edit.text().strip(),
+            speech_rate=self._speech_rate_value(),
         )
         self._save_voice_worker.status.connect(self._sample_status.setText)
         self._save_voice_worker.finished.connect(self._on_sample_voice_saved)
@@ -1278,7 +1545,7 @@ class SynthesisPage(QWidget):
         m, s = divmod(seconds, 60)
         return f"{m}:{s:02d}"
 
-    def _build_temp_sample_voice_config(self) -> str:
+    def _build_temp_sample_voice_config(self, include_speech_rate: bool = True) -> str:
         """Serialize the selected Custom Voice strategy as a clone config."""
         if not self._is_custom_voice_mode():
             return ""
@@ -1289,18 +1556,39 @@ class SynthesisPage(QWidget):
             ref_text = self._sample_transcript_edit.toPlainText().strip()
             if not audio or not ref_text:
                 raise ValueError(t("synth.sample_missing"))
-            cfg = {"__all__": {"ref_audio": audio, "ref_text": ref_text}}
+            cfg = {
+                "__all__": {
+                    "ref_audio": audio,
+                    "ref_text": ref_text,
+                }
+            }
+            if include_speech_rate:
+                cfg["__all__"]["speech_rate"] = self._speech_rate_value()
         elif strategy == "saved_all":
             saved_voice = self._selected_saved_voice()
             if not saved_voice:
                 raise ValueError(t("synth.saved_voice_missing"))
-            cfg = {"__all__": {"saved_voice": saved_voice}}
+            cfg = {
+                "__all__": {
+                    "saved_voice": saved_voice,
+                }
+            }
+            if include_speech_rate:
+                cfg["__all__"]["speech_rate"] = (
+                    self._saved_voice_rate(saved_voice)
+                    or self._speech_rate_value()
+                )
         else:
             cfg = {}
             for role, combo in self._role_voice_combos.items():
                 saved_voice = str(combo.currentData() or "")
                 if saved_voice:
                     cfg[role] = {"saved_voice": saved_voice}
+                    if include_speech_rate:
+                        cfg[role]["speech_rate"] = (
+                            self._saved_voice_rate(saved_voice)
+                            or self._speech_rate_value()
+                        )
             if not cfg:
                 raise ValueError(t("synth.saved_voice_missing"))
 
@@ -1353,12 +1641,16 @@ class SynthesisPage(QWidget):
         try:
             data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
             chapter_chunks: dict[int, int] = {}
-            for item in _iter_manifest_chunks(data):
+            chunks = _iter_manifest_chunks(data)
+            for item in chunks:
                 ch = item.get("chapter_index", 0)
                 chapter_chunks[ch] = chapter_chunks.get(ch, 0) + 1
             self._chapter_map = chapter_chunks
+            self._manifest_chunks = chunks
             self._refresh_chapter_combo()
+            self._refresh_test_chapter_combo()
         except (json.JSONDecodeError, OSError, TypeError, AttributeError):
+            self._manifest_chunks = []
             pass
 
     def _refresh_chapter_combo(self) -> None:
@@ -1386,6 +1678,162 @@ class SynthesisPage(QWidget):
             self._chapter_info.setText("")
 
     # ── Synthesis control ─────────────────────────────────────────────────────
+
+    def _populate_test_source_combo(self) -> None:
+        """Populate the test source selector without losing the current mode."""
+        if not hasattr(self, "_test_source_combo"):
+            return
+        current = self._test_source_combo.currentData() or "chunk"
+        self._test_source_combo.blockSignals(True)
+        self._test_source_combo.clear()
+        self._test_source_combo.addItem(t("synth.test_source_chunk"), "chunk")
+        self._test_source_combo.addItem(t("synth.test_source_custom"), "custom")
+        idx = self._test_source_combo.findData(current)
+        self._test_source_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._test_source_combo.blockSignals(False)
+        self._update_test_source_controls()
+
+    def _refresh_test_chapter_combo(self) -> None:
+        """Populate the chapter selector used by test preview chunks."""
+        if not hasattr(self, "_test_chapter_combo"):
+            return
+        current = self._test_chapter_combo.currentData()
+        chapters = sorted({
+            int(chunk.get("chapter_index", 0))
+            for chunk in self._manifest_chunks
+            if isinstance(chunk, dict)
+        })
+        counts = {
+            chapter: sum(
+                1
+                for chunk in self._manifest_chunks
+                if int(chunk.get("chapter_index", 0)) == chapter
+            )
+            for chapter in chapters
+        }
+
+        self._test_chapter_combo.blockSignals(True)
+        self._test_chapter_combo.clear()
+        if not chapters:
+            self._test_chapter_combo.addItem(t("synth.no_test_chunks"), None)
+        else:
+            for chapter in chapters:
+                self._test_chapter_combo.addItem(
+                    t(
+                        "synth.chapter_item",
+                        num=chapter + 1,
+                        chunks=counts.get(chapter, 0),
+                    ),
+                    chapter,
+                )
+        idx = self._test_chapter_combo.findData(current)
+        self._test_chapter_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._test_chapter_combo.blockSignals(False)
+        self._refresh_test_chunk_combo()
+
+    def _chunks_for_test_chapter(self, chapter_index: int | None) -> list[dict]:
+        """Return manifest chunks for the selected preview chapter."""
+        if chapter_index is None:
+            return []
+        return sorted(
+            [
+                chunk
+                for chunk in self._manifest_chunks
+                if int(chunk.get("chapter_index", 0)) == chapter_index
+            ],
+            key=lambda chunk: int(chunk.get("chunk_index", 0)),
+        )
+
+    def _refresh_test_chunk_combo(self) -> None:
+        """Populate the test chunk selector for the selected chapter."""
+        if not hasattr(self, "_test_chunk_combo"):
+            return
+        current = self._test_chunk_combo.currentData()
+        chapter_data = self._test_chapter_combo.currentData()
+        chapter = int(chapter_data) if chapter_data is not None else None
+        chunks = self._chunks_for_test_chapter(chapter)
+
+        self._test_chunk_combo.blockSignals(True)
+        self._test_chunk_combo.clear()
+        if not chunks:
+            self._test_chunk_combo.addItem(t("synth.no_test_chunks"), None)
+        else:
+            for chunk in chunks:
+                chunk_index = int(chunk.get("chunk_index", 0))
+                text = str(chunk.get("text") or "")
+                voice_id = str(chunk.get("voice_id") or "narrator_calm")
+                self._test_chunk_combo.addItem(
+                    t(
+                        "synth.test_chunk_item",
+                        num=chunk_index + 1,
+                        voice=voice_id,
+                        chars=len(text),
+                        preview=_chunk_preview_text(text),
+                    ),
+                    (chapter, chunk_index),
+                )
+        idx = self._test_chunk_combo.findData(current)
+        self._test_chunk_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._test_chunk_combo.blockSignals(False)
+        self._update_test_chunk_preview()
+
+    def _selected_test_chunk(self) -> dict | None:
+        """Return the selected manifest chunk for preview synthesis."""
+        data = self._test_chunk_combo.currentData()
+        if not isinstance(data, tuple) or len(data) != 2:
+            return None
+        chapter, chunk_index = data
+        for chunk in self._manifest_chunks:
+            if (
+                int(chunk.get("chapter_index", 0)) == int(chapter)
+                and int(chunk.get("chunk_index", 0)) == int(chunk_index)
+            ):
+                return chunk
+        return None
+
+    def _update_test_chunk_preview(self) -> None:
+        """Show the exact selected chunk text in the preview field."""
+        if not hasattr(self, "_test_chunk_preview"):
+            return
+        chunk = self._selected_test_chunk()
+        self._test_chunk_preview.setPlainText(
+            str(chunk.get("text") or "") if chunk else "",
+        )
+
+    def _update_test_source_controls(self) -> None:
+        """Switch the test panel between manifest chunk and custom text modes."""
+        if not hasattr(self, "_test_source_combo"):
+            return
+        is_custom = (self._test_source_combo.currentData() or "chunk") == "custom"
+        self._test_chunk_controls.setVisible(not is_custom)
+        self._test_chunk_label.setVisible(not is_custom)
+        self._test_voice_combo.setVisible(is_custom)
+        self._test_voice_label.setVisible(is_custom)
+        self._test_text_stack.setCurrentIndex(1 if is_custom else 0)
+        self._test_text_label.setText(
+            t("synth.test_custom_text") if is_custom else t("synth.test_chunk_text"),
+        )
+        if not is_custom:
+            self._update_test_chunk_preview()
+
+    def _build_selected_test_chunks(self) -> list[dict]:
+        """Build the one-entry manifest for the chosen test source."""
+        source = self._test_source_combo.currentData() or "chunk"
+        if source == "custom":
+            text = self._test_custom_text_edit.toPlainText().strip()
+            if not text:
+                raise ValueError(t("synth.test_custom_missing"))
+            return [
+                _test_manifest_chunk_from_text(
+                    text,
+                    self._test_voice_combo.currentText(),
+                )
+            ]
+
+        chunk = self._selected_test_chunk()
+        if not chunk or not str(chunk.get("text") or "").strip():
+            raise ValueError(t("synth.test_no_chunk"))
+        return [_test_manifest_chunk_from_chunk(chunk)]
 
     def _selected_chapter(self) -> int | None:
         selected = self._chapter_combo.currentData()
@@ -1427,6 +1875,7 @@ class SynthesisPage(QWidget):
             repetition_penalty=self._repetition_penalty_spin.value(),
             max_new_tokens=self._max_new_tokens_spin.value(),
             seed=self._seed_spin.value(),
+            speech_rate=self._speech_rate_value(),
             output_format=str(self._output_format_combo.currentData() or "flac"),
             merge_chapters=self._merge_chapters_check.isChecked(),
         )
@@ -1452,14 +1901,14 @@ class SynthesisPage(QWidget):
         if not self._manifest_path or not self._output_dir:
             return
 
-        chapter = self._selected_chapter()
         try:
-            data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
-            test_chunks = _build_test_manifest_chunks(data, chapter=chapter)
+            test_chunks = self._build_selected_test_chunks()
             if not test_chunks:
                 raise ValueError(t("synth.test_no_chunk"))
-            clone_config_path = self._build_temp_sample_voice_config()
-        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            clone_config_path = self._build_temp_sample_voice_config(
+                include_speech_rate=False,
+            )
+        except ValueError as exc:
             self._status.setText(str(exc))
             self._progress.set_status(str(exc))
             return
@@ -1500,6 +1949,9 @@ class SynthesisPage(QWidget):
             repetition_penalty=self._repetition_penalty_spin.value(),
             max_new_tokens=self._max_new_tokens_spin.value(),
             seed=self._seed_spin.value(),
+            # Test playback applies the slider live through QMediaPlayer so the
+            # user can adjust tempo while listening. Full synthesis persists it.
+            speech_rate=1.0,
             output_format=str(self._output_format_combo.currentData() or "flac"),
             merge_chapters=False,
         )
@@ -1539,6 +1991,7 @@ class SynthesisPage(QWidget):
         if self._test_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self._test_player.pause()
         else:
+            self._test_player.setPlaybackRate(self._speech_rate_value())
             self._test_player.play()
 
     def _on_test_playback_state(self, state: QMediaPlayer.PlaybackState) -> None:
@@ -1631,6 +2084,7 @@ class SynthesisPage(QWidget):
             if audio_path:
                 self._last_test_audio_path = audio_path
                 self._test_player.setSource(QUrl.fromLocalFile(str(audio_path)))
+                self._test_player.setPlaybackRate(self._speech_rate_value())
                 self._btn_play_test.setEnabled(True)
                 self._status.setText(t("synth.test_done", path=str(audio_path)))
                 self._sample_status.setText(t("synth.test_next_step"))

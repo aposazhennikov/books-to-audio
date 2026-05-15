@@ -8,6 +8,9 @@ from pathlib import Path
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest
 from book_normalizer.gui.pages.synthesis_page import (
     _build_test_manifest_chunks,
+    _role_for_voice_id,
+    _test_manifest_chunk_from_chunk,
+    _test_manifest_chunk_from_text,
     _iter_manifest_chunks,
     _shorten_test_fragment,
 )
@@ -132,6 +135,44 @@ def test_build_test_manifest_uses_selected_chapter_and_trims_text() -> None:
     assert preview[0]["chunk_index"] == 0
     assert preview[0]["voice_id"] == "male_young"
     assert len(preview[0]["text"]) <= 420
+
+
+def test_test_manifest_chunk_from_selected_chunk_keeps_exact_text() -> None:
+    chunk = {
+        "chapter_index": 4,
+        "chunk_index": 12,
+        "voice_id": "female_warm",
+        "text": "This exact selected chunk should be rendered whole.",
+    }
+
+    preview = _test_manifest_chunk_from_chunk(chunk)
+
+    assert preview["chapter_index"] == 4
+    assert preview["chunk_index"] == 12
+    assert preview["voice_id"] == "female_warm"
+    assert preview["role"] == "female"
+    assert preview["text"] == "This exact selected chunk should be rendered whole."
+
+
+def test_test_manifest_chunk_from_custom_text_uses_selected_voice() -> None:
+    preview = _test_manifest_chunk_from_text(
+        "Manual preview text.",
+        "male_confident",
+    )
+
+    assert preview == {
+        "chapter_index": 0,
+        "chunk_index": 0,
+        "role": "male",
+        "voice_id": "male_confident",
+        "text": "Manual preview text.",
+    }
+
+
+def test_role_for_voice_id_defaults_to_narrator() -> None:
+    assert _role_for_voice_id("female_bright") == "female"
+    assert _role_for_voice_id("male_deep") == "male"
+    assert _role_for_voice_id("narrator_wise") == "narrator"
 
 
 def test_shorten_test_fragment_prefers_sentence_boundary() -> None:

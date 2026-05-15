@@ -128,6 +128,23 @@ def test_read_json_file_accepts_utf8_bom(tmp_path: Path) -> None:
     assert tts_runner._read_json_file(path) == {"chunks": 1}
 
 
+def test_speech_rate_resolves_from_voice_role_or_global_config() -> None:
+    cfg = {
+        "__all__": {"speech_rate": 0.95},
+        "male": {"speech_rate": 0.9},
+        "male_young": {"speech_rate": 0.85},
+    }
+
+    assert tts_runner._speech_rate_for_voice("narrator_calm", cfg, 1.0) == 0.95
+    assert tts_runner._speech_rate_for_voice("male_confident", cfg, 1.0) == 0.9
+    assert tts_runner._speech_rate_for_voice("male_young", cfg, 1.0) == 0.85
+
+
+def test_speech_rate_arg_rejects_unreasonable_values() -> None:
+    with pytest.raises(Exception):
+        tts_runner._speech_rate_arg("0.1")
+
+
 def test_generation_kwarg_fallback_retries_without_controls() -> None:
     calls: list[dict] = []
 

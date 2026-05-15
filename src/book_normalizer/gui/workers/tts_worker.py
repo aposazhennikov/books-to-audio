@@ -235,6 +235,7 @@ class TTSSynthesisWorker(QThread):
         repetition_penalty: float = 1.05,
         max_new_tokens: int = 2048,
         seed: int = -1,
+        speech_rate: float = 1.0,
         output_format: str = "flac",
         merge_chapters: bool = True,
         parent=None,
@@ -261,6 +262,7 @@ class TTSSynthesisWorker(QThread):
         self._repetition_penalty = repetition_penalty
         self._max_new_tokens = max_new_tokens
         self._seed = seed
+        self._speech_rate = speech_rate
         self._output_format = output_format
         self._merge_chapters = merge_chapters
         self._process: subprocess.Popen | None = None
@@ -305,6 +307,7 @@ class TTSSynthesisWorker(QThread):
                 "--top-k", str(self._top_k),
                 "--repetition-penalty", str(self._repetition_penalty),
                 "--max-new-tokens", str(self._max_new_tokens),
+                "--speech-rate", str(self._speech_rate),
                 "--seed", str(self._seed),
                 "--output-format", self._output_format,
             ]
@@ -662,6 +665,7 @@ class VoicePromptSaveWorker(QThread):
         ref_text: str,
         voice_library_dir: Path,
         models_dir: str = "",
+        speech_rate: float = 1.0,
         device: str = "cuda:0",
         parent=None,
     ) -> None:
@@ -671,6 +675,7 @@ class VoicePromptSaveWorker(QThread):
         self._ref_text = ref_text
         self._voice_library_dir = voice_library_dir
         self._models_dir = models_dir
+        self._speech_rate = speech_rate
         self._device = device
         self._process: subprocess.Popen | None = None
 
@@ -695,6 +700,7 @@ class VoicePromptSaveWorker(QThread):
                 "--save-ref-text", self._ref_text.strip(),
                 "--voice-library-dir",
                 TTSSynthesisWorker._wsl_path(self._voice_library_dir),
+                "--speech-rate", str(self._speech_rate),
                 "--device", self._device,
             ]
             models_dir = self._models_dir.strip() or str(default_comfyui_models_dir())

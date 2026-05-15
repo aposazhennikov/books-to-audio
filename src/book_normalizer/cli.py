@@ -112,6 +112,37 @@ def _build_config(
     )
 
 
+def _run_llm_normalization(
+    book,
+    output_dir: Path,
+    *,
+    llm_endpoint: str,
+    llm_model: str,
+    llm_api_key: str,
+) -> tuple[int, int]:
+    """Run optional LLM normalization over already rule-normalized book text."""
+    from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+    total_paragraphs = sum(len(ch.paragraphs) for ch in book.chapters)
+    report_interval = max(1, total_paragraphs // 20)
+    normalizer = LlmNormalizer(
+        endpoint=llm_endpoint,
+        model=llm_model,
+        cache_dir=output_dir / "llm_norm_cache",
+        api_key=llm_api_key,
+    )
+
+    def report(done: int, total: int, accepted: int, rejected: int) -> None:
+        if done % report_interval != 0 and done != total:
+            return
+        click.echo(
+            "LLM normalization: "
+            f"{done}/{total} paragraphs, accepted={accepted}, rejected={rejected}"
+        )
+
+    return normalizer.normalize_book(book, progress_callback=report)
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="normalize-book")
 def main() -> None:
@@ -293,6 +324,25 @@ def audio_qa_command(manifest_path: Path, report: Path | None) -> None:
 )
 @click.option("--ocr-dpi", type=int, default=400, show_default=True, help="DPI for OCR rendering.")
 @click.option("--ocr-psm", type=int, default=6, show_default=True, help="Tesseract PSM mode.")
+@click.option(
+    "--llm-normalize",
+    is_flag=True,
+    default=False,
+    help="Run LLM/GPU normalization after rule-based normalization.",
+)
+@click.option(
+    "--llm-endpoint",
+    default="http://localhost:11434/v1",
+    show_default=True,
+    help="OpenAI-compatible endpoint for LLM normalization.",
+)
+@click.option(
+    "--llm-model",
+    default="qwen3:8b",
+    show_default=True,
+    help="Model name for LLM normalization.",
+)
+@click.option("--llm-api-key", default="", help="Bearer token for cloud LLM endpoints.")
 def process_command(
     input_path: Path,
     out: Path,
@@ -309,6 +359,10 @@ def process_command(
     sample_size: int,
     ocr_dpi: int,
     ocr_psm: int,
+    llm_normalize: bool,
+    llm_endpoint: str,
+    llm_model: str,
+    llm_api_key: str,
 ) -> None:
     """Process a single book file: load, normalize, split chapters, export."""
     setup_logging(verbose=verbose)
@@ -380,6 +434,19 @@ def process_command(
     click.echo(f"Chapter detection complete: {len(book.chapters)} chapter(s) found.")
 
     pipeline.normalize_book(book)
+
+    if llm_normalize:
+        click.echo(f"LLM normalization: model={llm_model}, endpoint={llm_endpoint}")
+        accepted, rejected = _run_llm_normalization(
+            book,
+            output_dir,
+            llm_endpoint=llm_endpoint,
+            llm_model=llm_model,
+            llm_api_key=llm_api_key,
+        )
+        click.echo(
+            f"LLM normalization complete: {accepted} accepted, {rejected} rejected."
+        )
 
     # Emit basic chapter sanity report for downstream TTS inspection.
     _write_chapter_sanity_report(book, output_dir)

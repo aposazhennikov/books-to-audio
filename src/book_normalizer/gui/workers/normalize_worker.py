@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from hashlib import sha1
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -70,6 +71,10 @@ class NormalizeWorker(QThread):
         ocr_mode: str = "auto",
         ocr_dpi: int = 400,
         ocr_psm: int = 6,
+        llm_normalize: bool = False,
+        llm_endpoint: str = "http://localhost:11434/v1",
+        llm_model: str = "qwen3:8b",
+        llm_api_key: str = "",
         skip_stress: bool = False,
         parent=None,
     ):
@@ -78,6 +83,10 @@ class NormalizeWorker(QThread):
         self._ocr_mode = ocr_mode
         self._ocr_dpi = ocr_dpi
         self._ocr_psm = ocr_psm
+        self._llm_normalize = llm_normalize
+        self._llm_endpoint = llm_endpoint
+        self._llm_model = llm_model
+        self._llm_api_key = llm_api_key
         self._skip_stress = skip_stress
 
     def _ocr_with_progress(self, path: Path, ocr_mode, dpi: int, psm: int):
@@ -193,6 +202,62 @@ class NormalizeWorker(QThread):
 
         return pipeline, book
 
+    def _llm_cache_dir(self) -> Path:
+        """Return a stable cache directory for GUI LLM normalization."""
+        try:
+            source = str(self._input_path.resolve()).casefold()
+        except OSError:
+            source = str(self._input_path).casefold()
+        digest = sha1(source.encode("utf-8")).hexdigest()[:16]
+        return Path("data") / "user_memory" / "llm_norm_cache" / digest
+
+    def _llm_normalize_with_progress(self, book):
+        """Run optional LLM normalization over already rule-normalized text."""
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        total_paragraphs = sum(len(ch.paragraphs) for ch in book.chapters)
+        if total_paragraphs == 0:
+            return book
+
+        start_time = time.time()
+        report_interval = max(1, total_paragraphs // 50)
+
+        normalizer = LlmNormalizer(
+            endpoint=self._llm_endpoint,
+            model=self._llm_model,
+            cache_dir=self._llm_cache_dir(),
+            api_key=self._llm_api_key,
+        )
+
+        def report(done: int, total: int, accepted: int, rejected: int) -> None:
+            if done % report_interval != 0 and done != total:
+                return
+            elapsed = time.time() - start_time
+            avg = elapsed / done if done else 0
+            remaining = avg * (total - done)
+            eta = _format_eta(remaining)
+            self.progress.emit(
+                t(
+                    "norm.llm_progress",
+                    done=done,
+                    total=total,
+                    accepted=accepted,
+                    rejected=rejected,
+                    eta=eta,
+                )
+            )
+            self.progress_pct.emit(done, total, eta)
+
+        accepted, rejected = normalizer.normalize_book(book, progress_callback=report)
+        self.progress.emit(
+            t(
+                "norm.llm_done",
+                accepted=accepted,
+                rejected=rejected,
+            )
+        )
+        return book
+
     def run(self) -> None:
         try:
             from book_normalizer.chaptering.detector import ChapterDetector
@@ -279,6 +344,12 @@ class NormalizeWorker(QThread):
 
             # Re-normalize after chapter split.
             pipeline, book = self._normalize_with_progress(book)
+
+            if self._llm_normalize:
+                self.progress.emit(
+                    t("norm.llm_start", model=self._llm_model)
+                )
+                book = self._llm_normalize_with_progress(book)
 
             if not self._skip_stress:
                 self.progress.emit(t("norm.annotating_stress"))

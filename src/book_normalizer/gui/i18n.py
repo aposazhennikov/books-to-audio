@@ -105,6 +105,41 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "OCR settings apply only to PDF files",
         "ru": "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 OCR \u043f\u0440\u0438\u043c\u0435\u043d\u0438\u043c\u044b \u0442\u043e\u043b\u044c\u043a\u043e \u043a PDF",
     },
+    "norm.llm_normalize": {
+        "en": "LLM/GPU normalization:",
+        "ru": "LLM/GPU \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f:",
+    },
+    "norm.llm_normalize_check": {
+        "en": "Use local model after rules",
+        "ru": "\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u044c \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u0443\u044e \u043c\u043e\u0434\u0435\u043b\u044c \u043f\u043e\u0441\u043b\u0435 \u043f\u0440\u0430\u0432\u0438\u043b",
+    },
+    "norm.llm_endpoint": {
+        "en": "LLM endpoint:",
+        "ru": "LLM endpoint:",
+    },
+    "norm.llm_model": {
+        "en": "LLM model:",
+        "ru": "LLM \u043c\u043e\u0434\u0435\u043b\u044c:",
+    },
+    "norm.llm_hint": {
+        "en": "Uses an OpenAI-compatible local server. GPU usage depends on that server, e.g. Ollama with CUDA.",
+        "ru": "\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0435\u0442 OpenAI-compatible \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0441\u0435\u0440\u0432\u0435\u0440. GPU \u0437\u0430\u0434\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442\u0441\u044f \u0441\u0430\u043c\u0438\u043c \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u043c, \u043d\u0430\u043f\u0440\u0438\u043c\u0435\u0440 Ollama \u0441 CUDA.",
+    },
+    "norm.llm_tip": {
+        "en": (
+            "Runs the existing rule-based normalizer first, then asks a local "
+            "OpenAI-compatible LLM to conservatively fix punctuation, typos, "
+            "and yo letters. The app validates every answer and keeps the "
+            "original text if the model changes too much."
+        ),
+        "ru": (
+            "\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0438\u0434\u0451\u0442 \u0431\u044b\u0441\u0442\u0440\u0430\u044f \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u043f\u0440\u0430\u0432\u0438\u043b\u0430\u043c\u0438, \u0437\u0430\u0442\u0435\u043c "
+            "\u043b\u043e\u043a\u0430\u043b\u044c\u043d\u0430\u044f OpenAI-compatible LLM \u0430\u043a\u043a\u0443\u0440\u0430\u0442\u043d\u043e \u0438\u0441\u043f\u0440\u0430\u0432\u043b\u044f\u0435\u0442 "
+            "\u043f\u0443\u043d\u043a\u0442\u0443\u0430\u0446\u0438\u044e, \u043e\u043f\u0435\u0447\u0430\u0442\u043a\u0438 \u0438 \u0431\u0443\u043a\u0432\u0443 \u0451. \u041a\u0430\u0436\u0434\u044b\u0439 \u043e\u0442\u0432\u0435\u0442 "
+            "\u043f\u0440\u043e\u0432\u0435\u0440\u044f\u0435\u0442\u0441\u044f; \u0435\u0441\u043b\u0438 \u043c\u043e\u0434\u0435\u043b\u044c \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u0435\u043d\u044f\u0435\u0442 \u0442\u0435\u043a\u0441\u0442, "
+            "\u043e\u0441\u0442\u0430\u0451\u0442\u0441\u044f \u0438\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u0430\u0431\u0437\u0430\u0446."
+        ),
+    },
     "norm.run": {
         "en": "Run Normalization",
         "ru": "\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044e",
@@ -144,6 +179,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "norm.norm_paragraphs": {
         "en": "Normalizing: {done}/{total} paragraphs \u2014 ETA: {eta}",
         "ru": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f: {done}/{total} \u0430\u0431\u0437\u0430\u0446\u0435\u0432 \u2014 \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}",
+    },
+    "norm.llm_start": {
+        "en": "LLM normalization: model {model}",
+        "ru": "LLM-\u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f: \u043c\u043e\u0434\u0435\u043b\u044c {model}",
+    },
+    "norm.llm_progress": {
+        "en": "LLM normalization: {done}/{total} paragraphs, accepted {accepted}, rejected {rejected} \u2014 ETA: {eta}",
+        "ru": "LLM-\u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f: {done}/{total} \u0430\u0431\u0437\u0430\u0446\u0435\u0432, \u043f\u0440\u0438\u043d\u044f\u0442\u043e {accepted}, \u043e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e {rejected} \u2014 \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}",
+    },
+    "norm.llm_done": {
+        "en": "LLM normalization complete: accepted {accepted}, rejected {rejected}",
+        "ru": "LLM-\u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0433\u043e\u0442\u043e\u0432\u0430: \u043f\u0440\u0438\u043d\u044f\u0442\u043e {accepted}, \u043e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e {rejected}",
     },
     "norm.detecting_chapters": {
         "en": "Detecting chapters\u2026",

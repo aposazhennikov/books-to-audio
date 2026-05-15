@@ -256,6 +256,35 @@ class TestLlmNormalizerMocked:
         assert not result.is_valid
         assert result.accepted_text == original
 
+    def test_normalize_book_updates_paragraphs_and_reports_progress(self, tmp_path: Path) -> None:
+        from book_normalizer.models.book import Book, Chapter, Paragraph
+
+        normalizer = self._make_normalizer(tmp_path)
+        book = Book(chapters=[
+            Chapter(
+                index=0,
+                paragraphs=[
+                    Paragraph(raw_text="Alpha beta", index_in_chapter=0),
+                    Paragraph(raw_text="", index_in_chapter=1),
+                ],
+            )
+        ])
+        progress: list[tuple[int, int, int, int]] = []
+
+        with patch.object(normalizer, "_query_llm", return_value="Alpha beta."):
+            accepted, rejected = normalizer.normalize_book(
+                book,
+                lambda done, total, accepted, rejected: progress.append(
+                    (done, total, accepted, rejected)
+                ),
+            )
+
+        assert accepted == 1
+        assert rejected == 0
+        assert book.chapters[0].paragraphs[0].normalized_text == "Alpha beta."
+        assert progress[-1] == (2, 2, 1, 0)
+        assert any(item["stage"] == "llm_normalization" for item in book.audit_trail)
+
 
 # ── LlmChunker output format ──────────────────────────────────────────────────
 

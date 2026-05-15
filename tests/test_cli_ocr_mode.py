@@ -144,3 +144,32 @@ def test_process_pdf_auto_rejects_unreadable_native_without_ocr(tmp_path: Path) 
 
     assert result.exit_code == 1
     assert "OCR is required" in result.output
+
+
+def test_process_can_run_optional_llm_normalization(tmp_path: Path) -> None:
+    txt_file = tmp_path / "book.txt"
+    txt_file.write_text("Alpha beta.", encoding="utf-8")
+
+    with patch("book_normalizer.cli._run_llm_normalization", return_value=(1, 0)) as mock_llm:
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "process",
+                str(txt_file),
+                "--out",
+                str(tmp_path / "out"),
+                "--skip-stress",
+                "--skip-punctuation-review",
+                "--skip-spellcheck",
+                "--llm-normalize",
+                "--llm-endpoint",
+                "http://localhost:11434/v1",
+                "--llm-model",
+                "qwen3:8b",
+            ],
+        )
+
+    assert result.exit_code == 0
+    mock_llm.assert_called_once()
+    assert "LLM normalization complete: 1 accepted, 0 rejected." in result.output

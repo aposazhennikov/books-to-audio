@@ -29,16 +29,22 @@ Usage::
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from hashlib import sha1
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from book_normalizer.normalization.text_validator import (
     TextPreservationValidator,
     ValidationResult,
 )
 
+if TYPE_CHECKING:
+    from book_normalizer.models.book import Book
+
 logger = logging.getLogger(__name__)
+
+BookProgressCallback = Callable[[int, int, int, int], None]
 
 # ── Prompt ────────────────────────────────────────────────────────────────────
 
@@ -241,6 +247,59 @@ class LlmNormalizer:
             corrected=corrected or text,
             issues=issues,
         )
+
+    def normalize_book(
+        self,
+        book: Book,
+        progress_callback: BookProgressCallback | None = None,
+    ) -> tuple[int, int]:
+        """Apply LLM normalization to every paragraph in a book.
+
+        The method mutates ``paragraph.normalized_text`` in place. Rejected
+        model outputs leave the paragraph text unchanged.
+
+        Args:
+            book: Book object to update.
+            progress_callback: Optional callback called as
+                ``(done, total, accepted, rejected)`` after each paragraph.
+
+        Returns:
+            ``(accepted, rejected)`` paragraph counts.
+        """
+        total = sum(len(chapter.paragraphs) for chapter in book.chapters)
+        accepted = rejected = done = 0
+
+        for chapter in book.chapters:
+            for para in chapter.paragraphs:
+                source = para.normalized_text or para.raw_text
+                if not source.strip():
+                    done += 1
+                    if progress_callback is not None:
+                        progress_callback(done, total, accepted, rejected)
+                    continue
+
+                result = self.normalize_paragraph(
+                    source,
+                    chapter.index,
+                    para.index_in_chapter,
+                )
+                if result.is_valid:
+                    para.normalized_text = result.accepted_text
+                    accepted += 1
+                else:
+                    rejected += 1
+
+                done += 1
+                if progress_callback is not None:
+                    progress_callback(done, total, accepted, rejected)
+
+        book.add_audit(
+            "llm_normalization",
+            "pipeline_complete",
+            f"model={self._model}, endpoint={self._endpoint}, "
+            f"paragraphs={total}, accepted={accepted}, rejected={rejected}",
+        )
+        return accepted, rejected
 
     # ── LLM query ─────────────────────────────────────────────────────────────
 

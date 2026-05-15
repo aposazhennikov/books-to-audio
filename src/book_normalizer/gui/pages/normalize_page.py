@@ -28,6 +28,37 @@ from book_normalizer.gui.workers.normalize_worker import NormalizeWorker
 _PDF_EXTENSIONS = {".pdf"}
 
 
+def _book_preview_lines(book: object, limit: int = 30) -> tuple[list[str], list[str]]:
+    """Return raw/normalized preview lines across chapters, not only chapter zero."""
+    raw_lines: list[str] = []
+    norm_lines: list[str] = []
+    paragraph_count = 0
+
+    for chapter in getattr(book, "chapters", []):
+        if paragraph_count >= limit:
+            break
+
+        title = getattr(chapter, "title", "").strip()
+        if title:
+            header = f"=== {title} ==="
+            raw_lines.append(header)
+            norm_lines.append(header)
+
+        for para in getattr(chapter, "paragraphs", []):
+            raw = getattr(para, "raw_text", "")
+            norm = getattr(para, "normalized_text", "") or raw
+            if not raw.strip() and not norm.strip():
+                continue
+
+            raw_lines.append(raw)
+            norm_lines.append(norm)
+            paragraph_count += 1
+            if paragraph_count >= limit:
+                break
+
+    return raw_lines, norm_lines
+
+
 class NormalizePage(QWidget):
     """Page for book loading and text normalization."""
 
@@ -277,10 +308,8 @@ class NormalizePage(QWidget):
         self._btn_run.setEnabled(True)
 
         if book.chapters:
-            ch = book.chapters[0]
-            raw_lines = [p.raw_text for p in ch.paragraphs[:30]]
+            raw_lines, norm_lines = _book_preview_lines(book, limit=30)
             self._raw_text.setPlainText("\n\n".join(raw_lines))
-            norm_lines = [p.normalized_text or p.raw_text for p in ch.paragraphs[:30]]
             self._norm_text.setPlainText("\n\n".join(norm_lines))
 
     def _on_error(self, msg: str) -> None:

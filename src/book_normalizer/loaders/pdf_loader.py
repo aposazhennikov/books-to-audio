@@ -895,6 +895,20 @@ def _russian_text_unreadable(text: str) -> bool:
     return len(text.strip()) == 0 or _cyrillic_ratio(text) < MIN_READABLE_CYRILLIC_RATIO
 
 
+def _ocr_is_substantially_more_complete(native_text: str, ocr_text: str) -> bool:
+    """Return true when a small native text layer is only a partial PDF overlay."""
+    native_len = len(native_text.strip())
+    ocr_len = len(ocr_text.strip())
+    if ocr_len < 1000 or native_len <= 0:
+        return False
+
+    native_cyr = _cyrillic_char_count(native_text)
+    ocr_cyr = _cyrillic_char_count(ocr_text)
+    length_jump = ocr_len >= native_len * 3 or ocr_len >= native_len + 2500
+    cyrillic_jump = ocr_cyr >= max(native_cyr * 3, native_cyr + 500)
+    return length_jump and cyrillic_jump
+
+
 def select_pdf_text_for_mode(
     compare: PdfOcrCompareResult,
     mode: OcrMode,
@@ -909,6 +923,11 @@ def select_pdf_text_for_mode(
 
     native_cyr = _cyrillic_ratio(native.text)
     ocr_cyr = _cyrillic_ratio(ocr.text) if ocr else 0.0
+    ocr_much_longer = (
+        _ocr_is_substantially_more_complete(native.text, ocr.text)
+        if ocr
+        else False
+    )
 
     stats: dict[str, Any] = {
         "mode": mode.value,
@@ -918,8 +937,11 @@ def select_pdf_text_for_mode(
         "ocr_empty": (len(ocr.text.strip()) == 0) if ocr else True,
         "native_cyrillic_ratio": round(native_cyr, 3),
         "ocr_cyrillic_ratio": round(ocr_cyr, 3),
+        "native_cyrillic_chars": _cyrillic_char_count(native.text),
+        "ocr_cyrillic_chars": _cyrillic_char_count(ocr.text) if ocr else 0,
         "native_unreadable": _russian_text_unreadable(native.text),
         "ocr_unreadable": _russian_text_unreadable(ocr.text) if ocr else True,
+        "ocr_much_longer": ocr_much_longer,
         "selected": "native",
         "reason": "",
     }
@@ -940,7 +962,7 @@ def select_pdf_text_for_mode(
         stats["reason"] = "ocr_mode=force"
         return ocr, stats
 
-    # AUTO / COMPARE: prefer OCR when native text is empty or garbage.
+    # AUTO / COMPARE: prefer OCR when native text is empty, garbage, or clearly partial.
     native_is_bad = bool(stats["native_unreadable"])
     ocr_usable = not stats["ocr_unreadable"]
 
@@ -948,6 +970,11 @@ def select_pdf_text_for_mode(
         stats["selected"] = "ocr"
         reason_detail = "native_empty" if stats["native_empty"] else f"native_cyr={native_cyr:.2f}"
         stats["reason"] = f"{'auto' if mode == OcrMode.AUTO else 'compare'}_mode_{reason_detail}_use_ocr"
+        return ocr, stats
+
+    if ocr_usable and ocr_much_longer:
+        stats["selected"] = "ocr"
+        stats["reason"] = f"{'auto' if mode == OcrMode.AUTO else 'compare'}_mode_ocr_much_longer_use_ocr"
         return ocr, stats
 
     if native_is_bad and not ocr_usable:
@@ -987,7 +1014,10 @@ def write_pdf_compare_report(
         "ocr_empty": stats.get("ocr_empty"),
         "native_cyrillic_ratio": stats.get("native_cyrillic_ratio"),
         "ocr_cyrillic_ratio": stats.get("ocr_cyrillic_ratio"),
+        "native_cyrillic_chars": stats.get("native_cyrillic_chars"),
+        "ocr_cyrillic_chars": stats.get("ocr_cyrillic_chars"),
         "native_unreadable": stats.get("native_unreadable"),
         "ocr_unreadable": stats.get("ocr_unreadable"),
+        "ocr_much_longer": stats.get("ocr_much_longer"),
     }
     report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

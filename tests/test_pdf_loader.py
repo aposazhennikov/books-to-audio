@@ -124,6 +124,26 @@ class TestOcrModeSelection:
         assert stats["selected"] == "native"
         assert stats["native_unreadable"] is False
 
+    def test_select_pdf_text_for_mode_compare_uses_ocr_when_native_is_short_overlay(self) -> None:
+        native = "Верёвка есть вервие простое Из учебного наставления для палачей"
+        ocr_text = (
+            "ГЛАВА ПЕРВАЯ Повествующая, в общем-то, ни о чем, но зато содержащая "
+            "глубокое исследование этого предмета. Сергей сидел за столом и пил "
+            "чай с малиновым вареньем. Состояние было весьма тоскливым. "
+        ) * 20
+        compare = PdfOcrCompareResult(
+            native=PdfTextVariant(kind="native", text=native),
+            ocr=PdfTextVariant(kind="ocr", text=ocr_text),
+        )
+
+        chosen, stats = select_pdf_text_for_mode(compare, OcrMode.COMPARE)
+
+        assert chosen.kind == "ocr"
+        assert stats["selected"] == "ocr"
+        assert stats["native_unreadable"] is False
+        assert stats["ocr_much_longer"] is True
+        assert stats["reason"] == "compare_mode_ocr_much_longer_use_ocr"
+
     def test_select_pdf_text_for_mode_marks_broken_native_when_ocr_unavailable(self) -> None:
         compare = PdfOcrCompareResult(
             native=PdfTextVariant(kind="native", text="Co,11;ep'l\\:aHne rJIABA llEPBMI"),

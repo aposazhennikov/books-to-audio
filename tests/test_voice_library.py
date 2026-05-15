@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 
 from book_normalizer.tts.voice_library import (
+    VOICE_FILE_SUFFIX,
     default_voice_library_dir,
     list_saved_voices,
     normalize_voice_library_dir,
     resolve_saved_voice_path,
     sanitize_voice_id,
-    VOICE_FILE_SUFFIX,
     voice_paths,
 )
 

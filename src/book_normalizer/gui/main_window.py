@@ -134,6 +134,9 @@ class MainWindow(QMainWindow):
         self._normalize_page._on_finished = patched_finished
 
         self._voices_page.chunks_built.connect(self._on_chunks_built)
+        self._synthesis_page.output_dir_changed.connect(
+            self._on_synthesis_output_dir_changed,
+        )
 
     def _on_language_changed(self, _index: int) -> None:
         """Handle language combo change."""
@@ -186,9 +189,26 @@ class MainWindow(QMainWindow):
         mp = Path(chunks_path)
         out_dir = self._output_dir or mp.parent
         self._synthesis_page.set_manifest(mp, out_dir)
+        self._set_assembly_target(mp, out_dir)
+        self._statusbar.showMessage(t("status.voices_done"))
+
+    def _on_synthesis_output_dir_changed(
+        self,
+        output_dir_text: str,
+        manifest_path_text: str,
+    ) -> None:
+        """Keep assembly target in sync with the synthesis output folder."""
+        out_dir = Path(output_dir_text)
+        self._output_dir = out_dir
+        if manifest_path_text:
+            self._set_assembly_target(Path(manifest_path_text), out_dir)
+
+    def _set_assembly_target(self, manifest_path: Path, output_dir: Path) -> None:
+        """Point the assembly page at the folder used by synthesis."""
+        mp = manifest_path
+        out_dir = output_dir
         audio_dir = out_dir / "audio_chunks"
         if mp.name.endswith("_v2.json") or mp.name == "chunks_manifest_v2.json":
             self._assembly_page.set_manifest(mp, out_dir)
         else:
             self._assembly_page.set_audio_dir(audio_dir, out_dir)
-        self._statusbar.showMessage(t("status.voices_done"))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -71,6 +72,17 @@ VOICE_IDS = [
 
 _TEST_FRAGMENT_MAX_CHARS = 420
 _TEST_CHUNK_LABEL_MAX_CHARS = 64
+
+
+def _host_path_from_text(path_text: str | Path) -> Path:
+    """Normalize Windows or WSL-style path text to a host filesystem path."""
+    text = str(path_text).strip()
+    if os.name == "nt" and text.startswith("/mnt/") and len(text) > 6:
+        drive = text[5]
+        rest = text[6:].lstrip("/")
+        text = f"{drive.upper()}:/{rest}"
+    path = Path(text).expanduser()
+    return path if path.is_absolute() else (Path.cwd() / path).resolve()
 
 
 def _make_combo_compact(combo: QComboBox, min_chars: int = 18) -> None:
@@ -294,6 +306,8 @@ class _CloneVoiceRow(QWidget):
 
 class SynthesisPage(QWidget):
     """Page for running TTS synthesis with progress tracking."""
+
+    output_dir_changed = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -876,6 +890,21 @@ class SynthesisPage(QWidget):
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
+        output_dir_row = QHBoxLayout()
+        output_dir_row.setSpacing(6)
+        self._output_dir_edit = QLineEdit()
+        self._output_dir_edit.setMinimumWidth(180)
+        self._output_dir_edit.editingFinished.connect(self._apply_output_dir_edit)
+        output_dir_row.addWidget(self._output_dir_edit, stretch=1)
+        self._btn_output_dir = QPushButton()
+        self._btn_output_dir.clicked.connect(self._browse_output_dir)
+        output_dir_row.addWidget(self._btn_output_dir)
+        self._output_dir_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._output_dir_label, "synth.output_dir_help"),
+            output_dir_row,
+        )
+
         model_dir_row = QHBoxLayout()
         model_dir_row.setSpacing(6)
         self._models_dir_edit = QLineEdit(str(default_comfyui_models_dir()))
@@ -1210,6 +1239,9 @@ class SynthesisPage(QWidget):
 
         self._model_label.setText(t("synth.model"))
         self._model_combo.setToolTip(t("synth.model_help"))
+        self._output_dir_label.setText(t("synth.output_dir"))
+        self._output_dir_edit.setToolTip(t("synth.output_dir_help"))
+        self._btn_output_dir.setText(t("synth.choose_dir"))
         self._models_dir_label.setText(t("synth.models_dir"))
         self._models_dir_edit.setToolTip(t("synth.models_dir_help"))
         self._btn_models_dir.setText(t("synth.choose_dir"))
@@ -1367,6 +1399,41 @@ class SynthesisPage(QWidget):
         """Return the configured voice library directory."""
         text = self._voice_library_dir_edit.text().strip()
         return normalize_voice_library_dir(text or default_voice_library_dir())
+
+    def _current_output_dir(self) -> Path | None:
+        """Return the selected synthesis output directory."""
+        text = self._output_dir_edit.text().strip()
+        if text:
+            return _host_path_from_text(text)
+        return self._output_dir
+
+    def _set_output_dir(self, output_dir: Path, *, emit: bool = True) -> None:
+        """Update the selected output directory and reflect it in the UI."""
+        normalized = _host_path_from_text(output_dir)
+        self._output_dir = normalized
+        if hasattr(self, "_output_dir_edit"):
+            self._output_dir_edit.setText(str(normalized))
+        if emit:
+            self.output_dir_changed.emit(
+                str(normalized),
+                str(self._manifest_path or ""),
+            )
+
+    def _apply_output_dir_edit(self) -> None:
+        """Normalize a manually typed output directory."""
+        output_dir = self._current_output_dir()
+        if output_dir is not None:
+            self._set_output_dir(output_dir)
+
+    def _browse_output_dir(self) -> None:
+        start_dir = self._current_output_dir() or Path.cwd()
+        path = QFileDialog.getExistingDirectory(
+            self,
+            t("synth.output_dir"),
+            str(start_dir),
+        )
+        if path:
+            self._set_output_dir(Path(path))
 
     def _browse_voice_library_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(
@@ -1616,7 +1683,7 @@ class SynthesisPage(QWidget):
     def set_manifest(self, manifest_path: Path, output_dir: Path) -> None:
         """Set the manifest file and output directory."""
         self._manifest_path = manifest_path
-        self._output_dir = output_dir
+        self._set_output_dir(output_dir, emit=False)
         self._manifest_label.setText(str(manifest_path))
         self._btn_start.setEnabled(True)
         self._btn_test.setEnabled(True)
@@ -1629,7 +1696,7 @@ class SynthesisPage(QWidget):
         if path:
             p = Path(path)
             self._manifest_path = p
-            self._output_dir = p.parent
+            self._set_output_dir(p.parent)
             self._manifest_label.setText(str(p))
             self._btn_start.setEnabled(True)
             self._btn_test.setEnabled(True)
@@ -1841,14 +1908,17 @@ class SynthesisPage(QWidget):
         return selected if selected and selected > 0 else None
 
     def _start_synthesis(self) -> None:
-        if not self._manifest_path or not self._output_dir:
+        output_dir = self._current_output_dir()
+        if not self._manifest_path or not output_dir:
             return
 
         chapter = self._selected_chapter()
 
         try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            self._set_output_dir(output_dir)
             clone_config_path = self._build_temp_sample_voice_config()
-        except ValueError as exc:
+        except (OSError, ValueError) as exc:
             self._status.setText(str(exc))
             self._progress.set_status(str(exc))
             return
@@ -1859,7 +1929,7 @@ class SynthesisPage(QWidget):
 
         self._worker = TTSSynthesisWorker(
             manifest_path=self._manifest_path,
-            output_dir=self._output_dir,
+            output_dir=output_dir,
             model=self._model_combo.currentText(),
             chapter=chapter,
             batch_size=self._batch_size.value(),
@@ -1888,9 +1958,8 @@ class SynthesisPage(QWidget):
         self._worker.start()
 
         self._log_edit.clear()
-        if self._output_dir:
-            log_path = self._output_dir / "synthesis_log.txt"
-            self._log_edit.appendPlainText(t("synth.log_path", path=str(log_path)))
+        log_path = output_dir / "synthesis_log.txt"
+        self._log_edit.appendPlainText(t("synth.log_path", path=str(log_path)))
 
         self._phase = "loading"
         self._phase_start = time.time()
@@ -1899,22 +1968,25 @@ class SynthesisPage(QWidget):
         self._on_tick()
 
     def _start_test_synthesis(self) -> None:
-        if not self._manifest_path or not self._output_dir:
+        output_dir = self._current_output_dir()
+        if not self._manifest_path or not output_dir:
             return
 
         try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            self._set_output_dir(output_dir)
             test_chunks = self._build_selected_test_chunks()
             if not test_chunks:
                 raise ValueError(t("synth.test_no_chunk"))
             clone_config_path = self._build_temp_sample_voice_config(
                 include_speech_rate=False,
             )
-        except ValueError as exc:
+        except (OSError, ValueError) as exc:
             self._status.setText(str(exc))
             self._progress.set_status(str(exc))
             return
 
-        self._preview_output_dir = self._output_dir / "tts_test_preview"
+        self._preview_output_dir = output_dir / "tts_test_preview"
         self._preview_output_dir.mkdir(parents=True, exist_ok=True)
         test_manifest = self._preview_output_dir / "test_manifest.json"
         test_manifest.write_text(
@@ -1985,6 +2057,8 @@ class SynthesisPage(QWidget):
         self._btn_test.setEnabled(has_manifest and not active)
         self._btn_stop.setEnabled(active)
         self._btn_save_sample_voice.setEnabled(not active)
+        self._output_dir_edit.setEnabled(not active)
+        self._btn_output_dir.setEnabled(not active)
 
     def _toggle_test_playback(self) -> None:
         if not self._last_test_audio_path:

@@ -572,6 +572,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Voice library:",
         "ru": "Библиотека голосов:",
     },
+    "synth.output_dir": {
+        "en": "Save files to:",
+        "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u044f\u0442\u044c \u0444\u0430\u0439\u043b\u044b \u0432:",
+    },
     "synth.models_dir_hint": {
         "en": (
             "The WSL runner looks here before HuggingFace. Default points to "
@@ -820,6 +824,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.voice_library_dir_help": {
         "en": "Shared folder for reusable .voice.pt prompts. Saved voices can be reused across books without prompt extraction.",
         "ru": "Общая папка для reusable .voice.pt prompt'ов. Сохраненные голоса можно переиспользовать в разных книгах без prompt extraction.",
+    },
+    "synth.output_dir_help": {
+        "en": "Folder where synthesis files are written: audio_chunks, tts_test_preview, synthesis_log.txt, synthesis_manifest.json, and merged chapters.",
+        "ru": "\u041f\u0430\u043f\u043a\u0430, \u043a\u0443\u0434\u0430 \u043f\u0438\u0448\u0443\u0442\u0441\u044f \u0444\u0430\u0439\u043b\u044b \u0441\u0438\u043d\u0442\u0435\u0437\u0430: audio_chunks, tts_test_preview, synthesis_log.txt, synthesis_manifest.json \u0438 \u0441\u043e\u0431\u0440\u0430\u043d\u043d\u044b\u0435 \u0433\u043b\u0430\u0432\u044b.",
     },
     "synth.batch_help": {
         "en": "How many chunks to render at once. 1 is safest; larger values can be faster but need more VRAM.",

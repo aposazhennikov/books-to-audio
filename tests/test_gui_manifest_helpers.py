@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest
 from book_normalizer.gui.pages.synthesis_page import (
+    SynthesisPage,
     _build_test_manifest_chunks,
+    _host_path_from_text,
+    _iter_manifest_chunks,
     _role_for_voice_id,
+    _shorten_test_fragment,
     _test_manifest_chunk_from_chunk,
     _test_manifest_chunk_from_text,
-    _iter_manifest_chunks,
-    _shorten_test_fragment,
 )
 from book_normalizer.gui.workers.tts_worker import (
     ExportSegmentsWorker,
@@ -173,6 +176,36 @@ def test_role_for_voice_id_defaults_to_narrator() -> None:
     assert _role_for_voice_id("female_bright") == "female"
     assert _role_for_voice_id("male_deep") == "male"
     assert _role_for_voice_id("narrator_wise") == "narrator"
+
+
+def test_host_path_from_text_resolves_relative_path(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    assert _host_path_from_text("custom_out") == tmp_path / "custom_out"
+
+
+def test_synthesis_page_output_dir_edit_emits_selected_folder(tmp_path: Path) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    _ = app
+    page = SynthesisPage()
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(_v2_manifest()), encoding="utf-8")
+    default_output = tmp_path / "default"
+    custom_output = tmp_path / "custom"
+    emitted: list[tuple[str, str]] = []
+    page.output_dir_changed.connect(
+        lambda output_dir, manifest: emitted.append((output_dir, manifest)),
+    )
+
+    page.set_manifest(manifest_path, default_output)
+    page._output_dir_edit.setText(str(custom_output))
+    page._apply_output_dir_edit()
+
+    assert page._current_output_dir() == custom_output
+    assert emitted[-1] == (str(custom_output), str(manifest_path))
 
 
 def test_shorten_test_fragment_prefers_sentence_boundary() -> None:

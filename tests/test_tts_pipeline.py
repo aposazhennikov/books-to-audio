@@ -18,10 +18,10 @@ from book_normalizer.dialogue.attribution import (
     HeuristicAttributor,
 )
 from book_normalizer.dialogue.detector import DialogueDetector
-from book_normalizer.dialogue.models import SpeakerRole
+from book_normalizer.dialogue.models import SpeakerRole, VoiceAnnotatedChunk
 from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.tts.assembler import AudioAssembler
-from book_normalizer.tts.synthesizer import SynthesisProgress
+from book_normalizer.tts.synthesizer import SynthesisProgress, TTSSynthesizer
 from book_normalizer.tts.voice_config import VoiceConfig, VoiceMethod, VoiceProfile
 
 # ---------------------------------------------------------------------------
@@ -188,6 +188,43 @@ class TestSynthesisProgress:
         assert p2.is_done(1, 5)
 
 
+class TestTTSSynthesizer:
+
+    def test_resume_keeps_skipped_chunks_in_manifest(self, tmp_path: Path) -> None:
+        output_dir = tmp_path / "resume"
+        chunk_path = output_dir / "audio_chunks" / "chapter_001" / "chunk_001_narrator.wav"
+        chunk_path.parent.mkdir(parents=True)
+        chunk_path.write_bytes(b"existing")
+
+        progress = SynthesisProgress(output_dir / "synthesis_progress.json")
+        progress.mark_done(0, 0)
+
+        chunk = VoiceAnnotatedChunk(
+            index=0,
+            text="Already synthesized.",
+            chapter_index=0,
+            role=SpeakerRole.NARRATOR,
+            voice_id="narrator",
+        )
+        synth = TTSSynthesizer(object(), output_dir, resume=True)
+
+        synth.synthesize_book({0: [chunk]})
+
+        manifest = json.loads(
+            (output_dir / "synthesis_manifest.json").read_text(encoding="utf-8")
+        )
+        assert manifest == [
+            {
+                "chapter_index": 0,
+                "chunk_index": 0,
+                "voice_id": "narrator",
+                "role": "narrator",
+                "text_len": len(chunk.text),
+                "file": "audio_chunks/chapter_001/chunk_001_narrator.wav",
+            }
+        ]
+
+
 # ---------------------------------------------------------------------------
 # Audio assembler tests
 # ---------------------------------------------------------------------------
@@ -231,6 +268,28 @@ class TestAudioAssembler:
         assembler = AudioAssembler(output_dir)
         result = assembler.assemble()
         assert result == {}
+
+    def test_missing_manifest_chunk_raises(self, tmp_path: Path) -> None:
+        output_dir = tmp_path / "missing_output"
+        output_dir.mkdir()
+        manifest = [
+            {
+                "chapter_index": 0,
+                "chunk_index": 0,
+                "voice_id": "narrator",
+                "role": "narrator",
+                "text_len": 10,
+                "file": "audio_chunks/chapter_001/missing.wav",
+            },
+        ]
+        (output_dir / "synthesis_manifest.json").write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+
+        assembler = AudioAssembler(output_dir)
+
+        with pytest.raises(FileNotFoundError):
+            assembler.assemble()
 
     def test_speaker_change_pause(self, tmp_path: Path) -> None:
         output_dir = tmp_path / "pause_test"

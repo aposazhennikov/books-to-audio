@@ -29,6 +29,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+from hashlib import sha1
 from pathlib import Path
 from typing import Any
 
@@ -161,7 +162,7 @@ class LlmNormalizer:
             )
 
         # Check cache first.
-        cached = self._load_cache(chapter_index, paragraph_index)
+        cached = self._load_cache(chapter_index, paragraph_index, text)
         if cached is not None:
             return self._validator.validate(text, cached)
 
@@ -189,7 +190,7 @@ class LlmNormalizer:
             if raw:
                 result = self._validator.validate(text, raw)
                 if result.is_valid:
-                    self._save_cache(chapter_index, paragraph_index, raw)
+                    self._save_cache(chapter_index, paragraph_index, text, raw)
                     return result
 
                 last_issues = list(result.issues)
@@ -298,18 +299,32 @@ class LlmNormalizer:
 
     # ── Cache ─────────────────────────────────────────────────────────────────
 
-    def _cache_path(self, chapter_index: int, paragraph_index: int) -> Path | None:
+    def _cache_path(
+        self,
+        chapter_index: int,
+        paragraph_index: int,
+        source_text: str,
+    ) -> Path | None:
         """Return cache file path for one paragraph."""
         if not self._cache_dir:
             return None
+        fingerprint = self._cache_fingerprint(source_text)
         return (
             self._cache_dir
-            / f"norm_ch{chapter_index:03d}_para{paragraph_index:04d}.txt"
+            / (
+                f"norm_ch{chapter_index:03d}_para{paragraph_index:04d}"
+                f"_{fingerprint}.txt"
+            )
         )
 
-    def _load_cache(self, chapter_index: int, paragraph_index: int) -> str | None:
+    def _load_cache(
+        self,
+        chapter_index: int,
+        paragraph_index: int,
+        source_text: str,
+    ) -> str | None:
         """Return cached corrected text, or None if unavailable."""
-        path = self._cache_path(chapter_index, paragraph_index)
+        path = self._cache_path(chapter_index, paragraph_index, source_text)
         if path and path.exists():
             try:
                 return path.read_text(encoding="utf-8")
@@ -318,13 +333,27 @@ class LlmNormalizer:
         return None
 
     def _save_cache(
-        self, chapter_index: int, paragraph_index: int, text: str
+        self,
+        chapter_index: int,
+        paragraph_index: int,
+        source_text: str,
+        corrected_text: str,
     ) -> None:
         """Persist corrected text to disk cache."""
-        path = self._cache_path(chapter_index, paragraph_index)
+        path = self._cache_path(chapter_index, paragraph_index, source_text)
         if path:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
+            path.write_text(corrected_text, encoding="utf-8")
+
+    def _cache_fingerprint(self, source_text: str) -> str:
+        """Return a cache fingerprint for text + LLM settings."""
+        payload = "\n\0".join((
+            self._model,
+            self._endpoint,
+            _SYSTEM_PROMPT,
+            source_text,
+        ))
+        return sha1(payload.encode("utf-8")).hexdigest()[:16]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

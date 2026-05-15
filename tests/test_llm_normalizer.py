@@ -232,6 +232,19 @@ class TestLlmNormalizerMocked:
         assert call_count["n"] == 0
         assert result.is_valid
 
+    def test_cache_key_depends_on_text_and_model(self, tmp_path: Path) -> None:
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        n1 = LlmNormalizer(model="model-a", cache_dir=tmp_path / "cache")
+        n2 = LlmNormalizer(model="model-b", cache_dir=tmp_path / "cache")
+
+        p1 = n1._cache_path(0, 0, "same text")
+        p2 = n1._cache_path(0, 0, "changed text")
+        p3 = n2._cache_path(0, 0, "same text")
+
+        assert p1 != p2
+        assert p1 != p3
+
     def test_llm_unavailable_keeps_original(self, tmp_path: Path) -> None:
         """When LLM returns empty string, original text is preserved."""
         normalizer = self._make_normalizer(tmp_path)
@@ -355,6 +368,19 @@ class TestLlmChunkerFormat:
         )
         assert [spec.chunk_index for spec in specs] == list(range(len(specs)))
         assert all(len(spec.text) <= 18 for spec in specs)
+
+    def test_chunker_cache_key_depends_on_text_and_model(self, tmp_path: Path) -> None:
+        from book_normalizer.chunking.llm_chunker import LlmChunker
+
+        c1 = LlmChunker(model="model-a", cache_dir=tmp_path / "cache")
+        c2 = LlmChunker(model="model-b", cache_dir=tmp_path / "cache")
+
+        p1 = c1._cache_path(0, 0, "same text", "narrator")
+        p2 = c1._cache_path(0, 0, "changed text", "narrator")
+        p3 = c2._cache_path(0, 0, "same text", "narrator")
+
+        assert p1 != p2
+        assert p1 != p3
 
     def test_chunker_fallback_on_empty_llm(self, tmp_path: Path) -> None:
         """LlmChunker uses heuristic fallback when LLM always returns empty."""

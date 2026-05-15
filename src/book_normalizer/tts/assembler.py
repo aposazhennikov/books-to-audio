@@ -28,6 +28,7 @@ class AudioAssembler:
         pause_phrase_ms: int = DEFAULT_PAUSE_PHRASE_MS,
         pause_speaker_ms: int = DEFAULT_PAUSE_SPEAKER_MS,
         pause_chapter_ms: int = DEFAULT_PAUSE_CHAPTER_MS,
+        strict_missing: bool = True,
     ) -> None:
         self._output_dir = output_dir
         self._chunks_dir = output_dir / "audio_chunks"
@@ -35,6 +36,7 @@ class AudioAssembler:
         self._pause_phrase_ms = pause_phrase_ms
         self._pause_speaker_ms = pause_speaker_ms
         self._pause_chapter_ms = pause_chapter_ms
+        self._strict_missing = strict_missing
 
     def assemble(self, export_mp3: bool = False) -> dict[str, Path]:
         """Assemble all chapters and the full book from chunk WAVs.
@@ -82,6 +84,20 @@ class AudioAssembler:
             if fpath.exists():
                 chunk_files.append(fpath)
                 voice_ids.append(entry.get("voice_id", ""))
+            else:
+                chunk_num = entry.get("chunk_index")
+                chunk_label = (
+                    str(chunk_num + 1)
+                    if isinstance(chunk_num, int)
+                    else "?"
+                )
+                message = (
+                    f"Missing audio chunk for chapter {chapter_index + 1}, "
+                    f"chunk {chunk_label}: {fpath}"
+                )
+                if self._strict_missing:
+                    raise FileNotFoundError(message)
+                logger.warning(message)
 
         if not chunk_files:
             return None

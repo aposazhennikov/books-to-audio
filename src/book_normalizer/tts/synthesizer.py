@@ -80,7 +80,9 @@ class TTSSynthesizer:
         self._chunks_dir = output_dir / "audio_chunks"
         self._progress = SynthesisProgress(output_dir / "synthesis_progress.json")
         self._resume = resume
-        self._manifest: list[dict[str, Any]] = []
+        self._manifest: list[dict[str, Any]] = (
+            self._load_manifest() if resume else []
+        )
 
     def synthesize_book(
         self,
@@ -106,7 +108,8 @@ class TTSSynthesizer:
                 for ch_idx in sorted(chapters.keys()):
                     ch_chunks = chapters[ch_idx]
                     for chunk in ch_chunks:
-                        if self._resume and self._progress.is_done(ch_idx, chunk.index):
+                        if self._should_skip_chunk(chunk):
+                            self._record_existing_chunk(chunk)
                             skipped += 1
                             progress.advance(task)
                             continue
@@ -118,7 +121,8 @@ class TTSSynthesizer:
             for ch_idx in sorted(chapters.keys()):
                 ch_chunks = chapters[ch_idx]
                 for chunk in ch_chunks:
-                    if self._resume and self._progress.is_done(ch_idx, chunk.index):
+                    if self._should_skip_chunk(chunk):
+                        self._record_existing_chunk(chunk)
                         skipped += 1
                         continue
                     self._synthesize_chunk(chunk)
@@ -151,13 +155,8 @@ class TTSSynthesizer:
 
     def _synthesize_chunk(self, chunk: VoiceAnnotatedChunk) -> None:
         """Generate audio for a single chunk and save to disk."""
-        ch_dir = self._chunks_dir / f"chapter_{chunk.chapter_index + 1:03d}"
-        ch_dir.mkdir(parents=True, exist_ok=True)
-
-        filename = (
-            f"chunk_{chunk.index + 1:03d}_{chunk.voice_id}.wav"
-        )
-        out_path = ch_dir / filename
+        out_path = self._chunk_output_path(chunk)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
 
         profile = self._vm.get_profile(chunk.voice_id)
         wavs, sr = self._generate_audio(chunk.text, profile, chunk.voice_id)
@@ -165,14 +164,63 @@ class TTSSynthesizer:
         import soundfile as sf
         sf.write(str(out_path), wavs[0], sr)
 
-        self._manifest.append({
+        self._upsert_manifest_entry(self._manifest_entry(chunk, out_path))
+
+    def _should_skip_chunk(self, chunk: VoiceAnnotatedChunk) -> bool:
+        """Return True only when progress and the WAV file both exist."""
+        if not self._resume:
+            return False
+        if not self._progress.is_done(chunk.chapter_index, chunk.index):
+            return False
+        out_path = self._chunk_output_path(chunk)
+        if out_path.exists():
+            return True
+        logger.warning(
+            "Progress marked chapter %d chunk %d done, but %s is missing; regenerating.",
+            chunk.chapter_index,
+            chunk.index,
+            out_path,
+        )
+        return False
+
+    def _record_existing_chunk(self, chunk: VoiceAnnotatedChunk) -> None:
+        """Keep skipped resume chunks in the synthesis manifest."""
+        out_path = self._chunk_output_path(chunk)
+        self._upsert_manifest_entry(self._manifest_entry(chunk, out_path))
+
+    def _chunk_output_path(self, chunk: VoiceAnnotatedChunk) -> Path:
+        """Return the expected WAV path for a chunk."""
+        ch_dir = self._chunks_dir / f"chapter_{chunk.chapter_index + 1:03d}"
+        filename = f"chunk_{chunk.index + 1:03d}_{chunk.voice_id}.wav"
+        return ch_dir / filename
+
+    def _manifest_entry(
+        self,
+        chunk: VoiceAnnotatedChunk,
+        out_path: Path,
+    ) -> dict[str, Any]:
+        """Build a synthesis manifest entry for a chunk."""
+        return {
             "chapter_index": chunk.chapter_index,
             "chunk_index": chunk.index,
             "voice_id": chunk.voice_id,
             "role": chunk.role.value,
             "text_len": len(chunk.text),
-            "file": str(out_path.relative_to(self._output_dir)),
-        })
+            "file": out_path.relative_to(self._output_dir).as_posix(),
+        }
+
+    def _upsert_manifest_entry(self, entry: dict[str, Any]) -> None:
+        """Insert or replace a manifest entry by chapter/chunk index."""
+        key = (entry["chapter_index"], entry["chunk_index"])
+        for i, existing in enumerate(self._manifest):
+            existing_key = (
+                existing.get("chapter_index"),
+                existing.get("chunk_index"),
+            )
+            if existing_key == key:
+                self._manifest[i] = entry
+                return
+        self._manifest.append(entry)
 
     def _generate_audio(
         self, text: str, profile: Any, voice_id: str
@@ -214,7 +262,24 @@ class TTSSynthesizer:
     def _write_manifest(self) -> None:
         """Write synthesis manifest JSON."""
         manifest_path = self._output_dir / "synthesis_manifest.json"
+        ordered = sorted(
+            self._manifest,
+            key=lambda e: (e.get("chapter_index", 0), e.get("chunk_index", 0)),
+        )
         manifest_path.write_text(
-            json.dumps(self._manifest, ensure_ascii=False, indent=2),
+            json.dumps(ordered, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+    def _load_manifest(self) -> list[dict[str, Any]]:
+        """Load an existing synthesis manifest for resume."""
+        manifest_path = self._output_dir / "synthesis_manifest.json"
+        if not manifest_path.exists():
+            return []
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return []
+        if not isinstance(data, list):
+            return []
+        return [item for item in data if isinstance(item, dict)]

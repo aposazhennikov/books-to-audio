@@ -13,6 +13,7 @@ import logging
 import re
 from abc import ABC, abstractmethod
 from enum import Enum
+from hashlib import sha1
 from pathlib import Path
 from typing import Any
 
@@ -198,14 +199,19 @@ class LlmAttributor(BaseSpeakerAttributor):
                 stats["chapters_processed"] += 1
                 continue
 
-            cached = self._load_cache(chapter.chapter_index)
+            cache_key = self._cache_fingerprint(chapter, dialogue_lines)
+            cached = self._load_cache(chapter.chapter_index, cache_key)
             if cached:
-                self._apply_cached(dialogue_lines, cached)
+                self._apply_cached(dialogue_lines, cached, chapter.chapter_index)
             else:
                 annotations = self._query_llm(chapter, dialogue_lines)
                 if annotations:
-                    self._apply_annotations(dialogue_lines, annotations)
-                    self._save_cache(chapter.chapter_index, annotations)
+                    self._apply_annotations(
+                        dialogue_lines, annotations, chapter.chapter_index,
+                    )
+                    self._save_cache(
+                        chapter.chapter_index, annotations, cache_key,
+                    )
 
             stats["chapters_processed"] += 1
 
@@ -224,8 +230,11 @@ class LlmAttributor(BaseSpeakerAttributor):
             return []
 
         lines_payload = [
-            {"line_id": line.id, "text": line.text[:200]}
-            for line in dialogue_lines
+            {
+                "line_id": _line_cache_key(line, chapter.chapter_index, i),
+                "text": line.text[:200],
+            }
+            for i, line in enumerate(dialogue_lines)
         ]
         user_msg = (
             f"Chapter: {chapter.chapter_title}\n\n"
@@ -274,12 +283,17 @@ class LlmAttributor(BaseSpeakerAttributor):
 
     @staticmethod
     def _apply_annotations(
-        lines: list[DialogueLine], annotations: list[dict[str, str]]
+        lines: list[DialogueLine],
+        annotations: list[dict[str, str]],
+        chapter_index: int = 0,
     ) -> None:
         """Apply LLM annotations to dialogue lines."""
         mapping = {a["line_id"]: a.get("role", "") for a in annotations}
-        for line in lines:
-            role_str = mapping.get(line.id, "")
+        for i, line in enumerate(lines):
+            role_str = mapping.get(
+                _line_cache_key(line, chapter_index, i),
+                mapping.get(line.id, ""),
+            )
             if role_str == "male":
                 line.role = SpeakerRole.MALE
                 line.attribution_tag = "llm"
@@ -289,20 +303,26 @@ class LlmAttributor(BaseSpeakerAttributor):
 
     @staticmethod
     def _apply_cached(
-        lines: list[DialogueLine], cached: list[dict[str, str]]
+        lines: list[DialogueLine],
+        cached: list[dict[str, str]],
+        chapter_index: int = 0,
     ) -> None:
         """Apply cached annotations."""
-        LlmAttributor._apply_annotations(lines, cached)
+        LlmAttributor._apply_annotations(lines, cached, chapter_index)
 
-    def _cache_path(self, chapter_index: int) -> Path | None:
+    def _cache_path(self, chapter_index: int, cache_key: str = "") -> Path | None:
         """Build cache file path for a chapter."""
         if not self._cache_dir:
             return None
+        if cache_key:
+            return self._cache_dir / f"speaker_ch{chapter_index:03d}_{cache_key}.json"
         return self._cache_dir / f"speaker_ch{chapter_index:03d}.json"
 
-    def _load_cache(self, chapter_index: int) -> list[dict[str, str]] | None:
+    def _load_cache(
+        self, chapter_index: int, cache_key: str = ""
+    ) -> list[dict[str, str]] | None:
         """Load cached annotations if available."""
-        path = self._cache_path(chapter_index)
+        path = self._cache_path(chapter_index, cache_key)
         if path and path.exists():
             try:
                 return json.loads(path.read_text(encoding="utf-8"))
@@ -311,16 +331,41 @@ class LlmAttributor(BaseSpeakerAttributor):
         return None
 
     def _save_cache(
-        self, chapter_index: int, annotations: list[dict[str, str]]
+        self,
+        chapter_index: int,
+        annotations: list[dict[str, str]],
+        cache_key: str = "",
     ) -> None:
         """Persist annotations to cache."""
-        path = self._cache_path(chapter_index)
+        path = self._cache_path(chapter_index, cache_key)
         if path:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
                 json.dumps(annotations, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+
+    def _cache_fingerprint(
+        self,
+        chapter: AnnotatedChapter,
+        dialogue_lines: list[DialogueLine],
+    ) -> str:
+        """Return a cache fingerprint for chapter text + LLM settings."""
+        line_payload = [
+            {
+                "key": _line_cache_key(line, chapter.chapter_index, i),
+                "text": line.text,
+            }
+            for i, line in enumerate(dialogue_lines)
+        ]
+        payload = "\n\0".join((
+            self._model,
+            self._endpoint,
+            _LLM_SYSTEM_PROMPT,
+            chapter.chapter_title,
+            json.dumps(line_payload, ensure_ascii=False, sort_keys=True),
+        ))
+        return sha1(payload.encode("utf-8")).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
@@ -367,9 +412,14 @@ class ManualAttributor(BaseSpeakerAttributor):
                 )
             )
 
-            for line in dialogue_lines:
-                if line.id in self._decisions:
-                    role_str = self._decisions[line.id]
+            for i, line in enumerate(dialogue_lines):
+                line_key = _line_cache_key(line, chapter.chapter_index, i)
+                legacy_key = line.id
+                if line_key in self._decisions or legacy_key in self._decisions:
+                    role_str = self._decisions.get(
+                        line_key,
+                        self._decisions.get(legacy_key, ""),
+                    )
                     line.role = SpeakerRole(role_str)
                     line.attribution_tag = "manual:cached"
                     continue
@@ -388,7 +438,7 @@ class ManualAttributor(BaseSpeakerAttributor):
                     line.role = SpeakerRole.UNKNOWN
 
                 line.attribution_tag = "manual"
-                self._decisions[line.id] = line.role.value
+                self._decisions[line_key] = line.role.value
                 self._save_session()
 
             stats["chapters_processed"] += 1
@@ -450,6 +500,16 @@ def create_attributor(
 def _empty_stats(strategy: str) -> dict[str, Any]:
     """Create an empty stats dict."""
     return {"strategy": strategy, "chapters_processed": 0}
+
+
+def _line_cache_key(
+    line: DialogueLine,
+    chapter_index: int,
+    ordinal: int,
+) -> str:
+    """Build a deterministic line key for caches and manual sessions."""
+    text_hash = sha1(line.text.strip().encode("utf-8")).hexdigest()[:12]
+    return f"ch{chapter_index:03d}:ord{ordinal:04d}:line{line.line_index:04d}:{text_hash}"
 
 
 def _build_result(

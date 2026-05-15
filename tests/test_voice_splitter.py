@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from book_normalizer.chunking.voice_splitter import (
+    build_chunks_from_segments,
     chunk_annotated_book,
     chunk_annotated_chapter,
 )
@@ -130,3 +131,29 @@ class TestChunkAnnotatedBook:
     def test_empty_list(self) -> None:
         result = chunk_annotated_book([])
         assert result == {}
+
+
+class TestBuildChunksFromSegments:
+
+    def test_chunk_index_resets_per_chapter(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "voice_id": "narrator_calm",
+                "intonation": "neutral",
+                "role": "narrator",
+                "text": "Chapter one.",
+            },
+            {
+                "chapter_index": 1,
+                "voice_id": "narrator_calm",
+                "intonation": "neutral",
+                "role": "narrator",
+                "text": "Chapter two.",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments)
+
+        assert [chunk["chapter_index"] for chunk in chunks] == [0, 1]
+        assert [chunk["chunk_index"] for chunk in chunks] == [0, 0]

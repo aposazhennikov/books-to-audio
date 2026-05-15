@@ -28,6 +28,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from hashlib import sha1
 from pathlib import Path
 from typing import Any
 
@@ -213,7 +214,7 @@ class LlmChunker:
 
         for win_idx, window_text in enumerate(windows):
             win_t0 = time.monotonic()
-            cached = self._load_cache(chapter_index, win_idx)
+            cached = self._load_cache(chapter_index, win_idx, window_text, last_voice)
             if cached is not None:
                 logger.debug(
                     "Chapter %d window %d: loaded %d chunks from cache",
@@ -233,7 +234,7 @@ class LlmChunker:
                     )
                     return self._heuristic_fallback(chapter_index, chapter_text)
                 all_raw.extend(raw)
-                self._save_cache(chapter_index, win_idx, raw)
+                self._save_cache(chapter_index, win_idx, window_text, last_voice, raw)
 
             if all_raw:
                 # Track last voice label for cross-window context.
@@ -386,23 +387,36 @@ class LlmChunker:
 
     # ── Cache ─────────────────────────────────────────────────────────────────
 
-    def _cache_path(self, chapter_index: int, window_index: int) -> Path | None:
+    def _cache_path(
+        self,
+        chapter_index: int,
+        window_index: int,
+        window_text: str,
+        last_voice: str,
+    ) -> Path | None:
         """Build cache file path for a specific chapter + window."""
         if not self._cache_dir:
             return None
+        fingerprint = self._cache_fingerprint(window_text, last_voice)
         return (
             self._cache_dir
             / (
                 f"llm_chunks_ch{chapter_index:03d}_win{window_index:03d}"
-                f"_max{self._max_chunk_chars:04d}.json"
+                f"_max{self._max_chunk_chars:04d}_{fingerprint}.json"
             )
         )
 
     def _load_cache(
-        self, chapter_index: int, window_index: int
+        self,
+        chapter_index: int,
+        window_index: int,
+        window_text: str,
+        last_voice: str,
     ) -> list[dict[str, str]] | None:
         """Return cached window data, or None if unavailable."""
-        path = self._cache_path(chapter_index, window_index)
+        path = self._cache_path(
+            chapter_index, window_index, window_text, last_voice,
+        )
         if path and path.exists():
             try:
                 loaded = json.loads(path.read_text(encoding="utf-8"))
@@ -415,16 +429,34 @@ class LlmChunker:
         self,
         chapter_index: int,
         window_index: int,
+        window_text: str,
+        last_voice: str,
         data: list[dict[str, str]],
     ) -> None:
         """Persist window data to disk cache."""
-        path = self._cache_path(chapter_index, window_index)
+        path = self._cache_path(
+            chapter_index, window_index, window_text, last_voice,
+        )
         if path:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+
+    def _cache_fingerprint(self, window_text: str, last_voice: str) -> str:
+        """Return a cache fingerprint for text + LLM settings."""
+        prompt = _SYSTEM_PROMPT.format(
+            last_voice=last_voice,
+            max_chunk_chars=self._max_chunk_chars,
+        )
+        payload = "\n\0".join((
+            self._model,
+            self._endpoint,
+            prompt,
+            window_text,
+        ))
+        return sha1(payload.encode("utf-8")).hexdigest()[:16]
 
     # ── Fallback ──────────────────────────────────────────────────────────────
 

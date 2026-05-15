@@ -4,12 +4,31 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import subprocess
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from book_normalizer.gui.i18n import t
+
+
+def _flatten_manifest_chunks(data: object) -> list[dict]:
+    """Return v1-compatible chunk records from v1 or v2 manifest JSON."""
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if not isinstance(data, dict):
+        return []
+
+    chunks: list[dict] = []
+    for chapter in data.get("chapters", []):
+        if not isinstance(chapter, dict):
+            continue
+        chapter_index = chapter.get("chapter_index", 0)
+        for chunk in chapter.get("chunks", []):
+            if isinstance(chunk, dict):
+                chunks.append({"chapter_index": chapter_index, **chunk})
+    return chunks
 
 
 class ExportSegmentsWorker(QThread):
@@ -225,9 +244,7 @@ class TTSSynthesisWorker(QThread):
 
     def run(self) -> None:
         try:
-            manifest = json.loads(
-                self._manifest_path.read_text(encoding="utf-8"),
-            )
+            runner_manifest_path, manifest = self._prepare_runner_manifest()
             total = len(manifest)
             if self._chapter is not None:
                 total = sum(
@@ -244,31 +261,38 @@ class TTSSynthesisWorker(QThread):
                 / "scripts" / "tts_runner.py"
             )
 
-            resume_flag = " --resume" if self._resume else ""
-            chapter_flag = (
-                f" --chapter {self._chapter}" if self._chapter else ""
-            )
-            log_path = self._output_dir / "synthesis_log.txt"
-            log_flag = f" --log-file {self._wsl_path(log_path)}"
-            timeout_flag = f" --chunk-timeout {self._chunk_timeout}"
-            compile_flag = " --compile" if self._use_compile else ""
-            clone_flag = ""
+            args = [
+                "python", "-u",
+                self._wsl_path(script_path),
+                "--chunks-json", self._wsl_path(runner_manifest_path),
+                "--out", self._wsl_path(self._output_dir),
+                "--model", self._model,
+                "--batch-size", str(self._batch_size),
+                "--log-file", self._wsl_path(self._output_dir / "synthesis_log.txt"),
+                "--chunk-timeout", str(self._chunk_timeout),
+            ]
+            if self._chapter is not None:
+                args.extend(["--chapter", str(self._chapter)])
+            if self._resume:
+                args.append("--resume")
+            if self._use_compile:
+                args.append("--compile")
             if self._clone_config:
-                clone_flag = (
-                    f" --clone-config {self._wsl_path(Path(self._clone_config))}"
-                )
-            sage_flag = " --sage-attention" if self._use_sage_attention else ""
+                args.extend([
+                    "--clone-config",
+                    self._wsl_path(Path(self._clone_config)),
+                ])
+            if self._use_sage_attention:
+                args.append("--sage-attention")
+
+            bash_cmd = (
+                "source ~/venvs/qwen3tts/bin/activate && "
+                "PYTHONUNBUFFERED=1 "
+                + " ".join(shlex.quote(arg) for arg in args)
+            )
             cmd = [
                 "wsl", "-e", "bash", "-c",
-                f"source ~/venvs/qwen3tts/bin/activate && "
-                f"PYTHONUNBUFFERED=1 python -u "
-                f"{self._wsl_path(script_path)} "
-                f"--chunks-json {self._wsl_path(self._manifest_path)} "
-                f"--out {self._wsl_path(self._output_dir)} "
-                f"--model {self._model} "
-                f"--batch-size {self._batch_size}"
-                f"{resume_flag}{chapter_flag}{log_flag}"
-                f"{timeout_flag}{compile_flag}{clone_flag}{sage_flag}",
+                bash_cmd,
             ]
 
             self._process = subprocess.Popen(
@@ -373,6 +397,21 @@ class TTSSynthesisWorker(QThread):
 
         except Exception as exc:
             self.error.emit(str(exc))
+
+    def _prepare_runner_manifest(self) -> tuple[Path, list[dict]]:
+        """Load v1/v2 manifest and return a v1-compatible runner path."""
+        data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
+        chunks = _flatten_manifest_chunks(data)
+        if isinstance(data, list):
+            return self._manifest_path, chunks
+
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+        runner_manifest_path = self._output_dir / ".tts_runner_manifest.v1.json"
+        runner_manifest_path.write_text(
+            json.dumps(chunks, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return runner_manifest_path, chunks
 
     @staticmethod
     def _format_eta(seconds: int) -> str:

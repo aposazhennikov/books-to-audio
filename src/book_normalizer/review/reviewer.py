@@ -69,7 +69,7 @@ class Reviewer:
 
         session = ReviewSession(
             session_id=uuid.uuid4().hex[:12],
-            book_id=book.id,
+            book_id=book.stable_id,
             source_path=book.metadata.source_path,
             pending_issues=pending,
             resolved_issues=resolved,
@@ -166,7 +166,11 @@ class Reviewer:
                     if para.id != issue.paragraph_id:
                         continue
                     old = para.normalized_text or para.raw_text
-                    new = old.replace(decision.original_fragment, decision.final_fragment, 1)
+                    new = _replace_issue_fragment(
+                        old,
+                        issue,
+                        decision.final_fragment,
+                    )
                     if new != old:
                         para.normalized_text = new
                         applied_count += 1
@@ -174,3 +178,58 @@ class Reviewer:
         logger.info("Applied %d correction(s) to book text.", applied_count)
         book.add_audit("review", "apply_decisions", f"applied={applied_count}")
         return book
+
+
+def _replace_issue_fragment(
+    text: str,
+    issue: ReviewIssue,
+    replacement: str,
+) -> str:
+    """Replace the occurrence identified by review context."""
+    original = issue.original_fragment
+    if not original:
+        return text
+
+    positions: list[int] = []
+    start = 0
+    while True:
+        pos = text.find(original, start)
+        if pos < 0:
+            break
+        positions.append(pos)
+        start = pos + len(original)
+
+    if not positions:
+        return text
+
+    if issue.context_before or issue.context_after:
+        for pos in positions:
+            before = text[:pos]
+            after = text[pos + len(original):]
+            before_ok = (
+                not issue.context_before
+                or before.endswith(issue.context_before)
+            )
+            after_ok = (
+                not issue.context_after
+                or after.startswith(issue.context_after)
+            )
+            if before_ok and after_ok:
+                return text[:pos] + replacement + text[pos + len(original):]
+
+        logger.warning(
+            "Could not apply review decision %s: context no longer matches.",
+            issue.id,
+        )
+        return text
+
+    if len(positions) > 1:
+        logger.warning(
+            "Could not apply review decision %s: fragment %r is ambiguous.",
+            issue.id,
+            original,
+        )
+        return text
+
+    pos = positions[0]
+    return text[:pos] + replacement + text[pos + len(original):]

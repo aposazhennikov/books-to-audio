@@ -57,3 +57,50 @@ def test_process_pdf_off_mode_cli_does_not_crash(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
 
+
+def test_process_compare_report_reuses_selected_ocr_result(tmp_path: Path) -> None:
+    pdf_file = tmp_path / "test.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+    with patch(
+        "book_normalizer.cli.extract_pdf_with_ocr_mode"
+    ) as mock_extract, patch(
+        "book_normalizer.cli.select_pdf_text_for_mode"
+    ) as mock_select, patch(
+        "book_normalizer.cli.write_pdf_compare_report"
+    ) as mock_report:
+        from book_normalizer.loaders.pdf_loader import PdfOcrCompareResult, PdfTextVariant
+
+        compare = PdfOcrCompareResult(
+            native=PdfTextVariant(kind="native", text="native"),
+            ocr=PdfTextVariant(kind="ocr", text="ocr"),
+        )
+        mock_extract.return_value = compare
+        mock_select.return_value = (
+            compare.ocr,
+            {"selected": "ocr", "mode": OcrMode.COMPARE.value},
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "process",
+                str(pdf_file),
+                "--ocr-mode",
+                "compare",
+                "--ocr-dpi",
+                "333",
+                "--ocr-psm",
+                "4",
+                "--out",
+                str(tmp_path / "out"),
+            ],
+        )
+
+        assert result.exit_code == 0
+        mock_extract.assert_called_once_with(
+            pdf_file, OcrMode.COMPARE, dpi=333, psm=4,
+        )
+        mock_select.assert_called_once_with(compare, OcrMode.COMPARE)
+        mock_report.assert_called_once()

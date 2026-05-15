@@ -196,8 +196,6 @@ def process_command(
     # If PDF compare mode was used, write compare report artifacts now.
     if input_path.suffix.lower() == ".pdf" and config.ocr_mode == OcrMode.COMPARE:
         try:
-            compare = extract_pdf_with_ocr_mode(input_path, config.ocr_mode)
-            chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, config.ocr_mode)
             write_pdf_compare_report(output_dir, compare, ocr_stats)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Failed to write PDF compare report: %s", exc)
@@ -312,7 +310,7 @@ def _run_review(
         return None
 
     if resume:
-        existing = session_mgr.find_latest_for_book(book.id)
+        existing = session_mgr.find_latest_for_book(book.stable_id)
         if existing:
             click.echo(f"Resuming session from {existing}")
             session = session_mgr.load(existing)

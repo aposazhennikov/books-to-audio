@@ -53,6 +53,23 @@ VOICE_IDS = [
 ]
 
 
+def _iter_manifest_chunks(data: object) -> list[dict]:
+    """Return chunk records from v1 list or v2 grouped manifest."""
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if isinstance(data, dict):
+        chunks: list[dict] = []
+        for chapter in data.get("chapters", []):
+            if not isinstance(chapter, dict):
+                continue
+            chapter_index = chapter.get("chapter_index", 0)
+            for chunk in chapter.get("chunks", []):
+                if isinstance(chunk, dict):
+                    chunks.append({"chapter_index": chapter_index, **chunk})
+        return chunks
+    return []
+
+
 class _CloneVoiceRow(QWidget):
     """A single voice clone entry: voice_id selector + WAV path + transcript."""
 
@@ -561,12 +578,12 @@ class SynthesisPage(QWidget):
         try:
             data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
             chapter_chunks: dict[int, int] = {}
-            for item in data:
+            for item in _iter_manifest_chunks(data):
                 ch = item.get("chapter_index", 0)
                 chapter_chunks[ch] = chapter_chunks.get(ch, 0) + 1
             self._chapter_map = chapter_chunks
             self._refresh_chapter_combo()
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError, TypeError, AttributeError):
             pass
 
     def _refresh_chapter_combo(self) -> None:

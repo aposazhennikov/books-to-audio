@@ -11,6 +11,7 @@ from book_normalizer.dialogue.attribution import (
     LlmAttributor,
     ManualAttributor,
     SpeakerMode,
+    _line_cache_key,
     create_attributor,
 )
 from book_normalizer.dialogue.models import (
@@ -159,6 +160,20 @@ class TestLlmAttributor:
         attr = LlmAttributor(cache_dir=tmp_path)
         assert attr._load_cache(99) is None
 
+    def test_cache_key_depends_on_text_and_model(self, tmp_path: Path) -> None:
+        ch = _make_annotated_chapter([("Hello?", True)])
+        lines = ch.paragraphs[0].lines
+        attr1 = LlmAttributor(model="model-a", cache_dir=tmp_path)
+        attr2 = LlmAttributor(model="model-b", cache_dir=tmp_path)
+
+        key1 = attr1._cache_fingerprint(ch, lines)
+        key2 = attr2._cache_fingerprint(ch, lines)
+        lines[0].text = "Changed?"
+        key3 = attr1._cache_fingerprint(ch, lines)
+
+        assert key1 != key2
+        assert key1 != key3
+
 
 class TestManualAttributor:
     """Tests for the manual attributor session persistence."""
@@ -176,6 +191,25 @@ class TestManualAttributor:
         session_path = tmp_path / "nonexistent.json"
         attr = ManualAttributor(session_path=session_path)
         assert attr._decisions == {}
+
+    def test_session_reuses_stable_line_key(self, tmp_path: Path) -> None:
+        session_path = tmp_path / "manual_session.json"
+        chapter = _make_annotated_chapter([("Hello?", True)], chapter_index=2)
+        line = chapter.paragraphs[0].lines[0]
+        key = _line_cache_key(line, chapter.chapter_index, 0)
+
+        attr = ManualAttributor(session_path=session_path)
+        attr._decisions = {key: "female"}
+        attr._save_session()
+
+        # Recreate the chapter so DialogueLine.id changes, but text/index stay stable.
+        recreated = _make_annotated_chapter([("Hello?", True)], chapter_index=2)
+        attr2 = ManualAttributor(session_path=session_path)
+        attr2.attribute([recreated])
+
+        recreated_line = recreated.paragraphs[0].lines[0]
+        assert recreated_line.role == SpeakerRole.FEMALE
+        assert recreated_line.attribution_tag == "manual:cached"
 
 
 class TestFactory:

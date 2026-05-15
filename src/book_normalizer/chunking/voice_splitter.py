@@ -117,7 +117,7 @@ def build_chunks_from_segments(
         return []
 
     chunks: list[dict[str, Any]] = []
-    chunk_idx = 0
+    chunk_indices: dict[int, int] = {}
 
     pending_text_parts: list[str] = []
     pending_chapter = segments[0].get("chapter_index", 0)
@@ -125,21 +125,25 @@ def build_chunks_from_segments(
     pending_intonation = segments[0].get("intonation", "neutral")
     pending_role = segments[0].get("role", "narrator")
 
+    def _next_chunk_index(chapter_index: int) -> int:
+        current = chunk_indices.get(chapter_index, 0)
+        chunk_indices[chapter_index] = current + 1
+        return current
+
     def _flush() -> None:
-        nonlocal chunk_idx, pending_text_parts
+        nonlocal pending_text_parts
         if not pending_text_parts:
             return
         combined = " ".join(pending_text_parts)
         if len(combined) <= max_chunk_chars:
             chunks.append({
                 "chapter_index": pending_chapter,
-                "chunk_index": chunk_idx,
+                "chunk_index": _next_chunk_index(pending_chapter),
                 "role": pending_role,
                 "voice_id": pending_voice,
                 "intonation": pending_intonation,
                 "text": combined,
             })
-            chunk_idx += 1
         else:
             sub_chunks = chunk_text(
                 combined, max_chunk_chars, max_sentence_chars,
@@ -147,13 +151,12 @@ def build_chunks_from_segments(
             for sub in sub_chunks:
                 chunks.append({
                     "chapter_index": pending_chapter,
-                    "chunk_index": chunk_idx,
+                    "chunk_index": _next_chunk_index(pending_chapter),
                     "role": pending_role,
                     "voice_id": pending_voice,
                     "intonation": pending_intonation,
                     "text": sub,
                 })
-                chunk_idx += 1
         pending_text_parts = []
 
     for seg in segments:

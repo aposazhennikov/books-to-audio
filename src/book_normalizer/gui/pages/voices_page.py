@@ -65,8 +65,7 @@ class VoicesPage(QWidget):
 
         # Speaker mode.
         self._speaker_mode = QComboBox()
-        self._speaker_mode.addItems(["heuristic", "llm", "manual"])
-        self._speaker_mode.currentTextChanged.connect(
+        self._speaker_mode.currentIndexChanged.connect(
             self._on_speaker_mode_changed,
         )
         self._speaker_mode_label = QLabel()
@@ -255,6 +254,8 @@ class VoicesPage(QWidget):
 
     def retranslate(self) -> None:
         """Update translatable strings."""
+        selected_mode = self._current_speaker_mode()
+        self._populate_speaker_mode_combo(selected_mode)
         self._speaker_mode_label.setText(t("voice.speaker_mode"))
         self._speaker_mode_label.setToolTip(t("voice.speaker_mode_hint"))
         self._update_speaker_mode_hint()
@@ -277,9 +278,31 @@ class VoicesPage(QWidget):
         self._voice_table.retranslate()
         self._voice_preview.retranslate()
 
+    def _current_speaker_mode(self) -> str:
+        """Return the internal speaker attribution mode."""
+        mode = self._speaker_mode.currentData()
+        return str(mode or "heuristic")
+
+    def _populate_speaker_mode_combo(self, selected_mode: str) -> None:
+        """Populate speaker attribution choices with localized labels."""
+        self._speaker_mode.blockSignals(True)
+        self._speaker_mode.clear()
+        self._speaker_mode.addItem(
+            t("voice.speaker_mode_heuristic"),
+            "heuristic",
+        )
+        self._speaker_mode.addItem(t("voice.speaker_mode_llm"), "llm")
+        self._speaker_mode.addItem(
+            t("voice.speaker_mode_manual"),
+            "manual",
+        )
+        idx = self._speaker_mode.findData(selected_mode)
+        self._speaker_mode.setCurrentIndex(idx if idx >= 0 else 0)
+        self._speaker_mode.blockSignals(False)
+
     def _update_speaker_mode_hint(self) -> None:
         """Show inline hint for currently selected speaker mode."""
-        mode = self._speaker_mode.currentText()
+        mode = self._current_speaker_mode()
         hints = {
             "heuristic": t("voice.speaker_mode_hint").split("\n")[0],
             "llm": t("voice.speaker_mode_hint").split("\n")[1],
@@ -289,8 +312,9 @@ class VoicesPage(QWidget):
 
     # ── Event handlers ──
 
-    def _on_speaker_mode_changed(self, mode: str) -> None:
+    def _on_speaker_mode_changed(self, _idx: int) -> None:
         """Show/hide LLM config when speaker mode changes."""
+        mode = self._current_speaker_mode()
         self._llm_panel.setVisible(mode == "llm")
         self._update_speaker_mode_hint()
 
@@ -331,7 +355,7 @@ class VoicesPage(QWidget):
         self._worker = ExportSegmentsWorker(
             book=self._book,
             output_dir=self._output_dir,
-            speaker_mode=self._speaker_mode.currentText(),
+            speaker_mode=self._current_speaker_mode(),
             llm_endpoint=llm_endpoint,
             llm_model=llm_model,
             llm_api_key=llm_api_key,

@@ -26,7 +26,10 @@ def test_process_accepts_ocr_mode_option(tmp_path: Path) -> None:
             ocr=PdfTextVariant(kind="ocr", text="ocr"),
         )
         mock_extract.return_value = compare
-        mock_select.return_value = (compare.native, {"selected": "native", "mode": OcrMode.OFF.value})
+        mock_select.return_value = (
+            compare.ocr,
+            {"selected": "ocr", "mode": OcrMode.FORCE.value, "ocr_len": 3},
+        )
 
         runner = CliRunner()
         result = runner.invoke(
@@ -104,3 +107,40 @@ def test_process_compare_report_reuses_selected_ocr_result(tmp_path: Path) -> No
         )
         mock_select.assert_called_once_with(compare, OcrMode.COMPARE)
         mock_report.assert_called_once()
+
+
+def test_process_pdf_auto_rejects_unreadable_native_without_ocr(tmp_path: Path) -> None:
+    pdf_file = tmp_path / "test.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+    with patch(
+        "book_normalizer.cli.extract_pdf_with_ocr_mode"
+    ) as mock_extract, patch(
+        "book_normalizer.cli.select_pdf_text_for_mode"
+    ) as mock_select:
+        from book_normalizer.loaders.pdf_loader import PdfOcrCompareResult, PdfTextVariant
+
+        compare = PdfOcrCompareResult(
+            native=PdfTextVariant(kind="native", text="Co,11;ep'l\\:aHne rJIABA"),
+            ocr=None,
+        )
+        mock_extract.return_value = compare
+        mock_select.return_value = (
+            compare.native,
+            {
+                "selected": "native",
+                "mode": OcrMode.AUTO.value,
+                "native_unreadable": True,
+                "native_cyrillic_ratio": 0.0,
+                "ocr_len": 0,
+            },
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["process", str(pdf_file), "--ocr-mode", "auto", "--out", str(tmp_path / "out")],
+        )
+
+    assert result.exit_code == 1
+    assert "OCR is required" in result.output

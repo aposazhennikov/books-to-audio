@@ -59,6 +59,33 @@ def _build_output_dir(input_path: Path, base_out: Path) -> Path:
     return base_out / folder_name
 
 
+def _ensure_pdf_text_selection_is_usable(
+    mode: OcrMode,
+    ocr_stats: dict[str, object],
+) -> None:
+    """Fail instead of processing broken native PDF text when OCR is required."""
+    if mode == OcrMode.OFF:
+        return
+
+    ocr_unreadable = bool(
+        ocr_stats.get("ocr_unreadable", int(ocr_stats.get("ocr_len") or 0) == 0)
+    )
+
+    if mode == OcrMode.FORCE and ocr_unreadable:
+        raise ValueError(
+            "Tesseract OCR did not produce readable Russian text. "
+            "Check the Russian language pack or try different --ocr-dpi/--ocr-psm values."
+        )
+
+    if ocr_stats.get("native_unreadable") and ocr_unreadable:
+        ratio = ocr_stats.get("native_cyrillic_ratio")
+        raise ValueError(
+            "PDF text layer is missing or unreadable "
+            f"(native Cyrillic ratio={ratio}); OCR is required, "
+            "but no readable OCR text was produced."
+        )
+
+
 def _build_config(
     verbose: bool,
     interactive: bool,
@@ -165,6 +192,7 @@ def process_command(
                 input_path, config.ocr_mode, dpi=ocr_dpi, psm=ocr_psm,
             )
             chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, config.ocr_mode)
+            _ensure_pdf_text_selection_is_usable(config.ocr_mode, ocr_stats)
 
             from book_normalizer.loaders.pdf_loader import PdfLoader
             from book_normalizer.models.book import Book as BookModel
@@ -598,6 +626,7 @@ def synthesize_command(
                 input_path, ocr, dpi=ocr_dpi, psm=ocr_psm,
             )
             chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, ocr)
+            _ensure_pdf_text_selection_is_usable(ocr, ocr_stats)
 
             from book_normalizer.models.book import Book as BookModel
             from book_normalizer.models.book import Chapter, Metadata

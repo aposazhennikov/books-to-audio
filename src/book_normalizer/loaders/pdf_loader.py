@@ -15,6 +15,8 @@ from book_normalizer.normalization.cleanup import remove_repeated_headers
 
 logger = logging.getLogger(__name__)
 
+MIN_READABLE_CYRILLIC_RATIO = 0.3
+
 
 class PdfLoader(BaseLoader):
     """
@@ -371,6 +373,11 @@ def _cyrillic_ratio(text: str) -> float:
     return cyr / len(alpha)
 
 
+def _russian_text_unreadable(text: str) -> bool:
+    """Return true when text is empty or does not look like readable Russian."""
+    return len(text.strip()) == 0 or _cyrillic_ratio(text) < MIN_READABLE_CYRILLIC_RATIO
+
+
 def select_pdf_text_for_mode(
     compare: PdfOcrCompareResult,
     mode: OcrMode,
@@ -384,6 +391,7 @@ def select_pdf_text_for_mode(
     ocr = compare.ocr
 
     native_cyr = _cyrillic_ratio(native.text)
+    ocr_cyr = _cyrillic_ratio(ocr.text) if ocr else 0.0
 
     stats: dict[str, Any] = {
         "mode": mode.value,
@@ -392,6 +400,9 @@ def select_pdf_text_for_mode(
         "native_empty": len(native.text.strip()) == 0,
         "ocr_empty": (len(ocr.text.strip()) == 0) if ocr else True,
         "native_cyrillic_ratio": round(native_cyr, 3),
+        "ocr_cyrillic_ratio": round(ocr_cyr, 3),
+        "native_unreadable": _russian_text_unreadable(native.text),
+        "ocr_unreadable": _russian_text_unreadable(ocr.text) if ocr else True,
         "selected": "native",
         "reason": "",
     }
@@ -401,7 +412,10 @@ def select_pdf_text_for_mode(
         return native, stats
 
     if ocr is None:
-        stats["reason"] = "ocr_unavailable_falling_back_to_native"
+        if stats["native_unreadable"]:
+            stats["reason"] = "ocr_unavailable_native_unreadable"
+        else:
+            stats["reason"] = "ocr_unavailable_falling_back_to_native"
         return native, stats
 
     if mode == OcrMode.FORCE:
@@ -410,14 +424,18 @@ def select_pdf_text_for_mode(
         return ocr, stats
 
     # AUTO / COMPARE: prefer OCR when native text is empty or garbage.
-    native_is_bad = stats["native_empty"] or native_cyr < 0.3
-    ocr_usable = not stats["ocr_empty"]
+    native_is_bad = bool(stats["native_unreadable"])
+    ocr_usable = not stats["ocr_unreadable"]
 
     if native_is_bad and ocr_usable:
         stats["selected"] = "ocr"
         reason_detail = "native_empty" if stats["native_empty"] else f"native_cyr={native_cyr:.2f}"
         stats["reason"] = f"{'auto' if mode == OcrMode.AUTO else 'compare'}_mode_{reason_detail}_use_ocr"
         return ocr, stats
+
+    if native_is_bad and not ocr_usable:
+        stats["reason"] = f"{'auto' if mode == OcrMode.AUTO else 'compare'}_mode_no_readable_ocr"
+        return native, stats
 
     stats["reason"] = f"{'auto' if mode == OcrMode.AUTO else 'compare'}_mode_native_preferred"
     return native, stats
@@ -450,5 +468,9 @@ def write_pdf_compare_report(
         "ocr_len": stats.get("ocr_len"),
         "native_empty": stats.get("native_empty"),
         "ocr_empty": stats.get("ocr_empty"),
+        "native_cyrillic_ratio": stats.get("native_cyrillic_ratio"),
+        "ocr_cyrillic_ratio": stats.get("ocr_cyrillic_ratio"),
+        "native_unreadable": stats.get("native_unreadable"),
+        "ocr_unreadable": stats.get("ocr_unreadable"),
     }
     report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -35,6 +35,27 @@ def _effective_pdf_extraction_mode(
     return OcrMode.OFF
 
 
+def _ensure_pdf_selection_is_usable(
+    requested_mode: OcrMode,
+    stats: dict[str, object],
+    *,
+    tesseract_available: bool,
+) -> None:
+    """Raise a GUI-friendly error instead of passing broken PDF text downstream."""
+    if requested_mode == OcrMode.OFF:
+        return
+
+    ocr_unreadable = bool(stats.get("ocr_unreadable", stats.get("ocr_empty", True)))
+
+    if requested_mode == OcrMode.FORCE and ocr_unreadable:
+        raise RuntimeError(t("norm.err_ocr_failed_force"))
+
+    if stats.get("native_unreadable") and ocr_unreadable:
+        if tesseract_available:
+            raise RuntimeError(t("norm.err_ocr_failed_unreadable"))
+        raise RuntimeError(t("norm.err_tesseract_missing_scanned"))
+
+
 class NormalizeWorker(QThread):
     """Run book loading + normalization + chapter detection in a background thread."""
 
@@ -208,14 +229,13 @@ class NormalizeWorker(QThread):
                         self._input_path, effective_ocr,
                         dpi=self._ocr_dpi, psm=self._ocr_psm,
                     )
-                    chosen, _ = select_pdf_text_for_mode(compare, ocr)
+                    chosen, stats = select_pdf_text_for_mode(compare, ocr)
 
-                    if (
-                        ocr != OcrMode.OFF
-                        and not tesseract_available
-                        and not chosen.text.strip()
-                    ):
-                        raise RuntimeError(t("norm.err_tesseract_missing_scanned"))
+                    _ensure_pdf_selection_is_usable(
+                        ocr,
+                        stats,
+                        tesseract_available=tesseract_available,
+                    )
                 else:
                     self.progress.emit(
                         f"OCR (DPI={self._ocr_dpi}, PSM={self._ocr_psm})..."
@@ -235,7 +255,12 @@ class NormalizeWorker(QThread):
                     compare = PdfOcrCompareResult(
                         native=native_variant, ocr=ocr_variant,
                     )
-                    chosen, _ = select_pdf_text_for_mode(compare, ocr)
+                    chosen, stats = select_pdf_text_for_mode(compare, ocr)
+                    _ensure_pdf_selection_is_usable(
+                        ocr,
+                        stats,
+                        tesseract_available=tesseract_available,
+                    )
 
                 paragraphs = PdfLoader._split_paragraphs(chosen.text)
                 chapter = Chapter(title="Full Text", index=0, paragraphs=paragraphs)

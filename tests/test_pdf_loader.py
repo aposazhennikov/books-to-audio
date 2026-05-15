@@ -89,11 +89,25 @@ class TestOcrModeSelection:
     def test_select_pdf_text_for_mode_auto_falls_back_when_native_empty(self) -> None:
         compare = PdfOcrCompareResult(
             native=PdfTextVariant(kind="native", text="   "),
-            ocr=PdfTextVariant(kind="ocr", text="ocr text"),
+            ocr=PdfTextVariant(kind="ocr", text="Распознанный русский текст"),
         )
         chosen, stats = select_pdf_text_for_mode(compare, OcrMode.AUTO)
         assert chosen.kind == "ocr"
         assert stats["selected"] == "ocr"
+        assert stats["ocr_unreadable"] is False
+
+    def test_select_pdf_text_for_mode_auto_does_not_use_unreadable_ocr(self) -> None:
+        compare = PdfOcrCompareResult(
+            native=PdfTextVariant(kind="native", text="Co,11;ep'l\\:aHne rJIABA"),
+            ocr=PdfTextVariant(kind="ocr", text="lorem ipsum OCR garbage"),
+        )
+
+        chosen, stats = select_pdf_text_for_mode(compare, OcrMode.AUTO)
+
+        assert chosen.kind == "native"
+        assert stats["native_unreadable"] is True
+        assert stats["ocr_unreadable"] is True
+        assert stats["reason"] == "auto_mode_no_readable_ocr"
 
     def test_select_pdf_text_for_mode_auto_prefers_native_when_not_empty(self) -> None:
         compare = PdfOcrCompareResult(
@@ -103,3 +117,16 @@ class TestOcrModeSelection:
         chosen, stats = select_pdf_text_for_mode(compare, OcrMode.AUTO)
         assert chosen.kind == "native"
         assert stats["selected"] == "native"
+        assert stats["native_unreadable"] is False
+
+    def test_select_pdf_text_for_mode_marks_broken_native_when_ocr_unavailable(self) -> None:
+        compare = PdfOcrCompareResult(
+            native=PdfTextVariant(kind="native", text="Co,11;ep'l\\:aHne rJIABA llEPBMI"),
+            ocr=None,
+        )
+
+        chosen, stats = select_pdf_text_for_mode(compare, OcrMode.AUTO)
+
+        assert chosen.kind == "native"
+        assert stats["native_unreadable"] is True
+        assert stats["reason"] == "ocr_unavailable_native_unreadable"

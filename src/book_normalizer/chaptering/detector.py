@@ -87,7 +87,11 @@ class ChapterDetector:
                     )
 
                     if len(toc_hits) > len(hits):
-                        logger.info("Using TOC-based chapters (%d) instead of pattern-based (%d).", len(toc_hits), len(hits))
+                        logger.info(
+                            "Using TOC-based chapters (%d) instead of pattern-based (%d).",
+                            len(toc_hits),
+                            len(hits),
+                        )
                         hits = toc_hits
 
         if not hits:
@@ -365,7 +369,7 @@ class ChapterDetector:
             for line_idx, line in enumerate(lines):
                 normalized_line = line.strip().rstrip('.,:;!? ')
                 normalized_title = hit.heading_text.strip().rstrip('.,:;!? ')
-                
+
                 if normalized_title in normalized_line or normalized_line.startswith(normalized_title):
                     heading_line_idx = line_idx
                     full_title = line.strip()

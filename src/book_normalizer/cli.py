@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -59,6 +60,33 @@ def _build_output_dir(input_path: Path, base_out: Path) -> Path:
     return base_out / folder_name
 
 
+def _ensure_pdf_text_selection_is_usable(
+    mode: OcrMode,
+    ocr_stats: dict[str, object],
+) -> None:
+    """Fail instead of processing broken native PDF text when OCR is required."""
+    if mode == OcrMode.OFF:
+        return
+
+    ocr_unreadable = bool(
+        ocr_stats.get("ocr_unreadable", int(ocr_stats.get("ocr_len") or 0) == 0)
+    )
+
+    if mode == OcrMode.FORCE and ocr_unreadable:
+        raise ValueError(
+            "Tesseract OCR did not produce readable Russian text. "
+            "Check the Russian language pack or try different --ocr-dpi/--ocr-psm values."
+        )
+
+    if ocr_stats.get("native_unreadable") and ocr_unreadable:
+        ratio = ocr_stats.get("native_cyrillic_ratio")
+        raise ValueError(
+            "PDF text layer is missing or unreadable "
+            f"(native Cyrillic ratio={ratio}); OCR is required, "
+            "but no readable OCR text was produced."
+        )
+
+
 def _build_config(
     verbose: bool,
     interactive: bool,
@@ -84,10 +112,183 @@ def _build_config(
     )
 
 
+def _run_llm_normalization(
+    book,
+    output_dir: Path,
+    *,
+    llm_endpoint: str,
+    llm_model: str,
+    llm_api_key: str,
+) -> tuple[int, int]:
+    """Run optional LLM normalization over already rule-normalized book text."""
+    from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+    total_paragraphs = sum(len(ch.paragraphs) for ch in book.chapters)
+    report_interval = max(1, total_paragraphs // 20)
+    normalizer = LlmNormalizer(
+        endpoint=llm_endpoint,
+        model=llm_model,
+        cache_dir=output_dir / "llm_norm_cache",
+        api_key=llm_api_key,
+    )
+
+    def report(done: int, total: int, accepted: int, rejected: int) -> None:
+        if done % report_interval != 0 and done != total:
+            return
+        click.echo(
+            "LLM normalization: "
+            f"{done}/{total} paragraphs, accepted={accepted}, rejected={rejected}"
+        )
+
+    return normalizer.normalize_book(book, progress_callback=report)
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="normalize-book")
 def main() -> None:
     """Semi-automatic Russian book normalizer for TTS pipelines."""
+
+
+@main.command(name="pipeline")
+@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--out", "-o", type=click.Path(path_type=Path), default=Path("output"), help="Output root directory.")
+@click.option("--llm-model", default="gemma3:4b", show_default=True, help="Ollama model for chunking.")
+@click.option(
+    "--llm-endpoint",
+    default="http://localhost:11434/v1",
+    show_default=True,
+    help="OpenAI-compatible LLM endpoint.",
+)
+@click.option("--llm-normalize", is_flag=True, default=False, help="Run LLM normalization before chunking.")
+@click.option("--max-chunk-chars", type=int, default=400, show_default=True, help="Soft max chars per LLM chunk.")
+@click.option("--synthesize", is_flag=True, default=False, help="Run ComfyUI synthesis after chunking.")
+@click.option("--workflow", type=click.Path(path_type=Path), default=None, help="ComfyUI workflow template.")
+@click.option("--comfyui-url", default="http://localhost:8188", show_default=True, help="ComfyUI server URL.")
+@click.option("--assemble", is_flag=True, default=False, help="Assemble synthesized chunks via v2 manifest.")
+@click.option("--chapter", type=int, default=None, help="Only process one chapter number (1-based).")
+@click.option("--skip-stage1", is_flag=True, default=False, help="Use existing normalized chapter files.")
+@click.option(
+    "--ocr-mode",
+    type=click.Choice(["auto", "off", "force"]),
+    default="auto",
+    show_default=True,
+    help="PDF OCR mode.",
+)
+def pipeline_command(
+    input_path: Path,
+    out: Path,
+    llm_model: str,
+    llm_endpoint: str,
+    llm_normalize: bool,
+    max_chunk_chars: int,
+    synthesize: bool,
+    workflow: Path | None,
+    comfyui_url: str,
+    assemble: bool,
+    chapter: int | None,
+    skip_stage1: bool,
+    ocr_mode: str,
+) -> None:
+    """Run the recommended normalize -> v2 chunks -> ComfyUI -> manifest assembly pipeline."""
+    script = Path(__file__).resolve().parents[2] / "scripts" / "run_pipeline.py"
+    cmd = [
+        sys.executable,
+        str(script),
+        "--book",
+        str(input_path),
+        "--out",
+        str(out),
+        "--llm-model",
+        llm_model,
+        "--llm-endpoint",
+        llm_endpoint,
+        "--max-chunk-chars",
+        str(max_chunk_chars),
+        "--ocr-mode",
+        ocr_mode,
+    ]
+    if llm_normalize:
+        cmd.append("--llm-normalize")
+    if synthesize:
+        cmd.append("--synthesize")
+        if not workflow:
+            workflow = Path("comfyui_workflows/qwen3_tts_template.json")
+        cmd.extend(["--workflow", str(workflow), "--comfyui-url", comfyui_url])
+    if assemble:
+        cmd.append("--assemble")
+    if chapter is not None:
+        cmd.extend(["--chapter", str(chapter)])
+    if skip_stage1:
+        cmd.append("--skip-stage1")
+
+    result = subprocess.run(cmd, check=False)
+    if result.returncode != 0:
+        raise click.ClickException(f"Pipeline exited with code {result.returncode}")
+
+
+@main.command(name="doctor")
+@click.option("--comfyui-url", default="http://localhost:8188", show_default=True, help="ComfyUI server URL.")
+@click.option(
+    "--llm-endpoint",
+    default="http://localhost:11434/v1",
+    show_default=True,
+    help="OpenAI-compatible LLM endpoint.",
+)
+@click.option(
+    "--workflow",
+    type=click.Path(path_type=Path),
+    default=Path("comfyui_workflows/qwen3_tts_template.json"),
+    help="ComfyUI workflow template.",
+)
+@click.option("--models-dir", type=click.Path(path_type=Path), default=None, help="Shared ComfyUI models directory.")
+@click.option("--skip-network", is_flag=True, default=False, help="Skip Ollama and ComfyUI HTTP checks.")
+@click.option("--json-output", is_flag=True, default=False, help="Print machine-readable JSON.")
+def doctor_command(
+    comfyui_url: str,
+    llm_endpoint: str,
+    workflow: Path,
+    models_dir: Path | None,
+    skip_network: bool,
+    json_output: bool,
+) -> None:
+    """Check local dependencies before running OCR/LLM/TTS."""
+    from book_normalizer.diagnostics.doctor import checks_to_json, run_doctor
+
+    checks = run_doctor(
+        comfyui_url=comfyui_url,
+        llm_endpoint=llm_endpoint,
+        workflow_path=workflow,
+        models_dir=models_dir,
+        skip_network=skip_network,
+    )
+    if json_output:
+        click.echo(checks_to_json(checks))
+        return
+
+    for check in checks:
+        click.echo(f"[{check.status.upper():4}] {check.name}: {check.detail}")
+
+
+@main.command(name="audio-qa")
+@click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--report", type=click.Path(path_type=Path), default=None, help="Write JSON QA report.")
+def audio_qa_command(manifest_path: Path, report: Path | None) -> None:
+    """Run QA checks for synthesized audio in a v2 manifest."""
+    from book_normalizer.tts.audio_qa import load_manifest, run_audio_qa
+
+    result = run_audio_qa(load_manifest(manifest_path))
+    click.echo(
+        f"Audio QA: checked {result.checked_files}/{result.synthesized_chunks} synthesized "
+        f"chunks, {len(result.issues)} issue(s)."
+    )
+    for issue in result.issues:
+        location = ""
+        if issue.chapter_index is not None and issue.chunk_index is not None:
+            location = f" ch{issue.chapter_index + 1:03d}/chunk{issue.chunk_index + 1:03d}"
+        click.echo(f"[{issue.severity.upper()}] {issue.kind}{location}: {issue.message}")
+    if report:
+        report.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        click.echo(f"Report: {report}")
 
 
 @main.command(name="process")
@@ -121,6 +322,27 @@ def main() -> None:
     show_default=True,
     help="Number of random paragraph samples in verification report.",
 )
+@click.option("--ocr-dpi", type=int, default=400, show_default=True, help="DPI for OCR rendering.")
+@click.option("--ocr-psm", type=int, default=6, show_default=True, help="Tesseract PSM mode.")
+@click.option(
+    "--llm-normalize",
+    is_flag=True,
+    default=False,
+    help="Run LLM/GPU normalization after rule-based normalization.",
+)
+@click.option(
+    "--llm-endpoint",
+    default="http://localhost:11434/v1",
+    show_default=True,
+    help="OpenAI-compatible endpoint for LLM normalization.",
+)
+@click.option(
+    "--llm-model",
+    default="qwen3:8b",
+    show_default=True,
+    help="Model name for LLM normalization.",
+)
+@click.option("--llm-api-key", default="", help="Bearer token for cloud LLM endpoints.")
 def process_command(
     input_path: Path,
     out: Path,
@@ -135,6 +357,12 @@ def process_command(
     ocr_mode: str,
     verify_report: bool,
     sample_size: int,
+    ocr_dpi: int,
+    ocr_psm: int,
+    llm_normalize: bool,
+    llm_endpoint: str,
+    llm_model: str,
+    llm_api_key: str,
 ) -> None:
     """Process a single book file: load, normalize, split chapters, export."""
     setup_logging(verbose=verbose)
@@ -157,14 +385,16 @@ def process_command(
         factory = LoaderFactory.default()
         is_pdf = input_path.suffix.lower() == ".pdf"
         if is_pdf:
-            compare = extract_pdf_with_ocr_mode(input_path, config.ocr_mode)
+            compare = extract_pdf_with_ocr_mode(
+                input_path, config.ocr_mode, dpi=ocr_dpi, psm=ocr_psm,
+            )
             chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, config.ocr_mode)
+            _ensure_pdf_text_selection_is_usable(config.ocr_mode, ocr_stats)
 
-            from book_normalizer.models.book import Book as BookModel, Chapter, Metadata, Paragraph
             from book_normalizer.loaders.pdf_loader import PdfLoader
+            from book_normalizer.models.book import Book as BookModel
+            from book_normalizer.models.book import Chapter, Metadata
 
-            # Split text into paragraphs (from_raw_text creates 1 paragraph
-            # from the entire text, which breaks chapter detection).
             paragraphs = PdfLoader._split_paragraphs(chosen_variant.text)
             chapter = Chapter(title="Full Text", index=0, paragraphs=paragraphs)
             metadata = Metadata(source_path=str(input_path), source_format="pdf")
@@ -175,7 +405,6 @@ def process_command(
                 f"mode={config.ocr_mode.value}, selected={ocr_stats.get('selected')}, "
                 f"native_len={ocr_stats.get('native_len')}, ocr_len={ocr_stats.get('ocr_len')}",
             )
-            # In COMPARE mode, compare artifacts will be written after output_dir is known.
         else:
             book = factory.load(input_path)
     except (FileNotFoundError, ValueError, ImportError) as exc:
@@ -192,8 +421,6 @@ def process_command(
     # If PDF compare mode was used, write compare report artifacts now.
     if input_path.suffix.lower() == ".pdf" and config.ocr_mode == OcrMode.COMPARE:
         try:
-            compare = extract_pdf_with_ocr_mode(input_path, config.ocr_mode)
-            chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, config.ocr_mode)
             write_pdf_compare_report(output_dir, compare, ocr_stats)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Failed to write PDF compare report: %s", exc)
@@ -207,6 +434,19 @@ def process_command(
     click.echo(f"Chapter detection complete: {len(book.chapters)} chapter(s) found.")
 
     pipeline.normalize_book(book)
+
+    if llm_normalize:
+        click.echo(f"LLM normalization: model={llm_model}, endpoint={llm_endpoint}")
+        accepted, rejected = _run_llm_normalization(
+            book,
+            output_dir,
+            llm_endpoint=llm_endpoint,
+            llm_model=llm_model,
+            llm_api_key=llm_api_key,
+        )
+        click.echo(
+            f"LLM normalization complete: {accepted} accepted, {rejected} rejected."
+        )
 
     # Emit basic chapter sanity report for downstream TTS inspection.
     _write_chapter_sanity_report(book, output_dir)
@@ -308,7 +548,7 @@ def _run_review(
         return None
 
     if resume:
-        existing = session_mgr.find_latest_for_book(book.id)
+        existing = session_mgr.find_latest_for_book(book.stable_id)
         if existing:
             click.echo(f"Resuming session from {existing}")
             session = session_mgr.load(existing)
@@ -343,7 +583,6 @@ def _scan_book(
     punctuation_store: PunctuationStore,
 ) -> ReviewSession:
     """Run detectors on the book and return a session."""
-    from book_normalizer.models.book import Book
 
     reviewer = Reviewer(
         correction_store=correction_store,
@@ -499,6 +738,276 @@ def review_session_command(session_path: Path) -> None:
     click.echo(f"Pending:     {session.pending_count}")
     click.echo(f"Progress:    {session.progress_pct:.1f}%")
     click.echo(f"Completed:   {session.completed}")
+
+
+def _parse_chapter_range(value: str) -> tuple[int, int] | None:
+    """Parse a chapter range string like '1-5' into (start, end) tuple."""
+    if not value:
+        return None
+    parts = value.split("-")
+    if len(parts) == 2:
+        return int(parts[0]), int(parts[1])
+    if len(parts) == 1:
+        n = int(parts[0])
+        return n, n
+    raise click.BadParameter(f"Invalid chapter range: {value}")
+
+
+@main.command(name="synthesize")
+@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--out", "-o", type=click.Path(path_type=Path), default=Path("output"), help="Output directory.")
+@click.option(
+    "--speaker-mode",
+    type=click.Choice(["heuristic", "llm", "manual"]),
+    default="heuristic",
+    show_default=True,
+    help="Speaker attribution strategy.",
+)
+@click.option(
+    "--voice-config",
+    "voice_config_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Path to voice_config.json with voice profiles.",
+)
+@click.option("--gpu-device", default="cuda:0", show_default=True, help="GPU device for TTS inference.")
+@click.option("--resume", is_flag=True, default=False, help="Resume from last checkpoint.")
+@click.option("--chapter-range", default="", help="Chapter range to synthesize, e.g. '1-5'.")
+@click.option(
+    "--format",
+    "audio_format",
+    type=click.Choice(["wav", "mp3", "both"]),
+    default="wav",
+    show_default=True,
+    help="Output audio format.",
+)
+@click.option("--max-chunk-chars", type=int, default=600, show_default=True, help="Max characters per TTS chunk.")
+@click.option("--pause-phrase-ms", type=int, default=300, show_default=True, help="Pause between phrases (ms).")
+@click.option("--pause-speaker-ms", type=int, default=1500, show_default=True, help="Pause on speaker change (ms).")
+@click.option("--pause-chapter-ms", type=int, default=3000, show_default=True, help="Pause between chapters (ms).")
+@click.option("--skip-assembly", is_flag=True, default=False, help="Only generate chunks, skip assembly.")
+@click.option("--llm-endpoint", default="", help="API endpoint for LLM speaker attribution.")
+@click.option("--llm-model", default="qwen3:8b", show_default=True, help="LLM model name for speaker attribution.")
+@click.option("--skip-stress", is_flag=True, default=False, help="Skip stress annotation.")
+@click.option(
+    "--ocr-mode",
+    type=click.Choice([m.value for m in OcrMode]),
+    default=OcrMode.AUTO.value,
+    show_default=True,
+    help="OCR execution mode for PDF files.",
+)
+@click.option("--ocr-dpi", type=int, default=400, show_default=True, help="DPI for OCR rendering.")
+@click.option("--ocr-psm", type=int, default=6, show_default=True, help="Tesseract PSM mode.")
+@click.option("--llm-api-key", default="", help="API key for LLM speaker attribution (OpenAI, etc.).")
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Verbose logging output.")
+def synthesize_command(
+    input_path: Path,
+    out: Path,
+    speaker_mode: str,
+    voice_config_path: Path | None,
+    gpu_device: str,
+    resume: bool,
+    chapter_range: str,
+    audio_format: str,
+    max_chunk_chars: int,
+    pause_phrase_ms: int,
+    pause_speaker_ms: int,
+    pause_chapter_ms: int,
+    skip_assembly: bool,
+    llm_endpoint: str,
+    llm_model: str,
+    skip_stress: bool,
+    ocr_mode: str,
+    ocr_dpi: int,
+    ocr_psm: int,
+    llm_api_key: str,
+    verbose: bool,
+) -> None:
+    """Synthesize an audiobook from a book file using Qwen3-TTS."""
+    setup_logging(verbose=verbose)
+
+    click.echo(f"Loading: {input_path}")
+
+    try:
+        is_pdf = input_path.suffix.lower() == ".pdf"
+        if is_pdf:
+            ocr = OcrMode(ocr_mode)
+            compare = extract_pdf_with_ocr_mode(
+                input_path, ocr, dpi=ocr_dpi, psm=ocr_psm,
+            )
+            chosen_variant, ocr_stats = select_pdf_text_for_mode(compare, ocr)
+            _ensure_pdf_text_selection_is_usable(ocr, ocr_stats)
+
+            from book_normalizer.models.book import Book as BookModel
+            from book_normalizer.models.book import Chapter, Metadata
+
+            paragraphs = PdfLoader._split_paragraphs(chosen_variant.text)
+            chapter = Chapter(title="Full Text", index=0, paragraphs=paragraphs)
+            metadata = Metadata(source_path=str(input_path), source_format="pdf")
+            book = BookModel(metadata=metadata, chapters=[chapter])
+            book.add_audit(
+                "loading", "pdf_loader_ocr_mode",
+                f"mode={ocr.value}, selected={ocr_stats.get('selected')}",
+            )
+        else:
+            factory = LoaderFactory.default()
+            book = factory.load(input_path)
+    except (FileNotFoundError, ValueError, ImportError) as exc:
+        click.echo(f"Error loading file: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Loaded: {len(book.chapters)} chapter(s)")
+
+    # --- Normalization & chapter detection ---
+    pipeline = NormalizationPipeline()
+    book = pipeline.normalize_book(book)
+
+    detector = ChapterDetector()
+    book = detector.detect_and_split(book)
+    pipeline.normalize_book(book)
+    click.echo(f"Chapters detected: {len(book.chapters)}")
+
+    # --- Stress annotation ---
+    if not skip_stress:
+        from book_normalizer.memory.stress_store import StressStore
+        from book_normalizer.stress.annotator import StressAnnotator
+        from book_normalizer.stress.dictionary import StressDictionary
+
+        config = AppConfig()
+        stress_store = StressStore(config.stress_dict_path)
+        stress_dict = StressDictionary(store=stress_store)
+        annotator = StressAnnotator(stress_dict)
+        ann_result = annotator.annotate_book(book)
+        click.echo(
+            f"Stress: {ann_result.total_words} words, "
+            f"{ann_result.known_words} known, "
+            f"{ann_result.unknown_words} unknown."
+        )
+
+    # --- Dialogue detection ---
+    from book_normalizer.dialogue.detector import DialogueDetector
+
+    dialogue_detector = DialogueDetector()
+    annotated_chapters = dialogue_detector.detect_book(book)
+    total_dialogue = sum(ch.dialogue_count for ch in annotated_chapters)
+    click.echo(f"Dialogue detected: {total_dialogue} dialogue line(s)")
+
+    # --- Speaker attribution ---
+    from book_normalizer.dialogue.attribution import SpeakerMode, create_attributor
+
+    attr_mode = SpeakerMode(speaker_mode)
+    output_dir = _build_output_dir(input_path, out).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    cache_dir = output_dir / "speaker_cache"
+    session_path = output_dir / "manual_speaker_session.json"
+
+    attributor = create_attributor(
+        attr_mode,
+        llm_endpoint=llm_endpoint,
+        llm_model=llm_model,
+        llm_api_key=llm_api_key,
+        cache_dir=cache_dir,
+        session_path=session_path,
+    )
+    attr_result = attributor.attribute(annotated_chapters)
+    click.echo(
+        f"Attribution ({attr_result.strategy}): "
+        f"male={attr_result.male_lines}, "
+        f"female={attr_result.female_lines}, "
+        f"narrator={attr_result.narrator_lines}"
+    )
+
+    # --- Voice-annotated chunking ---
+    from book_normalizer.chunking.voice_splitter import chunk_annotated_book
+
+    chunked = chunk_annotated_book(annotated_chapters, max_chunk_chars=max_chunk_chars)
+    total_chunks = sum(len(v) for v in chunked.values())
+    click.echo(f"Chunks: {total_chunks} voice-annotated chunks across {len(chunked)} chapter(s)")
+
+    # --- Voice config ---
+    from book_normalizer.tts.voice_config import VoiceConfig
+
+    if voice_config_path:
+        voice_cfg = VoiceConfig.from_json(voice_config_path)
+    else:
+        voice_cfg = VoiceConfig.default_clone_config()
+        click.echo("No --voice-config provided. Using default clone config template.")
+        template_path = output_dir / "voice_config_template.json"
+        voice_cfg.to_json(template_path)
+        click.echo(f"Template saved to: {template_path}")
+        click.echo("Fill in ref_audio and ref_text for each voice, then re-run with --voice-config.")
+        sys.exit(0)
+
+    errors = voice_cfg.validate_all()
+    if errors:
+        for err in errors:
+            click.echo(f"Voice config error: {err}", err=True)
+        sys.exit(1)
+
+    # --- TTS synthesis ---
+    from book_normalizer.tts.voice_manager import VoiceManager
+
+    click.echo(f"Initializing TTS on {gpu_device}...")
+    vm = VoiceManager(voice_cfg, device=gpu_device)
+    vm.initialize()
+
+    from book_normalizer.tts.synthesizer import TTSSynthesizer
+
+    synthesizer = TTSSynthesizer(vm, output_dir, resume=resume)
+
+    ch_range = _parse_chapter_range(chapter_range) if chapter_range else None
+    synthesizer.synthesize_chapters(chunked, chapter_range=ch_range)
+    click.echo("TTS synthesis complete.")
+
+    # --- Audio assembly ---
+    if not skip_assembly:
+        from book_normalizer.tts.assembler import AudioAssembler
+
+        assembler = AudioAssembler(
+            output_dir,
+            pause_phrase_ms=pause_phrase_ms,
+            pause_speaker_ms=pause_speaker_ms,
+            pause_chapter_ms=pause_chapter_ms,
+        )
+        export_mp3 = audio_format in ("mp3", "both")
+        result_files = assembler.assemble(export_mp3=export_mp3)
+        for desc, path in result_files.items():
+            click.echo(f"  {desc}: {path}")
+
+    click.echo("Done.")
+
+
+@main.command(name="init-voices")
+@click.option("--out", "-o", type=click.Path(path_type=Path), default=Path("voices"), help="Output directory.")
+@click.option(
+    "--preset",
+    type=click.Choice(["clone", "custom"]),
+    default="clone",
+    show_default=True,
+    help="Preset type: 'clone' for reference audio, 'custom' for built-in speakers.",
+)
+def init_voices_command(out: Path, preset: str) -> None:
+    """Generate a voice_config.json template."""
+    from book_normalizer.tts.voice_config import VoiceConfig
+
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+
+    if preset == "custom":
+        cfg = VoiceConfig.default_custom_voice_config()
+    else:
+        cfg = VoiceConfig.default_clone_config()
+
+    config_path = out / "voice_config.json"
+    cfg.to_json(config_path)
+    click.echo(f"Voice config template created: {config_path}")
+
+    if preset == "clone":
+        click.echo("Next steps:")
+        click.echo("  1. Place 3-10 sec WAV reference files in the voices/ directory.")
+        click.echo("  2. Edit voice_config.json: set ref_audio and ref_text for each voice.")
+        click.echo("  3. Run: normalize-book synthesize <book> --voice-config voices/voice_config.json")
 
 
 if __name__ == "__main__":

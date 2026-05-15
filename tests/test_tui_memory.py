@@ -8,9 +8,8 @@ from rich.console import Console
 
 from book_normalizer.memory.correction_store import CorrectionStore
 from book_normalizer.memory.punctuation_store import PunctuationStore
-from book_normalizer.models.book import Book, Chapter, Paragraph
+from book_normalizer.models.book import Chapter, Paragraph
 from book_normalizer.models.review import IssueSeverity, IssueType, ReviewAction, ReviewDecision, ReviewIssue
-from book_normalizer.review.session import ReviewSession
 from book_normalizer.review.tui import InteractiveReviewer
 
 
@@ -21,7 +20,6 @@ def _make_issue(
 ) -> ReviewIssue:
     para = Paragraph(raw_text=f"context {original} context", normalized_text="", index_in_chapter=0)
     ch = Chapter(title="Test", index=0, paragraphs=[para])
-    book = Book(chapters=[ch])
     return ReviewIssue(
         issue_type=issue_type,
         severity=IssueSeverity.MEDIUM,
@@ -52,10 +50,6 @@ class TestTuiMemoryPersistence:
         )
 
         issue = _make_issue(IssueType.OCR_ARTIFACT, original="0", suggested="о")
-        session = ReviewSession(
-            pending_issues=[issue],
-        )
-
         decision = ReviewDecision(
             issue_id=issue.id,
             action=ReviewAction.ACCEPT,
@@ -85,10 +79,6 @@ class TestTuiMemoryPersistence:
         )
 
         issue = _make_issue(IssueType.OCR_ARTIFACT, original="м0сква", suggested="москва")
-        session = ReviewSession(
-            pending_issues=[issue],
-        )
-
         decision = ReviewDecision(
             issue_id=issue.id,
             action=ReviewAction.ACCEPT,
@@ -158,4 +148,3 @@ class TestTuiMemoryPersistence:
         entries = {e.token: e for e in correction_store.all_entries()}
         assert entries["М4А1"].auto_apply_safe is False
         assert entries["RTX3060"].auto_apply_safe is False
-

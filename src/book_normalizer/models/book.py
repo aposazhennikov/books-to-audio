@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from hashlib import sha1
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +100,21 @@ class Book(BaseModel):
     def normalized_text(self) -> str:
         """Full normalized text assembled from all chapters."""
         return "\n\n".join(ch.normalized_text for ch in self.chapters if ch.normalized_text)
+
+    @property
+    def stable_id(self) -> str:
+        """Deterministic identifier for resumable workflows."""
+        source_path = self.metadata.source_path.strip()
+        if source_path:
+            try:
+                source_key = str(Path(source_path).expanduser().resolve()).casefold()
+            except OSError:
+                source_key = str(Path(source_path).expanduser()).casefold()
+            payload = f"{self.metadata.source_format}|{source_key}"
+            return "src_" + sha1(payload.encode("utf-8")).hexdigest()[:16]
+
+        payload = self.normalized_text or self.raw_text
+        return "text_" + sha1(payload.encode("utf-8")).hexdigest()[:16]
 
     def add_audit(self, stage: str, action: str, details: str = "") -> None:
         """Append an audit record to the trail."""

@@ -66,6 +66,7 @@ class TestQwenExporter:
         exporter = QwenExporter()
         files = exporter.export(sample_book, tmp_path)
 
+        assert files
         assert (tmp_path / "qwen_full.txt").exists()
         assert (tmp_path / "qwen_chapter_001.txt").exists()
         assert (tmp_path / "qwen_chapter_002.txt").exists()

@@ -1,0 +1,30 @@
+{
+  "1": {
+    "class_type": "LoadAudio",
+    "_comment": "Reference audio file already uploaded to ComfyUI. {{AUDIO_FILENAME}} is replaced with the uploaded filename.",
+    "inputs": {
+      "audio": "{{AUDIO_FILENAME}}"
+    }
+  },
+  "2": {
+    "class_type": "FB_Qwen3TTSVoiceClonePrompt",
+    "_comment": "Extracts voice features from the reference audio. Use 0.6B for speed, 1.7B for accuracy.",
+    "inputs": {
+      "ref_audio": ["1", 0],
+      "ref_text": "{{REF_TEXT}}",
+      "model_choice": "1.7B",
+      "device": "auto",
+      "precision": "bf16",
+      "attention": "auto",
+      "unload_model_after_generate": true
+    }
+  },
+  "3": {
+    "class_type": "FB_Qwen3TTSSaveVoice",
+    "_comment": "Saves voice features to disk. {{VOICE_NAME}} becomes the speaker name in LoadSpeaker dropdown.",
+    "inputs": {
+      "voice_clone_prompt": ["2", 0],
+      "filename": "{{VOICE_NAME}}"
+    }
+  }
+}

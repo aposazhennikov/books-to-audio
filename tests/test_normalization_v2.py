@@ -94,7 +94,9 @@ class TestPipelineV2:
         text = "слово   слово"
         result, changed = pipeline.normalize_text_with_tracking(text)
         assert "   " not in result
-        assert "normalize_whitespace" in changed
+        assert any(
+            s in changed for s in ("normalize_whitespace", "fix_ocr_artifacts")
+        )
 
     def test_tracking_empty_for_clean_text(self) -> None:
         pipeline = NormalizationPipeline()
@@ -114,7 +116,10 @@ class TestPipelineV2:
         assert para.normalized_text
         audit = book.audit_trail[-1]
         assert "active_stages" in audit["details"]
-        assert "normalize_whitespace" in audit["details"]
+        assert any(
+            s in audit["details"]
+            for s in ("normalize_whitespace", "fix_ocr_artifacts")
+        )
 
     def test_insert_stage_before(self) -> None:
         pipeline = NormalizationPipeline(stages=[("a", str.strip), ("c", str.upper)])

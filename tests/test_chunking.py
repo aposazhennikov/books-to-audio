@@ -1,6 +1,5 @@
 """Tests for text chunking splitter."""
 
-import pytest
 
 from book_normalizer.chunking.splitter import (
     chunk_chapter,
@@ -62,6 +61,23 @@ class TestChunkText:
         """Empty text returns empty list."""
         assert chunk_text("") == []
         assert chunk_text("   ") == []
+
+    def test_tiny_limit_splits_long_sentence_on_words(self) -> None:
+        """A tiny chunk limit does not cut through words."""
+        text = "alpha beta gamma delta epsilon zeta eta theta iota."
+        chunks = chunk_text(text, max_chunk_chars=18)
+
+        assert len(chunks) > 1
+        assert " ".join(chunks) == text
+        assert all(len(chunk) <= 18 for chunk in chunks)
+
+    def test_single_long_word_is_not_cut(self) -> None:
+        """A word longer than the limit is kept intact."""
+        text = "supercalifragilistic expialidocious."
+        chunks = chunk_text(text, max_chunk_chars=10)
+
+        assert "supercalifragilistic" in chunks
+        assert " ".join(chunks) == text
 
 
 class TestChunkChapter:

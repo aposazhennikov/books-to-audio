@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
 from book_normalizer.loaders.base import BaseLoader
@@ -109,7 +108,6 @@ class Fb2Loader(BaseLoader):
     @classmethod
     def _extract_chapters(cls, tree: object) -> list[Chapter]:
         """Extract chapters from FB2 <body>/<section> elements."""
-        from lxml import etree
 
         body = tree.find(".//fb:body", namespaces=_NS)
         if body is None:
@@ -140,7 +138,6 @@ class Fb2Loader(BaseLoader):
     @staticmethod
     def _extract_section_title(section: object) -> str:
         """Extract title text from a <section>/<title> element."""
-        from lxml import etree
 
         title_el = section.find("fb:title", namespaces=_NS)
         if title_el is None:
@@ -197,7 +194,7 @@ class Fb2Loader(BaseLoader):
                         author_text = "".join(cite_elem.itertext()).strip()
                         if author_text:
                             cite_parts.append(author_text)
-                
+
                 if cite_parts:
                     combined_cite = "\n".join(cite_parts)
                     paragraphs.append(
@@ -226,14 +223,13 @@ class Fb2Loader(BaseLoader):
     @staticmethod
     def _extract_all_text(tree: object) -> str:
         """Fallback: extract all text from the entire FB2 body."""
-        from lxml import etree
 
         body = tree.find(".//fb:body", namespaces=_NS)
         if body is None:
             return ""
 
         parts: list[str] = []
-        for p_el in body.iter("{%s}p" % FB2_NS):
+        for p_el in body.iter(f"{{{FB2_NS}}}p"):
             text = "".join(p_el.itertext()).strip()
             if text:
                 parts.append(text)

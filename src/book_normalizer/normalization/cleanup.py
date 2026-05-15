@@ -20,7 +20,7 @@ def remove_repeated_headers(text: str, min_occurrences: int = 3) -> str:
     Remove repeated header/footer lines that appear across pages.
 
     Counts line occurrences and patterns (lines with numbers replaced by #).
-    If a line or pattern appears more than `min_occurrences` times, 
+    If a line or pattern appears more than `min_occurrences` times,
     it is likely a repeating header or footer.
     """
     lines = text.split("\n")

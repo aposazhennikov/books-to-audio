@@ -1,0 +1,44 @@
+{
+  "_README": [
+    "This is an EXAMPLE template. Replace it with your real ComfyUI workflow exported in API format.",
+    "",
+    "How to create the real template:",
+    "1. Open ComfyUI (http://localhost:8188)",
+    "2. Build your Qwen3-TTS workflow in the UI",
+    "3. Click Save -> Save (API Format) -> download the JSON",
+    "4. In the downloaded JSON, find the input fields for text, voice, instruct, output filename",
+    "5. Replace their values with: {{TEXT}}, {{VOICE_ID}}, {{INSTRUCT}}, {{OUTPUT_FILENAME}}",
+    "6. Save as comfyui_workflows/qwen3_tts_template.json (without .EXAMPLE)",
+    "",
+    "Available placeholder tokens:",
+    "  {{TEXT}}            - The Russian text to synthesize",
+    "  {{VOICE_ID}}        - Voice preset: narrator_calm, male_young, female_warm, etc.",
+    "  {{INSTRUCT}}        - Style/mood instruct prompt (auto-mapped from chunk mood)",
+    "  {{OUTPUT_FILENAME}} - Output filename prefix (e.g. chunk_001_narrator)",
+    "",
+    "Mood -> instruct mapping (applied automatically by synthesize_comfyui.py):",
+    "  neutral  -> Ровно и чётко.",
+    "  happy    -> Радостно и бодро.",
+    "  sad      -> Грустно, немного замедленно.",
+    "  angry    -> Жёстко, напряжённо.",
+    "  tense    -> Напряжённо, настороженно.",
+    "  whisper  -> Тихо, почти шёпотом."
+  ],
+  "1": {
+    "class_type": "Qwen3TTSNode",
+    "_comment": "Replace the string values below with placeholder tokens",
+    "inputs": {
+      "text": "{{TEXT}}",
+      "voice_id": "{{VOICE_ID}}",
+      "instruct": "{{INSTRUCT}}"
+    }
+  },
+  "2": {
+    "class_type": "SaveAudio",
+    "_comment": "The SaveAudio node saves output; set filename_prefix to {{OUTPUT_FILENAME}}",
+    "inputs": {
+      "audio": ["1", 0],
+      "filename_prefix": "{{OUTPUT_FILENAME}}"
+    }
+  }
+}

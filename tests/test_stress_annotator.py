@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.stress.annotator import StressAnnotator
 from book_normalizer.stress.dictionary import COMBINING_ACUTE, StressDictionary

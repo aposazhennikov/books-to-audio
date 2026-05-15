@@ -79,6 +79,23 @@ class TestBook:
         assert "Третий абзац." in full
 
 
+    def test_stable_id_uses_source_path(self) -> None:
+        b1 = Book.from_raw_text("One text.", source_path="books/sample.txt")
+        b2 = Book.from_raw_text("Different text.", source_path="books/sample.txt")
+
+        assert b1.id != b2.id
+        assert b1.stable_id == b2.stable_id
+        assert b1.stable_id.startswith("src_")
+
+    def test_stable_id_falls_back_to_text(self) -> None:
+        b1 = Book.from_raw_text("Same text.")
+        b2 = Book.from_raw_text("Same text.")
+
+        assert b1.id != b2.id
+        assert b1.stable_id == b2.stable_id
+        assert b1.stable_id.startswith("text_")
+
+
 class TestSegment:
     def test_defaults(self) -> None:
         s = Segment(text="слово")

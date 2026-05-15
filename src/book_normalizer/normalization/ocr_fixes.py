@@ -29,6 +29,26 @@ _WORD_RE = re.compile(r"\S+")
 # Maximum length for a purely Latin word to be auto-corrected.
 _MAX_AUTOFIX_LEN = 5
 
+# Stray OCR artifacts: single low-comma, guillemets, backticks in Cyrillic context.
+_STRAY_PUNCT_IN_CYR = re.compile(
+    r"(?<=[а-яёА-ЯЁ])['\u2018\u2019`\u201A\u201B\u2039\u203A‹›](?=\s|[а-яёА-ЯЁ]|$)"
+)
+
+# Spurious period inside a word: "за. столом" -> "за столом".
+_PERIOD_INSIDE_WORD = re.compile(
+    r"(?<=[а-яёА-ЯЁ])\.\s(?=[а-яё])"
+)
+
+# Lone garbage characters surrounded by whitespace in Cyrillic text.
+_LONE_GARBAGE = re.compile(
+    r"(?<=\s)[=<>|#№\u2021\u2020\u00A7\u00B6]+(?=\s)"
+)
+
+# Two or more stray single characters separated by spaces (OCR junk).
+_SCATTERED_CHARS = re.compile(
+    r"\b([а-яёА-ЯЁa-zA-Z])\s+([а-яёА-ЯЁa-zA-Z])\s+([а-яёА-ЯЁa-zA-Z])\b"
+)
+
 
 def _transliterate(word: str) -> str:
     """Replace Latin lookalikes with Cyrillic equivalents."""
@@ -91,3 +111,69 @@ def _has_cyrillic_context(is_cyrillic: list[bool], idx: int) -> bool:
         if 0 <= neighbor < len(is_cyrillic) and is_cyrillic[neighbor]:
             return True
     return False
+
+
+_TRAILING_JUNK = re.compile(
+    r"\s+[а-яёА-ЯЁa-zA-Z.,;:!?\-]{1,3}\s*$"
+)
+
+_LEADING_COMMA_PERIOD = re.compile(
+    r"^[‚,.:;]\s*"
+)
+
+_MULTI_SPACE = re.compile(r" {3,}")
+
+_BROKEN_HYPHEN = re.compile(
+    r"([а-яёА-ЯЁ])-\s*\n\s*([а-яё])"
+)
+
+_STRAY_LINE_PATTERN = re.compile(
+    r"^[\s\W]{0,4}[а-яёА-ЯЁa-zA-Z]{1,2}[\s\W]{0,4}$"
+)
+
+
+def fix_ocr_artifacts(text: str) -> str:
+    """Remove common OCR artifacts from Cyrillic text.
+
+    Handles stray apostrophes/backticks, spurious periods inside words,
+    lone garbage symbols, low-comma quotation marks, trailing junk characters,
+    broken hyphenated words across lines, and scattered single-char noise
+    typical of Tesseract misrecognition on Russian scans.
+    """
+    text = _STRAY_PUNCT_IN_CYR.sub("", text)
+    text = _PERIOD_INSIDE_WORD.sub(" ", text)
+    text = _LONE_GARBAGE.sub("", text)
+
+    # Rejoin words broken by hyphenation across lines.
+    text = _BROKEN_HYPHEN.sub(r"\1\2", text)
+
+    # Remove excess whitespace (3+ spaces -> single space).
+    text = _MULTI_SPACE.sub(" ", text)
+
+    lines = text.split("\n")
+    cleaned: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+
+        # Skip empty lines (preserve one blank).
+        if not stripped:
+            if not cleaned or cleaned[-1].strip():
+                cleaned.append("")
+            continue
+
+        # Skip lines that are just 1-2 stray characters (OCR noise).
+        if _STRAY_LINE_PATTERN.match(stripped):
+            if not stripped.isdigit() and stripped not in ("—", "«", "»", "—,"):
+                continue
+
+        # Remove leading stray comma/period from OCR.
+        stripped = _LEADING_COMMA_PERIOD.sub("", stripped)
+
+        # Remove trailing junk chars (1-3 random letters at line end).
+        stripped = _TRAILING_JUNK.sub("", stripped)
+
+        if stripped:
+            cleaned.append(stripped)
+
+    text = "\n".join(cleaned)
+    return text

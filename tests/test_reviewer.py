@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from book_normalizer.memory.correction_store import CorrectionStore
 from book_normalizer.memory.punctuation_store import PunctuationStore
 from book_normalizer.models.book import Book, Chapter, Paragraph
-from book_normalizer.models.memory import CorrectionMemoryEntry, PunctuationMemoryEntry
-from book_normalizer.models.review import IssueType, ReviewAction, ReviewDecision
+from book_normalizer.models.memory import PunctuationMemoryEntry
+from book_normalizer.models.review import (
+    IssueSeverity,
+    IssueType,
+    ReviewAction,
+    ReviewDecision,
+    ReviewIssue,
+)
 from book_normalizer.review.reviewer import Reviewer
 from book_normalizer.review.session import ReviewSession
 
@@ -41,6 +46,16 @@ class TestReviewer:
         reviewer = Reviewer(skip_punctuation=False, skip_spellcheck=False)
         session = reviewer.scan(book)
         assert session.pending_count > 0
+
+    def test_scan_uses_stable_book_id_for_resume(self) -> None:
+        book = _make_book_with_issues()
+        book.metadata.source_path = "books/source.txt"
+        reviewer = Reviewer(skip_punctuation=False, skip_spellcheck=False)
+
+        session = reviewer.scan(book)
+
+        assert session.book_id == book.stable_id
+        assert session.book_id != book.id
 
     def test_scan_clean_book(self) -> None:
         book = _make_clean_book()
@@ -93,8 +108,6 @@ class TestReviewer:
             ],
         )
 
-        from book_normalizer.models.review import ReviewIssue, IssueSeverity
-
         resolved_issue = ReviewIssue(
             id="i1",
             issue_type=IssueType.PUNCTUATION,
@@ -109,6 +122,42 @@ class TestReviewer:
         reviewer = Reviewer()
         reviewer.apply_decisions_to_book(book, session)
         assert "о, с" in para.normalized_text
+
+    def test_apply_decision_uses_issue_context(self) -> None:
+        para = Paragraph(
+            id="p1",
+            raw_text="foo bad middle bad end",
+            normalized_text="foo bad middle bad end",
+            index_in_chapter=0,
+        )
+        ch = Chapter(id="ch1", title="Test", index=0, paragraphs=[para])
+        book = Book(chapters=[ch])
+        issue = ReviewIssue(
+            id="i1",
+            issue_type=IssueType.PUNCTUATION,
+            severity=IssueSeverity.MEDIUM,
+            original_fragment="bad",
+            context_before="middle ",
+            context_after=" end",
+            chapter_id="ch1",
+            paragraph_id="p1",
+            resolved=True,
+        )
+        session = ReviewSession(
+            resolved_issues=[issue],
+            decisions=[
+                ReviewDecision(
+                    issue_id="i1",
+                    action=ReviewAction.ACCEPT,
+                    original_fragment="bad",
+                    final_fragment="good",
+                ),
+            ],
+        )
+
+        Reviewer().apply_decisions_to_book(book, session)
+
+        assert para.normalized_text == "foo bad middle good end"
 
     def test_audit_trail_after_scan(self) -> None:
         book = _make_book_with_issues()

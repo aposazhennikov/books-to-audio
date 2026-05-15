@@ -4,7 +4,6 @@ import pytest
 
 from book_normalizer.normalization.abbreviations import expand_abbreviations
 
-
 # ── Multi-word abbreviations ─────────────────────────────────────────
 
 @pytest.mark.parametrize(

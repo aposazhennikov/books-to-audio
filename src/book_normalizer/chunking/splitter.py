@@ -36,12 +36,24 @@ def split_into_sentences(text: str) -> list[str]:
 
 
 def _break_long_sentence(sentence: str, max_chars: int) -> list[str]:
-    """Break a sentence that exceeds max_chars at clause boundaries."""
+    """Break a sentence that exceeds max_chars without cutting words."""
     if len(sentence) <= max_chars:
         return [sentence]
 
-    parts = _CLAUSE_SPLIT_RE.split(sentence)
+    clause_parts = _CLAUSE_SPLIT_RE.split(sentence)
+    parts: list[str] = []
+    for part in clause_parts:
+        stripped = part.strip()
+        if not stripped:
+            continue
+        if len(stripped) > max_chars and " " in stripped:
+            parts.extend(stripped.split())
+        else:
+            parts.append(stripped)
+
     if len(parts) <= 1:
+        parts = sentence.split()
+    if not parts:
         return [sentence]
 
     result: list[str] = []
@@ -79,10 +91,12 @@ def chunk_text(
 
     sentences = split_into_sentences(text)
 
-    # Break long sentences at clause boundaries.
+    # Break long sentences at clause/word boundaries. The chunk limit is a
+    # soft target, but long sentences should not dwarf a user-selected size.
+    sentence_limit = max(1, min(max_sentence_chars, max_chunk_chars))
     fragments: list[str] = []
     for sent in sentences:
-        fragments.extend(_break_long_sentence(sent, max_sentence_chars))
+        fragments.extend(_break_long_sentence(sent, sentence_limit))
 
     chunks: list[str] = []
     current_parts: list[str] = []

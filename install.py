@@ -20,6 +20,7 @@ VERIFY_MODULES = {
         "docx",
         "ebooklib",
         "fitz",
+        "huggingface_hub",
         "lxml",
         "num2words",
         "peyo",

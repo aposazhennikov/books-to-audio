@@ -23,6 +23,18 @@ from book_normalizer.gui.workers.tts_worker import (
     _flatten_manifest_chunks,
 )
 from book_normalizer.models.book import Book, Chapter, Paragraph
+from book_normalizer.tts.model_download import (
+    DEFAULT_TTS_MODEL_ID,
+    QWEN3_TTS_TOKENIZER,
+    VOICE_CLONE_MODEL_ID,
+)
+
+
+def _app():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
 
 
 def _v2_manifest() -> dict:
@@ -74,6 +86,29 @@ def test_tts_worker_converts_models_dir_to_wsl_path() -> None:
         TTSSynthesisWorker._wsl_path_text(r"D:\ComfyUI-external\models")
         == "/mnt/d/ComfyUI-external/models"
     )
+
+
+def test_synthesis_page_installs_base_model_for_custom_voice_mode() -> None:
+    app = _app()
+    _ = app
+    page = SynthesisPage()
+
+    assert page._required_tts_model_ids() == [
+        VOICE_CLONE_MODEL_ID,
+        QWEN3_TTS_TOKENIZER,
+    ]
+
+
+def test_synthesis_page_installs_selected_model_for_preset_mode() -> None:
+    app = _app()
+    _ = app
+    page = SynthesisPage()
+    page._mode_tabs.setCurrentIndex(1)
+
+    assert page._required_tts_model_ids() == [
+        DEFAULT_TTS_MODEL_ID,
+        QWEN3_TTS_TOKENIZER,
+    ]
 
 
 def test_tts_worker_converts_sample_audio_path_inside_clone_config(tmp_path: Path) -> None:

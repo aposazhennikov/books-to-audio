@@ -17,6 +17,7 @@ build/
 *.egg
 data/
 .venv/
+.venv-windows/
 books/
 venv/
 env/

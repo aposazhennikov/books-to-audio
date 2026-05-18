@@ -667,6 +667,36 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         ),
     },
     "synth.choose_dir": {"en": "Choose...", "ru": "Выбрать..."},
+    "synth.install_models": {
+        "en": "Install models",
+        "ru": "Скачать модели",
+    },
+    "synth.install_models_help": {
+        "en": (
+            "Download the TTS model required by the current synthesis mode "
+            "from Hugging Face into the selected models folder. Downloads are large."
+        ),
+        "ru": (
+            "Скачивает TTS-модели для текущего режима синтеза из Hugging Face "
+            "в выбранную папку моделей. Файлы большие."
+        ),
+    },
+    "synth.models_installing": {
+        "en": "Installing TTS models into {dir}. This may take a long time.",
+        "ru": "Скачивание TTS-моделей в {dir}. Это может занять много времени.",
+    },
+    "synth.models_installed": {
+        "en": "TTS models ready: downloaded {downloaded}, already present {skipped}. Folder: {dir}",
+        "ru": "TTS-модели готовы: скачано {downloaded}, уже было {skipped}. Папка: {dir}",
+    },
+    "synth.models_present": {
+        "en": "Required TTS models are already present in {dir}.",
+        "ru": "Нужные TTS-модели уже есть в {dir}.",
+    },
+    "synth.models_install_error": {
+        "en": "TTS model installation failed: {msg}",
+        "ru": "Не удалось скачать TTS-модели: {msg}",
+    },
     "synth.batch_size": {
         "en": "Batch Size:",
         "ru": "\u0420\u0430\u0437\u043c\u0435\u0440 \u0431\u0430\u0442\u0447\u0430:",

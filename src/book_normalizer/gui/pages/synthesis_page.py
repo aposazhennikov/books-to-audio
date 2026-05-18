@@ -37,8 +37,16 @@ from PyQt6.QtWidgets import (
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.tts_worker import (
+    TTSModelInstallWorker,
     TTSSynthesisWorker,
     VoicePromptSaveWorker,
+)
+from book_normalizer.tts.model_download import (
+    DEFAULT_TTS_MODEL_ID,
+    MODEL_DOWNLOAD_WARNING,
+    VOICE_CLONE_MODEL_ID,
+    expand_tts_model_ids,
+    missing_tts_model_ids,
 )
 from book_normalizer.tts.model_paths import default_comfyui_models_dir
 from book_normalizer.tts.voice_library import (
@@ -81,6 +89,10 @@ def _host_path_from_text(path_text: str | Path) -> Path:
         drive = text[5]
         rest = text[6:].lstrip("/")
         text = f"{drive.upper()}:/{rest}"
+    elif os.name != "nt" and len(text) >= 2 and text[1] == ":":
+        drive = text[0].lower()
+        rest = text[2:].lstrip("\\/")
+        text = f"/mnt/{drive}/{rest}".replace("\\", "/")
     path = Path(text).expanduser()
     return path if path.is_absolute() else (Path.cwd() / path).resolve()
 
@@ -451,6 +463,7 @@ class SynthesisPage(QWidget):
         self._manifest_path: Path | None = None
         self._output_dir: Path | None = None
         self._worker: TTSSynthesisWorker | None = None
+        self._model_install_worker: TTSModelInstallWorker | None = None
         self._save_voice_worker: VoicePromptSaveWorker | None = None
         self._chapter_map: dict[int, int] = {}
         self._manifest_chunks: list[dict] = []
@@ -1068,6 +1081,9 @@ class SynthesisPage(QWidget):
         self._btn_models_dir = QPushButton()
         self._btn_models_dir.clicked.connect(self._browse_models_dir)
         model_dir_row.addWidget(self._btn_models_dir)
+        self._btn_install_models = QPushButton()
+        self._btn_install_models.clicked.connect(self._install_tts_models)
+        model_dir_row.addWidget(self._btn_install_models)
         self._models_dir_label = QLabel()
         form.addRow(
             self._label_with_help(self._models_dir_label, "synth.models_dir_help"),
@@ -1434,6 +1450,8 @@ class SynthesisPage(QWidget):
         self._models_dir_label.setText(t("synth.models_dir"))
         self._models_dir_edit.setToolTip(t("synth.models_dir_help"))
         self._btn_models_dir.setText(t("synth.choose_dir"))
+        self._btn_install_models.setText(t("synth.install_models"))
+        self._btn_install_models.setToolTip(t("synth.install_models_help"))
         self._voice_library_dir_label.setText(t("synth.voice_library_dir"))
         self._voice_library_dir_edit.setToolTip(t("synth.voice_library_dir_help"))
         self._btn_voice_library_dir.setText(t("synth.choose_dir"))
@@ -1755,6 +1773,69 @@ class SynthesisPage(QWidget):
         )
         if path:
             self._models_dir_edit.setText(path)
+
+    def _selected_models_dir(self) -> Path:
+        text = self._models_dir_edit.text().strip() or str(default_comfyui_models_dir())
+        path = _host_path_from_text(text)
+        self._models_dir_edit.setText(str(path))
+        return path
+
+    def _required_tts_model_ids(self) -> list[str]:
+        selected_model = self._model_combo.currentText().strip() or DEFAULT_TTS_MODEL_ID
+        if not self._is_custom_voice_mode():
+            return expand_tts_model_ids([selected_model])
+
+        strategy = self._custom_strategy_combo.currentData() or "sample_all"
+        if strategy in {"sample_all", "saved_all"}:
+            return expand_tts_model_ids([VOICE_CLONE_MODEL_ID])
+        return expand_tts_model_ids([VOICE_CLONE_MODEL_ID, selected_model])
+
+    def _install_tts_models(self) -> None:
+        models_dir = self._selected_models_dir()
+        model_ids = self._required_tts_model_ids()
+        missing = missing_tts_model_ids(model_ids, models_dir, include_tokenizer=False)
+        if not missing:
+            self._status.setText(t("synth.models_present", dir=str(models_dir)))
+            self._progress.set_status(t("synth.models_present", dir=str(models_dir)))
+            return
+
+        self._log_edit.clear()
+        self._log_edit.appendPlainText(MODEL_DOWNLOAD_WARNING)
+        self._status.setText(t("synth.models_installing", dir=str(models_dir)))
+        self._progress.set_status(t("synth.models_installing", dir=str(models_dir)))
+        self._set_model_install_active(True)
+
+        self._model_install_worker = TTSModelInstallWorker(
+            model_ids=model_ids,
+            models_dir=models_dir,
+        )
+        self._model_install_worker.status.connect(self._status.setText)
+        self._model_install_worker.log_line.connect(self._on_log_line)
+        self._model_install_worker.finished.connect(self._on_model_install_finished)
+        self._model_install_worker.error.connect(self._on_model_install_error)
+        self._model_install_worker.start()
+
+    def _on_model_install_finished(
+        self,
+        models_dir: str,
+        downloaded: int,
+        skipped: int,
+    ) -> None:
+        self._set_model_install_active(False)
+        message = t(
+            "synth.models_installed",
+            downloaded=downloaded,
+            skipped=skipped,
+            dir=models_dir,
+        )
+        self._status.setText(message)
+        self._progress.set_status(message)
+
+    def _on_model_install_error(self, msg: str) -> None:
+        self._set_model_install_active(False)
+        message = t("synth.models_install_error", msg=msg)
+        self._status.setText(message)
+        self._progress.set_status(message)
 
     def _browse_sample_audio(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -2357,6 +2438,17 @@ class SynthesisPage(QWidget):
         self._btn_save_sample_voice.setEnabled(not active)
         self._output_dir_edit.setEnabled(not active)
         self._btn_output_dir.setEnabled(not active)
+        self._btn_install_models.setEnabled(not active)
+
+    def _set_model_install_active(self, active: bool) -> None:
+        has_manifest = bool(self._manifest_path)
+        self._btn_install_models.setEnabled(not active)
+        self._btn_start.setEnabled(has_manifest and not active)
+        self._btn_test.setEnabled(has_manifest and not active)
+        self._btn_save_sample_voice.setEnabled(not active)
+        self._btn_stop.setEnabled(False)
+        self._models_dir_edit.setEnabled(not active)
+        self._btn_models_dir.setEnabled(not active)
 
     def _toggle_test_playback(self) -> None:
         if not self._last_test_audio_path:

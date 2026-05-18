@@ -44,12 +44,12 @@ chmod +x install.sh run_gui.sh
 python install.py
 ```
 
-После установки запускайте через wrapper (`run_gui.bat` / `run_gui.sh`) или через Python из `.venv`.
+После установки запускайте через wrapper (`run_gui.bat` / `run_gui.sh`) или через Python из virtualenv.
 
 Windows:
 
 ```powershell
-.venv\Scripts\python.exe -m book_normalizer.gui.app
+.venv-windows\Scripts\python.exe -m book_normalizer.gui.app
 ```
 
 Linux/macOS:
@@ -58,7 +58,7 @@ Linux/macOS:
 .venv/bin/python -m book_normalizer.gui.app
 ```
 
-`install.py` создает `.venv`, обновляет `pip`, ставит пакет в editable-режиме и проверяет импорты. По умолчанию ставится desktop-профиль: GUI, OCR, LLM-клиент и audio helpers.
+`install.py` создает `.venv`, обновляет `pip`, ставит пакет в editable-режиме и проверяет импорты. Windows wrapper `install.bat` использует `.venv-windows`, чтобы не смешивать Windows GUI и Linux/WSL `.venv`. По умолчанию ставится desktop-профиль: GUI, OCR, LLM-клиент и audio helpers.
 
 ## Системные зависимости
 
@@ -136,7 +136,7 @@ pip install -r requirements.txt
 
 ```bash
 # Windows
-.venv\Scripts\normalize-book.exe doctor --skip-network
+.venv-windows\Scripts\normalize-book.exe doctor --skip-network
 
 # Linux/macOS
 .venv/bin/normalize-book doctor --skip-network
@@ -153,7 +153,7 @@ normalize-book doctor
 Windows:
 
 ```powershell
-.venv\Scripts\activate
+.venv-windows\Scripts\activate
 ```
 
 Linux/macOS:
@@ -225,6 +225,34 @@ models/
     Qwen3-TTS-12Hz-1.7B-CustomVoice/
     Qwen3-TTS-Tokenizer-12Hz/
 ```
+
+### Установка TTS-моделей из Hugging Face
+
+В GUI откройте вкладку **Синтез**, заранее выберите папку **Models dir** и нажмите
+**Скачать модели**. Приложение скачает нужные Qwen3-TTS репозитории с Hugging Face
+в выбранную папку, например:
+
+```text
+models/
+  audio_encoders/
+    Qwen3-TTS-12Hz-1.7B-CustomVoice/
+    Qwen3-TTS-12Hz-1.7B-Base/
+    Qwen3-TTS-Tokenizer-12Hz/
+```
+
+CLI-вариант:
+
+```bash
+normalize-book install-tts-models --models-dir /path/to/models \
+  --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --with-base
+```
+
+Предупреждение: модели большие, скачивание может занять много времени и потребовать
+несколько гигабайт свободного места. Нужен доступ в интернет к Hugging Face; если
+репозиторий требует авторизации, задайте `HF_TOKEN` или передайте `--token`.
+Python-зависимость для скачивания: `huggingface-hub` (ставится через `install.py`).
+Для прямого Qwen-TTS runner также нужны `qwen-tts`, `torch`, `soundfile`, `numpy`;
+на практике для production-озвучки рекомендуется Linux/WSL с CUDA GPU.
 
 Прямой runner `scripts/tts_runner.py` оставлен для Linux/WSL и CUDA. Для него ставьте:
 
@@ -314,7 +342,7 @@ output/mybook_pdf/
 
 Не коммитим:
 
-- `.venv/`, `venv/`, `env/`
+- `.venv/`, `.venv-windows/`, `venv/`, `env/`
 - `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `.coverage`
 - `books/`
 - `output/`

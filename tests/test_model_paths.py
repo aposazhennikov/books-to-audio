@@ -42,3 +42,16 @@ def test_describe_model_resolution_marks_direct_path_as_local(tmp_path: Path) ->
     (model_dir / "config.json").write_text("{}", encoding="utf-8")
 
     assert describe_model_resolution(str(model_dir)) == (str(model_dir), True)
+
+
+def test_resolve_model_path_accepts_tokenizer_marker(tmp_path: Path) -> None:
+    tokenizer_dir = tmp_path / "audio_encoders" / "Qwen3-TTS-Tokenizer-12Hz"
+    tokenizer_dir.mkdir(parents=True)
+    (tokenizer_dir / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+
+    resolved = resolve_model_path(
+        "Qwen/Qwen3-TTS-Tokenizer-12Hz",
+        models_dir=tmp_path,
+    )
+
+    assert resolved == str(tokenizer_dir)

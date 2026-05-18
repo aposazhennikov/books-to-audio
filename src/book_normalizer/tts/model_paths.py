@@ -66,11 +66,11 @@ def resolve_model_path(
     if _looks_like_model_dir(direct_path):
         return str(direct_path)
 
-    basename = _model_basename(model_name)
+    basename = model_basename(model_name)
     for root in candidate_model_roots(models_dir):
         for subdir in MODEL_SUBDIRS:
             candidate = root / subdir / basename if subdir else root / basename
-            if _looks_like_model_dir(candidate):
+            if looks_like_model_dir(candidate):
                 return str(candidate)
 
     return model_name
@@ -82,18 +82,32 @@ def describe_model_resolution(
 ) -> tuple[str, bool]:
     """Return ``(resolved_name, is_local)`` for status/log output."""
     resolved = resolve_model_path(model_name, models_dir=models_dir)
-    return resolved, _looks_like_model_dir(Path(resolved))
+    return resolved, looks_like_model_dir(Path(resolved))
 
 
-def _model_basename(model_name: str) -> str:
+def model_basename(model_name: str) -> str:
     """Return the likely local folder name for a model id or path."""
     normalized = model_name.replace("\\", "/").rstrip("/")
     return normalized.rsplit("/", 1)[-1]
 
 
-def _looks_like_model_dir(path: Path) -> bool:
+def looks_like_model_dir(path: Path) -> bool:
     """Return True when a directory looks loadable by ``from_pretrained``."""
     try:
-        return path.is_dir() and (path / "config.json").is_file()
+        markers = (
+            "config.json",
+            "model_index.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
+        )
+        return path.is_dir() and any((path / marker).is_file() for marker in markers)
     except OSError:
         return False
+
+
+def _model_basename(model_name: str) -> str:
+    return model_basename(model_name)
+
+
+def _looks_like_model_dir(path: Path) -> bool:
+    return looks_like_model_dir(path)

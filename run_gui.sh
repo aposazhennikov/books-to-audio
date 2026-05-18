@@ -8,7 +8,7 @@ if [ ! -x ".venv/bin/python" ]; then
     ./install.sh --no-system-check
 fi
 
-if ! .venv/bin/python -c "import PyQt6, book_normalizer" >/dev/null 2>&1; then
+if ! .venv/bin/python -c "import PyQt6, book_normalizer, huggingface_hub" >/dev/null 2>&1; then
     ./install.sh --no-system-check
 fi
 

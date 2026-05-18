@@ -269,6 +269,89 @@ def doctor_command(
         click.echo(f"[{check.status.upper():4}] {check.name}: {check.detail}")
 
 
+@main.command(name="install-tts-models")
+@click.option(
+    "--models-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Folder where Qwen TTS models will be stored.",
+)
+@click.option(
+    "--model",
+    "models",
+    multiple=True,
+    help="Hugging Face model id to install. Can be passed more than once.",
+)
+@click.option(
+    "--with-base",
+    is_flag=True,
+    default=False,
+    help="Also install the Base model required for voice cloning/saved voices.",
+)
+@click.option(
+    "--all-qwen",
+    is_flag=True,
+    default=False,
+    help="Install all known Qwen3-TTS model folders used by this app.",
+)
+@click.option("--force", is_flag=True, default=False, help="Ask Hugging Face Hub to refresh the local copy.")
+@click.option("--dry-run", is_flag=True, default=False, help="Print target folders without downloading.")
+@click.option("--token", default=None, envvar="HF_TOKEN", help="Hugging Face token, or set HF_TOKEN.")
+def install_tts_models_command(
+    models_dir: Path | None,
+    models: tuple[str, ...],
+    with_base: bool,
+    all_qwen: bool,
+    force: bool,
+    dry_run: bool,
+    token: str | None,
+) -> None:
+    """Download Qwen3-TTS model folders from Hugging Face."""
+    from book_normalizer.tts.model_download import (
+        DEFAULT_TTS_MODEL_ID,
+        KNOWN_TTS_MODEL_IDS,
+        MODEL_DOWNLOAD_WARNING,
+        VOICE_CLONE_MODEL_ID,
+        expand_tts_model_ids,
+        install_tts_models,
+        tts_model_install_path,
+    )
+    from book_normalizer.tts.model_paths import default_comfyui_models_dir
+
+    target_dir = models_dir or default_comfyui_models_dir()
+    if all_qwen:
+        selected = list(KNOWN_TTS_MODEL_IDS)
+    else:
+        selected = list(models) or [DEFAULT_TTS_MODEL_ID]
+        if with_base and VOICE_CLONE_MODEL_ID not in selected:
+            selected.append(VOICE_CLONE_MODEL_ID)
+    selected = expand_tts_model_ids(selected)
+
+    click.echo(MODEL_DOWNLOAD_WARNING, err=True)
+    click.echo(f"Models dir: {target_dir}")
+    if dry_run:
+        click.echo("Dry run only; no files will be downloaded.")
+        for model_id in selected:
+            click.echo(f"Would install {model_id} -> {tts_model_install_path(model_id, target_dir)}")
+        return
+
+    try:
+        results = install_tts_models(
+            selected,
+            target_dir,
+            token=token,
+            force=force,
+            include_tokenizer=False,
+            progress=click.echo,
+        )
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    downloaded = sum(1 for result in results if not result.already_present)
+    skipped = sum(1 for result in results if result.already_present)
+    click.echo(f"TTS models ready: downloaded={downloaded}, already_present={skipped}")
+
+
 @main.command(name="audio-qa")
 @click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--report", type=click.Path(path_type=Path), default=None, help="Write JSON QA report.")

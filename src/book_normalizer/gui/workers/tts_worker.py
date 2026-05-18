@@ -12,6 +12,10 @@ from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from book_normalizer.gui.i18n import t
+from book_normalizer.tts.model_download import (
+    MODEL_DOWNLOAD_WARNING,
+    install_tts_models,
+)
 from book_normalizer.tts.model_paths import default_comfyui_models_dir
 from book_normalizer.tts.wsl_runtime import build_wsl_tts_activation_script
 
@@ -661,6 +665,40 @@ class TTSSynthesisWorker(QThread):
             drive = p[0].lower()
             p = f"/mnt/{drive}{p[2:]}"
         return p
+
+
+class TTSModelInstallWorker(QThread):
+    """Download selected Hugging Face TTS models into the configured model dir."""
+
+    status = pyqtSignal(str)
+    log_line = pyqtSignal(str)
+    finished = pyqtSignal(str, int, int)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        model_ids: list[str],
+        models_dir: Path,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._model_ids = model_ids
+        self._models_dir = models_dir
+
+    def run(self) -> None:
+        try:
+            self.status.emit(MODEL_DOWNLOAD_WARNING)
+            self.log_line.emit(MODEL_DOWNLOAD_WARNING)
+            results = install_tts_models(
+                self._model_ids,
+                self._models_dir,
+                progress=self.log_line.emit,
+            )
+            downloaded = sum(1 for result in results if not result.already_present)
+            skipped = sum(1 for result in results if result.already_present)
+            self.finished.emit(str(self._models_dir), downloaded, skipped)
+        except Exception as exc:
+            self.error.emit(str(exc))
 
 
 class VoicePromptSaveWorker(QThread):

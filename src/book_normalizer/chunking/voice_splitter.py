@@ -7,11 +7,15 @@ and then groups segments into chunks for TTS synthesis.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from book_normalizer.chunking.splitter import (
+    DEFAULT_CHAPTER_PAUSE_MS,
     DEFAULT_MAX_CHUNK_CHARS,
     DEFAULT_MAX_SENTENCE_CHARS,
+    DEFAULT_PARAGRAPH_PAUSE_MS,
+    DEFAULT_SCENE_PAUSE_MS,
     chunk_text,
 )
 from book_normalizer.dialogue.models import (
@@ -38,6 +42,15 @@ NEW_VOICE_ID_MAP: dict[SpeakerRole, str] = {
     SpeakerRole.UNKNOWN: "narrator_calm",
 }
 
+DEFAULT_SPEAKER_PAUSE_MS = 600
+_BOUNDARY_PRIORITY = {
+    "": 0,
+    "speaker": 1,
+    "paragraph": 2,
+    "scene": 3,
+    "chapter": 4,
+}
+
 
 # ── Segment-level extraction (for interactive voice assignment) ──
 
@@ -51,37 +64,61 @@ def extract_segments_chapter(
     with a single speaker role. Segments are the finest granularity
     for voice assignment by the user.
     """
-    all_lines = _flatten_lines(chapter)
-    if not all_lines:
-        return []
-
-    groups = _group_by_role(all_lines)
     segments: list[VoiceSegment] = []
     seg_idx = 0
 
-    for role, lines in groups:
-        combined = " ".join(line.text for line in lines)
-        if not combined.strip():
+    for para in chapter.paragraphs:
+        lines = [line for line in para.lines if line.text.strip()]
+        if not lines:
             continue
 
-        is_dialogue = any(ln.is_dialogue for ln in lines)
-        effective_role = role
-        voice_role = (
-            role if role != SpeakerRole.UNKNOWN else SpeakerRole.NARRATOR
-        )
-
-        segments.append(
-            VoiceSegment(
-                segment_index=seg_idx,
-                chapter_index=chapter.chapter_index,
-                is_dialogue=is_dialogue,
-                role=effective_role,
-                voice_id=NEW_VOICE_ID_MAP[voice_role],
-                intonation="neutral",
-                text=combined,
+        paragraph_text = " ".join(line.text.strip() for line in lines)
+        if _is_scene_break_text(paragraph_text):
+            _mark_last_segment_pause(
+                segments,
+                boundary_after="scene",
+                pause_after_ms=DEFAULT_SCENE_PAUSE_MS,
             )
-        )
-        seg_idx += 1
+            continue
+
+        paragraph_start = len(segments)
+        groups = _group_by_role(lines)
+        for role, group_lines in groups:
+            combined = " ".join(line.text for line in group_lines)
+            if not combined.strip():
+                continue
+
+            is_dialogue = any(ln.is_dialogue for ln in group_lines)
+            effective_role = role
+            voice_role = (
+                role if role != SpeakerRole.UNKNOWN else SpeakerRole.NARRATOR
+            )
+
+            segments.append(
+                VoiceSegment(
+                    segment_index=seg_idx,
+                    chapter_index=chapter.chapter_index,
+                    is_dialogue=is_dialogue,
+                    role=effective_role,
+                    voice_id=NEW_VOICE_ID_MAP[voice_role],
+                    intonation="neutral",
+                    text=combined,
+                )
+            )
+            seg_idx += 1
+
+        if len(segments) > paragraph_start:
+            _mark_last_segment_pause(
+                segments,
+                boundary_after="paragraph",
+                pause_after_ms=DEFAULT_PARAGRAPH_PAUSE_MS,
+            )
+
+    _mark_last_segment_pause(
+        segments,
+        boundary_after="chapter",
+        pause_after_ms=DEFAULT_CHAPTER_PAUSE_MS,
+    )
 
     return segments
 
@@ -125,6 +162,8 @@ def build_chunks_from_segments(
     pending_voice = segments[0].get("voice_id", "narrator_calm")
     pending_intonation = segments[0].get("intonation", "neutral")
     pending_role = _role_from_segment(segments[0])
+    pending_pause_after_ms = 0
+    pending_boundary_after = ""
 
     def _next_chunk_index(chapter_index: int) -> int:
         current = chunk_indices.get(chapter_index, 0)
@@ -132,33 +171,56 @@ def build_chunks_from_segments(
         return current
 
     def _flush() -> None:
-        nonlocal pending_text_parts
+        nonlocal pending_text_parts, pending_pause_after_ms, pending_boundary_after
         if not pending_text_parts:
             return
         combined = " ".join(pending_text_parts)
         if len(combined) <= max_chunk_chars:
-            chunks.append({
+            record = {
                 "chapter_index": pending_chapter,
                 "chunk_index": _next_chunk_index(pending_chapter),
                 "role": pending_role,
                 "voice_id": pending_voice,
                 "intonation": pending_intonation,
                 "text": combined,
-            })
+            }
+            _add_pause_fields(
+                record,
+                pending_pause_after_ms,
+                pending_boundary_after,
+            )
+            chunks.append(record)
         else:
             sub_chunks = chunk_text(
                 combined, max_chunk_chars, max_sentence_chars,
             )
-            for sub in sub_chunks:
-                chunks.append({
+            for offset, sub in enumerate(sub_chunks):
+                record = {
                     "chapter_index": pending_chapter,
                     "chunk_index": _next_chunk_index(pending_chapter),
                     "role": pending_role,
                     "voice_id": pending_voice,
                     "intonation": pending_intonation,
                     "text": sub,
-                })
+                }
+                if offset == len(sub_chunks) - 1:
+                    _add_pause_fields(
+                        record,
+                        pending_pause_after_ms,
+                        pending_boundary_after,
+                    )
+                chunks.append(record)
         pending_text_parts = []
+        pending_pause_after_ms = 0
+        pending_boundary_after = ""
+
+    def _apply_pending_pause(boundary_after: str, pause_after_ms: int) -> None:
+        nonlocal pending_pause_after_ms, pending_boundary_after
+        pending_pause_after_ms = max(pending_pause_after_ms, pause_after_ms)
+        pending_boundary_after = _stronger_boundary(
+            pending_boundary_after,
+            boundary_after,
+        )
 
     for seg in segments:
         seg_chapter = seg.get("chapter_index", 0)
@@ -175,15 +237,43 @@ def build_chunks_from_segments(
             and seg_intonation == pending_intonation
         )
 
-        if same_group:
-            pending_text_parts.append(seg_text)
-        else:
+        if same_group and pending_text_parts and pending_pause_after_ms > 0:
             _flush()
             pending_text_parts = [seg_text]
             pending_chapter = seg_chapter
             pending_voice = seg_voice
             pending_intonation = seg_intonation
             pending_role = seg_role
+            _apply_pending_pause(
+                str(seg.get("boundary_after") or ""),
+                int(seg.get("pause_after_ms") or 0),
+            )
+        elif same_group:
+            pending_text_parts.append(seg_text)
+            _apply_pending_pause(
+                str(seg.get("boundary_after") or ""),
+                int(seg.get("pause_after_ms") or 0),
+            )
+        else:
+            transition_boundary = (
+                "chapter" if seg_chapter != pending_chapter else "speaker"
+            )
+            transition_pause = (
+                DEFAULT_CHAPTER_PAUSE_MS
+                if seg_chapter != pending_chapter
+                else DEFAULT_SPEAKER_PAUSE_MS
+            )
+            _apply_pending_pause(transition_boundary, transition_pause)
+            _flush()
+            pending_text_parts = [seg_text]
+            pending_chapter = seg_chapter
+            pending_voice = seg_voice
+            pending_intonation = seg_intonation
+            pending_role = seg_role
+            _apply_pending_pause(
+                str(seg.get("boundary_after") or ""),
+                int(seg.get("pause_after_ms") or 0),
+            )
 
     _flush()
 
@@ -335,3 +425,44 @@ def _role_from_segment(seg: dict[str, Any]) -> str:
     if role in {"narrator", "male", "female", "unknown"}:
         return role
     return "narrator"
+
+
+def _is_scene_break_text(text: str) -> bool:
+    """Return True for common standalone scene-break markers."""
+    return bool(re.fullmatch(r"(?:[*#~]\s*){1,5}", text.strip()))
+
+
+def _mark_last_segment_pause(
+    segments: list[VoiceSegment],
+    *,
+    boundary_after: str,
+    pause_after_ms: int,
+) -> None:
+    """Attach the strongest structural pause to the previous segment."""
+    if not segments:
+        return
+    segment = segments[-1]
+    segment.pause_after_ms = max(segment.pause_after_ms, pause_after_ms)
+    segment.boundary_after = _stronger_boundary(
+        segment.boundary_after,
+        boundary_after,
+    )
+
+
+def _stronger_boundary(left: str, right: str) -> str:
+    """Return the boundary with the stronger pause semantics."""
+    if _BOUNDARY_PRIORITY.get(right, 0) > _BOUNDARY_PRIORITY.get(left, 0):
+        return right
+    return left
+
+
+def _add_pause_fields(
+    record: dict[str, Any],
+    pause_after_ms: int,
+    boundary_after: str,
+) -> None:
+    """Persist pause metadata only when it is meaningful."""
+    if pause_after_ms > 0:
+        record["pause_after_ms"] = pause_after_ms
+    if boundary_after:
+        record["boundary_after"] = boundary_after

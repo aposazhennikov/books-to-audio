@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +14,13 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
+    QPlainTextEdit,
     QPushButton,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -34,6 +39,19 @@ INTONATION_KEYS = [
 ]
 
 _DIALOGUE_BG = QColor(139, 92, 246, 28)
+
+
+def _editor_style() -> str:
+    return (
+        "QPlainTextEdit {"
+        "  background: rgba(8,13,23,0.78);"
+        "  border: 1px solid rgba(148,163,184,0.16);"
+        "  border-radius: 8px;"
+        "  padding: 8px;"
+        "  color: rgba(248,250,252,0.92);"
+        "  font-size: 12px;"
+        "}"
+    )
 
 
 def _role_from_voice_id(voice_id: str, fallback: str = "narrator") -> str:
@@ -118,6 +136,8 @@ class VoiceTableWidget(QWidget):
         self._manifest_meta: dict[str, Any] = {}
         self._manifest_is_v2 = False
         self._compact_mode = False
+        self._populating = False
+        self._loading_editor = False
         self._player = QSoundEffect(self) if QSoundEffect is not None else None
         self._setup_ui()
 
@@ -184,6 +204,9 @@ class VoiceTableWidget(QWidget):
         toolbar2.addStretch()
         layout.addLayout(toolbar2)
 
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.setChildrenCollapsible(False)
+
         # Table.
         self._table = QTableWidget()
         self._table.setColumnCount(8)
@@ -202,10 +225,134 @@ class VoiceTableWidget(QWidget):
         )
         self._table.setAlternatingRowColors(True)
         self._table.verticalHeader().setVisible(False)
-        layout.addWidget(self._table)
+        self._table.itemChanged.connect(self._on_table_item_changed)
+        self._table.itemSelectionChanged.connect(
+            self._on_table_selection_changed,
+        )
+        splitter.addWidget(self._table)
+
+        self._editor_tabs = QTabWidget()
+        self._editor_tabs.setObjectName("voiceTextEditorTabs")
+        self._editor_tabs.setStyleSheet(
+            "QTabWidget::pane {"
+            "  border: 1px solid rgba(148,163,184,0.14);"
+            "  border-radius: 8px;"
+            "  background: rgba(15,23,42,0.54);"
+            "}"
+            "QTabBar::tab {"
+            "  padding: 6px 12px;"
+            "  margin-right: 4px;"
+            "  border-radius: 7px;"
+            "  color: rgba(226,232,240,0.68);"
+            "}"
+            "QTabBar::tab:selected {"
+            "  color: #f8fafc;"
+            "  background: rgba(99,102,241,0.22);"
+            "}"
+        )
+        self._editor_tabs.addTab(self._build_segment_editor(), "")
+        self._editor_tabs.addTab(self._build_full_text_editor(), "")
+        splitter.addWidget(self._editor_tabs)
+        splitter.setStretchFactor(0, 4)
+        splitter.setStretchFactor(1, 2)
+        layout.addWidget(splitter)
 
         self.retranslate()
         self._apply_table_layout()
+
+    def _build_segment_editor(self) -> QWidget:
+        """Build the focused editor for the currently selected segment."""
+        panel = QWidget()
+        outer = QVBoxLayout(panel)
+        outer.setContentsMargins(10, 8, 10, 10)
+        outer.setSpacing(6)
+
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        self._segment_editor_title = QLabel()
+        self._segment_editor_title.setStyleSheet(
+            "font-weight: 800; color: rgba(248,250,252,0.88);",
+        )
+        header.addWidget(self._segment_editor_title)
+        header.addStretch()
+        self._segment_char_label = QLabel()
+        self._segment_char_label.setStyleSheet(
+            "color: rgba(226,232,240,0.52); font-size: 11px;",
+        )
+        header.addWidget(self._segment_char_label)
+        outer.addLayout(header)
+
+        self._segment_editor = QPlainTextEdit()
+        self._segment_editor.setMinimumHeight(92)
+        self._segment_editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self._segment_editor.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
+        self._segment_editor.setStyleSheet(_editor_style())
+        self._segment_editor.textChanged.connect(
+            self._on_segment_editor_text_changed,
+        )
+        outer.addWidget(self._segment_editor)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(6)
+        self._btn_segment_split = QPushButton()
+        self._btn_segment_split.clicked.connect(self._split_selected_segment)
+        actions.addWidget(self._btn_segment_split)
+        self._btn_segment_merge = QPushButton()
+        self._btn_segment_merge.clicked.connect(self._merge_next_segment)
+        actions.addWidget(self._btn_segment_merge)
+        self._btn_segment_delete_empty = QPushButton()
+        self._btn_segment_delete_empty.clicked.connect(self._delete_empty_segment)
+        actions.addWidget(self._btn_segment_delete_empty)
+        actions.addStretch()
+        outer.addLayout(actions)
+        return panel
+
+    def _build_full_text_editor(self) -> QWidget:
+        """Build the full-text editor that can rewrite the segment list."""
+        panel = QWidget()
+        outer = QVBoxLayout(panel)
+        outer.setContentsMargins(10, 8, 10, 10)
+        outer.setSpacing(6)
+
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        self._full_text_title = QLabel()
+        self._full_text_title.setStyleSheet(
+            "font-weight: 800; color: rgba(248,250,252,0.88);",
+        )
+        header.addWidget(self._full_text_title)
+        header.addStretch()
+        self._full_char_label = QLabel()
+        self._full_char_label.setStyleSheet(
+            "color: rgba(226,232,240,0.52); font-size: 11px;",
+        )
+        header.addWidget(self._full_char_label)
+        outer.addLayout(header)
+
+        self._full_text_editor = QPlainTextEdit()
+        self._full_text_editor.setMinimumHeight(120)
+        self._full_text_editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self._full_text_editor.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
+        self._full_text_editor.setStyleSheet(_editor_style())
+        self._full_text_editor.textChanged.connect(self._update_full_char_count)
+        outer.addWidget(self._full_text_editor)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(6)
+        self._btn_full_refresh = QPushButton()
+        self._btn_full_refresh.clicked.connect(self._sync_full_text_from_segments)
+        actions.addWidget(self._btn_full_refresh)
+        self._btn_full_apply = QPushButton()
+        self._btn_full_apply.setObjectName("primaryBtn")
+        self._btn_full_apply.clicked.connect(self._apply_full_text_to_segments)
+        actions.addWidget(self._btn_full_apply)
+        actions.addStretch()
+        outer.addLayout(actions)
+        return panel
 
     def retranslate(self) -> None:
         """Update translatable strings."""
@@ -221,6 +368,19 @@ class VoiceTableWidget(QWidget):
             t("voice.col_audio"),
             t("voice.col_retry"),
         ])
+        self._editor_tabs.setTabText(0, t("voice.editor_segment_tab"))
+        self._editor_tabs.setTabText(1, t("voice.editor_full_tab"))
+        self._segment_editor_title.setText(t("voice.editor_segment_title"))
+        self._segment_editor.setPlaceholderText(t("voice.editor_segment_placeholder"))
+        self._btn_segment_split.setText(t("voice.editor_split"))
+        self._btn_segment_merge.setText(t("voice.editor_merge_next"))
+        self._btn_segment_delete_empty.setText(t("voice.editor_delete_empty"))
+        self._full_text_title.setText(t("voice.editor_full_title"))
+        self._full_text_editor.setPlaceholderText(t("voice.editor_full_placeholder"))
+        self._btn_full_refresh.setText(t("voice.editor_refresh_full"))
+        self._btn_full_apply.setText(t("voice.editor_apply_full"))
+        self._update_segment_char_count()
+        self._update_full_char_count()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Fallback compact switching when the table is used outside VoicesPage."""
@@ -337,6 +497,7 @@ class VoiceTableWidget(QWidget):
     # ── Table population ──
 
     def _populate_table(self) -> None:
+        self._populating = True
         self._table.setRowCount(len(self._segments))
 
         for row, seg in enumerate(self._segments):
@@ -385,11 +546,9 @@ class VoiceTableWidget(QWidget):
             self._table.setItem(row, 2, ch_item)
 
             # Column 3: text preview.
-            text = seg.get("text", "")[:200]
+            text = str(seg.get("text", ""))
             text_item = QTableWidgetItem(text)
-            text_item.setFlags(
-                text_item.flags() & ~Qt.ItemFlag.ItemIsEditable,
-            )
+            text_item.setToolTip(text)
             if is_speech:
                 text_item.setBackground(_DIALOGUE_BG)
             self._table.setItem(row, 3, text_item)
@@ -427,9 +586,63 @@ class VoiceTableWidget(QWidget):
             retry_btn.clicked.connect(lambda _checked=False, r=row: self._mark_retry(r))
             self._table.setCellWidget(row, 7, retry_btn)
 
+        self._populating = False
         self._apply_table_layout()
+        self._sync_full_text_from_segments()
+        if self._segments and not self._table.selectedItems():
+            self._table.setCurrentCell(0, 3)
+        else:
+            self._load_selected_segment()
 
     # ── Data change handlers ──
+
+    def _on_table_item_changed(self, item: QTableWidgetItem) -> None:
+        if self._populating or item.column() != 3:
+            return
+        row = item.row()
+        if 0 <= row < len(self._segments):
+            text = item.text()
+            self._segments[row]["text"] = text
+            item.setToolTip(text)
+            self._load_selected_segment()
+            self._sync_full_text_from_segments()
+            self.data_changed.emit()
+
+    def _on_table_selection_changed(self) -> None:
+        self._load_selected_segment()
+
+    def _current_row(self) -> int:
+        row = self._table.currentRow()
+        return row if 0 <= row < len(self._segments) else -1
+
+    def _load_selected_segment(self) -> None:
+        row = self._current_row()
+        self._loading_editor = True
+        if row < 0:
+            self._segment_editor.clear()
+        else:
+            self._segment_editor.setPlainText(str(self._segments[row].get("text", "")))
+        self._loading_editor = False
+        self._update_segment_char_count()
+
+    def _on_segment_editor_text_changed(self) -> None:
+        if self._loading_editor:
+            self._update_segment_char_count()
+            return
+        row = self._current_row()
+        if row < 0:
+            return
+        text = self._segment_editor.toPlainText()
+        self._segments[row]["text"] = text
+        item = self._table.item(row, 3)
+        if item is not None:
+            self._table.blockSignals(True)
+            item.setText(text)
+            item.setToolTip(text)
+            self._table.blockSignals(False)
+        self._update_segment_char_count()
+        self._sync_full_text_from_segments()
+        self.data_changed.emit()
 
     def _on_voice_changed(self, row: int, voice_id: str) -> None:
         if voice_id and row < len(self._segments):
@@ -469,6 +682,122 @@ class VoiceTableWidget(QWidget):
         self.data_changed.emit()
 
     # ── Bulk operations ──
+
+    def _split_selected_segment(self) -> None:
+        row = self._current_row()
+        if row < 0:
+            return
+        text = self._segment_editor.toPlainText()
+        cursor = self._segment_editor.textCursor().position()
+        if cursor <= 0 or cursor >= len(text):
+            return
+
+        before = text[:cursor].strip()
+        after = text[cursor:].strip()
+        if not before or not after:
+            return
+
+        current = self._segments[row]
+        new_segment = dict(current)
+        current["text"] = before
+        new_segment["text"] = after
+        new_segment["pause_after_ms"] = current.get("pause_after_ms", 0)
+        new_segment["boundary_after"] = current.get("boundary_after", "")
+        current["pause_after_ms"] = 0
+        current["boundary_after"] = ""
+        self._segments.insert(row + 1, new_segment)
+        self._renumber_segments()
+        self._populate_table()
+        self._table.setCurrentCell(row + 1, 3)
+        self.data_changed.emit()
+
+    def _merge_next_segment(self) -> None:
+        row = self._current_row()
+        if row < 0 or row + 1 >= len(self._segments):
+            return
+        current = self._segments[row]
+        next_segment = self._segments[row + 1]
+        left = str(current.get("text") or "").strip()
+        right = str(next_segment.get("text") or "").strip()
+        current["text"] = " ".join(part for part in (left, right) if part)
+        if next_segment.get("pause_after_ms"):
+            current["pause_after_ms"] = next_segment.get("pause_after_ms", 0)
+        if next_segment.get("boundary_after"):
+            current["boundary_after"] = next_segment.get("boundary_after", "")
+        del self._segments[row + 1]
+        self._renumber_segments()
+        self._populate_table()
+        self._table.setCurrentCell(row, 3)
+        self.data_changed.emit()
+
+    def _delete_empty_segment(self) -> None:
+        row = self._current_row()
+        if row < 0:
+            return
+        if str(self._segments[row].get("text") or "").strip():
+            return
+        del self._segments[row]
+        self._renumber_segments()
+        self._populate_table()
+        if self._segments:
+            self._table.setCurrentCell(min(row, len(self._segments) - 1), 3)
+        self.data_changed.emit()
+
+    def _sync_full_text_from_segments(self) -> None:
+        text = "\n\n".join(str(seg.get("text") or "") for seg in self._segments)
+        self._full_text_editor.blockSignals(True)
+        self._full_text_editor.setPlainText(text)
+        self._full_text_editor.blockSignals(False)
+        self._update_full_char_count()
+
+    def _apply_full_text_to_segments(self) -> None:
+        text = self._full_text_editor.toPlainText()
+        blocks = [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
+        if not blocks:
+            return
+
+        existing = self._segments or [{
+            "chapter_index": 0,
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "intonation": "neutral",
+            "is_dialogue": False,
+        }]
+        rebuilt: list[dict[str, Any]] = []
+        for idx, block in enumerate(blocks):
+            source = existing[min(idx, len(existing) - 1)]
+            item = dict(source)
+            item["text"] = block
+            item["segment_index"] = idx
+            rebuilt.append(item)
+
+        self._segments = rebuilt
+        self._migrate_legacy()
+        self._renumber_segments()
+        self._populate_table()
+        self.data_changed.emit()
+
+    def _renumber_segments(self) -> None:
+        for index, segment in enumerate(self._segments):
+            segment["segment_index"] = index
+
+    def _update_segment_char_count(self) -> None:
+        if not hasattr(self, "_segment_char_label"):
+            return
+        row = self._current_row()
+        text = self._segment_editor.toPlainText() if row >= 0 else ""
+        self._segment_char_label.setText(
+            t("voice.editor_chars", chars=len(text)),
+        )
+
+    def _update_full_char_count(self) -> None:
+        if not hasattr(self, "_full_char_label"):
+            return
+        text = self._full_text_editor.toPlainText()
+        blocks = [block for block in re.split(r"\n\s*\n", text) if block.strip()]
+        self._full_char_label.setText(
+            t("voice.editor_full_stats", segments=len(blocks), chars=len(text)),
+        )
 
     def _set_all_voice(self, voice_id: str) -> None:
         """Set all rows to a specific voice preset."""

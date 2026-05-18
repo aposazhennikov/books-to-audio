@@ -49,6 +49,7 @@ class ExportSegmentsWorker(QThread):
         llm_endpoint: str = "",
         llm_model: str = "",
         llm_api_key: str = "",
+        stress_mode: str = "double_vowel",
         parent=None,
     ):
         super().__init__(parent)
@@ -58,6 +59,7 @@ class ExportSegmentsWorker(QThread):
         self._llm_endpoint = llm_endpoint
         self._llm_model = llm_model
         self._llm_api_key = llm_api_key
+        self._stress_mode = stress_mode
 
     def run(self) -> None:
         try:
@@ -69,6 +71,9 @@ class ExportSegmentsWorker(QThread):
                 create_attributor,
             )
             from book_normalizer.dialogue.detector import DialogueDetector
+            from book_normalizer.stress.rendering import (
+                render_annotated_chapters_for_tts,
+            )
 
             self.progress.emit(t("voice.detecting_dialogue"))
             detector = DialogueDetector()
@@ -88,6 +93,11 @@ class ExportSegmentsWorker(QThread):
                 )
                 attributor.attribute(annotated)
 
+            render_annotated_chapters_for_tts(
+                annotated,
+                self._book,
+                self._stress_mode,
+            )
             self.progress.emit(t("voice.extracting_segments"))
             segments = extract_segments_book(annotated)
 
@@ -101,6 +111,8 @@ class ExportSegmentsWorker(QThread):
                     "voice_id": seg.voice_id,
                     "intonation": seg.intonation,
                     "text": seg.text,
+                    "pause_after_ms": seg.pause_after_ms,
+                    "boundary_after": seg.boundary_after,
                 })
 
             self._output_dir.mkdir(parents=True, exist_ok=True)

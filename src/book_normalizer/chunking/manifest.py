@@ -90,6 +90,10 @@ def chunks_to_v2_manifest(
             record["failed"] = bool(chunk.get("failed"))
         if "error" in chunk:
             record["error"] = chunk.get("error")
+        if chunk.get("pause_after_ms"):
+            record["pause_after_ms"] = int(chunk.get("pause_after_ms") or 0)
+        if chunk.get("boundary_after"):
+            record["boundary_after"] = str(chunk.get("boundary_after") or "")
         chapters[chapter_index]["chunks"].append(record)
 
     manifest: dict[str, Any] = {

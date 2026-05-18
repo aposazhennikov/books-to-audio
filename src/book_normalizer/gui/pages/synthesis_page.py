@@ -205,6 +205,143 @@ def _test_manifest_chunk_from_text(text: str, voice_id: str) -> dict:
     }
 
 
+def _set_manifest_chunk_text(chunk: dict, text: str) -> None:
+    """Update all text-bearing fields in one manifest chunk."""
+    chunk["text"] = text
+    voice_label = str(chunk.get("voice_label") or "").strip()
+    if voice_label and voice_label in chunk:
+        chunk[voice_label] = text
+    for label in ("narrator", "men", "women"):
+        if label in chunk and (not voice_label or label == voice_label):
+            chunk[label] = text
+    chunk["synthesized"] = False
+    chunk["audio_file"] = None
+    chunk.pop("failed", None)
+    chunk.pop("error", None)
+
+
+def _find_manifest_chunk(
+    data: object,
+    chapter_index: int,
+    chunk_index: int,
+) -> tuple[list, int, dict] | None:
+    """Find a mutable chunk record in v1 or v2 manifest data."""
+    if isinstance(data, list):
+        for idx, chunk in enumerate(data):
+            if not isinstance(chunk, dict):
+                continue
+            if (
+                int(chunk.get("chapter_index", 0)) == chapter_index
+                and int(chunk.get("chunk_index", idx)) == chunk_index
+            ):
+                return data, idx, chunk
+        return None
+
+    if isinstance(data, dict):
+        for chapter in data.get("chapters", []):
+            if not isinstance(chapter, dict):
+                continue
+            if int(chapter.get("chapter_index", 0)) != chapter_index:
+                continue
+            chunks = chapter.get("chunks", [])
+            if not isinstance(chunks, list):
+                return None
+            for idx, chunk in enumerate(chunks):
+                if isinstance(chunk, dict) and int(chunk.get("chunk_index", idx)) == chunk_index:
+                    return chunks, idx, chunk
+    return None
+
+
+def _renumber_manifest_chunks(container: list, chapter_index: int) -> None:
+    """Keep chunk_index sequential after split/merge edits."""
+    next_index = 0
+    for chunk in container:
+        if not isinstance(chunk, dict):
+            continue
+        if int(chunk.get("chapter_index", chapter_index)) != chapter_index:
+            continue
+        chunk["chunk_index"] = next_index
+        next_index += 1
+
+
+def _update_manifest_chunk_text(
+    data: object,
+    chapter_index: int,
+    chunk_index: int,
+    text: str,
+) -> bool:
+    found = _find_manifest_chunk(data, chapter_index, chunk_index)
+    if found is None:
+        return False
+    _, _, chunk = found
+    _set_manifest_chunk_text(chunk, text)
+    return True
+
+
+def _split_manifest_chunk_text(
+    data: object,
+    chapter_index: int,
+    chunk_index: int,
+    split_at: int,
+) -> bool:
+    found = _find_manifest_chunk(data, chapter_index, chunk_index)
+    if found is None:
+        return False
+    container, idx, chunk = found
+    text = str(chunk.get("text") or "")
+    if split_at <= 0 or split_at >= len(text):
+        return False
+    before = text[:split_at].strip()
+    after = text[split_at:].strip()
+    if not before or not after:
+        return False
+
+    new_chunk = dict(chunk)
+    new_chunk["pause_after_ms"] = chunk.get("pause_after_ms", 0)
+    new_chunk["boundary_after"] = chunk.get("boundary_after", "")
+    _set_manifest_chunk_text(chunk, before)
+    _set_manifest_chunk_text(new_chunk, after)
+    chunk.pop("pause_after_ms", None)
+    chunk.pop("boundary_after", None)
+    container.insert(idx + 1, new_chunk)
+    _renumber_manifest_chunks(container, chapter_index)
+    return True
+
+
+def _merge_manifest_chunk_with_next(
+    data: object,
+    chapter_index: int,
+    chunk_index: int,
+) -> bool:
+    found = _find_manifest_chunk(data, chapter_index, chunk_index)
+    if found is None:
+        return False
+    container, idx, chunk = found
+    if idx + 1 >= len(container):
+        return False
+    next_chunk = container[idx + 1]
+    if not isinstance(next_chunk, dict):
+        return False
+    if int(next_chunk.get("chapter_index", chapter_index)) != chapter_index:
+        return False
+
+    merged = " ".join(
+        part.strip()
+        for part in (str(chunk.get("text") or ""), str(next_chunk.get("text") or ""))
+        if part.strip()
+    )
+    if not merged:
+        return False
+    _set_manifest_chunk_text(chunk, merged)
+    if next_chunk.get("pause_after_ms"):
+        chunk["pause_after_ms"] = next_chunk.get("pause_after_ms", 0)
+    if next_chunk.get("boundary_after"):
+        chunk["boundary_after"] = next_chunk.get("boundary_after", "")
+    del container[idx + 1]
+    _renumber_manifest_chunks(container, chapter_index)
+    return True
+
+
 class _CloneVoiceRow(QWidget):
     """A single voice clone entry: voice_id selector + WAV path + transcript."""
 
@@ -542,7 +679,6 @@ class SynthesisPage(QWidget):
         form.addRow(self._test_voice_label, self._test_voice_combo)
 
         self._test_chunk_preview = QPlainTextEdit()
-        self._test_chunk_preview.setReadOnly(True)
         self._test_chunk_preview.setMaximumHeight(94)
         _make_text_edit_compact(self._test_chunk_preview)
         self._test_chunk_preview.setStyleSheet(
@@ -561,6 +697,22 @@ class SynthesisPage(QWidget):
         self._test_text_stack.addWidget(self._test_custom_text_edit)
         self._test_text_label = QLabel()
         form.addRow(self._test_text_label, self._test_text_stack)
+
+        chunk_edit_row = QHBoxLayout()
+        chunk_edit_row.setSpacing(6)
+        self._btn_save_chunk_text = QPushButton()
+        self._btn_save_chunk_text.clicked.connect(self._save_selected_chunk_text)
+        chunk_edit_row.addWidget(self._btn_save_chunk_text)
+        self._btn_split_chunk = QPushButton()
+        self._btn_split_chunk.clicked.connect(self._split_selected_chunk)
+        chunk_edit_row.addWidget(self._btn_split_chunk)
+        self._btn_merge_chunk = QPushButton()
+        self._btn_merge_chunk.clicked.connect(self._merge_selected_chunk)
+        chunk_edit_row.addWidget(self._btn_merge_chunk)
+        chunk_edit_row.addStretch()
+        self._chunk_edit_controls = QWidget()
+        self._chunk_edit_controls.setLayout(chunk_edit_row)
+        form.addRow("", self._chunk_edit_controls)
 
         outer.addLayout(form)
         return frame
@@ -634,6 +786,9 @@ class SynthesisPage(QWidget):
         for role in ("narrator", "male", "female"):
             combo = QComboBox()
             _make_combo_compact(combo, min_chars=22)
+            combo.currentIndexChanged.connect(
+                lambda _index, self=self: self._refresh_test_chunk_combo(),
+            )
             self._role_voice_combos[role] = combo
             label = QLabel()
             self._role_voice_labels[role] = label
@@ -1091,7 +1246,6 @@ class SynthesisPage(QWidget):
         else:
             label_key = "synth.speech_rate_normal"
         self._speech_rate_value_label.setText(f"{rate:.2f}x  {t(label_key)}")
-        self._test_player.setPlaybackRate(rate)
 
     def _saved_voice_rate(self, voice_id: str) -> float | None:
         for voice in self._saved_voices:
@@ -1099,12 +1253,47 @@ class SynthesisPage(QWidget):
                 return voice.speech_rate
         return None
 
+    def _saved_voice_display_name(self, voice_id: str) -> str:
+        """Return a friendly saved voice name for UI labels."""
+        for voice in self._saved_voices:
+            if voice.voice_id == voice_id:
+                return voice.name
+        return voice_id
+
+    def _effective_test_voice_label(self, source_voice_id: str) -> str:
+        """Return the voice that will actually be used for test synthesis."""
+        if not self._is_custom_voice_mode():
+            return source_voice_id
+
+        strategy = self._custom_strategy_combo.currentData() or "sample_all"
+        if strategy == "sample_all":
+            return t("synth.test_voice_custom_sample")
+        if strategy == "saved_all":
+            saved_voice = self._selected_saved_voice()
+            if saved_voice:
+                return t(
+                    "synth.test_voice_saved",
+                    voice=self._saved_voice_display_name(saved_voice),
+                )
+            return t("synth.no_saved_voices")
+
+        role = _role_for_voice_id(source_voice_id)
+        combo = self._role_voice_combos.get(role)
+        saved_voice = str(combo.currentData() or "") if combo else ""
+        if saved_voice:
+            return t(
+                "synth.test_voice_saved",
+                voice=self._saved_voice_display_name(saved_voice),
+            )
+        return t("synth.test_voice_builtin", voice=source_voice_id)
+
     def _apply_selected_saved_voice_rate(self) -> None:
         """Load the saved rate for the globally selected voice."""
         voice_id = self._selected_saved_voice()
         rate = self._saved_voice_rate(voice_id)
         if rate is not None:
             self._set_speech_rate_value(rate)
+        self._refresh_test_chunk_combo()
 
     def _build_clone_panel(self) -> QFrame:
         """Build the voice cloning expandable panel."""
@@ -1306,6 +1495,12 @@ class SynthesisPage(QWidget):
         self._test_custom_text_edit.setPlaceholderText(
             t("synth.test_custom_placeholder"),
         )
+        self._test_chunk_preview.setPlaceholderText(
+            t("synth.chunk_editor_placeholder"),
+        )
+        self._btn_save_chunk_text.setText(t("synth.chunk_editor_save"))
+        self._btn_split_chunk.setText(t("synth.chunk_editor_split"))
+        self._btn_merge_chunk.setText(t("synth.chunk_editor_merge"))
         self._populate_test_source_combo()
         self._refresh_test_chapter_combo()
         if not self._sample_status.text():
@@ -1503,6 +1698,7 @@ class SynthesisPage(QWidget):
             self._sample_status.setText(t("synth.saved_voice_all_hint"))
         elif saved_roles_mode:
             self._sample_status.setText(t("synth.saved_voice_roles_hint"))
+        self._refresh_test_chunk_combo()
 
     def _selected_saved_voice(self) -> str:
         """Return the globally selected saved voice id."""
@@ -1677,6 +1873,7 @@ class SynthesisPage(QWidget):
             self._voice_mode = "preset"
         if self._sample_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self._sample_player.pause()
+        self._refresh_test_chunk_combo()
 
     # ── Manifest ──────────────────────────────────────────────────────────────
 
@@ -1830,11 +2027,12 @@ class SynthesisPage(QWidget):
                 chunk_index = int(chunk.get("chunk_index", 0))
                 text = str(chunk.get("text") or "")
                 voice_id = str(chunk.get("voice_id") or "narrator_calm")
+                effective_voice = self._effective_test_voice_label(voice_id)
                 self._test_chunk_combo.addItem(
                     t(
                         "synth.test_chunk_item",
                         num=chunk_index + 1,
-                        voice=voice_id,
+                        voice=effective_voice,
                         chars=len(text),
                         preview=_chunk_preview_text(text),
                     ),
@@ -1864,9 +2062,11 @@ class SynthesisPage(QWidget):
         if not hasattr(self, "_test_chunk_preview"):
             return
         chunk = self._selected_test_chunk()
+        self._test_chunk_preview.blockSignals(True)
         self._test_chunk_preview.setPlainText(
             str(chunk.get("text") or "") if chunk else "",
         )
+        self._test_chunk_preview.blockSignals(False)
 
     def _update_test_source_controls(self) -> None:
         """Switch the test panel between manifest chunk and custom text modes."""
@@ -1875,6 +2075,7 @@ class SynthesisPage(QWidget):
         is_custom = (self._test_source_combo.currentData() or "chunk") == "custom"
         self._test_chunk_controls.setVisible(not is_custom)
         self._test_chunk_label.setVisible(not is_custom)
+        self._chunk_edit_controls.setVisible(not is_custom)
         self._test_voice_combo.setVisible(is_custom)
         self._test_voice_label.setVisible(is_custom)
         self._test_text_stack.setCurrentIndex(1 if is_custom else 0)
@@ -1883,6 +2084,103 @@ class SynthesisPage(QWidget):
         )
         if not is_custom:
             self._update_test_chunk_preview()
+
+    def _selected_test_chunk_identity(self) -> tuple[int, int] | None:
+        data = self._test_chunk_combo.currentData()
+        if not isinstance(data, tuple) or len(data) != 2:
+            return None
+        return int(data[0]), int(data[1])
+
+    def _apply_manifest_editor_change(
+        self,
+        action,
+        chapter_index: int,
+        chunk_index: int,
+        *,
+        next_chunk_index: int | None = None,
+    ) -> None:
+        if not self._manifest_path or not self._manifest_path.exists():
+            return
+        try:
+            data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, TypeError):
+            return
+        if not action(data):
+            return
+        try:
+            self._manifest_path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            self._status.setText(str(exc))
+            return
+        target_chunk = chunk_index if next_chunk_index is None else next_chunk_index
+        self._load_chapters_from_manifest()
+        self._select_test_chunk(chapter_index, target_chunk)
+        self._status.setText(t("synth.chunk_editor_saved"))
+
+    def _select_test_chunk(self, chapter_index: int, chunk_index: int) -> None:
+        chapter_idx = self._test_chapter_combo.findData(chapter_index)
+        if chapter_idx >= 0:
+            self._test_chapter_combo.setCurrentIndex(chapter_idx)
+        self._refresh_test_chunk_combo()
+        chunk_idx = self._test_chunk_combo.findData((chapter_index, chunk_index))
+        if chunk_idx >= 0:
+            self._test_chunk_combo.setCurrentIndex(chunk_idx)
+        self._update_test_chunk_preview()
+
+    def _save_selected_chunk_text(self) -> None:
+        identity = self._selected_test_chunk_identity()
+        if identity is None:
+            return
+        chapter_index, chunk_index = identity
+        text = self._test_chunk_preview.toPlainText().strip()
+        if not text:
+            return
+        self._apply_manifest_editor_change(
+            lambda data: _update_manifest_chunk_text(
+                data,
+                chapter_index,
+                chunk_index,
+                text,
+            ),
+            chapter_index,
+            chunk_index,
+        )
+
+    def _split_selected_chunk(self) -> None:
+        identity = self._selected_test_chunk_identity()
+        if identity is None:
+            return
+        chapter_index, chunk_index = identity
+        split_at = self._test_chunk_preview.textCursor().position()
+        self._apply_manifest_editor_change(
+            lambda data: _split_manifest_chunk_text(
+                data,
+                chapter_index,
+                chunk_index,
+                split_at,
+            ),
+            chapter_index,
+            chunk_index,
+            next_chunk_index=chunk_index + 1,
+        )
+
+    def _merge_selected_chunk(self) -> None:
+        identity = self._selected_test_chunk_identity()
+        if identity is None:
+            return
+        chapter_index, chunk_index = identity
+        self._apply_manifest_editor_change(
+            lambda data: _merge_manifest_chunk_with_next(
+                data,
+                chapter_index,
+                chunk_index,
+            ),
+            chapter_index,
+            chunk_index,
+        )
 
     def _build_selected_test_chunks(self) -> list[dict]:
         """Build the one-entry manifest for the chosen test source."""
@@ -1901,7 +2199,11 @@ class SynthesisPage(QWidget):
         chunk = self._selected_test_chunk()
         if not chunk or not str(chunk.get("text") or "").strip():
             raise ValueError(t("synth.test_no_chunk"))
-        return [_test_manifest_chunk_from_chunk(chunk)]
+        preview = _test_manifest_chunk_from_chunk(chunk)
+        edited_text = self._test_chunk_preview.toPlainText().strip()
+        if edited_text:
+            preview["text"] = edited_text
+        return [preview]
 
     def _selected_chapter(self) -> int | None:
         selected = self._chapter_combo.currentData()
@@ -1978,9 +2280,7 @@ class SynthesisPage(QWidget):
             test_chunks = self._build_selected_test_chunks()
             if not test_chunks:
                 raise ValueError(t("synth.test_no_chunk"))
-            clone_config_path = self._build_temp_sample_voice_config(
-                include_speech_rate=False,
-            )
+            clone_config_path = self._build_temp_sample_voice_config()
         except (OSError, ValueError) as exc:
             self._status.setText(str(exc))
             self._progress.set_status(str(exc))
@@ -2022,9 +2322,7 @@ class SynthesisPage(QWidget):
             repetition_penalty=self._repetition_penalty_spin.value(),
             max_new_tokens=self._max_new_tokens_spin.value(),
             seed=self._seed_spin.value(),
-            # Test playback applies the slider live through QMediaPlayer so the
-            # user can adjust tempo while listening. Full synthesis persists it.
-            speech_rate=1.0,
+            speech_rate=self._speech_rate_value(),
             output_format=str(self._output_format_combo.currentData() or "flac"),
             merge_chapters=False,
         )
@@ -2066,7 +2364,7 @@ class SynthesisPage(QWidget):
         if self._test_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self._test_player.pause()
         else:
-            self._test_player.setPlaybackRate(self._speech_rate_value())
+            self._test_player.setPlaybackRate(1.0)
             self._test_player.play()
 
     def _on_test_playback_state(self, state: QMediaPlayer.PlaybackState) -> None:
@@ -2159,7 +2457,7 @@ class SynthesisPage(QWidget):
             if audio_path:
                 self._last_test_audio_path = audio_path
                 self._test_player.setSource(QUrl.fromLocalFile(str(audio_path)))
-                self._test_player.setPlaybackRate(self._speech_rate_value())
+                self._test_player.setPlaybackRate(1.0)
                 self._btn_play_test.setEnabled(True)
                 self._status.setText(t("synth.test_done", path=str(audio_path)))
                 self._sample_status.setText(t("synth.test_next_step"))

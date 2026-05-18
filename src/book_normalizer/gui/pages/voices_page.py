@@ -87,6 +87,10 @@ class VoicesPage(QWidget):
         self._chunk_size_label = QLabel()
         settings.addRow(self._chunk_size_label, self._chunk_size)
 
+        self._stress_mode = QComboBox()
+        self._stress_mode_label = QLabel()
+        settings.addRow(self._stress_mode_label, self._stress_mode)
+
         left_layout.addLayout(settings)
 
         # LLM config panel (hidden by default).
@@ -230,6 +234,9 @@ class VoicesPage(QWidget):
         self._voice_table.data_changed.connect(
             lambda: self._btn_build.setEnabled(True),
         )
+        self._voice_table.data_changed.connect(
+            lambda: self._update_stats(self._voice_table.get_segments()),
+        )
         layout.addWidget(self._voice_table, stretch=3)
 
         # Stats.
@@ -248,12 +255,16 @@ class VoicesPage(QWidget):
     def retranslate(self) -> None:
         """Update translatable strings."""
         selected_mode = self._current_speaker_mode()
+        selected_stress_mode = self._current_stress_mode()
         self._populate_speaker_mode_combo(selected_mode)
+        self._populate_stress_mode_combo(selected_stress_mode)
         self._speaker_mode_label.setText(t("voice.speaker_mode"))
         self._speaker_mode_label.setToolTip(t("voice.speaker_mode_hint"))
         self._update_speaker_mode_hint()
         self._chunk_size_label.setText(t("voice.max_chunk"))
         self._chunk_size.setToolTip(t("voice.max_chunk_hint"))
+        self._stress_mode_label.setText(t("voice.stress_mode"))
+        self._stress_mode.setToolTip(t("voice.stress_mode_hint"))
         self._btn_detect.setText(t("voice.detect"))
         self._btn_load.setText(t("voice.load_manifest"))
         self._btn_save.setText(t("voice.save_manifest"))
@@ -288,6 +299,11 @@ class VoicesPage(QWidget):
         mode = self._speaker_mode.currentData()
         return str(mode or "heuristic")
 
+    def _current_stress_mode(self) -> str:
+        """Return the selected TTS stress rendering mode."""
+        mode = self._stress_mode.currentData()
+        return str(mode or "double_vowel")
+
     def _populate_speaker_mode_combo(self, selected_mode: str) -> None:
         """Populate speaker attribution choices with localized labels."""
         self._speaker_mode.blockSignals(True)
@@ -304,6 +320,20 @@ class VoicesPage(QWidget):
         idx = self._speaker_mode.findData(selected_mode)
         self._speaker_mode.setCurrentIndex(idx if idx >= 0 else 0)
         self._speaker_mode.blockSignals(False)
+
+    def _populate_stress_mode_combo(self, selected_mode: str) -> None:
+        """Populate stress rendering choices with localized labels."""
+        self._stress_mode.blockSignals(True)
+        self._stress_mode.clear()
+        self._stress_mode.addItem(
+            t("voice.stress_mode_double"),
+            "double_vowel",
+        )
+        self._stress_mode.addItem(t("voice.stress_mode_acute"), "keep_acute")
+        self._stress_mode.addItem(t("voice.stress_mode_plain"), "plain")
+        idx = self._stress_mode.findData(selected_mode)
+        self._stress_mode.setCurrentIndex(idx if idx >= 0 else 0)
+        self._stress_mode.blockSignals(False)
 
     def _update_speaker_mode_hint(self) -> None:
         """Show inline hint for currently selected speaker mode."""
@@ -364,6 +394,7 @@ class VoicesPage(QWidget):
             llm_endpoint=llm_endpoint,
             llm_model=llm_model,
             llm_api_key=llm_api_key,
+            stress_mode=self._current_stress_mode(),
         )
         self._worker.progress.connect(self._progress.set_status)
         self._worker.finished.connect(self._on_detection_done)

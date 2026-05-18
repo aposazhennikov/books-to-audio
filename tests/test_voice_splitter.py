@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from book_normalizer.chunking.splitter import (
+    DEFAULT_CHAPTER_PAUSE_MS,
+    DEFAULT_PARAGRAPH_PAUSE_MS,
+)
 from book_normalizer.chunking.voice_splitter import (
     build_chunks_from_segments,
     chunk_annotated_book,
@@ -127,6 +131,48 @@ class TestVoiceAnnotatedChunking:
         chunks = chunk_annotated_chapter(ch)
         assert chunks[0].chapter_index == 5
 
+    def test_segments_keep_paragraph_and_chapter_pause_metadata(self) -> None:
+        ch = AnnotatedChapter(
+            chapter_index=0,
+            chapter_title="Ch0",
+            paragraphs=[
+                AnnotatedParagraph(
+                    paragraph_id="p0",
+                    chapter_index=0,
+                    lines=[
+                        DialogueLine(
+                            text="First paragraph.",
+                            role=SpeakerRole.NARRATOR,
+                            paragraph_id="p0",
+                            line_index=0,
+                            is_dialogue=False,
+                        ),
+                    ],
+                ),
+                AnnotatedParagraph(
+                    paragraph_id="p1",
+                    chapter_index=0,
+                    lines=[
+                        DialogueLine(
+                            text="Second paragraph.",
+                            role=SpeakerRole.NARRATOR,
+                            paragraph_id="p1",
+                            line_index=0,
+                            is_dialogue=False,
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        segments = extract_segments_chapter(ch)
+
+        assert len(segments) == 2
+        assert segments[0].boundary_after == "paragraph"
+        assert segments[0].pause_after_ms == DEFAULT_PARAGRAPH_PAUSE_MS
+        assert segments[1].boundary_after == "chapter"
+        assert segments[1].pause_after_ms == DEFAULT_CHAPTER_PAUSE_MS
+
 
 class TestChunkAnnotatedBook:
 
@@ -188,3 +234,29 @@ class TestBuildChunksFromSegments:
         chunks = build_chunks_from_segments(segments)
 
         assert chunks[0]["role"] == "male"
+
+    def test_paragraph_pause_flushes_same_voice_chunks(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "voice_id": "narrator_calm",
+                "intonation": "neutral",
+                "role": "narrator",
+                "text": "First paragraph.",
+                "pause_after_ms": DEFAULT_PARAGRAPH_PAUSE_MS,
+                "boundary_after": "paragraph",
+            },
+            {
+                "chapter_index": 0,
+                "voice_id": "narrator_calm",
+                "intonation": "neutral",
+                "role": "narrator",
+                "text": "Second paragraph.",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments)
+
+        assert len(chunks) == 2
+        assert chunks[0]["pause_after_ms"] == DEFAULT_PARAGRAPH_PAUSE_MS
+        assert chunks[0]["boundary_after"] == "paragraph"

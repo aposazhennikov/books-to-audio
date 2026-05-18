@@ -98,6 +98,8 @@ class VoiceSegment(BaseModel):
     voice_id: str = ""
     intonation: str = "neutral"
     text: str = ""
+    pause_after_ms: int = 0
+    boundary_after: str = ""
 
 
 class SpeakerAnnotationResult(BaseModel):

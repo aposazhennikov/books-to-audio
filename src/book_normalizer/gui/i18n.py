@@ -278,6 +278,34 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "предложениям и фразам и не режет слова."
         ),
     },
+    "voice.stress_mode": {
+        "en": "TTS Stress Hints:",
+        "ru": "\u0423\u0434\u0430\u0440\u0435\u043d\u0438\u044f \u0434\u043b\u044f TTS:",
+    },
+    "voice.stress_mode_double": {
+        "en": "Double stressed vowel",
+        "ru": "\u0423\u0434\u0432\u0430\u0438\u0432\u0430\u0442\u044c \u0443\u0434\u0430\u0440\u043d\u0443\u044e \u0433\u043b\u0430\u0441\u043d\u0443\u044e",
+    },
+    "voice.stress_mode_acute": {
+        "en": "Keep acute mark",
+        "ru": "\u041e\u0441\u0442\u0430\u0432\u0438\u0442\u044c U+0301",
+    },
+    "voice.stress_mode_plain": {
+        "en": "No stress hints",
+        "ru": "\u0411\u0435\u0437 \u043f\u043e\u0434\u0441\u043a\u0430\u0437\u043e\u043a",
+    },
+    "voice.stress_mode_hint": {
+        "en": (
+            "How stress marks are rendered in TTS manifests. Double-vowel "
+            "mode turns zamo\u0301k into zamook-like hints while keeping source "
+            "text unchanged."
+        ),
+        "ru": (
+            "\u041a\u0430\u043a \u0443\u0434\u0430\u0440\u0435\u043d\u0438\u044f \u043f\u043e\u043f\u0430\u0434\u0430\u044e\u0442 \u0432 TTS-\u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442. "
+            "\u0420\u0435\u0436\u0438\u043c \u0443\u0434\u0432\u043e\u0435\u043d\u0438\u044f \u0434\u0435\u043b\u0430\u0435\u0442 \u0437\u0430\u0301\u043c\u043e\u043a -> \u0437\u0430\u0430\u043c\u043e\u043a "
+            "\u0438 \u0437\u0430\u043c\u043e\u0301\u043a -> \u0437\u0430\u043c\u043e\u043e\u043a, \u043d\u0435 \u043c\u0435\u043d\u044f\u044f \u0442\u0435\u043a\u0441\u0442 \u043a\u043d\u0438\u0433\u0438."
+        ),
+    },
     "voice.detect": {
         "en": "Detect Segments",
         "ru": "Определить сегменты",
@@ -340,6 +368,58 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "voice.col_retry": {"en": "Retry", "ru": "Повтор"},
     "voice.play_audio": {"en": "Play", "ru": "Play"},
     "voice.mark_retry": {"en": "Retry", "ru": "Повтор"},
+    "voice.editor_segment_tab": {
+        "en": "Segment Editor",
+        "ru": "\u0421\u0435\u0433\u043c\u0435\u043d\u0442",
+    },
+    "voice.editor_full_tab": {
+        "en": "Full Text",
+        "ru": "\u0412\u0435\u0441\u044c \u0442\u0435\u043a\u0441\u0442",
+    },
+    "voice.editor_segment_title": {
+        "en": "Selected segment text",
+        "ru": "\u0422\u0435\u043a\u0441\u0442 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u043e\u0433\u043e \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0430",
+    },
+    "voice.editor_segment_placeholder": {
+        "en": "Select a row and edit the exact text that will be chunked for TTS.",
+        "ru": "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u0442\u0440\u043e\u043a\u0443 \u0438 \u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0442\u043e\u0447\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442 \u0434\u043b\u044f TTS.",
+    },
+    "voice.editor_split": {
+        "en": "Split at cursor",
+        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u043f\u043e \u043a\u0443\u0440\u0441\u043e\u0440\u0443",
+    },
+    "voice.editor_merge_next": {
+        "en": "Merge next",
+        "ru": "\u0421\u043a\u043b\u0435\u0438\u0442\u044c \u0441\u043e \u0441\u043b\u0435\u0434.",
+    },
+    "voice.editor_delete_empty": {
+        "en": "Delete if empty",
+        "ru": "\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043f\u0443\u0441\u0442\u043e\u0439",
+    },
+    "voice.editor_full_title": {
+        "en": "Whole text before chunking",
+        "ru": "\u0412\u0435\u0441\u044c \u0442\u0435\u043a\u0441\u0442 \u043f\u0435\u0440\u0435\u0434 \u0447\u0430\u043d\u043a\u0430\u043c\u0438",
+    },
+    "voice.editor_full_placeholder": {
+        "en": "Segments are separated by blank lines. Apply back when you want to rebuild the segment list from this text.",
+        "ru": "\u0421\u0435\u0433\u043c\u0435\u043d\u0442\u044b \u0440\u0430\u0437\u0434\u0435\u043b\u044f\u044e\u0442\u0441\u044f \u043f\u0443\u0441\u0442\u043e\u0439 \u0441\u0442\u0440\u043e\u043a\u043e\u0439. \u041f\u0440\u0438\u043c\u0435\u043d\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u043f\u0435\u0440\u0435\u0441\u043e\u0431\u0440\u0430\u0442\u044c \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u044b.",
+    },
+    "voice.editor_refresh_full": {
+        "en": "Refresh from rows",
+        "ru": "\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0438\u0437 \u0441\u0442\u0440\u043e\u043a",
+    },
+    "voice.editor_apply_full": {
+        "en": "Apply to segments",
+        "ru": "\u041f\u0440\u0438\u043c\u0435\u043d\u0438\u0442\u044c \u043a \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0430\u043c",
+    },
+    "voice.editor_chars": {
+        "en": "{chars} chars",
+        "ru": "{chars} \u0441\u0438\u043c\u0432.",
+    },
+    "voice.editor_full_stats": {
+        "en": "{segments} blocks, {chars} chars",
+        "ru": "{segments} \u0431\u043b\u043e\u043a\u043e\u0432, {chars} \u0441\u0438\u043c\u0432.",
+    },
     "voice.type_speech": {"en": "Speech", "ru": "Речь"},
     "voice.type_narrator": {"en": "Narr.", "ru": "Автор"},
     "voice.stats_segments": {
@@ -1016,8 +1096,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0427\u0430\u043d\u043a \u043a\u043d\u0438\u0433\u0438:",
     },
     "synth.test_chunk_item": {
-        "en": "Chunk {num} ({voice}, {chars} chars): {preview}",
-        "ru": "\u0427\u0430\u043d\u043a {num} ({voice}, {chars} \u0441\u0438\u043c\u0432.): {preview}",
+        "en": "Chunk {num} (will use: {voice}, {chars} chars): {preview}",
+        "ru": "\u0427\u0430\u043d\u043a {num} (\u043e\u0437\u0432\u0443\u0447\u0438\u0442: {voice}, {chars} \u0441\u0438\u043c\u0432.): {preview}",
+    },
+    "synth.test_voice_custom_sample": {
+        "en": "CustomVoice sample",
+        "ru": "CustomVoice sample",
+    },
+    "synth.test_voice_saved": {
+        "en": "CustomVoice: {voice}",
+        "ru": "CustomVoice: {voice}",
+    },
+    "synth.test_voice_builtin": {
+        "en": "built-in preset: {voice}",
+        "ru": "\u0432\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439 preset: {voice}",
     },
     "synth.test_voice": {
         "en": "Voice for custom text:",
@@ -1038,6 +1130,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.test_custom_missing": {
         "en": "Enter custom text for the test fragment.",
         "ru": "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0441\u0432\u043e\u0439 \u0442\u0435\u043a\u0441\u0442 \u0434\u043b\u044f \u0442\u0435\u0441\u0442\u043e\u0432\u043e\u0433\u043e \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u0430.",
+    },
+    "synth.chunk_editor_placeholder": {
+        "en": "Edit the selected chunk here, then save it back to the manifest before synthesis.",
+        "ru": "\u041f\u0440\u0430\u0432\u044c\u0442\u0435 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0447\u0430\u043d\u043a \u0437\u0434\u0435\u0441\u044c \u0438 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u0435 \u0432 manifest \u043f\u0435\u0440\u0435\u0434 \u0441\u0438\u043d\u0442\u0435\u0437\u043e\u043c.",
+    },
+    "synth.chunk_editor_save": {
+        "en": "Save chunk text",
+        "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0447\u0430\u043d\u043a",
+    },
+    "synth.chunk_editor_split": {
+        "en": "Split at cursor",
+        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u043f\u043e \u043a\u0443\u0440\u0441\u043e\u0440\u0443",
+    },
+    "synth.chunk_editor_merge": {
+        "en": "Merge next",
+        "ru": "\u0421\u043a\u043b\u0435\u0438\u0442\u044c \u0441\u043e \u0441\u043b\u0435\u0434.",
+    },
+    "synth.chunk_editor_saved": {
+        "en": "Chunk manifest saved. Synthesis will use the edited text.",
+        "ru": "\u041c\u0430\u043d\u0438\u0444\u0435\u0441\u0442 \u0447\u0430\u043d\u043a\u043e\u0432 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d. \u0421\u0438\u043d\u0442\u0435\u0437 \u0432\u043e\u0437\u044c\u043c\u0435\u0442 \u043e\u0442\u0440\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442.",
     },
     "synth.no_test_chunks": {
         "en": "No chunks loaded",

@@ -208,6 +208,75 @@ def test_synthesis_page_output_dir_edit_emits_selected_folder(tmp_path: Path) ->
     assert emitted[-1] == (str(custom_output), str(manifest_path))
 
 
+def test_synthesis_page_test_chunk_label_shows_effective_custom_voice(
+    tmp_path: Path,
+) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    _ = app
+    page = SynthesisPage()
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(_v2_manifest()), encoding="utf-8")
+
+    page.set_manifest(manifest_path, tmp_path / "out")
+
+    item_text = page._test_chunk_combo.itemText(0)
+    assert "CustomVoice sample" in item_text
+    assert "narrator_calm" not in item_text
+
+
+def test_synthesis_page_test_synthesis_uses_persisted_speech_rate(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+
+    import book_normalizer.gui.pages.synthesis_page as synthesis_page
+
+    class _Signal:
+        def connect(self, _callback):  # noqa: ANN001
+            return None
+
+    captured: dict = {}
+
+    class _FakeWorker:
+        progress = _Signal()
+        status = _Signal()
+        log_line = _Signal()
+        finished = _Signal()
+        error = _Signal()
+
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def start(self) -> None:
+            return None
+
+    monkeypatch.setattr(synthesis_page, "TTSSynthesisWorker", _FakeWorker)
+
+    app = QApplication.instance() or QApplication([])
+    _ = app
+    page = SynthesisPage()
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(_v2_manifest()), encoding="utf-8")
+    sample_path = tmp_path / "sample.wav"
+    sample_path.write_bytes(b"fake wav")
+
+    page.set_manifest(manifest_path, tmp_path / "out")
+    page._sample_audio_edit.setText(str(sample_path))
+    page._sample_transcript_edit.setPlainText("Reference transcript.")
+    page._set_speech_rate_value(0.82)
+
+    page._start_test_synthesis()
+
+    assert captured["speech_rate"] == 0.82
+    clone_config = json.loads(Path(captured["clone_config"]).read_text(encoding="utf-8"))
+    assert clone_config["__all__"]["speech_rate"] == 0.82
+
+
 def test_shorten_test_fragment_prefers_sentence_boundary() -> None:
     text = "A" * 140 + ". " + "B" * 500
 

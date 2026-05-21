@@ -1,6 +1,57 @@
 from __future__ import annotations
 
-from book_normalizer.gui.ui_scaler import MAX_UI_SCALE, MIN_UI_SCALE, clamp_scale, scale_stylesheet
+from book_normalizer.gui.ui_scaler import (
+    MAX_UI_SCALE,
+    MIN_UI_SCALE,
+    SCALE_STEP,
+    UiScaler,
+    clamp_scale,
+    scale_stylesheet,
+)
+
+
+class _PointerEvent:
+    def __init__(
+        self,
+        event_type,
+        *,
+        modifiers=None,
+        gesture_type=None,
+        pinch_gesture=None,
+    ) -> None:
+        from PyQt6.QtCore import Qt
+
+        self._event_type = event_type
+        self._modifiers = modifiers or Qt.KeyboardModifier.NoModifier
+        self._gesture_type = gesture_type
+        self._pinch_gesture = pinch_gesture
+        self.accepted = False
+
+    def type(self):
+        return self._event_type
+
+    def modifiers(self):
+        return self._modifiers
+
+    def gestureType(self):  # noqa: N802
+        return self._gesture_type
+
+    def gesture(self, gesture_type):
+        from PyQt6.QtCore import Qt
+
+        if gesture_type == Qt.GestureType.PinchGesture:
+            return self._pinch_gesture
+        return None
+
+    def accept(self) -> None:
+        self.accepted = True
+
+
+def _scaler():
+    from book_normalizer.gui.app import _resolve_theme
+    from tests.gui.helpers import qapp
+
+    return UiScaler(qapp(), _resolve_theme)
 
 
 def test_clamp_scale_limits_zoom_range() -> None:
@@ -20,3 +71,114 @@ def test_scale_stylesheet_scales_font_size_px_only() -> None:
 
 def test_scale_stylesheet_keeps_tiny_fonts_readable() -> None:
     assert "font-size: 9px" in scale_stylesheet("font-size: 4px;", 0.8)
+
+
+def test_ctrl_wheel_is_swallowed_without_changing_ui_scale() -> None:
+    from PyQt6.QtCore import QPoint, QPointF, Qt
+    from PyQt6.QtGui import QWheelEvent
+    from PyQt6.QtWidgets import QWidget
+
+    scaler = _scaler()
+    target = QWidget()
+    event = QWheelEvent(
+        QPointF(10, 10),
+        QPointF(10, 10),
+        QPoint(0, 0),
+        QPoint(0, 120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.ControlModifier,
+        Qt.ScrollPhase.ScrollUpdate,
+        False,
+    )
+
+    assert scaler.eventFilter(target, event) is True
+    assert scaler.scale == 1.0
+    assert event.isAccepted() is True
+
+
+def test_plain_wheel_is_left_for_scroll_widgets() -> None:
+    from PyQt6.QtCore import QEvent
+
+    scaler = _scaler()
+    event = _PointerEvent(QEvent.Type.Wheel)
+
+    assert scaler._is_pointer_zoom_event(event) is False
+    assert scaler.scale == 1.0
+    assert event.accepted is False
+
+
+def test_native_zoom_gesture_is_swallowed_without_changing_ui_scale() -> None:
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtWidgets import QWidget
+
+    scaler = _scaler()
+    target = QWidget()
+    event = _PointerEvent(
+        QEvent.Type.NativeGesture,
+        gesture_type=Qt.NativeGestureType.ZoomNativeGesture,
+    )
+
+    assert scaler.eventFilter(target, event) is True
+    assert scaler.scale == 1.0
+    assert event.accepted is True
+
+
+def test_non_zoom_native_gesture_is_ignored_by_scaler() -> None:
+    from PyQt6.QtCore import QEvent, Qt
+
+    scaler = _scaler()
+    event = _PointerEvent(
+        QEvent.Type.NativeGesture,
+        gesture_type=Qt.NativeGestureType.PanNativeGesture,
+    )
+
+    assert scaler._is_pointer_zoom_event(event) is False
+    assert scaler.scale == 1.0
+    assert event.accepted is False
+
+
+def test_pinch_gesture_is_swallowed_without_changing_ui_scale() -> None:
+    from PyQt6.QtCore import QEvent
+    from PyQt6.QtWidgets import QWidget
+
+    scaler = _scaler()
+    target = QWidget()
+    event = _PointerEvent(QEvent.Type.Gesture, pinch_gesture=object())
+
+    assert scaler.eventFilter(target, event) is True
+    assert scaler.scale == 1.0
+    assert event.accepted is True
+
+
+def test_keyboard_shortcuts_still_control_intentional_ui_zoom() -> None:
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtGui import QKeyEvent
+    from PyQt6.QtWidgets import QWidget
+
+    scaler = _scaler()
+    target = QWidget()
+
+    zoom_in = QKeyEvent(
+        QEvent.Type.KeyPress,
+        Qt.Key.Key_Plus,
+        Qt.KeyboardModifier.ControlModifier,
+    )
+    assert scaler.eventFilter(target, zoom_in) is True
+    assert scaler.scale == 1.0 + SCALE_STEP
+
+    zoom_out = QKeyEvent(
+        QEvent.Type.KeyPress,
+        Qt.Key.Key_Minus,
+        Qt.KeyboardModifier.ControlModifier,
+    )
+    assert scaler.eventFilter(target, zoom_out) is True
+    assert scaler.scale == 1.0
+
+    scaler.zoom_in()
+    reset = QKeyEvent(
+        QEvent.Type.KeyPress,
+        Qt.Key.Key_0,
+        Qt.KeyboardModifier.ControlModifier,
+    )
+    assert scaler.eventFilter(target, reset) is True
+    assert scaler.scale == 1.0

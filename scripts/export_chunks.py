@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export voice-annotated chunks as JSON for the WSL TTS runner.
+"""Export voice-annotated chunks as a v2 TTS manifest.
 
 Usage (from Windows, in project root):
     # Heuristic mode (fast, rule-based):
@@ -13,8 +13,8 @@ Usage (from Windows, in project root):
         --llm-model gemma3:12b --llm-endpoint http://localhost:11434/v1
 
 Output:
-    heuristic → chunks_manifest.json  (v1 format, backward compatible)
-    llm       → chunks_manifest_v2.json  (v2 format with voice + mood)
+    heuristic -> chunks_manifest_v2.json
+    llm       -> chunks_manifest_v2.json
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from book_normalizer.chunking.manifest import chunks_to_v2_manifest
 from book_normalizer.chunking.voice_splitter import chunk_annotated_book
 from book_normalizer.dialogue.attribution import SpeakerMode, create_attributor
 from book_normalizer.dialogue.detector import DialogueDetector
@@ -68,7 +69,7 @@ def export_heuristic(
     args: argparse.Namespace,
     book_dir: Path,
 ) -> None:
-    """Build v1 manifest using heuristic or LLM attribution (old pipeline)."""
+    """Build a v2 manifest using heuristic or LLM attribution."""
     detector = DialogueDetector()
     annotated = detector.detect_book(book)
     total_dialogue = sum(ch.dialogue_count for ch in annotated)
@@ -91,10 +92,10 @@ def export_heuristic(
     total_chunks = sum(len(v) for v in chunked.values())
     print(f"Total chunks: {total_chunks}")
 
-    manifest = []
+    chunks = []
     for ch_idx in sorted(chunked.keys()):
         for chunk in chunked[ch_idx]:
-            manifest.append({
+            chunks.append({
                 "chapter_index": chunk.chapter_index,
                 "chunk_index": chunk.index,
                 "role": chunk.role.value,
@@ -102,12 +103,18 @@ def export_heuristic(
                 "text": chunk.text,
             })
 
-    out_path = Path(args.out) if args.out else book_dir / "chunks_manifest.json"
+    manifest = chunks_to_v2_manifest(
+        chunks,
+        book_title=book_dir.name,
+        chunker="heuristic",
+        max_chunk_chars=max_chunk_chars,
+    )
+    out_path = Path(args.out) if args.out else book_dir / "chunks_manifest_v2.json"
     out_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"Manifest written: {out_path} ({len(manifest)} chunks)")
+    print(f"Manifest v2 written: {out_path} ({len(chunks)} chunks)")
 
 
 def run_llm_normalize_book(
@@ -291,7 +298,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--out", default=None,
-        help="Output JSON path (default: book_dir/chunks_manifest.json or chunks_manifest_v2.json).",
+        help="Output JSON path (default: book_dir/chunks_manifest_v2.json).",
     )
     args = parser.parse_args()
     if args.max_chunk_chars is not None and args.max_chunk_chars < 30:

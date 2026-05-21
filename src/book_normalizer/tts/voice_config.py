@@ -9,6 +9,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from book_normalizer.languages import qwen_tts_language
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +62,7 @@ class VoiceProfile(BaseModel):
         return errors
 
     def to_clone_config_entry(self) -> dict:
-        """Export this profile as a clone config entry for tts_runner.py."""
+        """Export this profile as a reusable voice config entry."""
         if self.method == VoiceMethod.SAVED:
             entry = {}
             if self.saved_voice:
@@ -118,7 +120,7 @@ class VoiceConfig(BaseModel):
         )
 
     def export_clone_config(self, path: Path) -> int:
-        """Export clone voices as a JSON config for tts_runner.py.
+        """Export clone voices as a JSON config for v2 voice preparation.
 
         Returns the number of clone voices exported.
         """
@@ -156,25 +158,26 @@ class VoiceConfig(BaseModel):
         )
 
     @classmethod
-    def default_custom_voice_config(cls) -> VoiceConfig:
+    def default_custom_voice_config(cls, language: str = "ru") -> VoiceConfig:
         """Create a config using Qwen3-TTS built-in CustomVoice speakers."""
+        tts_language = qwen_tts_language(language)
         return cls(
             narrator=VoiceProfile(
                 name="narrator",
                 method=VoiceMethod.CUSTOM,
                 speaker="Aiden",
-                language="Russian",
+                language=tts_language,
             ),
             male=VoiceProfile(
                 name="male",
                 method=VoiceMethod.CUSTOM,
                 speaker="Ryan",
-                language="Russian",
+                language=tts_language,
             ),
             female=VoiceProfile(
                 name="female",
                 method=VoiceMethod.CUSTOM,
                 speaker="Serena",
-                language="Russian",
+                language=tts_language,
             ),
         )

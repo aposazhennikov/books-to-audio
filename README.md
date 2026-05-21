@@ -4,11 +4,14 @@ Books to Audio - инструмент для подготовки русскоя
 загрузка PDF/TXT/EPUB/FB2/DOCX, нормализация текста, разметка глав и реплик,
 нарезка на TTS-чанки, синтез через ComfyUI/Qwen3-TTS и сборка WAV/MP3.
 
+GUI доступен на русском, английском, китайском, казахском и узбекском языках.
+Пока озвучка и обработка книг рассчитаны только на русский язык.
+
 ## Поддерживаемые OS
 
 | OS | Статус | Комментарий |
 | --- | --- | --- |
-| Windows 10/11 | Поддерживается | Есть `install.bat` и `run_gui.bat`. Старый WSL-runner для Qwen-TTS тоже остается. |
+| Windows 10/11 | Поддерживается | Есть `install.bat` и `run_gui.bat`. TTS pipeline uses `chunks_manifest_v2.json` + ComfyUI. |
 | Linux | Поддерживается | Основной путь для локального GPU/CUDA TTS. GUI работает через PyQt6. |
 | macOS | Поддерживается | GUI, OCR, LLM-чанкинг и работа с ComfyUI. Локальный CUDA TTS недоступен на Mac, используйте ComfyUI/remote GPU. |
 
@@ -254,7 +257,7 @@ Python-зависимость для скачивания: `huggingface-hub` (с
 Для прямого Qwen-TTS runner также нужны `qwen-tts`, `torch`, `soundfile`, `numpy`;
 на практике для production-озвучки рекомендуется Linux/WSL с CUDA GPU.
 
-Прямой runner `scripts/tts_runner.py` оставлен для Linux/WSL и CUDA. Для него ставьте:
+Direct `scripts/tts_runner.py` legacy flow has been removed. Use `chunks_manifest_v2.json` + ComfyUI synthesis.
 
 ```bash
 python install.py --with-tts

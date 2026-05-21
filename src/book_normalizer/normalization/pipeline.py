@@ -6,6 +6,7 @@ import logging
 import re
 from collections.abc import Callable
 
+from book_normalizer.languages import is_russian_language
 from book_normalizer.models.book import Book
 from book_normalizer.normalization.abbreviations import expand_abbreviations
 from book_normalizer.normalization.cleanup import remove_inline_footnotes, remove_page_numbers, remove_repeated_headers
@@ -54,6 +55,23 @@ DEFAULT_STAGES: list[tuple[str, TextTransform]] = [
     ("adapt_punctuation_for_tts", adapt_punctuation_for_tts),
 ]
 
+LANGUAGE_NEUTRAL_STAGES: list[tuple[str, TextTransform]] = [
+    ("normalize_encoding_artifacts", normalize_encoding_artifacts),
+    ("fix_common_mojibake", fix_common_mojibake),
+    ("normalize_whitespace", normalize_whitespace),
+    ("repair_hyphenated_words", repair_hyphenated_words),
+    ("repair_broken_lines", repair_broken_lines),
+    ("remove_page_numbers", remove_page_numbers),
+    ("remove_inline_footnotes", remove_inline_footnotes),
+    ("remove_repeated_headers", remove_repeated_headers),
+    ("collapse_empty_lines", collapse_empty_lines),
+    ("strip_paragraph_indents", strip_paragraph_indents),
+    ("normalize_dashes", normalize_dashes),
+    ("normalize_ellipsis", normalize_ellipsis),
+    ("normalize_spacing_around_punctuation", normalize_spacing_around_punctuation),
+    ("adapt_punctuation_for_tts", adapt_punctuation_for_tts),
+]
+
 
 class NormalizationPipeline:
     """
@@ -67,6 +85,13 @@ class NormalizationPipeline:
 
     def __init__(self, stages: list[tuple[str, TextTransform]] | None = None) -> None:
         self._stages = stages if stages is not None else list(DEFAULT_STAGES)
+
+    @classmethod
+    def for_language(cls, language: str | None) -> NormalizationPipeline:
+        """Build a pipeline that avoids Russian-only transforms for other languages."""
+        if is_russian_language(language):
+            return cls()
+        return cls(stages=list(LANGUAGE_NEUTRAL_STAGES))
 
     def add_stage(self, name: str, transform: TextTransform) -> None:
         """Append a custom stage to the pipeline."""

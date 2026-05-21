@@ -906,8 +906,13 @@ def synthesize_command(
     llm_api_key: str,
     verbose: bool,
 ) -> None:
-    """Synthesize an audiobook from a book file using Qwen3-TTS."""
+    """Synthesize an audiobook from a book file using the v2 pipeline."""
     setup_logging(verbose=verbose)
+    raise click.ClickException(
+        "Direct v1/Qwen synthesis was removed. Use `normalize-book pipeline --synthesize "
+        "--workflow comfyui_workflows/qwen3_tts_template.json` to generate and synthesize "
+        "chunks_manifest_v2.json."
+    )
 
     click.echo(f"Loading: {input_path}")
 
@@ -1035,13 +1040,7 @@ def synthesize_command(
     vm = VoiceManager(voice_cfg, device=gpu_device)
     vm.initialize()
 
-    from book_normalizer.tts.synthesizer import TTSSynthesizer
-
-    synthesizer = TTSSynthesizer(vm, output_dir, resume=resume)
-
-    ch_range = _parse_chapter_range(chapter_range) if chapter_range else None
-    synthesizer.synthesize_chapters(chunked, chapter_range=ch_range)
-    click.echo("TTS synthesis complete.")
+    raise click.ClickException("Direct in-process TTS synthesis has been removed; use the v2 ComfyUI pipeline.")
 
     # --- Audio assembly ---
     if not skip_assembly:

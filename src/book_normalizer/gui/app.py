@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import sys
 
+from book_normalizer.gui.resources import (
+    application_icon,
+    install_windows_app_user_model_id,
+)
 from book_normalizer.gui.ui_scaler import UiScaler, scale_stylesheet
 
 THEME = """
@@ -493,9 +497,13 @@ def main() -> None:
 
     from book_normalizer.gui.main_window import MainWindow
 
+    install_windows_app_user_model_id()
     app = QApplication(sys.argv)
     app.setApplicationName("Books to Audio")
     app.setOrganizationName("books-to-audio")
+    app.setWindowIcon(application_icon())
+    if hasattr(app, "setDesktopFileName"):
+        app.setDesktopFileName("books-to-audio")
 
     window = MainWindow()
     scaler = UiScaler(app, _resolve_theme)

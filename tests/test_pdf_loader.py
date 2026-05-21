@@ -379,3 +379,33 @@ class TestOcrImagePreparation:
 
         assert _looks_like_toc(toc) is True
         assert _should_keep_ocr_text(toc) is False
+
+    def test_should_keep_ocr_text_uses_selected_non_russian_language(self) -> None:
+        english = " ".join(
+            [
+                "This scanned page contains readable English prose with enough",
+                "ordinary words for the OCR quality gate to accept it safely.",
+            ]
+            * 4
+        )
+
+        assert _should_keep_ocr_text(english, "en") is True
+        assert _should_keep_ocr_text(english, "ru") is False
+
+    def test_select_pdf_text_for_mode_uses_selected_language_quality(self) -> None:
+        native = PdfTextVariant(kind="native", text="")
+        ocr = PdfTextVariant(
+            kind="ocr",
+            text="This is readable English text from OCR.",
+        )
+        compare = PdfOcrCompareResult(native=native, ocr=ocr)
+
+        chosen, stats = select_pdf_text_for_mode(
+            compare,
+            OcrMode.AUTO,
+            language_code="en",
+        )
+
+        assert chosen is ocr
+        assert stats["language"] == "en"
+        assert stats["ocr_unreadable"] is False

@@ -10,6 +10,22 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from book_normalizer.config import OcrMode
 from book_normalizer.gui.i18n import t
+from book_normalizer.languages import (
+    is_russian_language,
+    normalize_book_language,
+    tesseract_language,
+)
+
+
+def _apply_selected_book_language(book: object, language: str) -> object:
+    """Persist the user-selected language on a loaded Book instance."""
+    selected = normalize_book_language(language)
+    metadata = getattr(book, "metadata", None)
+    if metadata is not None:
+        metadata.language = selected
+    if hasattr(book, "add_audit"):
+        book.add_audit("language", "selected", f"language={selected}")
+    return book
 
 
 def _format_eta(seconds: float) -> str:
@@ -76,6 +92,7 @@ class NormalizeWorker(QThread):
         llm_model: str = "qwen3:8b",
         llm_api_key: str = "",
         skip_stress: bool = False,
+        book_language: str = "ru",
         parent=None,
     ):
         super().__init__(parent)
@@ -88,6 +105,7 @@ class NormalizeWorker(QThread):
         self._llm_model = llm_model
         self._llm_api_key = llm_api_key
         self._skip_stress = skip_stress
+        self._book_language = normalize_book_language(book_language)
 
     def _ocr_with_progress(self, path: Path, ocr_mode, dpi: int, psm: int):
         """Run OCR with per-page progress reporting."""
@@ -104,6 +122,7 @@ class NormalizeWorker(QThread):
         )
 
         resolved = path.resolve()
+        ocr_lang = tesseract_language(self._book_language)
         use_wsl = False
         try:
             import pytesseract
@@ -135,14 +154,14 @@ class NormalizeWorker(QThread):
                 ):
                     page_text = _ocr_pil_image_with_tesseract(
                         segment,
-                        lang="rus",
+                        lang=ocr_lang,
                         psm=psm,
                         preprocess=True,
                         use_wsl=use_wsl,
                         pytesseract_module=None if use_wsl else pytesseract,
                     )
                     page_text = _postprocess_ocr_text(page_text)
-                    if _should_keep_ocr_text(page_text):
+                    if _should_keep_ocr_text(page_text, self._book_language):
                         pages_text.append(page_text)
 
                 elapsed = time.time() - start_time
@@ -164,7 +183,7 @@ class NormalizeWorker(QThread):
         """Run normalization pipeline with per-paragraph progress."""
         from book_normalizer.normalization.pipeline import NormalizationPipeline
 
-        pipeline = NormalizationPipeline()
+        pipeline = NormalizationPipeline.for_language(self._book_language)
 
         total_paragraphs = sum(len(ch.paragraphs) for ch in book.chapters)
         if total_paragraphs == 0:
@@ -292,8 +311,14 @@ class NormalizeWorker(QThread):
                     compare = extract_pdf_with_ocr_mode(
                         self._input_path, effective_ocr,
                         dpi=self._ocr_dpi, psm=self._ocr_psm,
+                        lang=tesseract_language(self._book_language),
+                        language_code=self._book_language,
                     )
-                    chosen, stats = select_pdf_text_for_mode(compare, ocr)
+                    chosen, stats = select_pdf_text_for_mode(
+                        compare,
+                        ocr,
+                        language_code=self._book_language,
+                    )
 
                     _ensure_pdf_selection_is_usable(
                         ocr,
@@ -319,7 +344,11 @@ class NormalizeWorker(QThread):
                     compare = PdfOcrCompareResult(
                         native=native_variant, ocr=ocr_variant,
                     )
-                    chosen, stats = select_pdf_text_for_mode(compare, ocr)
+                    chosen, stats = select_pdf_text_for_mode(
+                        compare,
+                        ocr,
+                        language_code=self._book_language,
+                    )
                     _ensure_pdf_selection_is_usable(
                         ocr,
                         stats,
@@ -329,12 +358,15 @@ class NormalizeWorker(QThread):
                 paragraphs = PdfLoader._split_paragraphs(chosen.text)
                 chapter = Chapter(title="Full Text", index=0, paragraphs=paragraphs)
                 metadata = Metadata(
-                    source_path=str(self._input_path), source_format="pdf",
+                    source_path=str(self._input_path),
+                    source_format="pdf",
+                    language=self._book_language,
                 )
                 book = Book(metadata=metadata, chapters=[chapter])
             else:
                 factory = LoaderFactory.default()
                 book = factory.load(self._input_path)
+                _apply_selected_book_language(book, self._book_language)
 
             pipeline, book = self._normalize_with_progress(book)
 
@@ -351,7 +383,7 @@ class NormalizeWorker(QThread):
                 )
                 book = self._llm_normalize_with_progress(book)
 
-            if not self._skip_stress:
+            if not self._skip_stress and is_russian_language(self._book_language):
                 self.progress.emit(t("norm.annotating_stress"))
                 from book_normalizer.config import AppConfig
                 from book_normalizer.memory.stress_store import StressStore

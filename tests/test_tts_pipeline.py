@@ -18,10 +18,9 @@ from book_normalizer.dialogue.attribution import (
     HeuristicAttributor,
 )
 from book_normalizer.dialogue.detector import DialogueDetector
-from book_normalizer.dialogue.models import SpeakerRole, VoiceAnnotatedChunk
+from book_normalizer.dialogue.models import SpeakerRole
 from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.tts.assembler import AudioAssembler
-from book_normalizer.tts.synthesizer import SynthesisProgress, TTSSynthesizer
 from book_normalizer.tts.voice_config import VoiceConfig, VoiceMethod, VoiceProfile
 
 # ---------------------------------------------------------------------------
@@ -154,6 +153,14 @@ class TestVoiceConfig:
         cfg = VoiceConfig.default_custom_voice_config()
         errors = cfg.validate_all()
         assert errors == []
+        assert cfg.narrator.language == "Russian"
+
+    def test_custom_voice_config_uses_selected_book_language(self) -> None:
+        cfg = VoiceConfig.default_custom_voice_config("uz")
+
+        assert cfg.narrator.language == "Uzbek"
+        assert cfg.male.language == "Uzbek"
+        assert cfg.female.language == "Uzbek"
 
     def test_valid_saved_voice_config(self) -> None:
         cfg = VoiceConfig(
@@ -186,65 +193,6 @@ class TestVoiceConfig:
         cfg = VoiceConfig()
         with pytest.raises(KeyError):
             cfg.get_profile("unknown_role")
-
-
-# ---------------------------------------------------------------------------
-# Synthesis progress tests
-# ---------------------------------------------------------------------------
-
-class TestSynthesisProgress:
-
-    def test_mark_and_check(self, tmp_path: Path) -> None:
-        p = SynthesisProgress(tmp_path / "progress.json")
-        assert not p.is_done(0, 0)
-        p.mark_done(0, 0)
-        assert p.is_done(0, 0)
-        assert p.completed_count == 1
-
-    def test_persistence(self, tmp_path: Path) -> None:
-        path = tmp_path / "progress.json"
-        p1 = SynthesisProgress(path)
-        p1.mark_done(1, 5)
-
-        p2 = SynthesisProgress(path)
-        assert p2.is_done(1, 5)
-
-
-class TestTTSSynthesizer:
-
-    def test_resume_keeps_skipped_chunks_in_manifest(self, tmp_path: Path) -> None:
-        output_dir = tmp_path / "resume"
-        chunk_path = output_dir / "audio_chunks" / "chapter_001" / "chunk_001_narrator.wav"
-        chunk_path.parent.mkdir(parents=True)
-        chunk_path.write_bytes(b"existing")
-
-        progress = SynthesisProgress(output_dir / "synthesis_progress.json")
-        progress.mark_done(0, 0)
-
-        chunk = VoiceAnnotatedChunk(
-            index=0,
-            text="Already synthesized.",
-            chapter_index=0,
-            role=SpeakerRole.NARRATOR,
-            voice_id="narrator",
-        )
-        synth = TTSSynthesizer(object(), output_dir, resume=True)
-
-        synth.synthesize_book({0: [chunk]})
-
-        manifest = json.loads(
-            (output_dir / "synthesis_manifest.json").read_text(encoding="utf-8")
-        )
-        assert manifest == [
-            {
-                "chapter_index": 0,
-                "chunk_index": 0,
-                "voice_id": "narrator",
-                "role": "narrator",
-                "text_len": len(chunk.text),
-                "file": "audio_chunks/chapter_001/chunk_001_narrator.wav",
-            }
-        ]
 
 
 # ---------------------------------------------------------------------------

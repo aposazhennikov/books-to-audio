@@ -162,6 +162,7 @@ def build_chunks_from_segments(
     pending_voice = segments[0].get("voice_id", "narrator_calm")
     pending_intonation = segments[0].get("intonation", "neutral")
     pending_role = _role_from_segment(segments[0])
+    pending_language = str(segments[0].get("language") or "").strip()
     pending_pause_after_ms = 0
     pending_boundary_after = ""
 
@@ -181,6 +182,7 @@ def build_chunks_from_segments(
                 "chunk_index": _next_chunk_index(pending_chapter),
                 "role": pending_role,
                 "voice_id": pending_voice,
+                "language": pending_language,
                 "intonation": pending_intonation,
                 "text": combined,
             }
@@ -200,6 +202,7 @@ def build_chunks_from_segments(
                     "chunk_index": _next_chunk_index(pending_chapter),
                     "role": pending_role,
                     "voice_id": pending_voice,
+                    "language": pending_language,
                     "intonation": pending_intonation,
                     "text": sub,
                 }
@@ -227,6 +230,7 @@ def build_chunks_from_segments(
         seg_voice = seg.get("voice_id", "narrator_calm")
         seg_intonation = seg.get("intonation", "neutral")
         seg_role = _role_from_segment(seg)
+        seg_language = str(seg.get("language") or "").strip()
         seg_text = seg.get("text", "").strip()
         if not seg_text:
             continue
@@ -235,6 +239,7 @@ def build_chunks_from_segments(
             seg_chapter == pending_chapter
             and seg_voice == pending_voice
             and seg_intonation == pending_intonation
+            and seg_language == pending_language
         )
 
         if same_group and pending_text_parts and pending_pause_after_ms > 0:
@@ -244,6 +249,7 @@ def build_chunks_from_segments(
             pending_voice = seg_voice
             pending_intonation = seg_intonation
             pending_role = seg_role
+            pending_language = seg_language
             _apply_pending_pause(
                 str(seg.get("boundary_after") or ""),
                 int(seg.get("pause_after_ms") or 0),
@@ -270,6 +276,7 @@ def build_chunks_from_segments(
             pending_voice = seg_voice
             pending_intonation = seg_intonation
             pending_role = seg_role
+            pending_language = seg_language
             _apply_pending_pause(
                 str(seg.get("boundary_after") or ""),
                 int(seg.get("pause_after_ms") or 0),

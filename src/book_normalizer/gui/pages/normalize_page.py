@@ -25,6 +25,7 @@ from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.help_button import label_with_help, set_help_text
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.normalize_worker import NormalizeWorker
+from book_normalizer.languages import DEFAULT_BOOK_LANGUAGE, SUPPORTED_LANGUAGE_CODES
 
 _PDF_EXTENSIONS = {".pdf"}
 
@@ -97,6 +98,13 @@ class NormalizePage(QWidget):
         settings = QFormLayout()
         settings.setHorizontalSpacing(16)
         settings.setVerticalSpacing(6)
+
+        self._book_language = QComboBox()
+        self._book_language_label = QLabel()
+        self._book_language_label_wrap = self._label_with_help(
+            self._book_language_label, "norm.book_language_tip"
+        )
+        settings.addRow(self._book_language_label_wrap, self._book_language)
 
         self._ocr_mode = QComboBox()
         self._ocr_mode.addItems(["auto", "off", "force", "compare"])
@@ -246,6 +254,10 @@ class NormalizePage(QWidget):
         self._ocr_psm.setToolTip(t("norm.ocr_psm_tip"))
         self._ocr_psm_label.setToolTip(t("norm.ocr_psm_tip"))
         self._ocr_not_applicable_label.setText(t("norm.ocr_not_applicable"))
+        self._book_language_label.setText(t("norm.book_language"))
+        self._book_language.setToolTip(t("norm.book_language_tip"))
+        self._book_language_label.setToolTip(t("norm.book_language_tip"))
+        self._populate_book_language_combo()
         self._llm_normalize_label.setText(t("norm.llm_normalize"))
         self._llm_normalize.setText(t("norm.llm_normalize_check"))
         self._llm_normalize.setToolTip(t("norm.llm_tip"))
@@ -262,6 +274,19 @@ class NormalizePage(QWidget):
         self._norm_text.setPlaceholderText(t("norm.norm_placeholder"))
         self._raw_label.setText(t("norm.raw_placeholder"))
         self._norm_label.setText(t("norm.norm_placeholder"))
+
+    def _populate_book_language_combo(self) -> None:
+        """Populate supported book languages while preserving selection."""
+        current = self._book_language.currentData() or DEFAULT_BOOK_LANGUAGE
+        self._book_language.blockSignals(True)
+        self._book_language.clear()
+        for code in SUPPORTED_LANGUAGE_CODES:
+            self._book_language.addItem(t(f"book_language.{code}"), code)
+        idx = self._book_language.findData(current)
+        if idx < 0:
+            idx = self._book_language.findData(DEFAULT_BOOK_LANGUAGE)
+        self._book_language.setCurrentIndex(idx if idx >= 0 else 0)
+        self._book_language.blockSignals(False)
 
     def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
         """Create a form label with a reusable help button."""
@@ -304,6 +329,7 @@ class NormalizePage(QWidget):
             llm_normalize=self._llm_normalize.isChecked(),
             llm_endpoint=self._llm_endpoint.text().strip() or "http://localhost:11434/v1",
             llm_model=self._llm_model.text().strip() or "qwen3:8b",
+            book_language=str(self._book_language.currentData() or DEFAULT_BOOK_LANGUAGE),
         )
         self._worker.progress.connect(self._progress.set_status)
         self._worker.progress_pct.connect(self._progress.set_progress)

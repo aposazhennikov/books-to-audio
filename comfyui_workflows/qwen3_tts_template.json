@@ -8,7 +8,7 @@
       "model_choice": "1.7B",
       "device": "auto",
       "precision": "bf16",
-      "language": "Russian",
+      "language": "{{LANGUAGE}}",
       "instruct": "{{INSTRUCT}}",
       "max_new_tokens": 2048,
       "top_p": 0.8,

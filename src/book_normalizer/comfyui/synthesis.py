@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.chunking.manifest_v2 import DEFAULT_MANIFEST_NAME, ensure_v2_manifest
 from book_normalizer.comfyui.client import ComfyUIClient, ComfyUIError
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
 
@@ -30,14 +31,13 @@ def load_manifest(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Manifest not found: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("ComfyUI synthesis requires a v2 manifest object.")
-    if data.get("version", 1) == 1:
+    try:
+        return ensure_v2_manifest(data).to_record()
+    except ValueError as exc:
         raise ValueError(
-            "This synthesis path requires chunks_manifest_v2.json. "
-            "Generate it with export_chunks.py --mode llm or the GUI Voices tab."
-        )
-    return data
+            f"ComfyUI synthesis requires a v2 manifest ({DEFAULT_MANIFEST_NAME}). "
+            "Generate it with export_chunks.py or the GUI Voices tab."
+        ) from exc
 
 
 def save_manifest(path: Path, data: dict[str, Any]) -> None:
@@ -52,6 +52,7 @@ def iter_manifest_chunks(
     chapter_filter: int | None = None,
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     """Return ``(chapter, chunk)`` pairs matching an optional 1-based chapter."""
+    ensure_v2_manifest(manifest)
     pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for chapter in manifest.get("chapters", []):
         if not isinstance(chapter, dict):
@@ -136,6 +137,7 @@ def synthesize_manifest(
     emit(f"Chunks: {total} total, {done_start} already done, {len(pending)} to synthesize.")
     done = done_start
     synthesized_now = 0
+    manifest_language = str(manifest.get("language") or "ru")
 
     for chapter_entry, chunk in pending:
         chapter_index = int(chapter_entry.get("chapter_index", 0))
@@ -143,6 +145,7 @@ def synthesize_manifest(
         voice_label = str(chunk.get("voice_label") or "narrator")
         voice_tone = str(chunk.get("voice_tone") or "calm")
         text = str(chunk.get("text") or chunk.get(voice_label) or "")
+        language = str(chunk.get("language") or manifest_language)
 
         chunk["failed"] = False
         chunk["error"] = ""
@@ -171,6 +174,7 @@ def synthesize_manifest(
                 voice_label=voice_label,
                 voice_tone=voice_tone,
                 output_filename=output_filename,
+                language=language,
             )
             client.synthesize_chunk(workflow, output_path, timeout=chunk_timeout)
         except ComfyUIError as exc:

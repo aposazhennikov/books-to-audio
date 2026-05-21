@@ -41,7 +41,7 @@
       "model_choice": "1.7B",
       "device": "auto",
       "precision": "bf16",
-      "language": "Russian",
+      "language": "{{LANGUAGE}}",
       "pause_linebreak": 0.5,
       "period_pause": 0.4,
       "comma_pause": 0.2,

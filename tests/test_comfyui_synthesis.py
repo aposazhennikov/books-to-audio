@@ -10,7 +10,11 @@ from book_normalizer.comfyui.synthesis import load_manifest, synthesize_manifest
 
 
 class _Builder:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
     def build(self, **kwargs):  # noqa: ANN001, ANN204
+        self.calls.append(kwargs)
         return {"prompt": kwargs}
 
 
@@ -71,6 +75,24 @@ def test_synthesize_manifest_updates_successful_chunk(tmp_path: Path) -> None:
     assert chunk["synthesized"] is True
     assert Path(chunk["audio_file"]).exists()
     assert "PROGRESS 1/1" in lines
+
+
+def test_synthesize_manifest_passes_manifest_language_to_workflow(tmp_path: Path) -> None:
+    manifest = _manifest()
+    manifest["language"] = "uz"
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    builder = _Builder()
+
+    synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=_Client(),  # type: ignore[arg-type]
+        builder=builder,  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+    )
+
+    assert builder.calls[0]["language"] == "uz"
 
 
 def test_synthesize_manifest_marks_failed_chunk(tmp_path: Path) -> None:

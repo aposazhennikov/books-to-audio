@@ -6,9 +6,11 @@ import pytest
 
 from book_normalizer.config import OcrMode
 from book_normalizer.gui.workers.normalize_worker import (
+    _apply_selected_book_language,
     _effective_pdf_extraction_mode,
     _ensure_pdf_selection_is_usable,
 )
+from book_normalizer.models.book import Book, Metadata
 
 
 def test_gui_pdf_auto_falls_back_without_tesseract() -> None:
@@ -63,3 +65,13 @@ def test_gui_pdf_rejects_unreadable_ocr_when_native_is_broken() -> None:
             {"native_unreadable": True, "ocr_unreadable": True},
             tesseract_available=True,
         )
+
+
+def test_apply_selected_book_language_overrides_loader_metadata() -> None:
+    book = Book(metadata=Metadata(language="ru"))
+
+    result = _apply_selected_book_language(book, "en-US")
+
+    assert result is book
+    assert book.metadata.language == "en"
+    assert book.audit_trail[-1]["details"] == "language=en"

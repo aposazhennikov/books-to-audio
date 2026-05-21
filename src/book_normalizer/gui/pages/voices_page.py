@@ -26,6 +26,7 @@ from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.widgets.voice_preview import VoicePreviewPanel
 from book_normalizer.gui.widgets.voice_table import VoiceTableWidget
 from book_normalizer.gui.workers.tts_worker import ExportSegmentsWorker
+from book_normalizer.languages import normalize_book_language
 
 
 class VoicesPage(QWidget):
@@ -464,9 +465,12 @@ class VoicesPage(QWidget):
 
         self._output_dir.mkdir(parents=True, exist_ok=True)
         chunks_path = self._output_dir / "chunks_manifest_v2.json"
+        metadata = getattr(self._book, "metadata", None)
+        language = normalize_book_language(getattr(metadata, "language", "ru"))
         manifest = chunks_to_v2_manifest(
             chunks,
             book_title=self._output_dir.name,
+            language=language,
             chunker="gui",
             max_chunk_chars=self._chunk_size.value(),
         )

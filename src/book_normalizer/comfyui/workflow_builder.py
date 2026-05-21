@@ -46,6 +46,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.languages import qwen_tts_language
+
 logger = logging.getLogger(__name__)
 
 # ── Voice-label → FB_Qwen3TTSCustomVoice speaker name ────────────────────────
@@ -90,6 +92,7 @@ _DEFAULT_TONE_RU = "Ровно и чётко."
 _PLACEHOLDER_TEXT = "{{TEXT}}"
 _PLACEHOLDER_SPEAKER = "{{SPEAKER}}"
 _PLACEHOLDER_INSTRUCT = "{{INSTRUCT}}"
+_PLACEHOLDER_LANGUAGE = "{{LANGUAGE}}"
 _PLACEHOLDER_OUTPUT = "{{OUTPUT_FILENAME}}"
 # Legacy alias kept for backward-compatibility with hand-crafted templates.
 _PLACEHOLDER_VOICE_ID = "{{VOICE_ID}}"
@@ -109,6 +112,7 @@ _ALL_PLACEHOLDERS = (
     _PLACEHOLDER_TEXT,
     _PLACEHOLDER_SPEAKER,
     _PLACEHOLDER_INSTRUCT,
+    _PLACEHOLDER_LANGUAGE,
     _PLACEHOLDER_OUTPUT,
 )
 
@@ -140,6 +144,7 @@ class WorkflowBuilder:
         voice_label: str,
         voice_tone: str,
         output_filename: str,
+        language: str = "ru",
     ) -> dict[str, Any]:
         """Return a workflow dict with all placeholders substituted.
 
@@ -155,15 +160,18 @@ class WorkflowBuilder:
         """
         speaker = voice_label_to_speaker(voice_label)
         instruct = voice_tone_to_instruct(voice_label, voice_tone)
+        tts_language = qwen_tts_language(language)
         replacements = {
             _PLACEHOLDER_TEXT: text,
             _PLACEHOLDER_SPEAKER: speaker,
             # Keep backward-compat: some old templates may still use {{VOICE_ID}}.
             _PLACEHOLDER_VOICE_ID: speaker,
             _PLACEHOLDER_INSTRUCT: instruct,
+            _PLACEHOLDER_LANGUAGE: tts_language,
             _PLACEHOLDER_OUTPUT: output_filename,
         }
-        return _deep_replace(copy.deepcopy(self._template), replacements)
+        workflow = _deep_replace(copy.deepcopy(self._template), replacements)
+        return _deep_set_language(workflow, tts_language)
 
     def build_dialogue(
         self,
@@ -172,6 +180,7 @@ class WorkflowBuilder:
         men_speaker: str,
         women_speaker: str,
         output_filename: str,
+        language: str = "ru",
     ) -> dict[str, Any]:
         """Return a dialogue workflow with role-speaker bindings substituted.
 
@@ -189,14 +198,17 @@ class WorkflowBuilder:
         Returns:
             A deep copy of the template with all placeholders replaced.
         """
+        tts_language = qwen_tts_language(language)
         replacements = {
             _PLACEHOLDER_SCRIPT: script,
             _PLACEHOLDER_NARRATOR: narrator_speaker,
             _PLACEHOLDER_MEN: men_speaker,
             _PLACEHOLDER_WOMEN: women_speaker,
+            _PLACEHOLDER_LANGUAGE: tts_language,
             _PLACEHOLDER_OUTPUT: output_filename,
         }
-        return _deep_replace(copy.deepcopy(self._template), replacements)
+        workflow = _deep_replace(copy.deepcopy(self._template), replacements)
+        return _deep_set_language(workflow, tts_language)
 
     def build_voice_setup(
         self,
@@ -309,5 +321,22 @@ def _deep_replace(
 
     if isinstance(obj, list):
         return [_deep_replace(item, replacements) for item in obj]
+
+    return obj
+
+
+def _deep_set_language(obj: Any, language: str) -> Any:
+    """Set any ComfyUI input named 'language' to the selected TTS language."""
+    if isinstance(obj, dict):
+        result: dict[Any, Any] = {}
+        for key, value in obj.items():
+            if str(key).lower() == "language":
+                result[key] = language
+            else:
+                result[key] = _deep_set_language(value, language)
+        return result
+
+    if isinstance(obj, list):
+        return [_deep_set_language(item, language) for item in obj]
 
     return obj

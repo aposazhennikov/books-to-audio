@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -17,11 +16,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from book_normalizer.gui.i18n import set_language, t
+from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, set_language, t
 from book_normalizer.gui.pages.assembly_page import AssemblyPage
 from book_normalizer.gui.pages.normalize_page import NormalizePage
 from book_normalizer.gui.pages.synthesis_page import SynthesisPage
 from book_normalizer.gui.pages.voices_page import VoicesPage
+from book_normalizer.gui.resources import application_icon
 
 
 class MainWindow(QMainWindow):
@@ -33,9 +33,7 @@ class MainWindow(QMainWindow):
         self._ui_scale = 1.0
         self.setMinimumSize(760, 520)
         self.resize(1180, 760)
-        icon_path = Path(__file__).resolve().parent / "assets" / "icon.svg"
-        if icon_path.exists():
-            self.setWindowIcon(QIcon(str(icon_path)))
+        self.setWindowIcon(application_icon())
         self._output_dir: Path | None = None
         self._setup_ui()
         self._connect_signals()
@@ -68,10 +66,10 @@ class MainWindow(QMainWindow):
         header_row.addWidget(self._lang_label)
 
         self._lang_combo = QComboBox()
-        self._lang_combo.addItem("\U0001f1f7\U0001f1fa  \u0420\u0443\u0441\u0441\u043a\u0438\u0439", "ru")
-        self._lang_combo.addItem("\U0001f1ec\U0001f1e7  English", "en")
-        self._lang_combo.setMinimumWidth(136)
-        self._lang_combo.setMaximumWidth(210)
+        for code, label in SUPPORTED_LANGUAGES:
+            self._lang_combo.addItem(label, code)
+        self._lang_combo.setMinimumWidth(164)
+        self._lang_combo.setMaximumWidth(240)
         self._lang_combo.setStyleSheet(
             "QComboBox { font-size: 13px; font-weight: 600; }"
         )
@@ -79,14 +77,6 @@ class MainWindow(QMainWindow):
         header_row.addWidget(self._lang_combo)
 
         layout.addLayout(header_row)
-
-        # Subtitle.
-        self._subtitle = QLabel()
-        self._subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._subtitle.setStyleSheet(
-            "color: rgba(226,232,240,0.48); font-size: 13px; margin-bottom: 4px;"
-        )
-        layout.addWidget(self._subtitle)
 
         # ── Tabs ──
         self._tabs = QTabWidget()
@@ -114,8 +104,8 @@ class MainWindow(QMainWindow):
         self._title.setFont(
             QFont("Segoe UI", max(16, round(22 * scale)), QFont.Weight.Bold)
         )
-        self._lang_combo.setMinimumWidth(max(124, round(136 * scale)))
-        self._lang_combo.setMaximumWidth(max(170, round(210 * scale)))
+        self._lang_combo.setMinimumWidth(max(148, round(164 * scale)))
+        self._lang_combo.setMaximumWidth(max(190, round(240 * scale)))
         self._sync_tab_labels()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
@@ -150,8 +140,8 @@ class MainWindow(QMainWindow):
 
     def _retranslate(self) -> None:
         """Update all translatable strings in the main window."""
+        self.setWindowTitle(t("app.title"))
         self._title.setText(t("app.title"))
-        self._subtitle.setText(t("app.subtitle"))
         self._lang_label.setText(t("app.lang_label"))
         self._statusbar.showMessage(t("app.ready"))
 

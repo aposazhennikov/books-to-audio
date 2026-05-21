@@ -65,6 +65,58 @@ def test_normalize_page_hides_ocr_help_until_pdf_selected(qapp) -> None:
     page.deleteLater()
 
 
+def test_normalize_page_defaults_book_language_to_russian(qapp) -> None:
+    page = NormalizePage()
+
+    assert page._book_language.currentData() == "ru"
+    assert [
+        page._book_language.itemData(index)
+        for index in range(page._book_language.count())
+    ] == ["ru", "en", "zh", "kk", "uz"]
+
+    page.deleteLater()
+
+
+def test_normalize_page_passes_selected_book_language_to_worker(
+    qapp,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    captured: dict = {}
+
+    class _Signal:
+        def connect(self, _callback):  # noqa: ANN001
+            return None
+
+    class _FakeWorker:
+        progress = _Signal()
+        progress_pct = _Signal()
+        finished = _Signal()
+        error = _Signal()
+
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def start(self) -> None:
+            return None
+
+    monkeypatch.setattr(normalize_page, "NormalizeWorker", _FakeWorker)
+
+    book_path = tmp_path / "book.txt"
+    book_path.write_text("Hello world.", encoding="utf-8")
+    page = NormalizePage()
+    page._selected_path = str(book_path)
+    page._path_label.setText(str(book_path))
+    page._btn_run.setEnabled(True)
+    page._book_language.setCurrentIndex(page._book_language.findData("en"))
+
+    page._run_normalization()
+
+    assert captured["input_path"] == book_path
+    assert captured["book_language"] == "en"
+    page.deleteLater()
+
+
 def test_normalize_page_hides_llm_field_help_until_enabled(qapp) -> None:
     page = NormalizePage()
 

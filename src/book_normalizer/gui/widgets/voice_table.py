@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover - depends on local PyQt6 multimedia buil
     QSoundEffect = None  # type: ignore[assignment]
 
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest, flatten_v2_manifest
-from book_normalizer.gui.i18n import get_language, t
+from book_normalizer.gui.i18n import t, voice_category_label, voice_preset_label
 from book_normalizer.gui.voice_presets import VOICE_PRESETS
 
 INTONATION_KEYS = [
@@ -70,25 +70,19 @@ def _make_voice_combo(current: str = "narrator_calm") -> QComboBox:
     """Create a QComboBox with all voice presets, grouped by category."""
     combo = QComboBox()
     combo.setMinimumWidth(160)
-    lang = get_language()
+    _populate_voice_combo(combo, current)
+    combo.view().setMinimumWidth(230)
+    return combo
 
-    categories = [
-        (
-            "narrator",
-            "--- Narrators ---" if lang == "en" else "--- Дикторы ---",
-        ),
-        (
-            "male",
-            "--- Male ---" if lang == "en" else "--- Мужские ---",
-        ),
-        (
-            "female",
-            "--- Female ---" if lang == "en" else "--- Женские ---",
-        ),
-    ]
 
-    for cat_id, cat_label in categories:
-        combo.addItem(cat_label, "")
+def _populate_voice_combo(combo: QComboBox, current: str = "narrator_calm") -> None:
+    """Refresh voice combo labels for the active UI language."""
+    combo.blockSignals(True)
+    combo.clear()
+    categories = ["narrator", "male", "female"]
+
+    for cat_id in categories:
+        combo.addItem(f"--- {voice_category_label(cat_id)} ---", "")
         idx = combo.count() - 1
         model = combo.model()
         item = model.item(idx)
@@ -97,16 +91,13 @@ def _make_voice_combo(current: str = "narrator_calm") -> QComboBox:
 
         presets = [p for p in VOICE_PRESETS if p.category == cat_id]
         for p in presets:
-            label = p.label_ru if lang == "ru" else p.label_en
-            combo.addItem(f"  {label}", p.id)
+            combo.addItem(f"  {voice_preset_label(p)}", p.id)
 
     for i in range(combo.count()):
         if combo.itemData(i) == current:
             combo.setCurrentIndex(i)
             break
-
-    combo.view().setMinimumWidth(230)
-    return combo
+    combo.blockSignals(False)
 
 
 def _make_intonation_combo(current: str = "neutral") -> QComboBox:
@@ -357,6 +348,7 @@ class VoiceTableWidget(QWidget):
     def retranslate(self) -> None:
         """Update translatable strings."""
         self._apply_toolbar_labels()
+        self._refresh_voice_combo_labels()
 
         self._table.setHorizontalHeaderLabels([
             t("voice.col_num"),
@@ -381,6 +373,16 @@ class VoiceTableWidget(QWidget):
         self._btn_full_apply.setText(t("voice.editor_apply_full"))
         self._update_segment_char_count()
         self._update_full_char_count()
+
+    def _refresh_voice_combo_labels(self) -> None:
+        """Refresh all voice combo labels after language changes."""
+        quick_current = self._quick_combo.currentData() or "narrator_calm"
+        _populate_voice_combo(self._quick_combo, str(quick_current))
+        for row in range(self._table.rowCount()):
+            combo = self._table.cellWidget(row, 4)
+            if isinstance(combo, QComboBox):
+                current = combo.currentData() or "narrator_calm"
+                _populate_voice_combo(combo, str(current))
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Fallback compact switching when the table is used outside VoicesPage."""
@@ -407,22 +409,13 @@ class VoiceTableWidget(QWidget):
             self._btn_apply_narrator.setText(t("voice.apply_narrator"))
             return
 
-        if get_language() == "ru":
-            self._btn_all_narrator.setText("Диктор")
-            self._btn_all_male.setText("Муж.")
-            self._btn_all_female.setText("Жен.")
-            self._btn_auto.setText("Авто")
-            self._btn_apply_all.setText("Все")
-            self._btn_apply_dialogue.setText("Речь")
-            self._btn_apply_narrator.setText("Автор")
-        else:
-            self._btn_all_narrator.setText("Narr.")
-            self._btn_all_male.setText("Male")
-            self._btn_all_female.setText("Female")
-            self._btn_auto.setText("Auto")
-            self._btn_apply_all.setText("All")
-            self._btn_apply_dialogue.setText("Speech")
-            self._btn_apply_narrator.setText("Narr.")
+        self._btn_all_narrator.setText(t("voice.compact_narrator"))
+        self._btn_all_male.setText(t("voice.compact_male"))
+        self._btn_all_female.setText(t("voice.compact_female"))
+        self._btn_auto.setText(t("voice.compact_auto"))
+        self._btn_apply_all.setText(t("voice.compact_all"))
+        self._btn_apply_dialogue.setText(t("voice.compact_dialogue"))
+        self._btn_apply_narrator.setText(t("voice.compact_author"))
 
     def _apply_table_layout(self) -> None:
         """Apply column visibility and widget widths for the current mode."""

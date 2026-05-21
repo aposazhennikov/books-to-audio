@@ -34,6 +34,17 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from book_normalizer.chunking.manifest_v2 import (
+    DEFAULT_MANIFEST_NAME,
+    chunks_to_manifest,
+    ensure_v2_manifest,
+    flatten_manifest,
+    merge_chunk_with_next,
+    role_for_voice_id,
+    save_manifest,
+    split_chunk_text,
+    update_chunk_text,
+)
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.tts_worker import (
@@ -62,7 +73,7 @@ MODELS = [
     "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
 ]
 
-# All available voice preset IDs (must match tts_runner VOICE_PRESETS).
+# All available voice preset IDs used by v2 manifests and ComfyUI workflows.
 VOICE_IDS = [
     "narrator_calm",
     "narrator_energetic",
@@ -114,20 +125,8 @@ def _make_text_edit_compact(edit: QPlainTextEdit) -> None:
 
 
 def _iter_manifest_chunks(data: object) -> list[dict]:
-    """Return chunk records from v1 list or v2 grouped manifest."""
-    if isinstance(data, list):
-        return [item for item in data if isinstance(item, dict)]
-    if isinstance(data, dict):
-        chunks: list[dict] = []
-        for chapter in data.get("chapters", []):
-            if not isinstance(chapter, dict):
-                continue
-            chapter_index = chapter.get("chapter_index", 0)
-            for chunk in chapter.get("chunks", []):
-                if isinstance(chunk, dict):
-                    chunks.append({"chapter_index": chapter_index, **chunk})
-        return chunks
-    return []
+    """Return chunk records from a strict v2 grouped manifest."""
+    return flatten_manifest(ensure_v2_manifest(data))
 
 
 def _shorten_test_fragment(text: str, max_chars: int = _TEST_FRAGMENT_MAX_CHARS) -> str:
@@ -177,12 +176,7 @@ def _build_test_manifest_chunks(data: object, chapter: int | None = None) -> lis
 
 def _role_for_voice_id(voice_id: str) -> str:
     """Infer a manifest role from a Qwen voice preset id."""
-    normalized = (voice_id or "").strip().lower()
-    if normalized.startswith("male_") or normalized in {"male", "men"}:
-        return "male"
-    if normalized.startswith("female_") or normalized in {"female", "women"}:
-        return "female"
-    return "narrator"
+    return role_for_voice_id(voice_id)
 
 
 def _chunk_preview_text(text: str, max_chars: int = _TEST_CHUNK_LABEL_MAX_CHARS) -> str:
@@ -232,24 +226,21 @@ def _set_manifest_chunk_text(chunk: dict, text: str) -> None:
     chunk.pop("error", None)
 
 
+def _replace_manifest_data(data: object, record: dict) -> None:
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected {DEFAULT_MANIFEST_NAME} object.")
+    data.clear()
+    data.update(record)
+
+
 def _find_manifest_chunk(
     data: object,
     chapter_index: int,
     chunk_index: int,
 ) -> tuple[list, int, dict] | None:
-    """Find a mutable chunk record in v1 or v2 manifest data."""
-    if isinstance(data, list):
-        for idx, chunk in enumerate(data):
-            if not isinstance(chunk, dict):
-                continue
-            if (
-                int(chunk.get("chapter_index", 0)) == chapter_index
-                and int(chunk.get("chunk_index", idx)) == chunk_index
-            ):
-                return data, idx, chunk
-        return None
-
+    """Find a mutable chunk record in a v2 manifest object."""
     if isinstance(data, dict):
+        ensure_v2_manifest(data)
         for chapter in data.get("chapters", []):
             if not isinstance(chapter, dict):
                 continue
@@ -282,11 +273,10 @@ def _update_manifest_chunk_text(
     chunk_index: int,
     text: str,
 ) -> bool:
-    found = _find_manifest_chunk(data, chapter_index, chunk_index)
-    if found is None:
+    manifest = ensure_v2_manifest(data)
+    if not update_chunk_text(manifest, chapter_index, chunk_index, text):
         return False
-    _, _, chunk = found
-    _set_manifest_chunk_text(chunk, text)
+    _replace_manifest_data(data, manifest.to_record())
     return True
 
 
@@ -296,27 +286,10 @@ def _split_manifest_chunk_text(
     chunk_index: int,
     split_at: int,
 ) -> bool:
-    found = _find_manifest_chunk(data, chapter_index, chunk_index)
-    if found is None:
+    manifest = ensure_v2_manifest(data)
+    if not split_chunk_text(manifest, chapter_index, chunk_index, split_at):
         return False
-    container, idx, chunk = found
-    text = str(chunk.get("text") or "")
-    if split_at <= 0 or split_at >= len(text):
-        return False
-    before = text[:split_at].strip()
-    after = text[split_at:].strip()
-    if not before or not after:
-        return False
-
-    new_chunk = dict(chunk)
-    new_chunk["pause_after_ms"] = chunk.get("pause_after_ms", 0)
-    new_chunk["boundary_after"] = chunk.get("boundary_after", "")
-    _set_manifest_chunk_text(chunk, before)
-    _set_manifest_chunk_text(new_chunk, after)
-    chunk.pop("pause_after_ms", None)
-    chunk.pop("boundary_after", None)
-    container.insert(idx + 1, new_chunk)
-    _renumber_manifest_chunks(container, chapter_index)
+    _replace_manifest_data(data, manifest.to_record())
     return True
 
 
@@ -325,32 +298,10 @@ def _merge_manifest_chunk_with_next(
     chapter_index: int,
     chunk_index: int,
 ) -> bool:
-    found = _find_manifest_chunk(data, chapter_index, chunk_index)
-    if found is None:
+    manifest = ensure_v2_manifest(data)
+    if not merge_chunk_with_next(manifest, chapter_index, chunk_index):
         return False
-    container, idx, chunk = found
-    if idx + 1 >= len(container):
-        return False
-    next_chunk = container[idx + 1]
-    if not isinstance(next_chunk, dict):
-        return False
-    if int(next_chunk.get("chapter_index", chapter_index)) != chapter_index:
-        return False
-
-    merged = " ".join(
-        part.strip()
-        for part in (str(chunk.get("text") or ""), str(next_chunk.get("text") or ""))
-        if part.strip()
-    )
-    if not merged:
-        return False
-    _set_manifest_chunk_text(chunk, merged)
-    if next_chunk.get("pause_after_ms"):
-        chunk["pause_after_ms"] = next_chunk.get("pause_after_ms", 0)
-    if next_chunk.get("boundary_after"):
-        chunk["boundary_after"] = next_chunk.get("boundary_after", "")
-    del container[idx + 1]
-    _renumber_manifest_chunks(container, chapter_index)
+    _replace_manifest_data(data, manifest.to_record())
     return True
 
 
@@ -363,6 +314,7 @@ class _CloneVoiceRow(QWidget):
     def __init__(self, voice_ids: list[str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._build_ui(voice_ids)
+        self.retranslate()
 
     def _build_ui(self, voice_ids: list[str]) -> None:
         layout = QVBoxLayout(self)
@@ -389,14 +341,12 @@ class _CloneVoiceRow(QWidget):
         )
         row1.addWidget(self._wav_edit, stretch=1)
 
-        self._btn_wav = QPushButton("WAV…")
-        self._btn_wav.setText("WAV...")
-        self._btn_wav.setMaximumWidth(72)
+        self._btn_wav = QPushButton()
+        self._btn_wav.setMaximumWidth(92)
         self._btn_wav.clicked.connect(self._browse_wav)
         row1.addWidget(self._btn_wav)
 
-        self._btn_remove = QPushButton("✕")
-        self._btn_remove.setText("x")
+        self._btn_remove = QPushButton()
         self._btn_remove.setMaximumWidth(34)
         self._btn_remove.setStyleSheet(
             "QPushButton { color: rgba(252,165,165,0.86); font-weight: 700;"
@@ -420,7 +370,10 @@ class _CloneVoiceRow(QWidget):
 
     def _browse_wav(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select Reference WAV", "", "Audio (*.wav *.mp3 *.flac *.ogg);;All (*)",
+            self,
+            t("synth.select_reference_audio"),
+            "",
+            "Audio (*.wav *.mp3 *.flac *.ogg);;All (*)",
         )
         if path:
             self._wav_edit.setText(path)
@@ -450,6 +403,9 @@ class _CloneVoiceRow(QWidget):
 
     def retranslate(self) -> None:
         """Update translatable placeholder text."""
+        self._btn_wav.setText(t("synth.choose_file"))
+        self._btn_remove.setText("x")
+        self._btn_remove.setToolTip(t("synth.clone_remove_voice"))
         self._transcript.setPlaceholderText(t("synth.clone_transcript_ph"))
 
 
@@ -1519,6 +1475,8 @@ class SynthesisPage(QWidget):
         self._btn_save_chunk_text.setText(t("synth.chunk_editor_save"))
         self._btn_split_chunk.setText(t("synth.chunk_editor_split"))
         self._btn_merge_chunk.setText(t("synth.chunk_editor_merge"))
+        for row in self._clone_rows:
+            row.retranslate()
         self._populate_test_source_combo()
         self._refresh_test_chapter_combo()
         if not self._sample_status.text():
@@ -1995,7 +1953,7 @@ class SynthesisPage(QWidget):
             self._manifest_chunks = chunks
             self._refresh_chapter_combo()
             self._refresh_test_chapter_combo()
-        except (json.JSONDecodeError, OSError, TypeError, AttributeError):
+        except (json.JSONDecodeError, OSError, TypeError, AttributeError, ValueError):
             self._manifest_chunks = []
             pass
 
@@ -2186,14 +2144,16 @@ class SynthesisPage(QWidget):
             data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError, TypeError):
             return
-        if not action(data):
+        try:
+            changed = action(data)
+        except ValueError as exc:
+            self._status.setText(str(exc))
+            return
+        if not changed:
             return
         try:
-            self._manifest_path.write_text(
-                json.dumps(data, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-        except OSError as exc:
+            save_manifest(self._manifest_path, data)
+        except (OSError, ValueError) as exc:
             self._status.setText(str(exc))
             return
         target_chunk = chunk_index if next_chunk_index is None else next_chunk_index
@@ -2370,10 +2330,12 @@ class SynthesisPage(QWidget):
         self._preview_output_dir = output_dir / "tts_test_preview"
         self._preview_output_dir.mkdir(parents=True, exist_ok=True)
         test_manifest = self._preview_output_dir / "test_manifest.json"
-        test_manifest.write_text(
-            json.dumps(test_chunks, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        preview_manifest = chunks_to_manifest(
+            test_chunks,
+            book_title="tts_test_preview",
+            chunker="gui_test",
         )
+        save_manifest(test_manifest, preview_manifest)
 
         self._last_test_audio_path = None
         self._btn_play_test.setEnabled(False)
@@ -2476,7 +2438,7 @@ class SynthesisPage(QWidget):
         """Update elapsed time display every second."""
         elapsed = int(time.time() - self._phase_start)
         m, s = divmod(elapsed, 60)
-        time_str = f"{m}:{s:02d}" if m else f"{s} сек"
+        time_str = f"{m}:{s:02d}" if m else t("time.seconds_short", sec=s)
         if self._phase == "loading":
             key = "synth.test_loading_model" if self._run_kind == "test" else "synth.loading_model"
             self._progress.set_busy(t(key) + f"  [{time_str}]")

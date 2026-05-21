@@ -20,7 +20,6 @@ from book_normalizer.gui.pages.synthesis_page import (
 from book_normalizer.gui.workers.tts_worker import (
     ExportSegmentsWorker,
     TTSSynthesisWorker,
-    _flatten_manifest_chunks,
 )
 from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.tts.model_download import (
@@ -58,34 +57,20 @@ def _v2_manifest() -> dict:
 def test_synthesis_page_reads_v2_manifest_chunks() -> None:
     chunks = _iter_manifest_chunks(_v2_manifest())
 
-    assert chunks == [
-        {
-            "chapter_index": 3,
-            "chunk_index": 0,
-            "voice_id": "narrator_calm",
-            "text": "Hello",
-        },
-    ]
+    assert len(chunks) == 1
+    assert chunks[0]["chapter_index"] == 3
+    assert chunks[0]["chunk_index"] == 0
+    assert chunks[0]["voice_id"] == "narrator_calm"
+    assert chunks[0]["text"] == "Hello"
 
 
-def test_tts_worker_flattens_v2_manifest_for_legacy_runner() -> None:
-    chunks = _flatten_manifest_chunks(_v2_manifest())
-
-    assert chunks == [
-        {
-            "chapter_index": 3,
-            "chunk_index": 0,
-            "voice_id": "narrator_calm",
-            "text": "Hello",
-        },
-    ]
-
-
-def test_tts_worker_converts_models_dir_to_wsl_path() -> None:
-    assert (
-        TTSSynthesisWorker._wsl_path_text(r"D:\ComfyUI-external\models")
-        == "/mnt/d/ComfyUI-external/models"
-    )
+def test_synthesis_page_rejects_v1_manifest_lists() -> None:
+    try:
+        _iter_manifest_chunks([])
+    except ValueError as exc:
+        assert "chunks_manifest_v2.json" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected v1 list manifest to be rejected")
 
 
 def test_synthesis_page_installs_base_model_for_custom_voice_mode() -> None:
@@ -111,31 +96,15 @@ def test_synthesis_page_installs_selected_model_for_preset_mode() -> None:
     ]
 
 
-def test_tts_worker_converts_sample_audio_path_inside_clone_config(tmp_path: Path) -> None:
-    cfg_path = tmp_path / "clone.json"
-    cfg_path.write_text(
-        json.dumps(
-            {
-                "__all__": {
-                    "ref_audio": r"D:\samples\narrator.wav",
-                    "ref_text": "Sample transcript.",
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
+def test_tts_worker_keeps_old_kwargs_as_noop_v2_compatibility(tmp_path: Path) -> None:
     worker = TTSSynthesisWorker(
         manifest_path=tmp_path / "manifest.json",
         output_dir=tmp_path,
-        clone_config=str(cfg_path),
+        clone_config="ignored-in-v2.json",
+        models_dir=r"D:\ComfyUI-external\models",
     )
 
-    converted_path = worker._prepare_clone_config()
-
-    assert converted_path is not None
-    converted = json.loads(converted_path.read_text(encoding="utf-8"))
-    assert converted["__all__"]["ref_audio"] == "/mnt/d/samples/narrator.wav"
+    assert worker._unused_runner_options["clone_config"] == "ignored-in-v2.json"
 
 
 def test_build_test_manifest_uses_selected_chapter_and_trims_text() -> None:

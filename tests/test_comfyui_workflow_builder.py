@@ -27,6 +27,7 @@ def test_workflow_builder_replaces_synthesis_placeholders(tmp_path: Path) -> Non
                 "inputs": {
                     "text": "{{TEXT}}",
                     "speaker": "{{SPEAKER}}",
+                    "language": "Russian",
                     "instruct": "{{INSTRUCT}}",
                     "filename_prefix": "out/{{OUTPUT_FILENAME}}",
                 }
@@ -39,13 +40,32 @@ def test_workflow_builder_replaces_synthesis_placeholders(tmp_path: Path) -> Non
         voice_label="women",
         voice_tone="angry and tense",
         output_filename="chunk_001_women",
+        language="en",
     )
 
     inputs = workflow["1"]["inputs"]
     assert inputs["text"] == "Привет."
     assert inputs["speaker"] == "Serena"
+    assert inputs["language"] == "English"
     assert inputs["instruct"] == "Женский персонаж. Жёстко и напряжённо."
     assert inputs["filename_prefix"] == "out/chunk_001_women"
+
+
+def test_workflow_builder_replaces_language_placeholder(tmp_path: Path) -> None:
+    template = _write_template(
+        tmp_path / "workflow.json",
+        {"1": {"inputs": {"language": "{{LANGUAGE}}"}}},
+    )
+
+    workflow = WorkflowBuilder(template).build(
+        text="\u4f60\u597d\u3002",
+        voice_label="narrator",
+        voice_tone="calm",
+        output_filename="chunk_001",
+        language="zh",
+    )
+
+    assert workflow["1"]["inputs"]["language"] == "Chinese"
 
 
 def test_workflow_builder_reports_missing_placeholders(tmp_path: Path) -> None:

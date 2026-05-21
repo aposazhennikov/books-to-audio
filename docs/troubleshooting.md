@@ -13,4 +13,4 @@ Common issues:
 - **No audio in assembly**: run `normalize-book audio-qa output\book\chunks_manifest_v2.json`.
 - **Some chunks failed**: use the GUI retry checkbox or run `scripts\synthesize_comfyui.py --failed-only`.
 - **Scanned PDFs fail**: install Tesseract with the Russian language pack, then use OCR mode `auto` or `force`.
-- **WSL checks warn**: only required for the legacy v1 WSL runner; ComfyUI v2 synthesis runs through the Windows process.
+- **Old WSL runner docs/scripts are missing**: this is expected. The TTS contract is v2-only; generate/use `chunks_manifest_v2.json` and synthesize through ComfyUI.

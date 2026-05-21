@@ -21,7 +21,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from book_normalizer.gui.i18n import get_language, t
+from book_normalizer.gui.i18n import (
+    t,
+    voice_category_label,
+    voice_preset_description,
+    voice_preset_label,
+)
 from book_normalizer.gui.voice_presets import VOICE_PRESETS, VoicePreset
 from book_normalizer.tts.model_paths import default_comfyui_models_dir
 from book_normalizer.tts.wsl_runtime import build_wsl_tts_activation_script
@@ -133,7 +138,7 @@ class GeneratePreviewsWorker(QThread):
                 elif line.startswith("LOADING_MODEL"):
                     self.progress_line.emit(t("voice.gen_loading"))
                 elif line.startswith("MODEL_READY"):
-                    self.progress_line.emit("Model loaded. Generating...")
+                    self.progress_line.emit(t("voice.model_loaded_generating"))
                 elif line.startswith("ATTN_INFO|"):
                     parts = line.split("|")
                     if len(parts) >= 3:
@@ -147,11 +152,11 @@ class GeneratePreviewsWorker(QThread):
             proc.wait(timeout=30)
             if proc.returncode != 0:
                 self.error.emit(
-                    f"Process exited with code {proc.returncode}"
+                    t("voice.process_exit_code", code=proc.returncode)
                 )
 
         except subprocess.TimeoutExpired:
-            self.error.emit("Timeout: generation took too long")
+            self.error.emit(t("voice.timeout_generation"))
         except Exception as exc:
             self.error.emit(str(exc))
 
@@ -257,11 +262,7 @@ class VoiceCard(QWidget):
         top_row = QHBoxLayout()
         top_row.setSpacing(6)
 
-        lang = get_language()
-        label_text = (
-            self.preset.label_ru if lang == "ru" else self.preset.label_en
-        )
-        self._label = QLabel(label_text)
+        self._label = QLabel(voice_preset_label(self.preset))
         self._label.setStyleSheet(
             "font-size: 13px; font-weight: 700; color: #f1f5f9;"
             "background: transparent; border: none;"
@@ -279,12 +280,7 @@ class VoiceCard(QWidget):
         top_row.addStretch()
         info.addLayout(top_row)
 
-        desc = (
-            self.preset.description_ru
-            if lang == "ru"
-            else self.preset.description_en
-        )
-        self._desc = QLabel(desc)
+        self._desc = QLabel(voice_preset_description(self.preset))
         self._desc.setStyleSheet(
             "color: rgba(226,232,240,0.48); font-size: 10px;"
             "background: transparent; border: none;"
@@ -292,7 +288,7 @@ class VoiceCard(QWidget):
         self._desc.setWordWrap(True)
         info.addWidget(self._desc)
 
-        self._speaker_lbl = QLabel(f"speaker: {self.preset.speaker}")
+        self._speaker_lbl = QLabel(t("voice.speaker_label", speaker=self.preset.speaker))
         self._speaker_lbl.setStyleSheet(
             "color: rgba(196,181,253,0.66); font-size: 9px;"
             "font-weight: 600; background: transparent; border: none;"
@@ -362,15 +358,9 @@ class VoiceCard(QWidget):
 
     def retranslate(self) -> None:
         """Update labels for current language."""
-        lang = get_language()
-        self._label.setText(
-            self.preset.label_ru if lang == "ru" else self.preset.label_en
-        )
-        self._desc.setText(
-            self.preset.description_ru
-            if lang == "ru"
-            else self.preset.description_en
-        )
+        self._label.setText(voice_preset_label(self.preset))
+        self._desc.setText(voice_preset_description(self.preset))
+        self._speaker_lbl.setText(t("voice.speaker_label", speaker=self.preset.speaker))
 
     def _play(self) -> None:
         """Play the preview audio file."""
@@ -512,20 +502,11 @@ class VoicePreviewPanel(QWidget):
         layout.addWidget(self._status_label)
 
         # Category sections + voice cards.
-        cat_order = [
-            ("narrator", "Narrators",
-             "\u0414\u0438\u043a\u0442\u043e\u0440\u044b"),
-            ("male", "Male voices",
-             "\u041c\u0443\u0436\u0441\u043a\u0438\u0435 "
-             "\u0433\u043e\u043b\u043e\u0441\u0430"),
-            ("female", "Female voices",
-             "\u0416\u0435\u043d\u0441\u043a\u0438\u0435 "
-             "\u0433\u043e\u043b\u043e\u0441\u0430"),
-        ]
+        cat_order = ["narrator", "male", "female"]
 
         self._cat_labels: list[tuple[str, QLabel]] = []
 
-        for cat_id, _en, _ru in cat_order:
+        for cat_id in cat_order:
             cat_label = QLabel()
             cat_label.setStyleSheet(
                 "font-weight: 700; font-size: 11px;"
@@ -551,31 +532,15 @@ class VoicePreviewPanel(QWidget):
         """Update all translatable strings."""
         self._btn_generate.setText(t("voice.generate_previews"))
         self._btn_refresh.setText(t("voice.refresh_previews"))
-        self._btn_select_all.setText(
-            "\u2611 All" if get_language() == "en" else "\u2611 \u0412\u0441\u0435"
-        )
-        self._btn_select_none.setText(
-            "\u2610 None" if get_language() == "en" else "\u2610 \u041d\u0438\u0447\u0435\u0433\u043e"
-        )
+        self._btn_select_all.setText(t("voice.select_all"))
+        self._btn_select_none.setText(t("voice.select_none"))
         self._dir_label.setText(t("voice.output_dir"))
         self._btn_browse.setText(t("voice.choose_dir"))
         self._phrase_label.setText(t("voice.preview_phrase"))
         self._phrase_input.setPlaceholderText(t("voice.default_phrase"))
 
-        lang = get_language()
-        titles = {
-            "narrator": ("Narrators",
-                         "\u0414\u0438\u043a\u0442\u043e\u0440\u044b"),
-            "male": ("Male voices",
-                     "\u041c\u0443\u0436\u0441\u043a\u0438\u0435 "
-                     "\u0433\u043e\u043b\u043e\u0441\u0430"),
-            "female": ("Female voices",
-                       "\u0416\u0435\u043d\u0441\u043a\u0438\u0435 "
-                       "\u0433\u043e\u043b\u043e\u0441\u0430"),
-        }
         for cat_id, cat_label in self._cat_labels:
-            en, ru = titles.get(cat_id, (cat_id, cat_id))
-            cat_label.setText(ru if lang == "ru" else en)
+            cat_label.setText(voice_category_label(cat_id))
 
         for card in self._cards:
             card.retranslate()
@@ -624,14 +589,7 @@ class VoicePreviewPanel(QWidget):
         ]
         if not selected:
             self._status_label.setStyleSheet(_STYLE_STATUS_ERR)
-            lang = get_language()
-            self._status_label.setText(
-                "\u041d\u0438\u0447\u0435\u0433\u043e \u043d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d\u043e! "
-                "\u041e\u0442\u043c\u0435\u0442\u044c\u0442\u0435 \u0433\u043e\u043b\u043e\u0441\u0430 "
-                "\u0433\u0430\u043b\u043e\u0447\u043a\u0430\u043c\u0438."
-                if lang == "ru"
-                else "Nothing selected! Check the voices to generate."
-            )
+            self._status_label.setText(t("voice.none_selected"))
             return
 
         out_dir = Path(self._dir_input.text().strip())
@@ -648,18 +606,18 @@ class VoicePreviewPanel(QWidget):
             )
             if check.returncode != 0:
                 self._on_generate_error(
-                    "WSL not available. Install WSL first."
+                    t("voice.wsl_unavailable")
                 )
                 return
         except FileNotFoundError:
-            self._on_generate_error("WSL not found on this system.")
+            self._on_generate_error(t("voice.wsl_not_found"))
             return
         except Exception as exc:
-            self._on_generate_error(f"WSL check failed: {exc}")
+            self._on_generate_error(t("voice.wsl_check_failed", msg=str(exc)))
             return
 
         if not _SCRIPT_PATH.exists():
-            self._on_generate_error(f"Script not found: {_SCRIPT_PATH}")
+            self._on_generate_error(t("voice.script_not_found", path=str(_SCRIPT_PATH)))
             return
 
         phrase = self._phrase_input.toPlainText().strip()
@@ -667,7 +625,7 @@ class VoicePreviewPanel(QWidget):
             phrase = t("voice.default_phrase")
 
         self._btn_generate.setEnabled(False)
-        self._btn_generate.setText("Generating\u2026")
+        self._btn_generate.setText(t("voice.generating"))
         self._progress_bar.setVisible(True)
         # Indeterminate mode during model loading.
         self._progress_bar.setRange(0, 0)
@@ -694,7 +652,7 @@ class VoicePreviewPanel(QWidget):
         self._progress_bar.setValue(done)
         pct = int(done / total * 100) if total else 0
         self._progress_bar.setFormat(
-            f"{pct}%  ({done}/{total})  ETA: {eta}"
+            f"{pct}%  ({done}/{total})  {t('progress.eta', eta=eta)}"
         )
 
     def _on_voice_done(self, voice_id: str) -> None:
@@ -707,8 +665,7 @@ class VoicePreviewPanel(QWidget):
         """Show flash-attn status."""
         if impl == "sdpa":
             self._status_label.setText(
-                f"Model loading... (attn: {impl} \u2014 "
-                f"install flash-attn for 1.5\u20132\u00d7 speedup)"
+                t("voice.model_loading_attn_hint", impl=impl)
             )
 
     def _on_finished(
@@ -728,4 +685,4 @@ class VoicePreviewPanel(QWidget):
         self._btn_generate.setText(t("voice.generate_previews"))
         self._progress_bar.setVisible(False)
         self._status_label.setStyleSheet(_STYLE_STATUS_ERR)
-        self._status_label.setText(f"Error: {msg[:300]}")
+        self._status_label.setText(t("voice.error", msg=msg[:300]))

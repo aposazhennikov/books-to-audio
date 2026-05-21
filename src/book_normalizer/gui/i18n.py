@@ -1,4 +1,4 @@
-"""Internationalization (i18n) support for GUI — Russian / English."""
+"""Internationalization (i18n) support for GUI."""
 
 # ruff: noqa: E501
 
@@ -7,6 +7,14 @@ from __future__ import annotations
 from typing import Any
 
 _LANG: str = "ru"
+
+SUPPORTED_LANGUAGES: tuple[tuple[str, str], ...] = (
+    ("ru", "🇷🇺  Русский"),
+    ("en", "🇬🇧  English"),
+    ("zh", "🇨🇳  中文"),
+    ("kk", "🇰🇿  Қазақша"),
+    ("uz", "🇺🇿  Oʻzbekcha"),
+)
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
     # ── App-level ──
@@ -55,6 +63,19 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0424\u0430\u0439\u043b \u043d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d",
     },
     "norm.browse": {"en": "Browse\u2026", "ru": "\u041e\u0431\u0437\u043e\u0440\u2026"},
+    "norm.book_language": {
+        "en": "Book language:",
+        "ru": "\u042f\u0437\u044b\u043a \u043a\u043d\u0438\u0433\u0438:",
+    },
+    "norm.book_language_tip": {
+        "en": "Controls OCR language, language-safe normalization, chunk metadata, and Qwen/ComfyUI synthesis language.",
+        "ru": "\u0412\u043b\u0438\u044f\u0435\u0442 \u043d\u0430 \u044f\u0437\u044b\u043a OCR, \u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u0443\u044e \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044e, \u043c\u0435\u0442\u0430\u0434\u0430\u043d\u043d\u044b\u0435 \u0447\u0430\u043d\u043a\u043e\u0432 \u0438 \u044f\u0437\u044b\u043a \u0441\u0438\u043d\u0442\u0435\u0437\u0430 Qwen/ComfyUI.",
+    },
+    "book_language.ru": {"en": "Russian", "ru": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"},
+    "book_language.en": {"en": "English", "ru": "\u0410\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439"},
+    "book_language.zh": {"en": "Chinese", "ru": "\u041a\u0438\u0442\u0430\u0439\u0441\u043a\u0438\u0439"},
+    "book_language.kk": {"en": "Kazakh", "ru": "\u041a\u0430\u0437\u0430\u0445\u0441\u043a\u0438\u0439"},
+    "book_language.uz": {"en": "Uzbek", "ru": "\u0423\u0437\u0431\u0435\u043a\u0441\u043a\u0438\u0439"},
     "norm.ocr_mode": {"en": "OCR Mode:", "ru": "\u0420\u0435\u0436\u0438\u043c OCR:"},
     "norm.ocr_mode_hint": {
         "en": "auto = OCR if text unreadable | off = no OCR | force = always OCR | compare = both",
@@ -658,11 +679,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "synth.models_dir_hint": {
         "en": (
-            "The WSL runner looks here before HuggingFace. Default points to "
+            "ComfyUI/model setup uses this shared folder. Default points to "
             "D:\\ComfyUI-external\\models and expects Qwen folders in audio_encoders."
         ),
         "ru": (
-            "WSL-runner сначала ищет модели здесь, а уже потом в HuggingFace. "
+            "ComfyUI/model setup использует эту общую папку моделей. "
             "По умолчанию: D:\\ComfyUI-external\\models; Qwen ожидается в audio_encoders."
         ),
     },
@@ -928,15 +949,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Модель Qwen CustomVoice для готовых спикеров. 1.7B качественнее; 0.6B быстрее и легче.",
     },
     "synth.models_dir_help": {
-        "en": "Folder with downloaded models. The WSL runner checks it before downloading from HuggingFace.",
-        "ru": "Папка с уже скачанными моделями. WSL-runner сначала ищет здесь, потом уже в HuggingFace.",
+        "en": "Folder with downloaded models used by the v2 ComfyUI synthesis workflow.",
+        "ru": "Папка с уже скачанными моделями для v2 ComfyUI synthesis workflow.",
     },
     "synth.voice_library_dir_help": {
         "en": "Shared folder for reusable .voice.pt prompts. Saved voices can be reused across books without prompt extraction.",
         "ru": "Общая папка для reusable .voice.pt prompt'ов. Сохраненные голоса можно переиспользовать в разных книгах без prompt extraction.",
     },
     "synth.output_dir_help": {
-        "en": "Folder where synthesis files are written: audio_chunks, tts_test_preview, synthesis_log.txt, synthesis_manifest.json, and merged chapters.",
+        "en": "Folder where v2 synthesis files are written: audio_chunks, tts_test_preview, synthesis_log.txt, and merged chapters.",
         "ru": "\u041f\u0430\u043f\u043a\u0430, \u043a\u0443\u0434\u0430 \u043f\u0438\u0448\u0443\u0442\u0441\u044f \u0444\u0430\u0439\u043b\u044b \u0441\u0438\u043d\u0442\u0435\u0437\u0430: audio_chunks, tts_test_preview, synthesis_log.txt, synthesis_manifest.json \u0438 \u0441\u043e\u0431\u0440\u0430\u043d\u043d\u044b\u0435 \u0433\u043b\u0430\u0432\u044b.",
     },
     "synth.batch_help": {
@@ -1589,14 +1610,136 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
 
 def set_language(lang: str) -> None:
-    """Set current UI language ('en' or 'ru')."""
+    """Set current UI language."""
     global _LANG  # noqa: PLW0603
-    _LANG = lang
+    supported = {code for code, _label in SUPPORTED_LANGUAGES}
+    _LANG = lang if lang in supported else "en"
 
 
 def get_language() -> str:
     """Return current UI language code."""
     return _LANG
+
+
+_VOICE_PRESET_LOCALES: dict[str, dict[str, tuple[str, str]]] = {
+    "narrator_calm": {
+        "zh": ("旁白 — 平静", "平静稳定的旁白。吐字清晰，节奏从容。"),
+        "kk": ("Диктор — Сабырлы", "Сабырлы, тұрақты диктор. Айқын дикция, байыпты қарқын."),
+        "uz": ("Hikoyachi — Vazmin", "Vazmin, barqaror hikoyachi. Aniq talaffuz, me'yorli sur'at."),
+    },
+    "narrator_energetic": {
+        "zh": ("旁白 — 充满活力", "有张力的旁白。自信、富有表现力的朗读。"),
+        "kk": ("Диктор — Қуатты", "Ширақ диктор. Сенімді, әсерлі оқу."),
+        "uz": ("Hikoyachi — Jo'shqin", "Jo'shqin hikoyachi. Ishonchli, ifodali o'qish."),
+    },
+    "narrator_wise": {
+        "zh": ("旁白 — 睿智", "沉稳睿智的旁白。低沉音色，节奏不急不缓。"),
+        "kk": ("Диктор — Дана", "Тәжірибелі, дана диктор. Терең тембр, асықпай оқу."),
+        "uz": ("Hikoyachi — Dono", "Tajribali, dono hikoyachi. Chuqur tembr, shoshilmagan sur'at."),
+    },
+    "male_young": {
+        "zh": ("男声 — 年轻", "年轻、有活力的男声。自然且带情绪的语调。"),
+        "kk": ("Ер дауыс — Жас", "Жас, серпінді ер дауыс. Табиғи әрі эмоциялық интонация."),
+        "uz": ("Erkak ovozi — Yosh", "Yosh, serg'ayrat erkak ovozi. Tabiiy, hissiy intonatsiya."),
+    },
+    "male_confident": {
+        "zh": ("男声 — 自信", "自信的中年男声。清晰、果断。"),
+        "kk": ("Ер дауыс — Сенімді", "Орта жастағы сенімді ер дауыс. Айқын, шешімді."),
+        "uz": ("Erkak ovozi — Ishonchli", "O'rta yoshdagi ishonchli erkak ovozi. Aniq, qat'iy."),
+    },
+    "male_deep": {
+        "zh": ("男声 — 低沉", "低沉的男中音。庄重、有分量的表达。"),
+        "kk": ("Ер дауыс — Терең", "Терең баритон. Салмақты, беделді сөйлеу."),
+        "uz": ("Erkak ovozi — Chuqur", "Chuqur bariton. Salobatli, vazmin nutq."),
+    },
+    "male_lively": {
+        "zh": ("男声 — 活泼", "活泼开朗的男声。带幽默感，轻松有魅力。"),
+        "kk": ("Ер дауыс — Ширақ", "Көңілді, ширақ ер дауыс. Әзіл мен жеңілдік бар."),
+        "uz": ("Erkak ovozi — Tetik", "Tetik, quvnoq erkak ovozi. Hazil va yengillik bilan."),
+    },
+    "male_regional": {
+        "zh": ("男声 — 富有表现力", "有性格的男声。表达鲜明，有个人魅力。"),
+        "kk": ("Ер дауыс — Әсерлі", "Мінезі бар әсерлі ер дауыс. Харизмалы сөйлеу."),
+        "uz": ("Erkak ovozi — Ifodali", "Xarakterli ifodali erkak ovozi. Jozibali nutq."),
+    },
+    "female_warm": {
+        "zh": ("女声 — 温暖", "温暖柔和的女声。温柔、关怀的语调。"),
+        "kk": ("Әйел дауыс — Жылы", "Жылы, жұмсақ әйел дауыс. Нәзік, қамқор интонация."),
+        "uz": ("Ayol ovozi — Iliq", "Iliq, yumshoq ayol ovozi. Mehribon, g'amxo'r intonatsiya."),
+    },
+    "female_bright": {
+        "zh": ("女声 — 明亮", "明亮清晰的女声。富有表现力，充满能量。"),
+        "kk": ("Әйел дауыс — Жарқын", "Жарқын, анық әйел дауыс. Әсерлі, қуатты."),
+        "uz": ("Ayol ovozi — Yorqin", "Yorqin, tiniq ayol ovozi. Ifodali, serg'ayrat."),
+    },
+    "female_playful": {
+        "zh": ("女声 — 俏皮", "俏皮的女声。轻快，像带着微笑说话。"),
+        "kk": ("Әйел дауыс — Ойнақы", "Ойнақы әйел дауыс. Жеңіл, күлімдеген үн."),
+        "uz": ("Ayol ovozi — O'ynoqi", "O'ynoqi ayol ovozi. Yengil, tabassumli nutq."),
+    },
+    "female_gentle": {
+        "zh": ("女声 — 轻柔", "轻柔、旋律感强的女声。柔和、安抚的表达。"),
+        "kk": ("Әйел дауыс — Нәзік", "Нәзік, әуезді әйел дауыс. Жұмсақ, тыныштандыратын сөйлеу."),
+        "uz": ("Ayol ovozi — Muloyim", "Muloyim, ohangdor ayol ovozi. Yumshoq, tinchlantiruvchi nutq."),
+    },
+}
+
+
+_VOICE_CATEGORY_LABELS: dict[str, dict[str, str]] = {
+    "narrator": {
+        "en": "Narrators",
+        "ru": "Дикторы",
+        "zh": "旁白声音",
+        "kk": "Дикторлар",
+        "uz": "Hikoyachilar",
+    },
+    "male": {
+        "en": "Male voices",
+        "ru": "Мужские голоса",
+        "zh": "男声",
+        "kk": "Ер дауыстар",
+        "uz": "Erkak ovozlari",
+    },
+    "female": {
+        "en": "Female voices",
+        "ru": "Женские голоса",
+        "zh": "女声",
+        "kk": "Әйел дауыстар",
+        "uz": "Ayol ovozlari",
+    },
+}
+
+
+def voice_category_label(category: str) -> str:
+    """Return a localized voice category label."""
+    labels = _VOICE_CATEGORY_LABELS.get(category, {})
+    return labels.get(_LANG, labels.get("en", category))
+
+
+def voice_preset_label(preset: object) -> str:
+    """Return a localized voice preset label."""
+    if _LANG == "ru":
+        return str(getattr(preset, "label_ru"))
+    if _LANG == "en":
+        return str(getattr(preset, "label_en"))
+    preset_id = str(getattr(preset, "id"))
+    return _VOICE_PRESET_LOCALES.get(preset_id, {}).get(
+        _LANG,
+        (str(getattr(preset, "label_en")), ""),
+    )[0]
+
+
+def voice_preset_description(preset: object) -> str:
+    """Return a localized voice preset description."""
+    if _LANG == "ru":
+        return str(getattr(preset, "description_ru"))
+    if _LANG == "en":
+        return str(getattr(preset, "description_en"))
+    preset_id = str(getattr(preset, "id"))
+    return _VOICE_PRESET_LOCALES.get(preset_id, {}).get(
+        _LANG,
+        ("", str(getattr(preset, "description_en"))),
+    )[1]
 
 
 def t(key: str, **kwargs: Any) -> str:
@@ -1608,3 +1751,230 @@ def t(key: str, **kwargs: Any) -> str:
     if kwargs:
         text = text.format(**kwargs)
     return text
+
+
+def _install_extra_translations() -> None:
+    """Install optional locale catalogs and fail fast if they drift."""
+    from book_normalizer.gui.i18n_extra import EXTRA_TRANSLATIONS
+
+    base_keys = set(TRANSLATIONS)
+    for lang, catalog in EXTRA_TRANSLATIONS.items():
+        extra = set(catalog) - base_keys
+        if extra:
+            raise RuntimeError(
+                f"Locale '{lang}' is out of sync: extra={sorted(extra)}"
+            )
+        for key, text in catalog.items():
+            TRANSLATIONS[key][lang] = text
+
+    polished = {
+        "app.title": {
+            "zh": "书籍转音频",
+            "kk": "Кітаптарды аудиоға",
+            "uz": "Kitoblarni audioga",
+        },
+        "app.subtitle": {"en": "", "ru": "", "zh": "", "kk": "", "uz": ""},
+        "app.lang_label": {"zh": "语言：", "kk": "Тіл:", "uz": "Til:"},
+        "tab.normalize": {"zh": "1. 规范化", "kk": "1. Нормалдау"},
+        "tab.normalize_short": {"zh": "1. 规范", "kk": "1. Норм."},
+        "tab.voices": {"zh": "2. 声音", "kk": "2. Дауыстар"},
+        "tab.voices_short": {"zh": "2. 声音", "kk": "2. Дауыстар"},
+        "tab.synthesize": {"zh": "3. 合成", "kk": "3. Синтез"},
+        "tab.assemble": {"zh": "4. 汇编", "kk": "4. Жинау", "uz": "4. Yigʻish"},
+        "tab.assemble_short": {"zh": "4. 汇编", "kk": "4. Жинау", "uz": "4. Yigʻish"},
+        "norm.book_language": {
+            "zh": "书籍语言：",
+            "kk": "Кітап тілі:",
+            "uz": "Kitob tili:",
+        },
+        "norm.book_language_tip": {
+            "zh": "控制 OCR 语言、语言安全的规范化、分块元数据以及 Qwen/ComfyUI 合成语言。",
+            "kk": "OCR тілін, тілге қауіпсіз нормалдауды, чанк метадеректерін және Qwen/ComfyUI синтез тілін басқарады.",
+            "uz": "OCR tili, tilga xavfsiz normallashtirish, chunk metadata va Qwen/ComfyUI sintez tilini boshqaradi.",
+        },
+        "book_language.ru": {"zh": "俄语", "kk": "Орысша", "uz": "Ruscha"},
+        "book_language.en": {"zh": "英语", "kk": "Ағылшынша", "uz": "Inglizcha"},
+        "book_language.zh": {"zh": "中文", "kk": "Қытайша", "uz": "Xitoycha"},
+        "book_language.kk": {"zh": "哈萨克语", "kk": "Қазақша", "uz": "Qozoqcha"},
+        "book_language.uz": {"zh": "乌兹别克语", "kk": "Өзбекше", "uz": "Oʻzbekcha"},
+        "voice.col_chunk": {"zh": "分块"},
+        "synth.chunks_word": {"zh": "分块"},
+    }
+    for key, values in polished.items():
+        TRANSLATIONS[key].update(values)
+
+    TRANSLATIONS.update(
+        {
+            "voice.select_all": {
+                "en": "☑ All",
+                "ru": "☑ Все",
+                "zh": "☑ 全选",
+                "kk": "☑ Барлығы",
+                "uz": "☑ Hammasi",
+            },
+            "voice.select_none": {
+                "en": "☐ None",
+                "ru": "☐ Ничего",
+                "zh": "☐ 全不选",
+                "kk": "☐ Ешқайсысы",
+                "uz": "☐ Hech biri",
+            },
+            "voice.compact_narrator": {
+                "en": "Narr.",
+                "ru": "Диктор",
+                "zh": "旁白",
+                "kk": "Диктор",
+                "uz": "Hikoya",
+            },
+            "voice.compact_male": {
+                "en": "Male",
+                "ru": "Муж.",
+                "zh": "男声",
+                "kk": "Ер",
+                "uz": "Erkak",
+            },
+            "voice.compact_female": {
+                "en": "Female",
+                "ru": "Жен.",
+                "zh": "女声",
+                "kk": "Әйел",
+                "uz": "Ayol",
+            },
+            "voice.compact_auto": {
+                "en": "Auto",
+                "ru": "Авто",
+                "zh": "自动",
+                "kk": "Авто",
+                "uz": "Avto",
+            },
+            "voice.compact_all": {
+                "en": "All",
+                "ru": "Все",
+                "zh": "全部",
+                "kk": "Бәрі",
+                "uz": "Barchasi",
+            },
+            "voice.compact_dialogue": {
+                "en": "Speech",
+                "ru": "Речь",
+                "zh": "对白",
+                "kk": "Сөз",
+                "uz": "Nutq",
+            },
+            "voice.compact_author": {
+                "en": "Narr.",
+                "ru": "Автор",
+                "zh": "旁白",
+                "kk": "Автор",
+                "uz": "Muallif",
+            },
+            "voice.speaker_label": {
+                "en": "speaker: {speaker}",
+                "ru": "спикер: {speaker}",
+                "zh": "说话人：{speaker}",
+                "kk": "спикер: {speaker}",
+                "uz": "spiker: {speaker}",
+            },
+            "voice.none_selected": {
+                "en": "Nothing selected! Check the voices to generate.",
+                "ru": "Ничего не выбрано! Отметьте голоса галочками.",
+                "zh": "没有选择声音！请勾选要生成的声音。",
+                "kk": "Ештеңе таңдалмаған! Жасалатын дауыстарды белгілеңіз.",
+                "uz": "Hech narsa tanlanmagan! Yaratiladigan ovozlarni belgilang.",
+            },
+            "voice.generating": {
+                "en": "Generating…",
+                "ru": "Генерация…",
+                "zh": "正在生成…",
+                "kk": "Жасалуда…",
+                "uz": "Yaratilmoqda…",
+            },
+            "voice.model_loaded_generating": {
+                "en": "Model loaded. Generating...",
+                "ru": "Модель загружена. Генерация...",
+                "zh": "模型已加载。正在生成...",
+                "kk": "Модель жүктелді. Жасалуда...",
+                "uz": "Model yuklandi. Yaratilmoqda...",
+            },
+            "voice.process_exit_code": {
+                "en": "Process exited with code {code}",
+                "ru": "Процесс завершился с кодом {code}",
+                "zh": "进程已退出，代码 {code}",
+                "kk": "Процесс {code} кодымен аяқталды",
+                "uz": "Jarayon {code} kodi bilan tugadi",
+            },
+            "voice.timeout_generation": {
+                "en": "Timeout: generation took too long",
+                "ru": "Таймаут: генерация заняла слишком много времени",
+                "zh": "超时：生成耗时过长",
+                "kk": "Таймаут: жасау тым ұзаққа созылды",
+                "uz": "Vaqt tugadi: yaratish juda uzoq davom etdi",
+            },
+            "voice.wsl_unavailable": {
+                "en": "WSL not available. Install WSL first.",
+                "ru": "WSL недоступен. Сначала установите WSL.",
+                "zh": "WSL 不可用。请先安装 WSL。",
+                "kk": "WSL қолжетімсіз. Алдымен WSL орнатыңыз.",
+                "uz": "WSL mavjud emas. Avval WSL o'rnating.",
+            },
+            "voice.wsl_not_found": {
+                "en": "WSL not found on this system.",
+                "ru": "WSL не найден в этой системе.",
+                "zh": "此系统未找到 WSL。",
+                "kk": "Бұл жүйеде WSL табылмады.",
+                "uz": "Bu tizimda WSL topilmadi.",
+            },
+            "voice.wsl_check_failed": {
+                "en": "WSL check failed: {msg}",
+                "ru": "Проверка WSL не удалась: {msg}",
+                "zh": "WSL 检查失败：{msg}",
+                "kk": "WSL тексеруі сәтсіз: {msg}",
+                "uz": "WSL tekshiruvi bajarilmadi: {msg}",
+            },
+            "voice.script_not_found": {
+                "en": "Script not found: {path}",
+                "ru": "Скрипт не найден: {path}",
+                "zh": "未找到脚本：{path}",
+                "kk": "Скрипт табылмады: {path}",
+                "uz": "Skript topilmadi: {path}",
+            },
+            "synth.select_reference_audio": {
+                "en": "Select Reference Audio",
+                "ru": "Выбрать аудио-образец",
+                "zh": "选择参考音频",
+                "kk": "Эталон аудионы таңдау",
+                "uz": "Namuna audioni tanlash",
+            },
+            "synth.clone_remove_voice": {
+                "en": "Remove voice",
+                "ru": "Удалить голос",
+                "zh": "移除声音",
+                "kk": "Дауысты жою",
+                "uz": "Ovozni olib tashlash",
+            },
+            "voice.error": {
+                "en": "Error: {msg}",
+                "ru": "Ошибка: {msg}",
+                "zh": "错误：{msg}",
+                "kk": "Қате: {msg}",
+                "uz": "Xato: {msg}",
+            },
+            "voice.model_loading_attn_hint": {
+                "en": "Model loading... (attn: {impl} — install flash-attn for 1.5–2x speedup)",
+                "ru": "Модель загружается... (attn: {impl} — установите flash-attn для ускорения в 1.5–2 раза)",
+                "zh": "模型正在加载...（attn：{impl} — 安装 flash-attn 可提速 1.5–2 倍）",
+                "kk": "Модель жүктелуде... (attn: {impl} — 1.5–2 есе жылдамдату үшін flash-attn орнатыңыз)",
+                "uz": "Model yuklanmoqda... (attn: {impl} — 1.5–2 marta tezlashtirish uchun flash-attn o'rnating)",
+            },
+            "time.seconds_short": {
+                "en": "{sec}s",
+                "ru": "{sec} сек",
+                "zh": "{sec} 秒",
+                "kk": "{sec} с",
+                "uz": "{sec} s",
+            },
+        }
+    )
+
+
+_install_extra_translations()

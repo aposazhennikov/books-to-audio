@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,15 +12,58 @@ from book_normalizer.config import OcrMode
 from book_normalizer.loaders.pdf_loader import (
     PdfLoader,
     PdfOcrCompareResult,
+    PdfPageExtraction,
+    PdfStructuredExtraction,
     PdfTextVariant,
+    _classify_pdf_page,
+    _extract_pdf_structured,
     _looks_like_toc,
     _postprocess_ocr_text,
     _prepare_ocr_page_images,
     _repair_ocr_cross_segment_breaks,
     _should_keep_ocr_text,
+    _table_converter,
     extract_pdf_with_ocr_mode,
     select_pdf_text_for_mode,
 )
+
+
+def _scan_like_png_bytes(width: int = 500, height: int = 700) -> bytes:
+    """Create a simple scan-like image with dark text bars."""
+    pil_image = pytest.importorskip("PIL.Image")
+    image_draw = pytest.importorskip("PIL.ImageDraw")
+
+    image = pil_image.new("L", (width, height), 255)
+    draw = image_draw.Draw(image)
+    x_margin = max(10, width // 10)
+    y_margin = max(10, height // 10)
+    line_height = max(4, height // 90)
+    line_gap = max(12, height // 22)
+    for y in range(y_margin, height - y_margin, line_gap):
+        draw.rectangle((x_margin, y, width - x_margin, y + line_height), fill=0)
+
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _write_image_only_pdf(path: Path) -> None:
+    """Write a PDF page that is only a full-page image."""
+    fitz = pytest.importorskip("fitz")
+
+    doc = fitz.open()
+    page = doc.new_page(width=500, height=700)
+    page.insert_image(page.rect, stream=_scan_like_png_bytes())
+    doc.save(path)
+    doc.close()
+
+
+def _good_ocr_text() -> str:
+    """Return enough readable Russian text to pass OCR quality gates."""
+    return (
+        "Русский распознанный текст страницы содержит несколько длинных слов "
+        "и выглядит как обычный абзац художественной книги. "
+    ).strip()
 
 
 class TestPdfLoader:
@@ -155,6 +199,219 @@ class TestOcrModeSelection:
         assert chosen.kind == "native"
         assert stats["native_unreadable"] is True
         assert stats["reason"] == "ocr_unavailable_native_unreadable"
+
+    def test_extract_pdf_with_ocr_mode_uses_full_page_fallback_after_empty_structured_ocr(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        pdf_file = tmp_path / "hard_scan.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+        empty_structure = PdfStructuredExtraction(
+            pages={1: PdfPageExtraction(page_number=1, pdf_type="scanned")},
+            document_type="scanned",
+        )
+
+        with (
+            patch("book_normalizer.loaders.pdf_loader._tesseract_available", return_value=True),
+            patch("book_normalizer.loaders.pdf_loader._extract_pdf_structured", return_value=empty_structure),
+            patch("book_normalizer.loaders.pdf_loader._ocr_pdf_with_tesseract", return_value=_good_ocr_text()),
+        ):
+            compare = extract_pdf_with_ocr_mode(pdf_file, OcrMode.AUTO)
+
+        assert compare.native.text == ""
+        assert compare.ocr is not None
+        assert compare.ocr.text == _good_ocr_text()
+        assert compare.ocr.document_type == "ocr_full_page"
+
+
+class TestStructuredPdfExtractionHelpers:
+    def test_table_converter_keeps_multiline_cells_in_one_row(self) -> None:
+        table = [
+            ["Имя", "Описание"],
+            ["Герой", "первая строка\nвторая строка"],
+            [None, ""],
+        ]
+
+        converted = _table_converter(table)
+
+        assert converted == "Имя | Описание\nГерой | первая строка вторая строка"
+
+    def test_classify_pdf_page_distinguishes_pdf_types(self) -> None:
+        assert (
+            _classify_pdf_page(text_chars=200, table_count=0, image_area_ratio=0.1)
+            == "programmatic"
+        )
+        assert (
+            _classify_pdf_page(text_chars=0, table_count=0, image_area_ratio=0.9)
+            == "scanned"
+        )
+        assert (
+            _classify_pdf_page(text_chars=200, table_count=0, image_area_ratio=0.9)
+            == "scanned_with_ocr"
+        )
+        assert (
+            _classify_pdf_page(text_chars=0, table_count=0, image_area_ratio=0.0, image_text_count=1)
+            == "scanned"
+        )
+
+    def test_structured_extraction_assembles_page_content_in_page_order(self) -> None:
+        structured = PdfStructuredExtraction(
+            pages={
+                2: PdfPageExtraction(page_number=2, page_content=["Вторая страница"]),
+                1: PdfPageExtraction(page_number=1, page_content=["Текст", "Таблица"]),
+            },
+            document_type="mixed",
+        )
+
+        assert structured.to_text() == "Текст\n\nТаблица\n\nВторая страница"
+
+    def test_extract_pdf_structured_reads_programmatic_pdf(self, tmp_path: Path) -> None:
+        fitz = pytest.importorskip("fitz")
+        pytest.importorskip("pdfminer")
+        pytest.importorskip("pdfplumber")
+
+        pdf_file = tmp_path / "generated.pdf"
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text(
+            (72, 72),
+            "Chapter one: this generated PDF has a searchable text layer for structural extraction.",
+        )
+        doc.save(pdf_file)
+        doc.close()
+
+        structured = _extract_pdf_structured(pdf_file, run_ocr=False)
+
+        assert structured.document_type == "programmatic"
+        assert "Chapter one" in structured.to_text()
+        assert structured.pages[1].page_text
+        assert structured.pages[1].line_format
+
+    def test_extract_pdf_structured_extracts_pdfplumber_table(self, tmp_path: Path) -> None:
+        fitz = pytest.importorskip("fitz")
+        pytest.importorskip("pdfminer")
+        pytest.importorskip("pdfplumber")
+
+        pdf_file = tmp_path / "table.pdf"
+        doc = fitz.open()
+        page = doc.new_page(width=500, height=700)
+        left, top, width, height = 72, 100, 300, 90
+        for x in (left, left + 150, left + width):
+            page.draw_line((x, top), (x, top + height), color=(0, 0, 0), width=1)
+        for y in (top, top + 45, top + height):
+            page.draw_line((left, y), (left + width, y), color=(0, 0, 0), width=1)
+        page.insert_text((left + 10, top + 27), "Name", fontsize=10)
+        page.insert_text((left + 160, top + 27), "Value", fontsize=10)
+        page.insert_text((left + 10, top + 72), "Alpha", fontsize=10)
+        page.insert_text((left + 160, top + 72), "42", fontsize=10)
+        doc.save(pdf_file)
+        doc.close()
+
+        structured = _extract_pdf_structured(pdf_file, run_ocr=False)
+
+        assert structured.document_type == "programmatic"
+        assert structured.pages[1].text_from_tables == ["Name | Value\nAlpha | 42"]
+        assert structured.pages[1].page_content == ["Name | Value\nAlpha | 42"]
+
+    def test_extract_pdf_structured_classifies_image_only_scan_without_ocr(self, tmp_path: Path) -> None:
+        pytest.importorskip("pdfminer")
+        pytest.importorskip("pdfplumber")
+
+        pdf_file = tmp_path / "scan.pdf"
+        _write_image_only_pdf(pdf_file)
+
+        structured = _extract_pdf_structured(pdf_file, run_ocr=False)
+
+        assert structured.document_type == "scanned"
+        assert structured.pages[1].pdf_type == "scanned"
+        assert structured.pages[1].page_content == []
+
+    def test_extract_pdf_structured_ocr_reads_good_image_only_scan(self, tmp_path: Path) -> None:
+        pytest.importorskip("pdfminer")
+        pytest.importorskip("pdfplumber")
+
+        pdf_file = tmp_path / "scan_good_ocr.pdf"
+        _write_image_only_pdf(pdf_file)
+
+        with (
+            patch("book_normalizer.loaders.pdf_loader._load_tesseract_runtime", return_value=(False, object())),
+            patch("book_normalizer.loaders.pdf_loader._ocr_rendered_image", return_value=_good_ocr_text()),
+        ):
+            structured = _extract_pdf_structured(pdf_file, run_ocr=True)
+
+        assert structured.document_type == "scanned"
+        assert structured.pages[1].text_from_images == [_good_ocr_text()]
+        assert structured.to_text() == _good_ocr_text()
+
+    def test_extract_pdf_structured_rejects_poor_quality_scan_ocr(self, tmp_path: Path) -> None:
+        pytest.importorskip("pdfminer")
+        pytest.importorskip("pdfplumber")
+
+        pdf_file = tmp_path / "scan_bad_ocr.pdf"
+        _write_image_only_pdf(pdf_file)
+
+        with (
+            patch("book_normalizer.loaders.pdf_loader._load_tesseract_runtime", return_value=(False, object())),
+            patch("book_normalizer.loaders.pdf_loader._ocr_rendered_image", return_value="||| 123 !!!"),
+        ):
+            structured = _extract_pdf_structured(pdf_file, run_ocr=True)
+
+        assert structured.document_type == "scanned"
+        assert structured.pages[1].text_from_images == []
+        assert structured.to_text() == ""
+
+    def test_extract_pdf_structured_detects_scanned_pdf_with_existing_ocr_layer(self, tmp_path: Path) -> None:
+        fitz = pytest.importorskip("fitz")
+        pytest.importorskip("pdfminer")
+        pytest.importorskip("pdfplumber")
+
+        pdf_file = tmp_path / "scan_with_ocr_layer.pdf"
+        doc = fitz.open()
+        page = doc.new_page(width=500, height=700)
+        page.insert_image(page.rect, stream=_scan_like_png_bytes())
+        page.insert_text(
+            (60, 100),
+            "This scan already has a searchable OCR text layer with enough characters to classify it.",
+            fontsize=10,
+        )
+        doc.save(pdf_file)
+        doc.close()
+
+        structured = _extract_pdf_structured(pdf_file, run_ocr=False)
+
+        assert structured.document_type == "scanned_with_ocr"
+        assert structured.pages[1].pdf_type == "scanned_with_ocr"
+        assert "searchable OCR text layer" in structured.to_text()
+
+    def test_extract_pdf_structured_adds_ocr_from_small_hybrid_image(self, tmp_path: Path) -> None:
+        fitz = pytest.importorskip("fitz")
+        pytest.importorskip("pdfminer")
+        pytest.importorskip("pdfplumber")
+
+        pdf_file = tmp_path / "hybrid.pdf"
+        doc = fitz.open()
+        page = doc.new_page(width=500, height=700)
+        page.insert_text(
+            (72, 72),
+            "Readable generated text layer long enough to keep native extraction as the primary component.",
+            fontsize=11,
+        )
+        page.insert_image(fitz.Rect(72, 150, 232, 230), stream=_scan_like_png_bytes(width=160, height=80))
+        doc.save(pdf_file)
+        doc.close()
+
+        logo_text = "Логотип издательства"
+        with (
+            patch("book_normalizer.loaders.pdf_loader._load_tesseract_runtime", return_value=(False, object())),
+            patch("book_normalizer.loaders.pdf_loader._ocr_rendered_image", return_value=logo_text),
+        ):
+            structured = _extract_pdf_structured(pdf_file, run_ocr=True)
+
+        assert structured.document_type == "mixed"
+        assert structured.pages[1].pdf_type == "hybrid"
+        assert structured.pages[1].text_from_images == [logo_text]
+        assert "Readable generated text layer" in structured.to_text()
+        assert logo_text in structured.to_text()
 
 
 class TestOcrImagePreparation:

@@ -4,13 +4,28 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
 from book_normalizer.config import OcrMode
 from book_normalizer.loaders.base import BaseLoader
+from book_normalizer.loaders.pdf_ocr_engine import (
+    ocr_image_via_wsl as _ocr_image_via_wsl,
+)
+from book_normalizer.loaders.pdf_ocr_engine import (
+    tesseract_available as _tesseract_available,
+)
+from book_normalizer.loaders.pdf_ocr_engine import (
+    wsl_tesseract_available as _wsl_tesseract_available,
+)
+from book_normalizer.languages import (
+    readable_word_ratio,
+    target_script_char_count,
+    target_script_ratio,
+    text_unreadable,
+)
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 from book_normalizer.normalization.cleanup import remove_repeated_headers
 
@@ -21,6 +36,8 @@ MIN_OCR_CYRILLIC_CHARS = 80
 MIN_OCR_READABLE_WORD_RATIO = 0.35
 MAX_OCR_SYMBOL_NOISE_RATIO = 0.06
 SPREAD_PAGE_RATIO = 1.2
+MIN_STRUCTURED_TEXT_CHARS = 40
+LARGE_IMAGE_PAGE_RATIO = 0.65
 
 
 class PdfLoader(BaseLoader):
@@ -74,6 +91,17 @@ class PdfLoader(BaseLoader):
     @staticmethod
     def _extract_text(path: Path) -> str:
         """Extract full text from all pages of a PDF."""
+        try:
+            structured = _extract_pdf_structured(path, run_ocr=False)
+            structured_text = structured.to_text()
+            if structured_text.strip():
+                logger.info("PDF structure detected as %s.", structured.document_type)
+                return structured_text
+        except ImportError as exc:
+            logger.debug("Structured PDF extraction dependencies unavailable: %s", exc)
+        except Exception as exc:
+            logger.debug("Structured PDF extraction failed, falling back to PyMuPDF: %s", exc)
+
         import fitz  # PyMuPDF.
 
         pages: list[str] = []
@@ -111,6 +139,7 @@ class PdfTextVariant:
 
     kind: str  # "native" or "ocr"
     text: str
+    document_type: str = "unknown"
 
 
 @dataclass
@@ -119,66 +148,207 @@ class PdfOcrCompareResult:
 
     native: PdfTextVariant
     ocr: PdfTextVariant | None
+    native_structure: PdfStructuredExtraction | None = None
+    ocr_structure: PdfStructuredExtraction | None = None
 
 
-def _wsl_tesseract_available() -> bool:
-    """Check if Tesseract is available inside WSL (Windows Subsystem for Linux)."""
-    import platform
-    import subprocess
+@dataclass
+class PdfPageExtraction:
+    """Structured extraction result for one PDF page."""
 
-    if platform.system() != "Windows":
-        return False
+    page_number: int
+    pdf_type: str = "unknown"
+    page_text: list[str] = field(default_factory=list)
+    line_format: list[list[Any]] = field(default_factory=list)
+    text_from_images: list[str] = field(default_factory=list)
+    text_from_tables: list[str] = field(default_factory=list)
+    page_content: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PdfStructuredExtraction:
+    """Structured PDF extraction with per-page components."""
+
+    pages: dict[int, PdfPageExtraction]
+    document_type: str
+
+    def to_text(self) -> str:
+        """Return readable text assembled from page content."""
+        page_texts: list[str] = []
+        for page_number in sorted(self.pages):
+            content = [part.strip() for part in self.pages[page_number].page_content if part.strip()]
+            if content:
+                page_texts.append("\n\n".join(content))
+        return "\n\n".join(page_texts)
+
+
+def _unique_preserving_order(values: list[Any]) -> list[Any]:
+    """Return unique values while preserving their first-seen order."""
+    seen: set[str] = set()
+    result: list[Any] = []
+    for value in values:
+        marker = repr(value)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        result.append(value)
+    return result
+
+
+def _extract_text_container(element: Any) -> tuple[str, list[Any]]:
+    """Extract text and font metadata from a pdfminer text container."""
+    from pdfminer.layout import LTChar
+
+    formats: list[Any] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, LTChar):
+            formats.append(node.fontname)
+            formats.append(round(float(node.size), 1))
+            return
+        if hasattr(node, "__iter__"):
+            for child in node:
+                walk(child)
+
+    walk(element)
+    return element.get_text(), _unique_preserving_order(formats)
+
+
+def _clean_table_cell(value: Any) -> str:
+    """Normalize a pdfplumber table cell for LLM-friendly text output."""
+    if value is None:
+        return ""
+    return re.sub(r"\s+", " ", str(value).replace("\n", " ")).strip()
+
+
+def _table_converter(table: list[list[Any]]) -> str:
+    """Convert a pdfplumber table into a compact pipe-separated string."""
+    rows: list[str] = []
+    for row in table:
+        cells = [_clean_table_cell(cell) for cell in row]
+        if any(cells):
+            rows.append(" | ".join(cells))
+    return "\n".join(rows)
+
+
+def _pdfplumber_bbox_to_pdfminer(
+    bbox: tuple[float, float, float, float],
+    page_height: float,
+) -> tuple[float, float, float, float]:
+    """Convert a pdfplumber bbox (top-left origin) to pdfminer coordinates."""
+    x0, top, x1, bottom = bbox
+    return (x0, page_height - bottom, x1, page_height - top)
+
+
+def _bbox_area(bbox: tuple[float, float, float, float]) -> float:
+    """Return area for a PDF bbox."""
+    x0, y0, x1, y1 = bbox
+    return max(0.0, x1 - x0) * max(0.0, y1 - y0)
+
+
+def _bbox_center_inside(
+    inner: tuple[float, float, float, float],
+    outer: tuple[float, float, float, float],
+) -> bool:
+    """Return true when the inner bbox center is inside outer."""
+    x0, y0, x1, y1 = inner
+    cx = (x0 + x1) / 2
+    cy = (y0 + y1) / 2
+    ox0, oy0, ox1, oy1 = outer
+    return ox0 <= cx <= ox1 and oy0 <= cy <= oy1
+
+
+def _bbox_intersects(
+    first: tuple[float, float, float, float],
+    second: tuple[float, float, float, float],
+) -> bool:
+    """Return true when two PDF bboxes intersect."""
+    ax0, ay0, ax1, ay1 = first
+    bx0, by0, bx1, by1 = second
+    return ax0 < bx1 and ax1 > bx0 and ay0 < by1 and ay1 > by0
+
+
+def _extract_page_tables(plumber_page: Any | None) -> list[tuple[tuple[float, float, float, float], str]]:
+    """Extract tables from a pdfplumber page as (pdfminer_bbox, table_text)."""
+    if plumber_page is None:
+        return []
+
+    tables: list[tuple[tuple[float, float, float, float], str]] = []
     try:
-        result = subprocess.run(
-            ["wsl", "tesseract", "--version"],
-            capture_output=True, timeout=10,
-        )
-        return result.returncode == 0
-    except Exception:
+        for table in plumber_page.find_tables():
+            table_text = _table_converter(table.extract())
+            if not table_text:
+                continue
+            bbox = _pdfplumber_bbox_to_pdfminer(table.bbox, float(plumber_page.height))
+            tables.append((bbox, table_text))
+    except Exception as exc:
+        logger.debug("pdfplumber table detection failed on page %s: %s", getattr(plumber_page, "page_number", "?"), exc)
+
+    return tables
+
+
+def _classify_pdf_page(
+    *,
+    text_chars: int,
+    table_count: int,
+    image_area_ratio: float,
+    image_text_count: int = 0,
+) -> str:
+    """Classify a page before choosing the extraction strategy."""
+    has_text_layer = text_chars >= MIN_STRUCTURED_TEXT_CHARS or table_count > 0
+    has_full_page_image = image_area_ratio >= LARGE_IMAGE_PAGE_RATIO
+
+    if has_text_layer and has_full_page_image:
+        return "scanned_with_ocr"
+    if not has_text_layer and image_text_count > 0:
+        return "scanned"
+    if has_full_page_image and not has_text_layer:
+        return "scanned"
+    if has_text_layer and image_text_count > 0:
+        return "hybrid"
+    if has_text_layer:
+        return "programmatic"
+    return "unknown"
+
+
+def _classify_pdf_document(pages: dict[int, PdfPageExtraction]) -> str:
+    """Classify the full PDF from per-page classifications."""
+    counts: dict[str, int] = {}
+    for page in pages.values():
+        counts[page.pdf_type] = counts.get(page.pdf_type, 0) + 1
+
+    if not counts:
+        return "unknown"
+    if counts.get("scanned", 0) == len(pages):
+        return "scanned"
+    if counts.get("scanned_with_ocr", 0) == len(pages):
+        return "scanned_with_ocr"
+    if counts.get("programmatic", 0) == len(pages):
+        return "programmatic"
+    return "mixed"
+
+
+def _should_keep_image_ocr_text(text: str, language_code: str = "ru") -> bool:
+    """Keep short OCR snippets from embedded images without accepting pure debris."""
+    stripped = text.strip()
+    if not stripped:
         return False
+    target_chars = target_script_char_count(stripped, language_code)
+    alnum = sum(ch.isalnum() for ch in stripped)
+    return (target_chars >= 3 or alnum >= 6) and _ocr_symbol_noise_ratio(stripped) <= 0.18
 
 
-def _tesseract_available() -> bool:
-    """Check if Tesseract OCR is installed and accessible (native or WSL)."""
+def _load_tesseract_runtime() -> tuple[bool, Any | None]:
+    """Resolve native pytesseract or the WSL bridge used by this project."""
     try:
-        import pytesseract  # noqa: F401
+        import pytesseract
+
         pytesseract.get_tesseract_version()
-        return True
+        return False, pytesseract
     except Exception:
-        pass
-    return _wsl_tesseract_available()
-
-
-def _win_to_wsl_path(win_path: str) -> str:
-    """Convert a Windows path like C:\\Users\\... to /mnt/c/Users/..."""
-    p = win_path.replace("\\", "/")
-    if len(p) >= 2 and p[1] == ":":
-        drive = p[0].lower()
-        p = f"/mnt/{drive}{p[2:]}"
-    return p
-
-
-def _ocr_image_via_wsl(img_bytes: bytes, lang: str, psm: int = 6) -> str:
-    """Run Tesseract OCR on image bytes via WSL bridge."""
-    import subprocess
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-        tmp.write(img_bytes)
-        tmp_path = tmp.name
-
-    try:
-        wsl_path = _win_to_wsl_path(tmp_path)
-        result = subprocess.run(
-            [
-                "wsl", "tesseract", wsl_path, "stdout",
-                "-l", lang, "--psm", str(psm),
-            ],
-            capture_output=True, timeout=120,
-        )
-        return result.stdout.decode("utf-8", errors="replace")
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        if _wsl_tesseract_available():
+            return True, None
+        raise RuntimeError("Tesseract is not installed (neither native nor WSL).")
 
 
 def _preprocess_image_for_ocr(img: Any) -> Any:
@@ -332,6 +502,217 @@ def _ocr_pil_image_with_tesseract(
         img,
         lang=lang,
         config=f"--psm {psm}",
+    )
+
+
+def _render_pdf_page_to_image(fitz_doc: Any, page_index: int, dpi: int) -> Any:
+    """Render a full PDF page to a grayscale PIL image."""
+    import fitz
+    from PIL import Image
+
+    zoom = dpi / 72
+    pix = fitz_doc[page_index].get_pixmap(
+        matrix=fitz.Matrix(zoom, zoom),
+        colorspace=fitz.csGRAY,
+    )
+    return Image.frombytes("L", [pix.width, pix.height], pix.samples)
+
+
+def _render_pdf_region_to_image(
+    fitz_doc: Any,
+    page_index: int,
+    bbox: tuple[float, float, float, float],
+    dpi: int,
+) -> Any | None:
+    """Render a pdfminer bbox from one PDF page to a grayscale PIL image."""
+    import fitz
+    from PIL import Image
+
+    page = fitz_doc[page_index]
+    x0, y0, x1, y1 = bbox
+    clip = fitz.Rect(x0, page.rect.height - y1, x1, page.rect.height - y0) & page.rect
+    if clip.is_empty or clip.width < 1 or clip.height < 1:
+        return None
+
+    zoom = dpi / 72
+    pix = page.get_pixmap(
+        matrix=fitz.Matrix(zoom, zoom),
+        colorspace=fitz.csGRAY,
+        clip=clip,
+    )
+    return Image.frombytes("L", [pix.width, pix.height], pix.samples)
+
+
+def _ocr_rendered_image(
+    img: Any,
+    *,
+    lang: str,
+    psm: int,
+    preprocess: bool,
+    use_wsl: bool,
+    pytesseract_module: Any | None,
+) -> str:
+    """Run OCR against a rendered PIL image and post-process the result."""
+    raw_text = _ocr_pil_image_with_tesseract(
+        img,
+        lang=lang,
+        psm=psm,
+        preprocess=preprocess,
+        use_wsl=use_wsl,
+        pytesseract_module=pytesseract_module,
+    )
+    return _postprocess_ocr_text(raw_text)
+
+
+def _extract_pdf_structured(
+    path: Path,
+    *,
+    run_ocr: bool,
+    lang: str = "rus",
+    dpi: int = 400,
+    psm: int = 6,
+    preprocess: bool = True,
+) -> PdfStructuredExtraction:
+    """Extract PDF content by component: text blocks, tables, and image OCR."""
+    import pdfplumber
+    from pdfminer.high_level import extract_pages
+    from pdfminer.layout import LTFigure, LTRect, LTTextContainer
+
+    use_wsl = False
+    pytesseract_module: Any | None = None
+    fitz_doc: Any | None = None
+
+    if run_ocr:
+        import fitz
+
+        use_wsl, pytesseract_module = _load_tesseract_runtime()
+        fitz_doc = fitz.open(str(path))
+
+    pages: dict[int, PdfPageExtraction] = {}
+    try:
+        with pdfplumber.open(str(path)) as plumber_pdf:
+            for page_index, layout_page in enumerate(extract_pages(str(path))):
+                plumber_page = (
+                    plumber_pdf.pages[page_index]
+                    if page_index < len(plumber_pdf.pages)
+                    else None
+                )
+                table_items = _extract_page_tables(plumber_page)
+                table_bboxes = [bbox for bbox, _ in table_items]
+                added_tables: set[int] = set()
+
+                page = PdfPageExtraction(page_number=page_index + 1)
+                page_area = max(1.0, float(layout_page.width * layout_page.height))
+                figure_bboxes: list[tuple[float, float, float, float]] = []
+                image_area = 0.0
+
+                elements = sorted(
+                    list(layout_page),
+                    key=lambda item: (-float(getattr(item, "y1", 0.0)), float(getattr(item, "x0", 0.0))),
+                )
+                for element in elements:
+                    if isinstance(element, LTTextContainer):
+                        if any(_bbox_center_inside(element.bbox, bbox) for bbox in table_bboxes):
+                            continue
+                        text, line_formats = _extract_text_container(element)
+                        text = text.strip()
+                        if text:
+                            page.page_text.append(text)
+                            page.line_format.append(line_formats)
+                            page.page_content.append(text)
+                        continue
+
+                    if isinstance(element, LTFigure):
+                        bbox = tuple(float(value) for value in element.bbox)
+                        figure_bboxes.append(bbox)
+                        image_area += _bbox_area(bbox)
+                        continue
+
+                    if isinstance(element, LTRect):
+                        for table_index, (bbox, table_text) in enumerate(table_items):
+                            if table_index in added_tables:
+                                continue
+                            if _bbox_intersects(element.bbox, bbox):
+                                page.text_from_tables.append(table_text)
+                                page.page_content.append(table_text)
+                                added_tables.add(table_index)
+
+                for table_index, (_, table_text) in enumerate(table_items):
+                    if table_index in added_tables:
+                        continue
+                    page.text_from_tables.append(table_text)
+                    page.page_content.append(table_text)
+
+                text_chars = sum(len(text) for text in page.page_text) + sum(
+                    len(text) for text in page.text_from_tables
+                )
+                image_area_ratio = min(1.0, image_area / page_area)
+                page.pdf_type = _classify_pdf_page(
+                    text_chars=text_chars,
+                    table_count=len(page.text_from_tables),
+                    image_area_ratio=image_area_ratio,
+                )
+
+                if run_ocr and fitz_doc is not None:
+                    needs_full_page_ocr = (
+                        page.pdf_type == "scanned"
+                        or (text_chars < MIN_STRUCTURED_TEXT_CHARS and not figure_bboxes)
+                    )
+                    if needs_full_page_ocr:
+                        full_image = _render_pdf_page_to_image(fitz_doc, page_index, dpi)
+                        for segment in _prepare_ocr_page_images(full_image):
+                            ocr_text = _ocr_rendered_image(
+                                segment,
+                                lang=lang,
+                                psm=psm,
+                                preprocess=preprocess,
+                                use_wsl=use_wsl,
+                                pytesseract_module=pytesseract_module,
+                            )
+                            if _should_keep_ocr_text(ocr_text):
+                                page.text_from_images.append(ocr_text)
+                                page.page_content.append(ocr_text)
+                    else:
+                        for bbox in figure_bboxes:
+                            is_full_page_overlay = (
+                                _bbox_area(bbox) / page_area >= LARGE_IMAGE_PAGE_RATIO
+                                and text_chars >= MIN_STRUCTURED_TEXT_CHARS
+                            )
+                            if is_full_page_overlay:
+                                continue
+                            image = _render_pdf_region_to_image(fitz_doc, page_index, bbox, dpi)
+                            if image is None:
+                                continue
+                            image = _crop_image_to_content(image)
+                            if _image_ink_ratio(image) < 0.001:
+                                continue
+                            ocr_text = _ocr_rendered_image(
+                                image,
+                                lang=lang,
+                                psm=psm,
+                                preprocess=preprocess,
+                                use_wsl=use_wsl,
+                                pytesseract_module=pytesseract_module,
+                            )
+                            if _should_keep_image_ocr_text(ocr_text):
+                                page.text_from_images.append(ocr_text)
+                                page.page_content.append(ocr_text)
+
+                    page.pdf_type = _classify_pdf_page(
+                        text_chars=text_chars,
+                        table_count=len(page.text_from_tables),
+                        image_area_ratio=image_area_ratio,
+                        image_text_count=len(page.text_from_images),
+                    )
+
+                pages[page.page_number] = page
+    finally:
+        if fitz_doc is not None:
+            fitz_doc.close()
+
+    return PdfStructuredExtraction(
+        pages=pages,
+        document_type=_classify_pdf_document(pages),
     )
 
 
@@ -842,16 +1223,36 @@ def extract_pdf_with_ocr_mode(
 ) -> PdfOcrCompareResult:
     """Extract PDF text according to the requested OCR mode.
 
-    Uses PyMuPDF for native text extraction.  When OCR is requested,
-    renders each page to an image at the given DPI and runs Tesseract.
+    Uses a PDFMiner/pdfplumber structural pass first.  When OCR is requested,
+    Tesseract is applied to image-like regions or image-only pages.
     """
     loader = PdfLoader()
     resolved = path.resolve()
-    native_text = remove_repeated_headers(loader._extract_text(resolved), min_occurrences=3)
-    native_variant = PdfTextVariant(kind="native", text=native_text)
+    native_structure: PdfStructuredExtraction | None = None
+    try:
+        native_structure = _extract_pdf_structured(resolved, run_ocr=False)
+        native_text = native_structure.to_text()
+        logger.info("PDF structure detected as %s.", native_structure.document_type)
+    except ImportError as exc:
+        logger.debug("Structured PDF extraction dependencies unavailable: %s", exc)
+        native_text = loader._extract_text(resolved)
+    except Exception as exc:
+        logger.debug("Structured PDF extraction failed, falling back to PyMuPDF: %s", exc)
+        native_text = loader._extract_text(resolved)
+
+    native_text = remove_repeated_headers(native_text, min_occurrences=3)
+    native_variant = PdfTextVariant(
+        kind="native",
+        text=native_text,
+        document_type=native_structure.document_type if native_structure else "unknown",
+    )
 
     if mode == OcrMode.OFF:
-        return PdfOcrCompareResult(native=native_variant, ocr=None)
+        return PdfOcrCompareResult(
+            native=native_variant,
+            ocr=None,
+            native_structure=native_structure,
+        )
 
     if not _tesseract_available():
         logger.warning(
@@ -860,24 +1261,55 @@ def extract_pdf_with_ocr_mode(
             "choco install tesseract  (Windows) + pip install pytesseract Pillow. "
             "Falling back to native text extraction."
         )
-        return PdfOcrCompareResult(native=native_variant, ocr=None)
+        return PdfOcrCompareResult(
+            native=native_variant,
+            ocr=None,
+            native_structure=native_structure,
+        )
 
+    ocr_structure: PdfStructuredExtraction | None = None
     try:
         logger.info(
-            "Running Tesseract OCR on '%s' (dpi=%d, psm=%d, preprocess=%s)...",
+            "Running structured PDF extraction with OCR on '%s' (dpi=%d, psm=%d, preprocess=%s)...",
             resolved.name, dpi, psm, preprocess,
         )
-        ocr_text = _ocr_pdf_with_tesseract(
-            resolved, dpi=dpi, psm=psm, preprocess=preprocess,
-        )
+        try:
+            ocr_structure = _extract_pdf_structured(
+                resolved,
+                run_ocr=True,
+                dpi=dpi,
+                psm=psm,
+                preprocess=preprocess,
+            )
+            ocr_text = _repair_ocr_cross_segment_breaks(ocr_structure.to_text())
+        except ImportError as exc:
+            logger.debug("Structured OCR dependencies unavailable, using full-page OCR: %s", exc)
+            ocr_text = _ocr_pdf_with_tesseract(resolved, dpi=dpi, psm=psm, preprocess=preprocess)
+
+        if _russian_text_unreadable(native_text) and _russian_text_unreadable(ocr_text):
+            fallback_text = _ocr_pdf_with_tesseract(resolved, dpi=dpi, psm=psm, preprocess=preprocess)
+            if len(fallback_text.strip()) > len(ocr_text.strip()):
+                logger.info("Full-page OCR fallback produced more text than structured OCR.")
+                ocr_text = fallback_text
+                ocr_structure = None
+
         ocr_text = remove_repeated_headers(ocr_text, min_occurrences=3)
-        ocr_variant = PdfTextVariant(kind="ocr", text=ocr_text)
+        ocr_variant = PdfTextVariant(
+            kind="ocr",
+            text=ocr_text,
+            document_type=ocr_structure.document_type if ocr_structure else "ocr_full_page",
+        )
         logger.info("OCR complete: %d characters extracted.", len(ocr_text))
     except Exception as exc:
         logger.warning("OCR extraction failed for '%s': %s", resolved, exc)
         ocr_variant = None
 
-    return PdfOcrCompareResult(native=native_variant, ocr=ocr_variant)
+    return PdfOcrCompareResult(
+        native=native_variant,
+        ocr=ocr_variant,
+        native_structure=native_structure,
+        ocr_structure=ocr_structure,
+    )
 
 
 def _cyrillic_ratio(text: str) -> float:
@@ -939,6 +1371,8 @@ def select_pdf_text_for_mode(
         "ocr_cyrillic_ratio": round(ocr_cyr, 3),
         "native_cyrillic_chars": _cyrillic_char_count(native.text),
         "ocr_cyrillic_chars": _cyrillic_char_count(ocr.text) if ocr else 0,
+        "native_document_type": native.document_type,
+        "ocr_document_type": ocr.document_type if ocr else None,
         "native_unreadable": _russian_text_unreadable(native.text),
         "ocr_unreadable": _russian_text_unreadable(ocr.text) if ocr else True,
         "ocr_much_longer": ocr_much_longer,
@@ -1016,6 +1450,8 @@ def write_pdf_compare_report(
         "ocr_cyrillic_ratio": stats.get("ocr_cyrillic_ratio"),
         "native_cyrillic_chars": stats.get("native_cyrillic_chars"),
         "ocr_cyrillic_chars": stats.get("ocr_cyrillic_chars"),
+        "native_document_type": stats.get("native_document_type"),
+        "ocr_document_type": stats.get("ocr_document_type"),
         "native_unreadable": stats.get("native_unreadable"),
         "ocr_unreadable": stats.get("ocr_unreadable"),
         "ocr_much_longer": stats.get("ocr_much_longer"),

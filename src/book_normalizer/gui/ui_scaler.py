@@ -38,7 +38,11 @@ def scale_stylesheet(stylesheet: str, scale: float) -> str:
 
 
 class UiScaler(QObject):
-    """Global zoom controller for keyboard, trackpad and wheel gestures."""
+    """Global zoom controller for keyboard shortcuts.
+
+    Pointer zoom gestures are swallowed so scrolling or touchpad pinch gestures
+    never mutate font sizes underneath fixed Qt layouts.
+    """
 
     def __init__(
         self,
@@ -51,9 +55,6 @@ class UiScaler(QObject):
         self._app = app
         self._theme_factory = theme_factory
         self._scale = clamp_scale(initial_scale)
-        self._wheel_accumulator = 0
-        self._pinch_accumulator = 0.0
-        self._gesture_accumulator = 0.0
         self._applied_once = False
 
     @property
@@ -73,13 +74,8 @@ class UiScaler(QObject):
         if event.type() == QEvent.Type.KeyPress and self._handle_key_event(event):
             return True
 
-        if event.type() == QEvent.Type.Wheel and self._handle_wheel_event(event):
-            return True
-
-        if event.type() == QEvent.Type.NativeGesture and self._handle_native_gesture(event):
-            return True
-
-        if event.type() == QEvent.Type.Gesture and self._handle_gesture_event(event):
+        if self._is_pointer_zoom_event(event):
+            event.accept()
             return True
 
         return super().eventFilter(obj, event)
@@ -131,50 +127,17 @@ class UiScaler(QObject):
         event.accept()
         return True
 
-    def _handle_wheel_event(self, event: QEvent) -> bool:
-        modifiers = event.modifiers()
-        if not modifiers & Qt.KeyboardModifier.ControlModifier:
-            return False
+    def _is_pointer_zoom_event(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Wheel:
+            return bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
 
-        self._wheel_accumulator += event.angleDelta().y()
-        if abs(self._wheel_accumulator) >= 120:
-            direction = 1 if self._wheel_accumulator > 0 else -1
-            self.apply_scale(self._scale + direction * SCALE_STEP)
-            self._wheel_accumulator = 0
+        if event.type() == QEvent.Type.NativeGesture:
+            return event.gestureType() == Qt.NativeGestureType.ZoomNativeGesture
 
-        event.accept()
-        return True
+        if event.type() == QEvent.Type.Gesture:
+            return event.gesture(Qt.GestureType.PinchGesture) is not None
 
-    def _handle_native_gesture(self, event: QEvent) -> bool:
-        if event.gestureType() != Qt.NativeGestureType.ZoomNativeGesture:
-            return False
-
-        self._pinch_accumulator += event.value()
-        if abs(self._pinch_accumulator) >= 0.18:
-            direction = 1 if self._pinch_accumulator > 0 else -1
-            self.apply_scale(self._scale + direction * SCALE_STEP)
-            self._pinch_accumulator = 0.0
-
-        event.accept()
-        return True
-
-    def _handle_gesture_event(self, event: QEvent) -> bool:
-        gesture = event.gesture(Qt.GestureType.PinchGesture)
-        if gesture is None:
-            return False
-
-        factor = gesture.scaleFactor()
-        if not factor:
-            return False
-
-        self._gesture_accumulator += factor - 1.0
-        if abs(self._gesture_accumulator) >= 0.12:
-            direction = 1 if self._gesture_accumulator > 0 else -1
-            self.apply_scale(self._scale + direction * SCALE_STEP)
-            self._gesture_accumulator = 0.0
-
-        event.accept()
-        return True
+        return False
 
     def _scale_widget_styles(self, root: QWidget, scale: float) -> None:
         widgets = [root, *root.findChildren(QWidget)]

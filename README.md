@@ -178,21 +178,51 @@ tesseract --list-langs
 
 Для русских книг должен быть язык `rus`. Если его нет, установите `tesseract-ocr-rus`, `tesseract-langpack-rus` или `tesseract-lang` в зависимости от OS.
 
-## Настройка LLM
+## Настройка LLM через WSL Ollama
 
-LLM используется для нормализации, разметки реплик, голоса и настроения чанков. Самый простой локальный вариант - Ollama.
+LLM используется для нормализации текста и умной разметки голосов. Команды ниже запускайте в Ubuntu WSL, чтобы модели и сервер жили в одной Linux-среде с GPU/CUDA.
+
+Установка Ollama в WSL:
 
 ```bash
-ollama pull gemma3:4b
+curl -fsSL https://ollama.com/install.sh | sh
+ollama serve
 ```
 
-По умолчанию приложение ожидает OpenAI-compatible endpoint:
+Если нет `sudo`, можно поставить user-local архив Ollama в `~/.local/bin`; главное, чтобы команда `ollama --version` работала внутри WSL.
+
+Рекомендуемые модели для 8 GB VRAM / 16 GB RAM:
+
+```bash
+ollama pull hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
+ollama pull hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
+```
+
+Маршрутизация языков:
 
 ```text
-http://localhost:11434/v1
+ru/en/zh/kk/uz -> hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
+fallback       -> hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
 ```
 
-Можно указать другой endpoint и модель в GUI или CLI.
+По умолчанию приложение использует native Ollama endpoint:
+
+```text
+http://localhost:11434
+```
+
+В коде LLM-запросы идут через `/api/chat` с `think=false`, `num_ctx=4096`, `num_parallel=1`, JSON/schema output и явной выгрузкой моделей после батчей. `gemma3:12b` не используется по умолчанию: размер модели плюс KV/cache слишком рискованны для 8 GB VRAM.
+
+Если включить `LLM/GPU нормализация`, книга получает metadata-флаг `llm_processing_enabled`, а вкладка голосов автоматически выбирает LLM smart markup с тем же language/model profile. Если 8B не проходит validation, приложение пробует 4B; если обе модели не сохраняют текст, создается review report вместо тихого heuristic downgrade.
+
+Ручной benchmark качества:
+
+```bash
+python scripts/quality_benchmark.py
+RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama
+```
+
+Отчеты пишутся в `output/quality_reports`. Локальные книги из `books/` используются только для проверки и не коммитятся.
 
 ## Настройка TTS
 
@@ -302,7 +332,7 @@ normalize-book process books/mybook.pdf --out output --ocr-mode auto
 Рекомендуемый pipeline без синтеза:
 
 ```bash
-normalize-book pipeline books/mybook.pdf --out output --llm-model gemma3:4b
+normalize-book pipeline books/mybook.pdf --out output --llm-normalize
 ```
 
 Pipeline с ComfyUI-синтезом и сборкой глав:
@@ -310,7 +340,7 @@ Pipeline с ComfyUI-синтезом и сборкой глав:
 ```bash
 normalize-book pipeline books/mybook.pdf \
   --out output \
-  --llm-model gemma3:4b \
+  --llm-normalize \
   --synthesize \
   --workflow comfyui_workflows/qwen3_tts_template.json \
   --assemble

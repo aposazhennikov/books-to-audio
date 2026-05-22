@@ -18,6 +18,7 @@ class _PointerEvent:
         modifiers=None,
         gesture_type=None,
         pinch_gesture=None,
+        value=0.0,
     ) -> None:
         from PyQt6.QtCore import Qt
 
@@ -25,6 +26,7 @@ class _PointerEvent:
         self._modifiers = modifiers or Qt.KeyboardModifier.NoModifier
         self._gesture_type = gesture_type
         self._pinch_gesture = pinch_gesture
+        self._value = value
         self.accepted = False
 
     def type(self):
@@ -36,6 +38,9 @@ class _PointerEvent:
     def gestureType(self):  # noqa: N802
         return self._gesture_type
 
+    def value(self):
+        return self._value
+
     def gesture(self, gesture_type):
         from PyQt6.QtCore import Qt
 
@@ -45,6 +50,14 @@ class _PointerEvent:
 
     def accept(self) -> None:
         self.accepted = True
+
+
+class _PinchGesture:
+    def __init__(self, scale_factor: float) -> None:
+        self._scale_factor = scale_factor
+
+    def scaleFactor(self):  # noqa: N802
+        return self._scale_factor
 
 
 def _scaler():
@@ -73,7 +86,7 @@ def test_scale_stylesheet_keeps_tiny_fonts_readable() -> None:
     assert "font-size: 9px" in scale_stylesheet("font-size: 4px;", 0.8)
 
 
-def test_ctrl_wheel_is_swallowed_without_changing_ui_scale() -> None:
+def test_ctrl_wheel_changes_ui_scale() -> None:
     from PyQt6.QtCore import QPoint, QPointF, Qt
     from PyQt6.QtGui import QWheelEvent
     from PyQt6.QtWidgets import QWidget
@@ -92,7 +105,7 @@ def test_ctrl_wheel_is_swallowed_without_changing_ui_scale() -> None:
     )
 
     assert scaler.eventFilter(target, event) is True
-    assert scaler.scale == 1.0
+    assert scaler.scale == 1.0 + SCALE_STEP
     assert event.isAccepted() is True
 
 
@@ -107,7 +120,7 @@ def test_plain_wheel_is_left_for_scroll_widgets() -> None:
     assert event.accepted is False
 
 
-def test_native_zoom_gesture_is_swallowed_without_changing_ui_scale() -> None:
+def test_native_zoom_gesture_changes_ui_scale() -> None:
     from PyQt6.QtCore import QEvent, Qt
     from PyQt6.QtWidgets import QWidget
 
@@ -116,10 +129,11 @@ def test_native_zoom_gesture_is_swallowed_without_changing_ui_scale() -> None:
     event = _PointerEvent(
         QEvent.Type.NativeGesture,
         gesture_type=Qt.NativeGestureType.ZoomNativeGesture,
+        value=0.08,
     )
 
     assert scaler.eventFilter(target, event) is True
-    assert scaler.scale == 1.0
+    assert scaler.scale == 1.08
     assert event.accepted is True
 
 
@@ -137,16 +151,16 @@ def test_non_zoom_native_gesture_is_ignored_by_scaler() -> None:
     assert event.accepted is False
 
 
-def test_pinch_gesture_is_swallowed_without_changing_ui_scale() -> None:
+def test_pinch_gesture_changes_ui_scale() -> None:
     from PyQt6.QtCore import QEvent
     from PyQt6.QtWidgets import QWidget
 
     scaler = _scaler()
     target = QWidget()
-    event = _PointerEvent(QEvent.Type.Gesture, pinch_gesture=object())
+    event = _PointerEvent(QEvent.Type.Gesture, pinch_gesture=_PinchGesture(1.1))
 
     assert scaler.eventFilter(target, event) is True
-    assert scaler.scale == 1.0
+    assert scaler.scale == 1.1
     assert event.accepted is True
 
 

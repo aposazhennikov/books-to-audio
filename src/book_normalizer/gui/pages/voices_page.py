@@ -40,6 +40,7 @@ class VoicesPage(QWidget):
         self._output_dir: Path | None = None
         self._manifest_path: Path | None = None
         self._worker: ExportSegmentsWorker | None = None
+        self._ui_scale = 1.0
         self._setup_ui()
 
     # ── UI setup ──
@@ -62,6 +63,10 @@ class VoicesPage(QWidget):
         settings = QFormLayout()
         settings.setHorizontalSpacing(16)
         settings.setVerticalSpacing(6)
+        settings.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow,
+        )
+        settings.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         # Speaker mode.
         self._speaker_mode = QComboBox()
@@ -100,6 +105,10 @@ class VoicesPage(QWidget):
         llm_layout.setContentsMargins(0, 0, 0, 8)
         llm_layout.setHorizontalSpacing(12)
         llm_layout.setVerticalSpacing(6)
+        llm_layout.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow,
+        )
+        llm_layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         self._llm_provider = QComboBox()
         self._llm_provider_label = QLabel()
@@ -129,15 +138,18 @@ class VoicesPage(QWidget):
         left_layout.addWidget(self._llm_panel)
 
         # Action buttons.
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
+        action_stack = QVBoxLayout()
+        action_stack.setSpacing(8)
 
         self._btn_detect = QPushButton()
         self._btn_detect.setObjectName("primaryBtn")
         self._btn_detect.setMinimumHeight(38)
         self._btn_detect.clicked.connect(self._run_detection)
         self._btn_detect.setEnabled(False)
-        btn_row.addWidget(self._btn_detect)
+        action_stack.addWidget(self._btn_detect)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
 
         self._btn_load = QPushButton()
         self._btn_load.clicked.connect(self._load_manifest)
@@ -147,7 +159,8 @@ class VoicesPage(QWidget):
         self._btn_save.clicked.connect(self._save_manifest)
         self._btn_save.setEnabled(False)
         btn_row.addWidget(self._btn_save)
-        left_layout.addLayout(btn_row)
+        action_stack.addLayout(btn_row)
+        left_layout.addLayout(action_stack)
 
         # Build TTS chunks button.
         btn_row2 = QHBoxLayout()
@@ -223,7 +236,20 @@ class VoicesPage(QWidget):
         scroll.setWidget(self._voice_preview)
         right_layout.addWidget(scroll)
 
-        self._top_tabs.addTab(left_panel, "")
+        settings_scroll = QScrollArea()
+        settings_scroll.setWidgetResizable(True)
+        settings_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
+        settings_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+        )
+        settings_scroll.setStyleSheet(
+            "QScrollArea { border: none; background: transparent; }",
+        )
+        settings_scroll.setWidget(left_panel)
+
+        self._top_tabs.addTab(settings_scroll, "")
         self._top_tabs.addTab(right_panel, "")
         layout.addWidget(self._top_tabs, stretch=2)
 
@@ -288,7 +314,23 @@ class VoicesPage(QWidget):
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Keep the voice table readable as the page width changes."""
         super().resizeEvent(event)
+        self._sync_settings_panel_height()
         self._sync_compact_mode()
+
+    def set_ui_scale(self, scale: float) -> None:
+        """Keep the settings panel tall enough when global UI zoom changes."""
+        self._ui_scale = max(0.8, min(1.45, scale))
+        self._voice_table.set_ui_scale(self._ui_scale)
+        self._sync_settings_panel_height()
+        self._sync_compact_mode()
+
+    def _sync_settings_panel_height(self) -> None:
+        """Balance the scrollable settings area against the assignment table."""
+        target = max(180, round(170 * self._ui_scale))
+        if self.height() > 0:
+            table_reserve = max(150, round(145 * self._ui_scale))
+            target = min(target, max(120, self.height() - table_reserve))
+        self._top_tabs.setMinimumHeight(target)
 
     def _sync_compact_mode(self) -> None:
         """Switch heavy table controls into compact mode on narrow widths."""

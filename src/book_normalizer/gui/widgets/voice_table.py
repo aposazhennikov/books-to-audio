@@ -127,6 +127,7 @@ class VoiceTableWidget(QWidget):
         self._manifest_meta: dict[str, Any] = {}
         self._manifest_is_v2 = False
         self._compact_mode = False
+        self._ui_scale = 1.0
         self._populating = False
         self._loading_editor = False
         self._player = QSoundEffect(self) if QSoundEffect is not None else None
@@ -389,6 +390,17 @@ class VoiceTableWidget(QWidget):
         super().resizeEvent(event)
         self.set_compact_mode(self.width() < 960)
 
+    def set_ui_scale(self, scale: float) -> None:
+        """Keep table row and editor heights in step with global UI zoom."""
+        self._ui_scale = max(0.8, min(1.45, scale))
+        self._segment_editor.setMinimumHeight(
+            max(72, min(110, round(92 * self._ui_scale))),
+        )
+        self._full_text_editor.setMinimumHeight(
+            max(84, min(128, round(120 * self._ui_scale))),
+        )
+        self._apply_table_layout()
+
     def set_compact_mode(self, compact: bool) -> None:
         """Reduce columns and labels for small windows."""
         if self._compact_mode == compact:
@@ -430,7 +442,9 @@ class VoiceTableWidget(QWidget):
             self._table.setColumnWidth(4, 170)
             self._table.setColumnWidth(6, 68)
             self._table.setColumnWidth(7, 72)
-            self._table.verticalHeader().setDefaultSectionSize(38)
+            self._table.verticalHeader().setDefaultSectionSize(
+                self._scaled_table_row_height(38),
+            )
         else:
             self._quick_combo.setMinimumWidth(190)
             self._table.setColumnWidth(0, 36)
@@ -440,7 +454,9 @@ class VoiceTableWidget(QWidget):
             self._table.setColumnWidth(5, 145)
             self._table.setColumnWidth(6, 80)
             self._table.setColumnWidth(7, 80)
-            self._table.verticalHeader().setDefaultSectionSize(34)
+            self._table.verticalHeader().setDefaultSectionSize(
+                self._scaled_table_row_height(34),
+            )
 
         for row in range(self._table.rowCount()):
             voice_combo = self._table.cellWidget(row, 4)
@@ -450,6 +466,12 @@ class VoiceTableWidget(QWidget):
             intonation_combo = self._table.cellWidget(row, 5)
             if isinstance(intonation_combo, QComboBox):
                 intonation_combo.setMinimumWidth(96 if self._compact_mode else 118)
+
+    def _scaled_table_row_height(self, base_height: int) -> int:
+        return max(
+            round(base_height * self._ui_scale),
+            self._table.fontMetrics().height() + round(12 * self._ui_scale),
+        )
 
     # ── Data loading ──
 

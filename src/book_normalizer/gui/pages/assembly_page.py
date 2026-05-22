@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
@@ -106,6 +106,10 @@ class AssemblyPage(QWidget):
         dir_row = QHBoxLayout()
         dir_row.setSpacing(8)
         self._dir_label = QLabel()
+        self._dir_label.setWordWrap(True)
+        self._dir_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse,
+        )
         self._dir_label.setStyleSheet(
             "font-weight: 700; font-size: 13px; padding: 6px 12px;"
             "background: rgba(15,23,42,0.62); border: 1px solid rgba(148,163,184,0.12);"
@@ -122,6 +126,10 @@ class AssemblyPage(QWidget):
         settings = QFormLayout()
         settings.setHorizontalSpacing(16)
         settings.setVerticalSpacing(8)
+        settings.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow,
+        )
+        settings.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         self._pause_same = QSpinBox()
         self._pause_same.setRange(0, 5000)

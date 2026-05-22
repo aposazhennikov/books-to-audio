@@ -9,12 +9,13 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
-    QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QSplitter,
     QVBoxLayout,
@@ -80,6 +81,10 @@ class NormalizePage(QWidget):
         file_row = QHBoxLayout()
         file_row.setSpacing(8)
         self._path_label = QLabel()
+        self._path_label.setWordWrap(True)
+        self._path_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse,
+        )
         self._path_label.setStyleSheet(
             "font-weight: 700; font-size: 13px; padding: 6px 12px;"
             "background: rgba(15,23,42,0.62); border: 1px solid rgba(148,163,184,0.12);"
@@ -95,16 +100,18 @@ class NormalizePage(QWidget):
         # ── OCR settings (PDF only) ──
         self._ocr_widgets: list[QWidget] = []
 
-        settings = QFormLayout()
-        settings.setHorizontalSpacing(16)
-        settings.setVerticalSpacing(6)
+        settings = QGridLayout()
+        settings.setHorizontalSpacing(14)
+        settings.setVerticalSpacing(8)
+        for column in range(3):
+            settings.setColumnStretch(column, 1)
 
         self._book_language = QComboBox()
         self._book_language_label = QLabel()
         self._book_language_label_wrap = self._label_with_help(
             self._book_language_label, "norm.book_language_tip"
         )
-        settings.addRow(self._book_language_label_wrap, self._book_language)
+        self._add_setting(settings, 0, 0, self._book_language_label_wrap, self._book_language)
 
         self._ocr_mode = QComboBox()
         self._ocr_mode.addItems(["auto", "off", "force", "compare"])
@@ -112,7 +119,7 @@ class NormalizePage(QWidget):
         self._ocr_mode_label_wrap = self._label_with_help(
             self._ocr_mode_label, "norm.ocr_mode_tip"
         )
-        settings.addRow(self._ocr_mode_label_wrap, self._ocr_mode)
+        self._add_setting(settings, 0, 1, self._ocr_mode_label_wrap, self._ocr_mode)
         self._ocr_widgets.extend([self._ocr_mode_label_wrap, self._ocr_mode])
 
         self._ocr_dpi = QSpinBox()
@@ -122,7 +129,7 @@ class NormalizePage(QWidget):
         self._ocr_dpi_label_wrap = self._label_with_help(
             self._ocr_dpi_label, "norm.ocr_dpi_tip"
         )
-        settings.addRow(self._ocr_dpi_label_wrap, self._ocr_dpi)
+        self._add_setting(settings, 0, 2, self._ocr_dpi_label_wrap, self._ocr_dpi)
         self._ocr_widgets.extend([self._ocr_dpi_label_wrap, self._ocr_dpi])
 
         self._ocr_psm = QSpinBox()
@@ -132,7 +139,7 @@ class NormalizePage(QWidget):
         self._ocr_psm_label_wrap = self._label_with_help(
             self._ocr_psm_label, "norm.ocr_psm_tip"
         )
-        settings.addRow(self._ocr_psm_label_wrap, self._ocr_psm)
+        self._add_setting(settings, 1, 1, self._ocr_psm_label_wrap, self._ocr_psm)
         self._ocr_widgets.extend([self._ocr_psm_label_wrap, self._ocr_psm])
 
         self._ocr_not_applicable_label = QLabel()
@@ -140,7 +147,7 @@ class NormalizePage(QWidget):
             "color: rgba(226,232,240,0.52); font-style: italic; font-size: 12px;"
             "padding: 4px 0;"
         )
-        settings.addRow("", self._ocr_not_applicable_label)
+        settings.addWidget(self._ocr_not_applicable_label, 4, 0, 1, 3)
 
         self._llm_normalize = QCheckBox()
         self._llm_normalize.stateChanged.connect(self._update_llm_visibility)
@@ -148,21 +155,21 @@ class NormalizePage(QWidget):
         self._llm_normalize_label_wrap = self._label_with_help(
             self._llm_normalize_label, "norm.llm_tip"
         )
-        settings.addRow(self._llm_normalize_label_wrap, self._llm_normalize)
+        self._add_setting(settings, 1, 0, self._llm_normalize_label_wrap, self._llm_normalize)
 
         self._llm_endpoint = QLineEdit("http://localhost:11434/v1")
         self._llm_endpoint_label = QLabel()
         self._llm_endpoint_label_wrap = self._label_with_help(
             self._llm_endpoint_label, "norm.llm_tip"
         )
-        settings.addRow(self._llm_endpoint_label_wrap, self._llm_endpoint)
+        self._add_setting(settings, 2, 0, self._llm_endpoint_label_wrap, self._llm_endpoint)
 
         self._llm_model = QLineEdit("qwen3:8b")
         self._llm_model_label = QLabel()
         self._llm_model_label_wrap = self._label_with_help(
             self._llm_model_label, "norm.llm_tip"
         )
-        settings.addRow(self._llm_model_label_wrap, self._llm_model)
+        self._add_setting(settings, 2, 1, self._llm_model_label_wrap, self._llm_model)
 
         layout.addLayout(settings)
 
@@ -239,6 +246,21 @@ class NormalizePage(QWidget):
             widget.setVisible(enabled)
             widget.setEnabled(enabled)
 
+    @staticmethod
+    def _add_setting(
+        grid: QGridLayout,
+        row: int,
+        column: int,
+        label: QWidget,
+        field: QWidget,
+    ) -> None:
+        field.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        grid.addWidget(label, row * 2, column)
+        grid.addWidget(field, row * 2 + 1, column)
+
     def retranslate(self) -> None:
         """Update all translatable strings."""
         if not self._selected_path:
@@ -290,6 +312,7 @@ class NormalizePage(QWidget):
 
     def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
         """Create a form label with a reusable help button."""
+        label.setWordWrap(True)
         wrap, button = label_with_help(label, t(help_key))
         self._help_buttons[help_key] = button
         return wrap

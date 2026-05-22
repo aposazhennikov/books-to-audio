@@ -22,6 +22,7 @@ from book_normalizer.gui.pages.normalize_page import NormalizePage
 from book_normalizer.gui.pages.synthesis_page import SynthesisPage
 from book_normalizer.gui.pages.voices_page import VoicesPage
 from book_normalizer.gui.resources import application_icon
+from book_normalizer.gui.ui_scaler import apply_widget_scale_metrics
 
 
 class MainWindow(QMainWindow):
@@ -100,12 +101,19 @@ class MainWindow(QMainWindow):
         """Apply global UI scale to window-specific sizing."""
 
         self._ui_scale = scale
-        self.setMinimumSize(max(700, round(760 * scale)), max(480, round(520 * scale)))
+        self.setMinimumSize(
+            max(700, round(760 * min(scale, 1.0))),
+            max(480, round(520 * min(scale, 1.0))),
+        )
         self._title.setFont(
             QFont("Segoe UI", max(16, round(22 * scale)), QFont.Weight.Bold)
         )
         self._lang_combo.setMinimumWidth(max(148, round(164 * scale)))
         self._lang_combo.setMaximumWidth(max(190, round(240 * scale)))
+        for child in self.findChildren(QWidget):
+            if child is not self and hasattr(child, "set_ui_scale"):
+                child.set_ui_scale(scale)
+        apply_widget_scale_metrics(self, scale)
         self._sync_tab_labels()
 
     def resizeEvent(self, event) -> None:  # noqa: N802

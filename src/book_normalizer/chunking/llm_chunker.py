@@ -371,9 +371,10 @@ class LlmChunker:
                 {
                     "role": "user",
                     "content": (
-                        "Chunk exactly the text between TEXT_START and TEXT_END. "
-                        "Preserve quoted dialogue and all punctuation.\n"
-                        f"TEXT_START\n{user_text}\nTEXT_END"
+                        "Input is JSON. Chunk only input.text. "
+                        "Preserve quoted dialogue, apostrophes, punctuation, and word order.\n"
+                        "INPUT_JSON:\n"
+                        + json.dumps({"language": "Russian", "text": user_text}, ensure_ascii=False)
                     ),
                 },
             ],

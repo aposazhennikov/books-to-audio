@@ -27,6 +27,7 @@ Usage::
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable
 from hashlib import sha1
@@ -384,10 +385,16 @@ class LlmNormalizer:
                 {
                     "role": "user",
                     "content": (
-                        f"Language: {get_book_language(self._language).english_name}\n"
-                        "Correct only the text between TEXT_START and TEXT_END. "
-                        "Preserve quoted dialogue and every sentence.\n"
-                        f"TEXT_START\n{text}\nTEXT_END"
+                        "Input is JSON. Correct only input.text. "
+                        "Preserve quoted dialogue, apostrophes, punctuation, and every sentence.\n"
+                        "INPUT_JSON:\n"
+                        + json.dumps(
+                            {
+                                "language": get_book_language(self._language).english_name,
+                                "text": text,
+                            },
+                            ensure_ascii=False,
+                        )
                     ),
                 },
             ],

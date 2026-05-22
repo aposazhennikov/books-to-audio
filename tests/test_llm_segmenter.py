@@ -16,12 +16,14 @@ class _FakeClient:
     def __init__(self, responses: dict[str, Any]) -> None:
         self.responses = responses
         self.calls: list[str] = []
+        self.messages: list[list[dict[str, str]]] = []
         self.unloaded: list[str] = []
         self.unloaded_batches: list[tuple[str, ...]] = []
 
-    def chat_json_with_fallback(self, *, models: list[str], **_: Any) -> OllamaChatAttempt:
+    def chat_json_with_fallback(self, *, models: list[str], **kwargs: Any) -> OllamaChatAttempt:
         model = models[0]
         self.calls.append(model)
+        self.messages.append(kwargs["messages"])
         response = self.responses[model]
         if isinstance(response, Exception):
             raise response
@@ -78,6 +80,26 @@ def test_llm_voice_segmenter_outputs_manifest_for_all_languages(language: str, t
     assert rows[-1]["pause_after_ms"] == 1500
     assert fake.calls == [PRIMARY_QWEN3_MODEL]
     assert fake.unloaded_batches == [(PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL)]
+
+
+def test_llm_voice_segmenter_sends_quoted_source_as_json_input() -> None:
+    text = 'Sergey eshikni ochdi. "U yerda kim bor?" deb so\'radi u.'
+    segmenter = LlmVoiceSegmenter(language="uz")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "text": text, "intonation": "calm"},
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    segmenter.segment_book(_book(text, language="uz"))
+
+    user_content = fake.messages[0][1]["content"]
+    payload = json.loads(user_content.split("INPUT_JSON:\n", 1)[1])
+    assert payload["language"] == "Uzbek"
+    assert payload["text"] == text
 
 
 def test_llm_voice_segmenter_falls_back_when_primary_loses_text() -> None:

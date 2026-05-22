@@ -264,11 +264,18 @@ class LlmVoiceSegmenter:
                         {
                             "role": "user",
                             "content": (
-                                f"Book language: {get_book_language(self._language).english_name}\n"
-                                f"Chapter: {chapter_index + 1}, window: {window_index + 1}\n"
-                                "Segment exactly the text between TEXT_START and TEXT_END. "
-                                "Preserve quoted dialogue and all punctuation.\n"
-                                f"TEXT_START\n{window_text}\nTEXT_END"
+                                "Input is JSON. Segment only input.text. "
+                                "Preserve quoted dialogue, apostrophes, punctuation, and word order.\n"
+                                "INPUT_JSON:\n"
+                                + json.dumps(
+                                    {
+                                        "language": get_book_language(self._language).english_name,
+                                        "chapter": chapter_index + 1,
+                                        "window": window_index + 1,
+                                        "text": window_text,
+                                    },
+                                    ensure_ascii=False,
+                                )
                             ),
                         },
                     ],

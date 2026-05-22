@@ -11,6 +11,7 @@ mocked.  The tests verify:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -289,6 +290,34 @@ class TestLlmNormalizerMocked:
         else:
             assert "Ё" not in prompt
 
+    def test_query_llm_sends_quoted_source_as_json_input(self, tmp_path: Path) -> None:
+        from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
+        from book_normalizer.llm.ollama_client import OllamaChatAttempt
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        text = 'Sergey eshikni ochdi. "U yerda kim bor?" deb so\'radi u.'
+        captured: dict = {}
+
+        class _FakeClient:
+            def chat_json_with_fallback(self, **kwargs):
+                captured.update(kwargs)
+                return OllamaChatAttempt(
+                    model=PRIMARY_QWEN3_MODEL,
+                    content=json.dumps({"text": text}),
+                    data={"text": text},
+                )
+
+        normalizer = LlmNormalizer(cache_dir=tmp_path / "cache", language="uz")
+        normalizer._client = _FakeClient()
+
+        result = normalizer._query_llm(text, model=PRIMARY_QWEN3_MODEL)
+
+        assert result == text
+        user_content = captured["messages"][1]["content"]
+        payload = json.loads(user_content.split("INPUT_JSON:\n", 1)[1])
+        assert payload["language"] == "Uzbek"
+        assert payload["text"] == text
+
     def test_normalize_book_updates_paragraphs_and_reports_progress(self, tmp_path: Path) -> None:
         from book_normalizer.models.book import Book, Chapter, Paragraph
 
@@ -476,6 +505,32 @@ class TestLlmChunkerFormat:
 
         assert p1 != p2
         assert p1 != p3
+
+    def test_chunker_sends_quoted_source_as_json_input(self, tmp_path: Path) -> None:
+        from book_normalizer.chunking.llm_chunker import LlmChunker
+        from book_normalizer.llm.ollama_client import OllamaChatAttempt
+
+        text = 'Он вошёл. "Кто там?" — спросил он.'
+        captured: dict = {}
+
+        class _FakeClient:
+            def chat_json_with_fallback(self, **kwargs):
+                captured.update(kwargs)
+                return OllamaChatAttempt(
+                    model="test-model",
+                    content=json.dumps([{"narrator": text, "voice_tone": "calm"}]),
+                    data=[{"narrator": text, "voice_tone": "calm"}],
+                )
+
+        chunker = LlmChunker(model="test-model", cache_dir=tmp_path / "cache")
+        chunker._client = _FakeClient()
+
+        items = chunker._query_llm("system prompt", text)
+
+        assert items == [{"narrator": text, "voice_tone": "calm"}]
+        user_content = captured["messages"][1]["content"]
+        payload = json.loads(user_content.split("INPUT_JSON:\n", 1)[1])
+        assert payload["text"] == text
 
     def test_chunker_fallback_on_empty_llm(self, tmp_path: Path) -> None:
         """LlmChunker uses heuristic fallback when LLM always returns empty."""

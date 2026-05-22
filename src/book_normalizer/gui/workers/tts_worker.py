@@ -42,44 +42,62 @@ class ExportSegmentsWorker(QThread):
 
     def run(self) -> None:
         try:
+            from book_normalizer.chunking.llm_segmenter import LlmVoiceSegmenter
             from book_normalizer.chunking.voice_splitter import extract_segments_book
             from book_normalizer.dialogue.attribution import SpeakerMode, create_attributor
             from book_normalizer.dialogue.detector import DialogueDetector
             from book_normalizer.stress.rendering import render_annotated_chapters_for_tts
 
-            self.progress.emit(t("voice.detecting_dialogue"))
-            annotated = DialogueDetector().detect_book(self._book)
-
-            if self._speaker_mode != "manual":
-                self.progress.emit(t("voice.attributing", mode=self._speaker_mode))
-                attributor = create_attributor(
-                    SpeakerMode(self._speaker_mode),
-                    cache_dir=self._output_dir / "speaker_cache",
-                    llm_endpoint=self._llm_endpoint or "",
-                    llm_model=self._llm_model or "qwen3:8b",
-                    llm_api_key=self._llm_api_key or "",
-                )
-                attributor.attribute(annotated)
-
-            render_annotated_chapters_for_tts(annotated, self._book, self._stress_mode)
-            self.progress.emit(t("voice.extracting_segments"))
             metadata = getattr(self._book, "metadata", None)
             language = normalize_book_language(getattr(metadata, "language", "ru"))
-            manifest = [
-                {
-                    "segment_index": segment.segment_index,
-                    "chapter_index": segment.chapter_index,
-                    "language": language,
-                    "is_dialogue": segment.is_dialogue,
-                    "role": segment.role.value,
-                    "voice_id": segment.voice_id,
-                    "intonation": segment.intonation,
-                    "text": segment.text,
-                    "pause_after_ms": segment.pause_after_ms,
-                    "boundary_after": segment.boundary_after,
-                }
-                for segment in extract_segments_book(annotated)
-            ]
+            if self._speaker_mode == "llm":
+                self.progress.emit(t("voice.attributing", mode=self._speaker_mode))
+                segmenter = LlmVoiceSegmenter(
+                    endpoint=self._llm_endpoint or "http://localhost:11434",
+                    model=self._llm_model or "",
+                    api_key=self._llm_api_key or "",
+                    language=language,
+                    cache_dir=self._output_dir / "speaker_cache",
+                    review_report_path=self._output_dir / "llm_voice_review_report.json",
+                    max_segment_chars=600,
+                )
+
+                def report(done: int, total: int, label: str) -> None:
+                    self.progress.emit(f"LLM voice markup: {done}/{total} ({label})")
+
+                manifest = segmenter.segment_book(self._book, progress_callback=report)
+            else:
+                self.progress.emit(t("voice.detecting_dialogue"))
+                annotated = DialogueDetector().detect_book(self._book)
+
+                if self._speaker_mode != "manual":
+                    self.progress.emit(t("voice.attributing", mode=self._speaker_mode))
+                    attributor = create_attributor(
+                        SpeakerMode(self._speaker_mode),
+                        cache_dir=self._output_dir / "speaker_cache",
+                        llm_endpoint=self._llm_endpoint or "",
+                        llm_model=self._llm_model or "",
+                        llm_api_key=self._llm_api_key or "",
+                    )
+                    attributor.attribute(annotated)
+
+                render_annotated_chapters_for_tts(annotated, self._book, self._stress_mode)
+                self.progress.emit(t("voice.extracting_segments"))
+                manifest = [
+                    {
+                        "segment_index": segment.segment_index,
+                        "chapter_index": segment.chapter_index,
+                        "language": language,
+                        "is_dialogue": segment.is_dialogue,
+                        "role": segment.role.value,
+                        "voice_id": segment.voice_id,
+                        "intonation": segment.intonation,
+                        "text": segment.text,
+                        "pause_after_ms": segment.pause_after_ms,
+                        "boundary_after": segment.boundary_after,
+                    }
+                    for segment in extract_segments_book(annotated)
+                ]
 
             self._output_dir.mkdir(parents=True, exist_ok=True)
             manifest_path = self._output_dir / "segments_manifest.json"

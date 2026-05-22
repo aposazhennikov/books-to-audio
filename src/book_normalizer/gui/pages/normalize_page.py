@@ -27,6 +27,7 @@ from book_normalizer.gui.widgets.help_button import label_with_help, set_help_te
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.normalize_worker import NormalizeWorker
 from book_normalizer.languages import DEFAULT_BOOK_LANGUAGE, SUPPORTED_LANGUAGE_CODES
+from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
 
 _PDF_EXTENSIONS = {".pdf"}
 
@@ -157,14 +158,14 @@ class NormalizePage(QWidget):
         )
         self._add_setting(settings, 1, 0, self._llm_normalize_label_wrap, self._llm_normalize)
 
-        self._llm_endpoint = QLineEdit("http://localhost:11434/v1")
+        self._llm_endpoint = QLineEdit("http://localhost:11434")
         self._llm_endpoint_label = QLabel()
         self._llm_endpoint_label_wrap = self._label_with_help(
             self._llm_endpoint_label, "norm.llm_tip"
         )
         self._add_setting(settings, 2, 0, self._llm_endpoint_label_wrap, self._llm_endpoint)
 
-        self._llm_model = QLineEdit("qwen3:8b")
+        self._llm_model = QLineEdit(PRIMARY_QWEN3_MODEL)
         self._llm_model_label = QLabel()
         self._llm_model_label_wrap = self._label_with_help(
             self._llm_model_label, "norm.llm_tip"
@@ -350,8 +351,8 @@ class NormalizePage(QWidget):
             ocr_dpi=self._ocr_dpi.value(),
             ocr_psm=self._ocr_psm.value(),
             llm_normalize=self._llm_normalize.isChecked(),
-            llm_endpoint=self._llm_endpoint.text().strip() or "http://localhost:11434/v1",
-            llm_model=self._llm_model.text().strip() or "qwen3:8b",
+            llm_endpoint=self._llm_endpoint.text().strip() or "http://localhost:11434",
+            llm_model=self._llm_model.text().strip() or PRIMARY_QWEN3_MODEL,
             book_language=str(self._book_language.currentData() or DEFAULT_BOOK_LANGUAGE),
         )
         self._worker.progress.connect(self._progress.set_status)

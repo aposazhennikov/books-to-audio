@@ -31,7 +31,7 @@ class DoctorCheck:
 def run_doctor(
     *,
     comfyui_url: str = "http://localhost:8188",
-    llm_endpoint: str = "http://localhost:11434/v1",
+    llm_endpoint: str = "http://localhost:11434",
     workflow_path: Path | None = None,
     models_dir: Path | None = None,
     skip_network: bool = False,

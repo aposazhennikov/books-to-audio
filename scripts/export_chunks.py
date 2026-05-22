@@ -5,12 +5,12 @@ Usage (from Windows, in project root):
     # Heuristic mode (fast, rule-based):
     python scripts/export_chunks.py --book-dir output/mybook_pdf --speaker-mode heuristic
 
-    # LLM mode (Ollama, voice + mood detection):
-    python scripts/export_chunks.py --book-dir output/mybook_pdf --mode llm --llm-model gemma3:4b
+    # LLM mode (native Ollama, voice + mood detection):
+    python scripts/export_chunks.py --book-dir output/mybook_pdf --mode llm
 
     # LLM mode with custom endpoint:
     python scripts/export_chunks.py --book-dir output/mybook_pdf --mode llm \\
-        --llm-model gemma3:12b --llm-endpoint http://localhost:11434/v1
+        --llm-model hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M --llm-endpoint http://localhost:11434
 
 Output:
     heuristic -> chunks_manifest_v2.json
@@ -34,6 +34,7 @@ from book_normalizer.chunking.manifest import chunks_to_v2_manifest
 from book_normalizer.chunking.voice_splitter import chunk_annotated_book
 from book_normalizer.dialogue.attribution import SpeakerMode, create_attributor
 from book_normalizer.dialogue.detector import DialogueDetector
+from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
 from book_normalizer.models.book import Book, Chapter, Paragraph
 
 HEURISTIC_DEFAULT_MAX_CHUNK_CHARS = 600
@@ -175,8 +176,8 @@ def export_llm(
         LlmChunker,
     )
 
-    endpoint = getattr(args, "llm_endpoint", "http://localhost:11434/v1")
-    model = getattr(args, "llm_model", "gemma3:4b")
+    endpoint = getattr(args, "llm_endpoint", "http://localhost:11434")
+    model = getattr(args, "llm_model", PRIMARY_QWEN3_MODEL)
     max_chunk_chars = (
         args.max_chunk_chars
         if args.max_chunk_chars is not None
@@ -268,12 +269,12 @@ def main() -> None:
         help="Speaker attribution mode (heuristic mode only).",
     )
     parser.add_argument(
-        "--llm-model", default="gemma3:4b",
-        help="Ollama model for LLM chunking and normalization (default: gemma3:4b).",
+        "--llm-model", default=PRIMARY_QWEN3_MODEL,
+        help=f"Ollama model for LLM chunking and normalization (default: {PRIMARY_QWEN3_MODEL}).",
     )
     parser.add_argument(
-        "--llm-endpoint", default="http://localhost:11434/v1",
-        help="OpenAI-compatible endpoint for LLM (default: http://localhost:11434/v1).",
+        "--llm-endpoint", default="http://localhost:11434",
+        help="Native Ollama endpoint for LLM (default: http://localhost:11434).",
     )
     parser.add_argument(
         "--llm-normalize", action="store_true",

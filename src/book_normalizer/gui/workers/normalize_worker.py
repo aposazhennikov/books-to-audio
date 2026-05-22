@@ -15,6 +15,7 @@ from book_normalizer.languages import (
     normalize_book_language,
     tesseract_language,
 )
+from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL, model_plan_for_language
 
 
 def _apply_selected_book_language(book: object, language: str) -> object:
@@ -88,8 +89,8 @@ class NormalizeWorker(QThread):
         ocr_dpi: int = 400,
         ocr_psm: int = 6,
         llm_normalize: bool = False,
-        llm_endpoint: str = "http://localhost:11434/v1",
-        llm_model: str = "qwen3:8b",
+        llm_endpoint: str = "http://localhost:11434",
+        llm_model: str = PRIMARY_QWEN3_MODEL,
         llm_api_key: str = "",
         skip_stress: bool = False,
         book_language: str = "ru",
@@ -246,6 +247,7 @@ class NormalizeWorker(QThread):
             model=self._llm_model,
             cache_dir=self._llm_cache_dir(),
             api_key=self._llm_api_key,
+            language=self._book_language,
         )
 
         def report(done: int, total: int, accepted: int, rejected: int) -> None:
@@ -268,6 +270,15 @@ class NormalizeWorker(QThread):
             self.progress_pct.emit(done, total, eta)
 
         accepted, rejected = normalizer.normalize_book(book, progress_callback=report)
+        metadata = getattr(book, "metadata", None)
+        if metadata is not None:
+            plan = model_plan_for_language(
+                self._book_language,
+                preferred_model=self._llm_model,
+            )
+            metadata.extra["llm_processing_enabled"] = True
+            metadata.extra["llm_language"] = self._book_language
+            metadata.extra["llm_model_candidates"] = list(plan.candidates)
         self.progress.emit(
             t(
                 "norm.llm_done",

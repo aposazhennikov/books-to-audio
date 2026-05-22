@@ -176,7 +176,7 @@ class TestLlmNormalizerMocked:
         chapter_text = "Абзац первый.\n\nАбзац второй.\n\nАбзац третий."
         call_count = {"n": 0}
 
-        def mock_query(text: str) -> str:
+        def mock_query(text: str, **_: object) -> str:
             call_count["n"] += 1
             return text  # Return identical text (valid correction).
 
@@ -207,7 +207,7 @@ class TestLlmNormalizerMocked:
         corrected = "Тест кэша!"
         call_count = {"n": 0}
 
-        def mock_query(text: str) -> str:
+        def mock_query(text: str, **_: object) -> str:
             call_count["n"] += 1
             return corrected
 
@@ -222,7 +222,7 @@ class TestLlmNormalizerMocked:
         normalizer = self._make_normalizer(tmp_path)
         call_count = {"n": 0}
 
-        def mock_query(text: str) -> str:
+        def mock_query(text: str, **_: object) -> str:
             call_count["n"] += 1
             return text
 
@@ -255,6 +255,39 @@ class TestLlmNormalizerMocked:
 
         assert not result.is_valid
         assert result.accepted_text == original
+
+    def test_falls_back_to_4b_when_primary_output_fails_validation(self, tmp_path: Path) -> None:
+        from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3_MODEL
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        normalizer = LlmNormalizer(cache_dir=tmp_path / "cache", language="en")
+        original = "Alpha beta gamma."
+        seen_models: list[str] = []
+
+        def fake_query(text: str, *, model: str | None = None) -> str:
+            seen_models.append(str(model))
+            if model == PRIMARY_QWEN3_MODEL:
+                return "Alpha beta."
+            return text
+
+        with patch.object(normalizer, "_query_llm", side_effect=fake_query):
+            result = normalizer.normalize_paragraph(original, 0, 0)
+
+        assert result.is_valid
+        assert result.accepted_text == original
+        assert seen_models == [PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
+
+    @pytest.mark.parametrize("language", ["ru", "en", "zh", "kk", "uz"])
+    def test_language_prompt_is_selected_for_supported_languages(self, language: str) -> None:
+        from book_normalizer.normalization.llm_normalizer import _system_prompt_for_language
+
+        prompt = _system_prompt_for_language(language)
+
+        assert "JSON" in prompt
+        if language == "ru":
+            assert "Ё" in prompt
+        else:
+            assert "Ё" not in prompt
 
     def test_normalize_book_updates_paragraphs_and_reports_progress(self, tmp_path: Path) -> None:
         from book_normalizer.models.book import Book, Chapter, Paragraph

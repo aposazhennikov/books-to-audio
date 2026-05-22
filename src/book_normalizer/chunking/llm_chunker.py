@@ -32,6 +32,9 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL, model_plan_for_language
+from book_normalizer.llm.ollama_client import OllamaChatClient
+
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -176,8 +179,8 @@ class LlmChunker:
 
     def __init__(
         self,
-        endpoint: str = "http://localhost:11434/v1",
-        model: str = "gemma3:4b",
+        endpoint: str = "http://localhost:11434",
+        model: str = PRIMARY_QWEN3_MODEL,
         cache_dir: Path | None = None,
         window_chars: int = DEFAULT_WINDOW_CHARS,
         max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
@@ -185,12 +188,21 @@ class LlmChunker:
         max_retries: int = MAX_RETRIES,
     ) -> None:
         self._endpoint = endpoint.rstrip("/")
-        self._model = model
+        self._model_plan = model_plan_for_language("ru", preferred_model=model)
+        self._model = self._model_plan.primary_model
         self._cache_dir = cache_dir
         self._window_chars = window_chars
         self._max_chunk_chars = max(1, max_chunk_chars)
         self._api_key = api_key
         self._max_retries = max_retries
+        self._client = OllamaChatClient(
+            endpoint=endpoint,
+            api_key=api_key,
+            num_ctx=self._model_plan.num_ctx,
+            num_parallel=self._model_plan.num_parallel,
+            keep_alive=self._model_plan.keep_alive,
+            think=self._model_plan.think,
+        )
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -350,57 +362,37 @@ class LlmChunker:
         raise RuntimeError(message)
 
     def _query_llm(self, system_prompt: str, user_text: str) -> list[dict[str, str]]:
-        """Send one chat request to the OpenAI-compatible endpoint and parse JSON."""
-        try:
-            import httpx
-        except ImportError:
-            logger.error("httpx is required for LLM chunking: pip install httpx")
-            return []
+        """Send one native Ollama chat request and parse JSON."""
 
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
-
-        payload: dict[str, Any] = {
-            "model": self._model,
-            "messages": [
+        attempt = self._client.chat_json_with_fallback(
+            models=self._model_plan.candidates,
+            messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_text},
+                {
+                    "role": "user",
+                    "content": (
+                        "Chunk exactly the text between TEXT_START and TEXT_END. "
+                        "Preserve quoted dialogue and all punctuation.\n"
+                        f"TEXT_START\n{user_text}\nTEXT_END"
+                    ),
+                },
             ],
-            "temperature": 0.1,
-        }
-
-        try:
-            resp = httpx.post(
-                f"{self._endpoint}/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=300.0,
-            )
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            # Log full HTTP status + a slice of the body to understand why Ollama failed.
-            body = exc.response.text[:1000] if exc.response is not None else ""
-            logger.error(
-                "LLM HTTP error for model %s (status %s): %s\nResponse body (truncated): %s",
-                self._model,
-                exc.response.status_code if exc.response is not None else "?",
-                exc,
-                body,
-            )
-            raise
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                "LLM request failed for model %s at %s: %s",
-                self._model,
-                self._endpoint,
-                exc,
-                exc_info=True,
-            )
-            raise
-
-        content: str = resp.json()["choices"][0]["message"]["content"]
-        return _parse_llm_response(content)
+            schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "narrator": {"type": "string"},
+                        "men": {"type": "string"},
+                        "women": {"type": "string"},
+                        "voice_tone": {"type": "string"},
+                    },
+                    "required": ["voice_tone"],
+                },
+            },
+            temperature=0.1,
+        )
+        return _normalise_llm_items(attempt.data)
 
     # ── Cache ─────────────────────────────────────────────────────────────────
 

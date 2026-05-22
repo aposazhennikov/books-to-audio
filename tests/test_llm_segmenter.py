@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from book_normalizer.chunking.llm_segmenter import LlmSegmentationError, LlmVoiceSegmenter
+from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3_MODEL
+from book_normalizer.llm.ollama_client import OllamaChatAttempt
+from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
+
+
+class _FakeClient:
+    def __init__(self, responses: dict[str, Any]) -> None:
+        self.responses = responses
+        self.calls: list[str] = []
+        self.unloaded: list[str] = []
+        self.unloaded_batches: list[tuple[str, ...]] = []
+
+    def chat_json_with_fallback(self, *, models: list[str], **_: Any) -> OllamaChatAttempt:
+        model = models[0]
+        self.calls.append(model)
+        response = self.responses[model]
+        if isinstance(response, Exception):
+            raise response
+        return OllamaChatAttempt(model=model, content=json.dumps(response), data=response)
+
+    def unload_model(self, model: str) -> None:
+        self.unloaded.append(model)
+
+    def unload_models(self, models: tuple[str, ...]) -> None:
+        self.unloaded_batches.append(tuple(models))
+
+
+def _book(text: str, language: str = "ru") -> Book:
+    return Book(
+        metadata=Metadata(language=language),
+        chapters=[
+            Chapter(
+                title="Ch",
+                index=0,
+                paragraphs=[Paragraph(raw_text=text, normalized_text=text, index_in_chapter=0)],
+            ),
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    ("language", "text"),
+    [
+        ("ru", "Он вошел. — Привет."),
+        ("en", "He entered. \"Hello.\""),
+        ("zh", "他进来了。“你好。”"),
+        ("kk", "Ол кірді. — Сәлем."),
+        ("uz", "U kirdi. \"Salom.\""),
+    ],
+)
+def test_llm_voice_segmenter_outputs_manifest_for_all_languages(language: str, text: str) -> None:
+    segmenter = LlmVoiceSegmenter(language=language)
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "text": text, "intonation": "calm"},
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language=language))
+
+    assert rows[0]["language"] == language
+    assert rows[0]["role"] == "narrator"
+    assert rows[0]["voice_id"] == "narrator_calm"
+    assert rows[0]["text"] == text
+    assert rows[-1]["boundary_after"] == "chapter"
+    assert rows[-1]["pause_after_ms"] == 1500
+    assert fake.calls == [PRIMARY_QWEN3_MODEL]
+    assert fake.unloaded_batches == [(PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL)]
+
+
+def test_llm_voice_segmenter_falls_back_when_primary_loses_text() -> None:
+    text = "Alpha beta gamma."
+    segmenter = LlmVoiceSegmenter(language="en")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [{"role": "narrator", "text": "Alpha beta.", "intonation": "calm"}],
+        },
+        FALLBACK_QWEN3_MODEL: {
+            "segments": [{"role": "narrator", "text": text, "intonation": "calm"}],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="en"))
+
+    assert " ".join(row["text"] for row in rows) == text
+    assert fake.calls == [PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
+    assert PRIMARY_QWEN3_MODEL in fake.unloaded
+
+
+def test_llm_voice_segmenter_writes_review_report_when_all_models_fail(tmp_path: Path) -> None:
+    report_path = tmp_path / "review.json"
+    segmenter = LlmVoiceSegmenter(language="en", review_report_path=report_path)
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [{"role": "narrator", "text": "lost", "intonation": "calm"}],
+        },
+        FALLBACK_QWEN3_MODEL: {
+            "segments": [{"role": "narrator", "text": "also lost", "intonation": "calm"}],
+        },
+    })
+    segmenter._client = fake
+
+    with pytest.raises(LlmSegmentationError):
+        segmenter.segment_book(_book("Full source text.", language="en"))
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["requires_human_review"] is True
+    assert report["models"] == [PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
+    assert len(report["failures"]) == 2

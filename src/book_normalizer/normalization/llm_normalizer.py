@@ -1,4 +1,4 @@
-"""LLM-based text normalizer for Russian literary prose.
+"""LLM-based text normalizer for multilingual literary prose.
 
 Runs a single Ollama pass over each paragraph (or short block) to:
   - fix typos and spelling errors,
@@ -19,8 +19,7 @@ pipeline can be resumed without re-querying the LLM.
 Usage::
 
     normalizer = LlmNormalizer(
-        endpoint="http://localhost:11434/v1",
-        model="gemma3:4b",
+        endpoint="http://localhost:11434",
         cache_dir=Path("output/mybook/llm_norm_cache"),
     )
     corrected_text = normalizer.normalize_chapter(raw_text, chapter_index=0)
@@ -32,8 +31,11 @@ import logging
 from collections.abc import Callable
 from hashlib import sha1
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from book_normalizer.languages import get_book_language, normalize_book_language
+from book_normalizer.llm.model_router import model_plan_for_language
+from book_normalizer.llm.ollama_client import OllamaChatClient
 from book_normalizer.normalization.text_validator import (
     TextPreservationValidator,
     ValidationResult,
@@ -48,7 +50,8 @@ BookProgressCallback = Callable[[int, int, int, int], None]
 
 # ── Prompt ────────────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = """\
+_PROMPTS: dict[str, str] = {
+    "ru": """\
 Ты — корректор русского текста. Твоя задача — минимальная правка:
 
 1. Исправь явные опечатки и орфографические ошибки.
@@ -61,18 +64,61 @@ _SYSTEM_PROMPT = """\
 - Перефразировать или менять стиль автора.
 - Добавлять пояснения, комментарии или заголовки.
 
-Верни ТОЛЬКО исправленный текст — без кавычек, без пояснений, без markdown.
-"""
+Верни JSON строго такого вида: {"text": "исправленный текст"}.
+""",
+    "en": """\
+You are a careful English literary proofreader. Make only minimal corrections:
+
+1. Fix obvious OCR, spelling, spacing, and punctuation errors.
+2. Preserve the author's wording, sentence order, names, places, and style.
+3. Do not summarize, rewrite, add explanations, remove sentences, or translate.
+
+Return strict JSON only: {"text": "corrected text"}.
+""",
+    "zh": """\
+你是中文小说文本校对员。只做最小必要修改：
+
+1. 修正明显 OCR、错别字、空格和标点问题。
+2. 保留原文内容、人物、地名、句子顺序和作者风格。
+3. 不要改写、扩写、删句、解释或翻译。
+
+只返回严格 JSON：{"text": "校对后的文本"}。
+""",
+    "kk": """\
+Сен қазақ тіліндегі көркем мәтінді мұқият түзететін редакторсың. Тек ең аз түзету жаса:
+
+1. Айқын OCR, емле, бос орын және тыныс белгілер қателерін түзет.
+2. Автор стилін, сөйлем тәртібін, есімдерді және жер атауларын сақта.
+3. Қайта жазба, қысқартпа, жаңа сөйлем қоспа, түсініктеме берме және аударма.
+
+Тек қатаң JSON қайтар: {"text": "түзетілген мәтін"}.
+""",
+    "uz": """\
+Siz o'zbek adabiy matnini ehtiyotkor tahrir qiluvchi muharrirsiz. Faqat minimal tuzatish qiling:
+
+1. Aniq OCR, imlo, bo'shliq va tinish belgisi xatolarini tuzating.
+2. Muallif uslubi, gap tartibi, ismlar va joy nomlarini saqlang.
+3. Qayta yozmang, qisqartirmang, yangi gap qo'shmang, izoh bermang va tarjima qilmang.
+
+Faqat qat'iy JSON qaytaring: {"text": "tuzatilgan matn"}.
+""",
+}
+
+_NORMALIZATION_SCHEMA = {
+    "type": "object",
+    "properties": {"text": {"type": "string"}},
+    "required": ["text"],
+}
 
 # ── LlmNormalizer ─────────────────────────────────────────────────────────────
 
 
 class LlmNormalizer:
-    """Correct grammar / punctuation / yofication of Russian text via Ollama.
+    """Correct grammar, punctuation, and OCR noise with local Ollama.
 
     Args:
-        endpoint:   OpenAI-compatible API base URL (default: Ollama).
-        model:      Model identifier (e.g. ``"gemma3:4b"``).
+        endpoint:   Native Ollama API base URL.
+        model:      Optional model override; blank selects the language router.
         cache_dir:  Directory for paragraph-level result cache.
         validator:  Custom :class:`TextPreservationValidator` instance.
                     If *None*, a default validator is created.
@@ -82,19 +128,36 @@ class LlmNormalizer:
 
     def __init__(
         self,
-        endpoint: str = "http://localhost:11434/v1",
-        model: str = "gemma3:4b",
+        endpoint: str = "http://localhost:11434",
+        model: str = "",
         cache_dir: Path | None = None,
         validator: TextPreservationValidator | None = None,
         api_key: str = "",
         max_retries: int = 2,
+        language: str = "ru",
+        lightweight: bool = False,
     ) -> None:
         self._endpoint = endpoint.rstrip("/")
-        self._model = model
+        self._language = normalize_book_language(language)
+        self._model_plan = model_plan_for_language(
+            self._language,
+            preferred_model=model,
+            lightweight=lightweight,
+        )
+        self._model = self._model_plan.primary_model
+        self._model_candidates = self._model_plan.candidates
         self._cache_dir = cache_dir
         self._validator = validator or TextPreservationValidator()
         self._api_key = api_key
         self._max_retries = max_retries
+        self._client = OllamaChatClient(
+            endpoint=endpoint,
+            api_key=api_key,
+            num_ctx=self._model_plan.num_ctx,
+            num_parallel=self._model_plan.num_parallel,
+            keep_alive=self._model_plan.keep_alive,
+            think=self._model_plan.think,
+        )
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -172,51 +235,55 @@ class LlmNormalizer:
         if cached is not None:
             return self._validator.validate(text, cached)
 
-        # Try LLM correction with retries.
         corrected: str | None = None
         last_error: Exception | None = None
         last_issues: list[str] = []
 
         for attempt in range(1, self._max_retries + 1):
-            try:
-                raw = self._query_llm(text)
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
-                logger.warning(
-                    "Chapter %d paragraph %d attempt %d/%d: LLM request failed: %s: %s",
-                    chapter_index,
-                    paragraph_index,
-                    attempt,
-                    self._max_retries,
-                    type(exc).__name__,
-                    exc,
-                )
-                continue
+            for model in self._model_candidates:
+                try:
+                    raw = self._query_llm(text, model=model)
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    logger.warning(
+                        "Chapter %d paragraph %d attempt %d/%d model %s: LLM request failed: %s: %s",
+                        chapter_index,
+                        paragraph_index,
+                        attempt,
+                        self._max_retries,
+                        model,
+                        type(exc).__name__,
+                        exc,
+                    )
+                    continue
 
-            if raw:
-                result = self._validator.validate(text, raw)
-                if result.is_valid:
-                    self._save_cache(chapter_index, paragraph_index, text, raw)
-                    return result
+                if raw:
+                    result = self._validator.validate(text, raw)
+                    if result.is_valid:
+                        self._save_cache(chapter_index, paragraph_index, text, raw)
+                        return result
 
-                last_issues = list(result.issues)
-                logger.debug(
-                    "Chapter %d paragraph %d attempt %d/%d: validation rejected — %s",
-                    chapter_index,
-                    paragraph_index,
-                    attempt,
-                    self._max_retries,
-                    "; ".join(result.issues),
-                )
-                corrected = raw  # keep last attempt even if invalid
-            else:
-                logger.debug(
-                    "Chapter %d paragraph %d attempt %d/%d: LLM returned empty text",
-                    chapter_index,
-                    paragraph_index,
-                    attempt,
-                    self._max_retries,
-                )
+                    last_issues = list(result.issues)
+                    logger.debug(
+                        "Chapter %d paragraph %d attempt %d/%d model %s: validation rejected — %s",
+                        chapter_index,
+                        paragraph_index,
+                        attempt,
+                        self._max_retries,
+                        model,
+                        "; ".join(result.issues),
+                    )
+                    corrected = raw
+                    self._client.unload_model(model)
+                else:
+                    logger.debug(
+                        "Chapter %d paragraph %d attempt %d/%d model %s: LLM returned empty text",
+                        chapter_index,
+                        paragraph_index,
+                        attempt,
+                        self._max_retries,
+                        model,
+                    )
 
         # All attempts failed or rejected — return original and surface reason.
         issues: list[str] = []
@@ -269,92 +336,67 @@ class LlmNormalizer:
         total = sum(len(chapter.paragraphs) for chapter in book.chapters)
         accepted = rejected = done = 0
 
-        for chapter in book.chapters:
-            for para in chapter.paragraphs:
-                source = para.normalized_text or para.raw_text
-                if not source.strip():
+        try:
+            for chapter in book.chapters:
+                for para in chapter.paragraphs:
+                    source = para.normalized_text or para.raw_text
+                    if not source.strip():
+                        done += 1
+                        if progress_callback is not None:
+                            progress_callback(done, total, accepted, rejected)
+                        continue
+
+                    result = self.normalize_paragraph(
+                        source,
+                        chapter.index,
+                        para.index_in_chapter,
+                    )
+                    if result.is_valid:
+                        para.normalized_text = result.accepted_text
+                        accepted += 1
+                    else:
+                        rejected += 1
+
                     done += 1
                     if progress_callback is not None:
                         progress_callback(done, total, accepted, rejected)
-                    continue
-
-                result = self.normalize_paragraph(
-                    source,
-                    chapter.index,
-                    para.index_in_chapter,
-                )
-                if result.is_valid:
-                    para.normalized_text = result.accepted_text
-                    accepted += 1
-                else:
-                    rejected += 1
-
-                done += 1
-                if progress_callback is not None:
-                    progress_callback(done, total, accepted, rejected)
+        finally:
+            self._client.unload_models(self._model_candidates)
 
         book.add_audit(
             "llm_normalization",
             "pipeline_complete",
-            f"model={self._model}, endpoint={self._endpoint}, "
+            f"models={list(self._model_candidates)}, endpoint={self._endpoint}, "
+            f"language={self._language}, "
             f"paragraphs={total}, accepted={accepted}, rejected={rejected}",
         )
         return accepted, rejected
 
     # ── LLM query ─────────────────────────────────────────────────────────────
 
-    def _query_llm(self, text: str) -> str:
-        """Send one paragraph to the LLM and return the corrected text."""
-        try:
-            import httpx
-        except ImportError:
-            logger.error("httpx is required for LLM normalisation: pip install httpx")
-            return ""
+    def _query_llm(self, text: str, *, model: str | None = None) -> str:
+        """Send one paragraph to a local Ollama model and return corrected text."""
 
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
-
-        payload: dict[str, Any] = {
-            "model": self._model,
-            "messages": [
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": text},
+        attempt = self._client.chat_json_with_fallback(
+            models=[model or self._model],
+            messages=[
+                {"role": "system", "content": _system_prompt_for_language(self._language)},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Language: {get_book_language(self._language).english_name}\n"
+                        "Correct only the text between TEXT_START and TEXT_END. "
+                        "Preserve quoted dialogue and every sentence.\n"
+                        f"TEXT_START\n{text}\nTEXT_END"
+                    ),
+                },
             ],
-            "temperature": 0.05,   # Very low — we want minimal changes.
-        }
-
-        try:
-            resp = httpx.post(
-                f"{self._endpoint}/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=60.0,
-            )
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            body = exc.response.text[:1000] if exc.response is not None else ""
-            logger.error(
-                "LLM normalisation HTTP error for model %s (status %s): %s\n"
-                "Response body (truncated): %s",
-                self._model,
-                exc.response.status_code if exc.response is not None else "?",
-                exc,
-                body,
-            )
-            raise
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                "LLM normalisation request failed for model %s at %s: %s",
-                self._model,
-                self._endpoint,
-                exc,
-                exc_info=True,
-            )
-            raise
-
-        content: str = resp.json()["choices"][0]["message"]["content"]
-        return _clean_llm_output(content)
+            schema=_NORMALIZATION_SCHEMA,
+            temperature=0.05,
+        )
+        if isinstance(attempt.data, dict):
+            return _clean_llm_output(str(attempt.data.get("text") or ""))
+        return _clean_llm_output(attempt.content)
 
     # ── Cache ─────────────────────────────────────────────────────────────────
 
@@ -407,9 +449,10 @@ class LlmNormalizer:
     def _cache_fingerprint(self, source_text: str) -> str:
         """Return a cache fingerprint for text + LLM settings."""
         payload = "\n\0".join((
-            self._model,
+            ",".join(self._model_candidates),
             self._endpoint,
-            _SYSTEM_PROMPT,
+            self._language,
+            _system_prompt_for_language(self._language),
             source_text,
         ))
         return sha1(payload.encode("utf-8")).hexdigest()[:16]
@@ -430,3 +473,10 @@ def _clean_llm_output(content: str) -> str:
        (content.startswith("'") and content.endswith("'")):
         content = content[1:-1]
     return content.strip()
+
+
+def _system_prompt_for_language(language: str | None) -> str:
+    """Return the minimal-edit prompt for a selected book language."""
+
+    code = normalize_book_language(language)
+    return _PROMPTS.get(code, _PROMPTS["ru"])

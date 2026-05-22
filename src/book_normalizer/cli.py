@@ -17,6 +17,7 @@ from book_normalizer.config import AppConfig, OcrMode
 from book_normalizer.exporters.json_exporter import JsonExporter
 from book_normalizer.exporters.qwen_exporter import QwenExporter
 from book_normalizer.exporters.txt_exporter import TxtExporter
+from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
 from book_normalizer.loaders.factory import LoaderFactory
 from book_normalizer.loaders.pdf_loader import (
     PdfLoader,
@@ -130,6 +131,7 @@ def _run_llm_normalization(
         model=llm_model,
         cache_dir=output_dir / "llm_norm_cache",
         api_key=llm_api_key,
+        language=getattr(getattr(book, "metadata", None), "language", "ru"),
     )
 
     def report(done: int, total: int, accepted: int, rejected: int) -> None:
@@ -152,10 +154,10 @@ def main() -> None:
 @main.command(name="pipeline")
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--out", "-o", type=click.Path(path_type=Path), default=Path("output"), help="Output root directory.")
-@click.option("--llm-model", default="gemma3:4b", show_default=True, help="Ollama model for chunking.")
+@click.option("--llm-model", default=PRIMARY_QWEN3_MODEL, show_default=True, help="Ollama model for chunking.")
 @click.option(
     "--llm-endpoint",
-    default="http://localhost:11434/v1",
+    default="http://localhost:11434",
     show_default=True,
     help="OpenAI-compatible LLM endpoint.",
 )
@@ -230,7 +232,7 @@ def pipeline_command(
 @click.option("--comfyui-url", default="http://localhost:8188", show_default=True, help="ComfyUI server URL.")
 @click.option(
     "--llm-endpoint",
-    default="http://localhost:11434/v1",
+    default="http://localhost:11434",
     show_default=True,
     help="OpenAI-compatible LLM endpoint.",
 )
@@ -415,13 +417,13 @@ def audio_qa_command(manifest_path: Path, report: Path | None) -> None:
 )
 @click.option(
     "--llm-endpoint",
-    default="http://localhost:11434/v1",
+    default="http://localhost:11434",
     show_default=True,
     help="OpenAI-compatible endpoint for LLM normalization.",
 )
 @click.option(
     "--llm-model",
-    default="qwen3:8b",
+    default=PRIMARY_QWEN3_MODEL,
     show_default=True,
     help="Model name for LLM normalization.",
 )
@@ -870,7 +872,12 @@ def _parse_chapter_range(value: str) -> tuple[int, int] | None:
 @click.option("--pause-chapter-ms", type=int, default=3000, show_default=True, help="Pause between chapters (ms).")
 @click.option("--skip-assembly", is_flag=True, default=False, help="Only generate chunks, skip assembly.")
 @click.option("--llm-endpoint", default="", help="API endpoint for LLM speaker attribution.")
-@click.option("--llm-model", default="qwen3:8b", show_default=True, help="LLM model name for speaker attribution.")
+@click.option(
+    "--llm-model",
+    default=PRIMARY_QWEN3_MODEL,
+    show_default=True,
+    help="LLM model name for speaker attribution.",
+)
 @click.option("--skip-stress", is_flag=True, default=False, help="Skip stress annotation.")
 @click.option(
     "--ocr-mode",

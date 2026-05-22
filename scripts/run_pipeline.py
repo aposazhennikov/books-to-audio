@@ -53,9 +53,9 @@ Options:
     --book              Path to the book file (PDF/EPUB/FB2/TXT/DOCX).
     --out               Output root directory.
     --llm-model         Ollama model for both normalization and chunking
-                        (default: gemma3:4b).
-    --llm-endpoint      Ollama OpenAI-compatible endpoint
-                        (default: http://localhost:11434/v1).
+                        (default: hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M).
+    --llm-endpoint      Native Ollama endpoint
+                        (default: http://localhost:11434).
     --llm-normalize     Run LLM grammar/punctuation/yofication pass.
     --synthesize        Run ComfyUI synthesis after chunking.
     --workflow          Path to ComfyUI workflow JSON template (required with --synthesize).
@@ -83,6 +83,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 _SRC_DIR = str(Path(__file__).resolve().parent.parent / "src")
 sys.path.insert(0, _SRC_DIR)
+
+from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL  # noqa: E402
 
 
 def _subprocess_env() -> dict[str, str]:
@@ -389,12 +391,12 @@ def main() -> None:
     parser.add_argument("--book", required=True, help="Path to book file (PDF/EPUB/FB2/TXT/DOCX).")
     parser.add_argument("--out", required=True, help="Output root directory.")
     parser.add_argument(
-        "--llm-model", default="gemma3:4b",
-        help="Ollama model for normalization and chunking (default: gemma3:4b).",
+        "--llm-model", default=PRIMARY_QWEN3_MODEL,
+        help=f"Ollama model for normalization and chunking (default: {PRIMARY_QWEN3_MODEL}).",
     )
     parser.add_argument(
-        "--llm-endpoint", default="http://localhost:11434/v1",
-        help="Ollama OpenAI-compatible endpoint (default: http://localhost:11434/v1).",
+        "--llm-endpoint", default="http://localhost:11434",
+        help="Native Ollama endpoint (default: http://localhost:11434).",
     )
     parser.add_argument(
         "--llm-normalize", action="store_true",

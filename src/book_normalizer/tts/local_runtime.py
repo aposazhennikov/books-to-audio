@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import subprocess
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -45,33 +44,17 @@ def check_tts_python(
 ) -> tuple[bool, str]:
     """Return whether the Python runtime has the local TTS dependencies."""
     exe = python_executable or sys.executable
-    code = (
-        "import importlib.util, json, sys; "
-        f"required={REQUIRED_TTS_MODULES!r}; "
-        "missing=[name for name in required if importlib.util.find_spec(name) is None]; "
-        "print(json.dumps({'executable': sys.executable, 'missing': missing}))"
-    )
-    try:
-        result = subprocess.run(
-            [exe, "-c", code],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
+    _ = timeout
+    if Path(exe) != Path(sys.executable):
+        return (
+            False,
+            "Voice preview generation runs inside the current native app Python: "
+            f"{sys.executable}. Activate or install dependencies there instead of {exe}.",
         )
-    except Exception as exc:
-        return False, f"Could not inspect Python runtime {exe}: {exc}"
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "").strip()
-        return False, detail or f"{exe} exited with code {result.returncode}"
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return False, result.stdout.strip() or "Python runtime returned non-JSON output."
-    missing = payload.get("missing") or []
-    executable = str(payload.get("executable") or exe)
+    missing = [
+        name for name in REQUIRED_TTS_MODULES
+        if importlib.util.find_spec(name) is None
+    ]
     if missing:
-        return False, f"{executable}; missing Python packages: {', '.join(missing)}"
-    return True, executable
+        return False, f"{sys.executable}; missing Python packages: {', '.join(missing)}"
+    return True, sys.executable

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import subprocess
+import time
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, QUrl, pyqtSignal
@@ -26,12 +26,14 @@ from book_normalizer.gui.i18n import (
     voice_preset_description,
     voice_preset_label,
 )
-from book_normalizer.gui.voice_presets import VOICE_PRESETS, VoicePreset
-from book_normalizer.tts.local_runtime import build_tts_preview_command, check_tts_python
-from book_normalizer.tts.model_paths import default_comfyui_models_dir
+from book_normalizer.gui.voice_presets import PRESET_BY_ID, VOICE_PRESETS, VoicePreset
+from book_normalizer.tts.local_runtime import check_tts_python
+from book_normalizer.tts.model_paths import (
+    default_comfyui_models_dir,
+    describe_model_resolution,
+)
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
-_SCRIPT_PATH = _PROJECT_ROOT / "scripts" / "generate_voice_previews.py"
 _DEFAULT_PREVIEW_DIR = _PROJECT_ROOT / "voice_previews"
 
 _STYLE_STATUS_NORMAL = (
@@ -55,7 +57,7 @@ _STYLE_STATUS_ERR = (
 
 
 class GeneratePreviewsWorker(QThread):
-    """Background worker: streams local TTS output line by line."""
+    """Background worker: generates local TTS previews inside this app process."""
 
     progress_line = pyqtSignal(str)
     progress_pct = pyqtSignal(int, int, str)
@@ -85,69 +87,89 @@ class GeneratePreviewsWorker(QThread):
                 self.error.emit(detail)
                 return
 
-            cmd = build_tts_preview_command(
-                script_path=_SCRIPT_PATH,
-                out_dir=self._out_dir,
-                text=self._text,
-                voice_ids=self._voice_ids,
-                model=self._model,
-                models_dir=default_comfyui_models_dir(),
-            )
+            import soundfile as sf
+            import torch
+            from qwen_tts import Qwen3TTSModel
 
+            self._out_dir.mkdir(parents=True, exist_ok=True)
             self.progress_line.emit(t("voice.gen_loading"))
 
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
+            try:
+                import flash_attn  # noqa: F401
 
-            for raw in proc.stdout:
-                line = raw.strip()
-                if not line:
+                attn = "flash_attention_2"
+                self.attn_info.emit(attn, "installed")
+            except ImportError:
+                attn = "sdpa"
+                self.attn_info.emit(attn, "flash-attn not installed")
+
+            dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+            device = "cuda:0" if torch.cuda.is_available() else "cpu"
+            model_name, _is_local = describe_model_resolution(
+                self._model,
+                models_dir=default_comfyui_models_dir(),
+            )
+            model = Qwen3TTSModel.from_pretrained(
+                model_name,
+                device_map=device,
+                dtype=dtype,
+                attn_implementation=attn,
+            )
+            self.progress_line.emit(t("voice.model_loaded_generating"))
+
+            presets = [PRESET_BY_ID[voice_id] for voice_id in self._voice_ids if voice_id in PRESET_BY_ID]
+            if not presets:
+                self.error.emit(t("voice.none_selected"))
+                return
+
+            total = len(presets)
+            generated = 0
+            started = time.time()
+            for index, preset in enumerate(presets, start=1):
+                out_path = self._out_dir / f"{preset.id}.wav"
+                elapsed = time.time() - started
+                if out_path.exists():
+                    generated += 1
+                    self._emit_progress(index, total, elapsed, preset.id, "skipped")
                     continue
 
-                if line.startswith("PROGRESS|"):
-                    self._parse_progress(line)
-                elif line.startswith("FINISHED|"):
-                    self._parse_finished(line)
-                elif line.startswith("LOADING_MODEL"):
-                    self.progress_line.emit(t("voice.gen_loading"))
-                elif line.startswith("MODEL_READY"):
-                    self.progress_line.emit(t("voice.model_loaded_generating"))
-                elif line.startswith("ATTN_INFO|"):
-                    parts = line.split("|")
-                    if len(parts) >= 3:
-                        self.attn_info.emit(parts[1], parts[2])
-                elif line.startswith("ERROR|"):
-                    self.error.emit(line[6:])
-                    return
-                else:
-                    self.progress_line.emit(line[:150])
-
-            proc.wait(timeout=30)
-            if proc.returncode != 0:
-                self.error.emit(
-                    t("voice.process_exit_code", code=proc.returncode)
+                try:
+                    wavs, sample_rate = model.generate_custom_voice(
+                        text=self._text,
+                        language="Russian",
+                        speaker=preset.speaker,
+                        instruct=preset.instruct,
+                    )
+                    sf.write(str(out_path), wavs[0], sample_rate)
+                    generated += 1
+                    status = "done"
+                except Exception as exc:  # noqa: BLE001
+                    status = f"error:{exc}"
+                self._emit_progress(
+                    index,
+                    total,
+                    time.time() - started,
+                    preset.id,
+                    status,
                 )
+            self.finished_ok.emit(
+                generated,
+                total,
+                self._fmt_time(time.time() - started),
+            )
 
-        except subprocess.TimeoutExpired:
-            self.error.emit(t("voice.timeout_generation"))
         except Exception as exc:
             self.error.emit(str(exc))
 
-    def _parse_progress(self, line: str) -> None:
-        """Parse PROGRESS|done|total|elapsed|name|status."""
-        parts = line.split("|")
-        if len(parts) < 6:
-            return
-        done, total = int(parts[1]), int(parts[2])
-        elapsed = float(parts[3])
-        name = parts[4]
-        status = parts[5]
-
+    def _emit_progress(
+        self,
+        done: int,
+        total: int,
+        elapsed: float,
+        name: str,
+        status: str,
+    ) -> None:
+        """Emit GUI progress for one generated or skipped preview."""
         if done > 0 and elapsed > 0:
             avg = elapsed / done
             remaining = avg * (total - done)
@@ -164,15 +186,8 @@ class GeneratePreviewsWorker(QThread):
         )
         if status in ("done", "skipped"):
             self.voice_done.emit(name)
-
-    def _parse_finished(self, line: str) -> None:
-        """Parse FINISHED|generated|total|elapsed."""
-        parts = line.split("|")
-        if len(parts) < 4:
-            return
-        generated, total = int(parts[1]), int(parts[2])
-        elapsed_str = self._fmt_time(float(parts[3]))
-        self.finished_ok.emit(generated, total, elapsed_str)
+        elif status.startswith("error:"):
+            self.progress_line.emit(f"{name}: {status[6:150]}")
 
     @staticmethod
     def _fmt_time(seconds: float) -> str:
@@ -575,10 +590,6 @@ class VoicePreviewPanel(QWidget):
             out_dir = self._preview_dir
         out_dir.mkdir(parents=True, exist_ok=True)
         self._preview_dir = out_dir
-
-        if not _SCRIPT_PATH.exists():
-            self._on_generate_error(t("voice.script_not_found", path=str(_SCRIPT_PATH)))
-            return
 
         phrase = self._phrase_input.toPlainText().strip()
         if not phrase:

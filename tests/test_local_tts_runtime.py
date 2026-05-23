@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -35,11 +33,13 @@ def test_build_tts_preview_command_uses_native_paths(tmp_path: Path) -> None:
 
 
 def test_check_tts_python_reports_missing_packages(monkeypatch) -> None:
-    def fake_run(*_args, **_kwargs):  # noqa: ANN001
-        payload = {"executable": sys.executable, "missing": ["qwen_tts"]}
-        return subprocess.CompletedProcess(["python"], 0, stdout=json.dumps(payload), stderr="")
+    def fake_find_spec(name: str):  # noqa: ANN001
+        return None if name == "qwen_tts" else object()
 
-    monkeypatch.setattr("book_normalizer.tts.local_runtime.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "book_normalizer.tts.local_runtime.importlib.util.find_spec",
+        fake_find_spec,
+    )
 
     ok, detail = check_tts_python()
 
@@ -49,13 +49,19 @@ def test_check_tts_python_reports_missing_packages(monkeypatch) -> None:
 
 
 def test_check_tts_python_accepts_complete_runtime(monkeypatch) -> None:
-    def fake_run(*_args, **_kwargs):  # noqa: ANN001
-        payload = {"executable": sys.executable, "missing": []}
-        return subprocess.CompletedProcess(["python"], 0, stdout=json.dumps(payload), stderr="")
-
-    monkeypatch.setattr("book_normalizer.tts.local_runtime.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "book_normalizer.tts.local_runtime.importlib.util.find_spec",
+        lambda _name: object(),
+    )
 
     ok, detail = check_tts_python()
 
     assert ok is True
     assert detail == sys.executable
+
+
+def test_check_tts_python_rejects_external_python_without_shelling_out(tmp_path: Path) -> None:
+    ok, detail = check_tts_python(str(tmp_path / "python"))
+
+    assert ok is False
+    assert "current native app Python" in detail

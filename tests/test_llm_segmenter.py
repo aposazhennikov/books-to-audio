@@ -161,6 +161,34 @@ def test_llm_voice_segmenter_restores_source_dialogue_dash_from_model_boundaries
     assert fake.calls == [PRIMARY_QWEN3_MODEL]
 
 
+def test_llm_voice_segmenter_keeps_character_metadata_for_roles() -> None:
+    text = "Маргарита сказала: «Я вернулась»."
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "text": "Маргарита сказала:", "intonation": "calm"},
+                {
+                    "role": "female",
+                    "speaker": "Маргарита",
+                    "character_description": "Решительная и резкая.",
+                    "emotion": "joyful",
+                    "text": "«Я вернулась».",
+                    "intonation": "joyful",
+                },
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="ru"))
+
+    assert rows[1]["speaker"] == "Маргарита"
+    assert rows[1]["character_description"] == "Решительная и резкая."
+    assert rows[1]["emotion"] == "joyful"
+    assert rows[1]["section_kind"] == "dialogue"
+
+
 def test_llm_voice_segmenter_restores_source_punctuation_from_model_boundaries() -> None:
     text = "Посланца..И сделать было нельзя.\n\nСерг"
     segmenter = LlmVoiceSegmenter(language="ru")

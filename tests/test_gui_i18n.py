@@ -46,9 +46,10 @@ def test_main_window_switches_every_supported_gui_language(qtbot) -> None:
         assert window.windowTitle() == t("app.title")
         assert window._title.text() == t("app.title")
         assert window._tabs.tabText(0) == t("tab.normalize")
-        assert window._tabs.tabText(1) == t("tab.voices")
-        assert window._tabs.tabText(2) == t("tab.synthesize")
-        assert window._tabs.tabText(3) == t("tab.assemble")
+        assert window._tabs.tabText(1) == t("tab.roles")
+        assert window._tabs.tabText(2) == t("tab.chunks")
+        assert window._tabs.tabText(3) == t("tab.voices")
+        assert window._tabs.tabText(4) == t("tab.assemble")
         for tab_index in range(window._tabs.count()):
             window._tabs.setCurrentIndex(tab_index)
             flush_events(app)

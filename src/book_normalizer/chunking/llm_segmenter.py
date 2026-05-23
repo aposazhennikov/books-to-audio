@@ -53,6 +53,20 @@ _SEGMENT_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "role": {"type": "string", "enum": ["narrator", "male", "female"]},
+                    "speaker": {"type": "string"},
+                    "character_description": {"type": "string"},
+                    "emotion": {"type": "string"},
+                    "section_kind": {
+                        "type": "string",
+                        "enum": [
+                            "narration",
+                            "dialogue",
+                            "annotation",
+                            "preface",
+                            "epilogue",
+                            "chapter_title",
+                        ],
+                    },
                     "text": {"type": "string"},
                     "intonation": {"type": "string"},
                     "boundary_after": {"type": "string"},
@@ -72,8 +86,10 @@ _SYSTEM_PROMPTS = {
 Сохраняй исходный текст полностью и по порядку. Нельзя переписывать, переводить, удалять или добавлять слова.
 Прямая речь должна быть отдельным сегментом, авторский текст и ремарки речи — отдельными narrator-сегментами.
 Роли: narrator, male, female. Если пол не доказан контекстом, используй narrator.
+Для прямой речи заполняй speaker именем персонажа, если оно доказано контекстом; иначе оставь пустым.
+Для speaker дай краткий character_description и emotion. Для аннотаций/предисловий/эпилогов ставь section_kind.
 Интонация должна быть короткой на английском: calm, tense, angry, whisper, sad, cheerful, fearful, urgent.
-Верни только JSON вида {"segments": [{"role": "...", "text": "...", "intonation": "..."}]}.
+Верни только JSON вида {"segments": [{"role": "...", "speaker": "...", "text": "...", "intonation": "..."}]}.
 """,
     "en": """\
 You are a multi-voice audiobook director for English fiction.
@@ -81,16 +97,21 @@ Split the text into small ordered TTS segments while preserving every word in or
 Never rewrite, translate, add, remove, or summarize text.
 Dialogue must be separated from narration and speech tags.
 Roles: narrator, male, female. Use narrator when gender is not clear.
+For dialogue, fill speaker with the proven character name when context supports it; otherwise leave it empty.
+For each speaker add character_description and emotion.
+Use section_kind for annotation, preface, epilogue, and chapter titles.
 Use short English intonation labels such as calm, tense, angry, whisper, sad, cheerful, fearful, urgent.
-Return only JSON: {"segments": [{"role": "...", "text": "...", "intonation": "..."}]}.
+Return only JSON: {"segments": [{"role": "...", "speaker": "...", "text": "...", "intonation": "..."}]}.
 """,
     "zh": """\
 你是中文有声书的多声线导演。
 把文本拆成按顺序排列的小 TTS 片段，并完整保留原文。
 不要改写、翻译、增加、删除或总结。
 对话必须和叙述/说话标签分开。角色只能是 narrator、male、female；性别不明确时用 narrator。
+对话中如果上下文能证明人物姓名，请填写 speaker；否则留空。
+为人物填写 character_description 和 emotion。注释、前言、后记、章节标题请填写 section_kind。
 intonation 用简短英文，例如 calm、tense、angry、whisper、sad、cheerful、fearful、urgent。
-只返回 JSON：{"segments": [{"role": "...", "text": "...", "intonation": "..."}]}。
+只返回 JSON：{"segments": [{"role": "...", "speaker": "...", "text": "...", "intonation": "..."}]}。
 """,
     "kk": """\
 Сен қазақ көркем мәтінін көп дауысты аудиокітапқа бөлетін режиссёрсің.
@@ -98,8 +119,11 @@ intonation 用简短英文，例如 calm、tense、angry、whisper、sad、cheer
 Қайта жазба, аударма, сөз қоспа, сөз алып тастама, қысқартпа.
 Диалогты баяндаудан және сөйлеу ремаркаларынан бөлек сегмент қыл.
 Рөлдер: narrator, male, female. Жыныс анық болмаса narrator қолдан.
+Диалогта кейіпкер аты контекстен анық болса speaker толтыр; анық болмаса бос қалдыр.
+Кейіпкерге character_description және emotion бер.
+Аннотация/алғысөз/эпилог/тарау атауы үшін section_kind қолдан.
 intonation қысқа ағылшынша болсын: calm, tense, angry, whisper, sad, cheerful, fearful, urgent.
-Тек JSON қайтар: {"segments": [{"role": "...", "text": "...", "intonation": "..."}]}.
+Тек JSON қайтар: {"segments": [{"role": "...", "speaker": "...", "text": "...", "intonation": "..."}]}.
 """,
     "uz": """\
 Siz o'zbek badiiy matnini ko'p ovozli audiokitob uchun belgilaydigan rejissorsiz.
@@ -107,8 +131,11 @@ Matnni ketma-ket kichik TTS segmentlarga ajrating va barcha so'zlarni tartibda s
 Qayta yozmang, tarjima qilmang, qo'shmang, olib tashlamang yoki qisqartirmang.
 Dialog alohida, muallif matni va nutq izohlari alohida narrator segment bo'lsin.
 Rollar: narrator, male, female. Jins aniq bo'lmasa narrator ishlating.
+Dialogda qahramon nomi kontekstdan aniq bo'lsa speaker to'ldiring; aks holda bo'sh qoldiring.
+Har speaker uchun character_description va emotion bering.
+Annotatsiya, so'zboshi, epilog va bob sarlavhalari uchun section_kind ishlating.
 intonation qisqa inglizcha bo'lsin: calm, tense, angry, whisper, sad, cheerful, fearful, urgent.
-Faqat JSON qaytaring: {"segments": [{"role": "...", "text": "...", "intonation": "..."}]}.
+Faqat JSON qaytaring: {"segments": [{"role": "...", "speaker": "...", "text": "...", "intonation": "..."}]}.
 """,
 }
 
@@ -224,6 +251,16 @@ class LlmVoiceSegmenter:
                                 "language": self._language,
                                 "is_dialogue": role in {"male", "female"},
                                 "role": role,
+                                "speaker": _clean_optional(raw.get("speaker")),
+                                "character_description": _clean_optional(
+                                    raw.get("character_description")
+                                    or raw.get("role_description")
+                                    or raw.get("description")
+                                ),
+                                "emotion": _clean_intonation(
+                                    raw.get("emotion") or raw.get("intonation", "calm")
+                                ),
+                                "section_kind": _clean_section_kind(raw.get("section_kind"), role),
                                 "voice_id": ROLE_TO_VOICE_ID[role],
                                 "intonation": _clean_intonation(raw.get("intonation", "calm")),
                                 "text": text_part,
@@ -443,6 +480,14 @@ def _normalise_segments(data: Any) -> list[dict[str, Any]]:
         segments.append(
             {
                 "role": role,
+                "speaker": _clean_optional(item.get("speaker") or item.get("character")),
+                "character_description": _clean_optional(
+                    item.get("character_description")
+                    or item.get("role_description")
+                    or item.get("description")
+                ),
+                "emotion": _clean_intonation(item.get("emotion") or item.get("intonation") or "calm"),
+                "section_kind": _clean_section_kind(item.get("section_kind"), role),
                 "text": text,
                 "intonation": _clean_intonation(item.get("intonation") or item.get("voice_tone") or "calm"),
                 "pause_after_ms": _safe_int(item.get("pause_after_ms")),
@@ -474,6 +519,25 @@ def _normalize_role(value: Any) -> str:
 def _clean_intonation(value: Any) -> str:
     text = re.sub(r"\s+", " ", str(value or "calm")).strip().lower()
     return text[:80] or "calm"
+
+
+def _clean_optional(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()[:180]
+
+
+def _clean_section_kind(value: Any, role: str) -> str:
+    text = re.sub(r"\s+", "_", str(value or "").strip().lower())
+    allowed = {
+        "narration",
+        "dialogue",
+        "annotation",
+        "preface",
+        "epilogue",
+        "chapter_title",
+    }
+    if text in allowed:
+        return text
+    return "dialogue" if role in {"male", "female"} else "narration"
 
 
 def _safe_int(value: Any, default: int = 0) -> int:

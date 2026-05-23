@@ -424,6 +424,20 @@ class VoicesPage(QWidget):
                 self._llm_model.setText(str(candidates[0]))
         self._btn_detect.setEnabled(True)
 
+    def load_segments_manifest(self, manifest_path: Path) -> None:
+        """Load an existing segment manifest from the Roles step."""
+        self._manifest_path = manifest_path
+        self._voice_table.load_manifest(self._manifest_path)
+        self._btn_save.setEnabled(True)
+        self._btn_build.setEnabled(True)
+        segments = self._voice_table.get_segments()
+        self._update_stats(segments)
+        self._manifest_label.setText(
+            t("voice.manifest_path", path=str(self._manifest_path)),
+        )
+        self._manifest_label.setVisible(True)
+        self._progress.set_status(t("voice.segments_ready", n=len(segments)))
+
     # ── Detection ──
 
     def _run_detection(self) -> None:

@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, set_language, t
 from book_normalizer.gui.pages.assembly_page import AssemblyPage
 from book_normalizer.gui.pages.normalize_page import NormalizePage
+from book_normalizer.gui.pages.roles_page import RolesPage
 from book_normalizer.gui.pages.synthesis_page import SynthesisPage
 from book_normalizer.gui.pages.voices_page import VoicesPage
 from book_normalizer.gui.resources import application_icon
@@ -82,11 +83,13 @@ class MainWindow(QMainWindow):
         # ── Tabs ──
         self._tabs = QTabWidget()
         self._normalize_page = NormalizePage()
+        self._roles_page = RolesPage()
         self._voices_page = VoicesPage()
         self._synthesis_page = SynthesisPage()
         self._assembly_page = AssemblyPage()
 
         self._tabs.addTab(self._normalize_page, "")
+        self._tabs.addTab(self._roles_page, "")
         self._tabs.addTab(self._voices_page, "")
         self._tabs.addTab(self._synthesis_page, "")
         self._tabs.addTab(self._assembly_page, "")
@@ -131,6 +134,7 @@ class MainWindow(QMainWindow):
 
         self._normalize_page._on_finished = patched_finished
 
+        self._roles_page.segments_ready.connect(self._on_roles_segments_ready)
         self._voices_page.chunks_built.connect(self._on_chunks_built)
         self._synthesis_page.output_dir_changed.connect(
             self._on_synthesis_output_dir_changed,
@@ -142,6 +146,7 @@ class MainWindow(QMainWindow):
         set_language(lang)
         self._retranslate()
         self._normalize_page.retranslate()
+        self._roles_page.retranslate()
         self._voices_page.retranslate()
         self._synthesis_page.retranslate()
         self._assembly_page.retranslate()
@@ -163,9 +168,10 @@ class MainWindow(QMainWindow):
         compact = self.width() < 860
         suffix = "_short" if compact else ""
         self._tabs.setTabText(0, t(f"tab.normalize{suffix}"))
-        self._tabs.setTabText(1, t(f"tab.voices{suffix}"))
-        self._tabs.setTabText(2, t(f"tab.synthesize{suffix}"))
-        self._tabs.setTabText(3, t(f"tab.assemble{suffix}"))
+        self._tabs.setTabText(1, t(f"tab.roles{suffix}"))
+        self._tabs.setTabText(2, t(f"tab.chunks{suffix}"))
+        self._tabs.setTabText(3, t(f"tab.voices{suffix}"))
+        self._tabs.setTabText(4, t(f"tab.assemble{suffix}"))
 
     def _on_normalization_done(self, book: object) -> None:
         """Called when normalization completes."""
@@ -176,11 +182,18 @@ class MainWindow(QMainWindow):
             self._output_dir = _build_output_dir(Path(path_text), Path("output")).resolve()
             self._output_dir.mkdir(parents=True, exist_ok=True)
 
+            self._roles_page.set_book(book, self._output_dir)
             self._voices_page.set_book(book, self._output_dir)
             self._statusbar.showMessage(
                 t("status.norm_done", n=len(book.chapters))
             )
             self._tabs.setCurrentIndex(1)
+
+    def _on_roles_segments_ready(self, segments_path: str, _roles_path: str) -> None:
+        """Load LLM segments into the chunk editor."""
+        self._voices_page.load_segments_manifest(Path(segments_path))
+        self._statusbar.showMessage(t("status.roles_done"))
+        self._tabs.setCurrentIndex(2)
 
     def _on_chunks_built(self, chunks_path: str) -> None:
         """Called when TTS chunks are built from segments."""

@@ -18,10 +18,16 @@ from book_normalizer.languages import (
 )
 from book_normalizer.loaders.base import BaseLoader
 from book_normalizer.loaders.pdf_ocr_engine import (
+    ocr_image_via_tesseract_cli as _ocr_image_via_tesseract_cli,
+)
+from book_normalizer.loaders.pdf_ocr_engine import (
     ocr_image_via_wsl as _ocr_image_via_wsl,
 )
 from book_normalizer.loaders.pdf_ocr_engine import (
     tesseract_available as _tesseract_available,
+)
+from book_normalizer.loaders.pdf_ocr_engine import (
+    tesseract_cli_available as _tesseract_cli_available,
 )
 from book_normalizer.loaders.pdf_ocr_engine import (
     wsl_tesseract_available as _wsl_tesseract_available,
@@ -338,16 +344,18 @@ def _should_keep_image_ocr_text(text: str, language_code: str = "ru") -> bool:
     return (target_chars >= 3 or alnum >= 6) and _ocr_symbol_noise_ratio(stripped) <= 0.18
 
 
-def _load_tesseract_runtime() -> tuple[bool, Any | None]:
-    """Resolve native pytesseract or the WSL bridge used by this project."""
+def _load_tesseract_runtime() -> tuple[str, Any | None]:
+    """Resolve pytesseract, local Tesseract CLI, or the WSL bridge."""
     try:
         import pytesseract
 
         pytesseract.get_tesseract_version()
-        return False, pytesseract
+        return "pytesseract", pytesseract
     except Exception:
+        if _tesseract_cli_available():
+            return "cli", None
         if _wsl_tesseract_available():
-            return True, None
+            return "wsl", None
         raise RuntimeError("Tesseract is not installed (neither native nor WSL).")
 
 
@@ -485,15 +493,17 @@ def _ocr_pil_image_with_tesseract(
     lang: str,
     psm: int,
     preprocess: bool,
-    use_wsl: bool,
+    runtime: str,
     pytesseract_module: Any | None = None,
 ) -> str:
     """Run Tesseract against a PIL image, either natively or via WSL."""
     if preprocess:
         img = _preprocess_image_for_ocr(img)
 
-    if use_wsl:
+    if runtime == "wsl":
         return _ocr_image_via_wsl(_encode_png(img), lang, psm=psm)
+    if runtime == "cli":
+        return _ocr_image_via_tesseract_cli(_encode_png(img), lang, psm=psm)
 
     if pytesseract_module is None:
         import pytesseract as pytesseract_module
@@ -549,7 +559,7 @@ def _ocr_rendered_image(
     lang: str,
     psm: int,
     preprocess: bool,
-    use_wsl: bool,
+    runtime: str,
     pytesseract_module: Any | None,
 ) -> str:
     """Run OCR against a rendered PIL image and post-process the result."""
@@ -558,7 +568,7 @@ def _ocr_rendered_image(
         lang=lang,
         psm=psm,
         preprocess=preprocess,
-        use_wsl=use_wsl,
+        runtime=runtime,
         pytesseract_module=pytesseract_module,
     )
     return _postprocess_ocr_text(raw_text)
@@ -579,14 +589,14 @@ def _extract_pdf_structured(
     from pdfminer.high_level import extract_pages
     from pdfminer.layout import LTFigure, LTRect, LTTextContainer
 
-    use_wsl = False
+    ocr_runtime = "pytesseract"
     pytesseract_module: Any | None = None
     fitz_doc: Any | None = None
 
     if run_ocr:
         import fitz
 
-        use_wsl, pytesseract_module = _load_tesseract_runtime()
+        ocr_runtime, pytesseract_module = _load_tesseract_runtime()
         fitz_doc = fitz.open(str(path))
 
     pages: dict[int, PdfPageExtraction] = {}
@@ -667,7 +677,7 @@ def _extract_pdf_structured(
                                 lang=lang,
                                 psm=psm,
                                 preprocess=preprocess,
-                                use_wsl=use_wsl,
+                                runtime=ocr_runtime,
                                 pytesseract_module=pytesseract_module,
                             )
                             if _should_keep_ocr_text(ocr_text, language_code):
@@ -692,7 +702,7 @@ def _extract_pdf_structured(
                                 lang=lang,
                                 psm=psm,
                                 preprocess=preprocess,
-                                use_wsl=use_wsl,
+                                runtime=ocr_runtime,
                                 pytesseract_module=pytesseract_module,
                             )
                             if _should_keep_image_ocr_text(ocr_text, language_code):
@@ -1158,15 +1168,22 @@ def _ocr_pdf_with_tesseract(
     """
     import fitz
 
-    use_wsl = False
+    ocr_runtime = "pytesseract"
     try:
         import pytesseract
         from PIL import Image
         pytesseract.get_tesseract_version()
     except Exception:
-        if _wsl_tesseract_available():
+        if _tesseract_cli_available():
             from PIL import Image
-            use_wsl = True
+
+            pytesseract = None
+            ocr_runtime = "cli"
+            logger.info("Using Tesseract via local CLI.")
+        elif _wsl_tesseract_available():
+            from PIL import Image
+            pytesseract = None
+            ocr_runtime = "wsl"
             logger.info("Using Tesseract via WSL bridge.")
         else:
             raise RuntimeError("Tesseract is not installed (neither native nor WSL).")
@@ -1189,8 +1206,8 @@ def _ocr_pdf_with_tesseract(
                     lang=lang,
                     psm=psm,
                     preprocess=preprocess,
-                    use_wsl=use_wsl,
-                    pytesseract_module=None if use_wsl else pytesseract,
+                    runtime=ocr_runtime,
+                    pytesseract_module=pytesseract if ocr_runtime == "pytesseract" else None,
                 )
                 page_text = _postprocess_ocr_text(page_text)
 

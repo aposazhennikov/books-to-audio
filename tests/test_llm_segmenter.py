@@ -122,6 +122,88 @@ def test_llm_voice_segmenter_falls_back_when_primary_loses_text() -> None:
     assert PRIMARY_QWEN3_MODEL in fake.unloaded
 
 
+def test_llm_voice_segmenter_restores_source_quotes_from_model_boundaries() -> None:
+    text = "谢尔盖打开了门。\n\n“谁在那里？”他问。"
+    segmenter = LlmVoiceSegmenter(language="zh")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "text": "谢尔盖打开了门。", "intonation": "calm"},
+                {"role": "male", "text": "谁在那里？", "intonation": "tense"},
+                {"role": "narrator", "text": "他问。", "intonation": "calm"},
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="zh"))
+
+    assert [row["text"] for row in rows] == ["谢尔盖打开了门。", "“谁在那里？”", "他问。"]
+    assert fake.calls == [PRIMARY_QWEN3_MODEL]
+
+
+def test_llm_voice_segmenter_restores_source_dialogue_dash_from_model_boundaries() -> None:
+    text = "Он вошел.\n\n— Привет."
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "text": "Он вошел.", "intonation": "calm"},
+                {"role": "male", "text": "Привет.", "intonation": "cheerful"},
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="ru"))
+
+    assert [row["text"] for row in rows] == ["Он вошел.", "— Привет."]
+    assert fake.calls == [PRIMARY_QWEN3_MODEL]
+
+
+def test_llm_voice_segmenter_restores_source_punctuation_from_model_boundaries() -> None:
+    text = "Посланца..И сделать было нельзя.\n\nСерг"
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {
+                    "role": "narrator",
+                    "text": "Посланца. И сделать было нельзя. Серг",
+                    "intonation": "calm",
+                },
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="ru"))
+
+    assert [row["text"] for row in rows] == ["Посланца..И сделать было нельзя. Серг"]
+    assert fake.calls == [PRIMARY_QWEN3_MODEL]
+
+
+def test_llm_voice_segmenter_restores_initial_ellipsis_and_trailing_dot_leader() -> None:
+    text = "…И вижу всадника.\n\nОГЛАВЛЕНИЕ\n1. Предисловие ...................."
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "text": "И вижу всадника.", "intonation": "calm"},
+                {"role": "narrator", "text": "ОГЛАВЛЕНИЕ 1. Предисловие", "intonation": "calm"},
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="ru"))
+
+    assert [row["text"] for row in rows] == [
+        "…И вижу всадника.",
+        "ОГЛАВЛЕНИЕ\n1. Предисловие ....................",
+    ]
+
+
 def test_llm_voice_segmenter_writes_review_report_when_all_models_fail(tmp_path: Path) -> None:
     report_path = tmp_path / "review.json"
     segmenter = LlmVoiceSegmenter(language="en", review_report_path=report_path)

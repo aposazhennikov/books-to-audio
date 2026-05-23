@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
+import wave
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
@@ -21,6 +20,12 @@ from PyQt6.QtWidgets import (
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.help_button import label_with_help, set_help_text
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
+from book_normalizer.tts.assembler import AudioAssembler
+from book_normalizer.tts.manifest_assembly import (
+    ChapterAssemblyResult,
+    assemble_from_manifest,
+    load_manifest_v2,
+)
 
 
 class AssemblyWorker(QThread):
@@ -48,39 +53,30 @@ class AssemblyWorker(QThread):
 
     def run(self) -> None:
         try:
-            script = (
-                Path(__file__).resolve().parent.parent.parent.parent.parent
-                / "scripts"
-                / "assemble_chapter.py"
-            )
-
-            source_args = (
-                ["--manifest", str(self._manifest_path)]
-                if self._manifest_path
-                else ["--audio-dir", str(self._audio_dir)]
-            )
-
-            cmd = [
-                sys.executable,
-                "-u",
-                str(script),
-                *source_args,
-                "--out",
-                str(self._output_dir),
-                "--all",
-                "--pause-same",
-                str(self._pause_same),
-                "--pause-change",
-                str(self._pause_change),
-            ]
-
             self.progress.emit(t("asm.assembling"))
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-
-            if result.returncode == 0:
-                self.finished.emit(result.stdout)
+            if self._manifest_path:
+                manifest = load_manifest_v2(self._manifest_path)
+                results = assemble_from_manifest(
+                    manifest,
+                    self._output_dir,
+                    pause_same_voice_ms=self._pause_same,
+                    pause_voice_change_ms=self._pause_change,
+                    strict_missing=False,
+                )
+                output = _format_manifest_results(results)
             else:
-                self.error.emit(result.stderr or "Assembly failed")
+                assembler = AudioAssembler(
+                    self._output_dir,
+                    pause_phrase_ms=self._pause_same,
+                    pause_speaker_ms=self._pause_change,
+                    strict_missing=False,
+                )
+                output = _format_legacy_results(
+                    assembler.assemble(),
+                    audio_dir=self._audio_dir,
+                )
+
+            self.finished.emit(output)
 
         except Exception as exc:
             self.error.emit(str(exc))
@@ -274,3 +270,44 @@ class AssemblyPage(QWidget):
             text,
         )
         return text
+
+
+def _format_manifest_results(results: list[ChapterAssemblyResult]) -> str:
+    """Return user-facing assembly details for v2 manifest output."""
+    lines: list[str] = []
+    for result in results:
+        lines.extend(f"  {message}" for message in result.messages)
+        if result.output_path:
+            duration = _wav_duration(result.output_path)
+            size_mb = result.output_path.stat().st_size / 1024 / 1024
+            lines.append(
+                f"  {result.output_path.name}: "
+                f"{result.chunks} chunks -> {duration:.1f}s ({size_mb:.1f} MB)"
+            )
+        elif result.skipped:
+            lines.append(
+                f"  Chapter {result.chapter_number:03d}: "
+                "no synthesized chunks found, skipping."
+            )
+    return "\n".join(lines) if lines else "No WAV chunks in manifest"
+
+
+def _format_legacy_results(result: dict[str, Path], *, audio_dir: Path) -> str:
+    """Return user-facing assembly details for legacy synthesis_manifest output."""
+    if not result:
+        return f"No WAV chunks in {audio_dir}"
+    lines = []
+    for label, path in sorted(result.items()):
+        duration = _wav_duration(path)
+        size_mb = path.stat().st_size / 1024 / 1024
+        lines.append(f"  {label}: {path.name} -> {duration:.1f}s ({size_mb:.1f} MB)")
+    return "\n".join(lines)
+
+
+def _wav_duration(path: Path) -> float:
+    """Return WAV duration in seconds for assembly summaries."""
+    try:
+        with wave.open(str(path), "rb") as wav:
+            return wav.getnframes() / wav.getframerate()
+    except (OSError, wave.Error, ZeroDivisionError):
+        return 0.0

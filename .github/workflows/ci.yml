@@ -44,6 +44,30 @@ jobs:
       - name: Ruff
         run: python -m ruff check .
 
+      - name: Build package
+        run: python -m build
+
+      - name: Verify wheel assets
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheel = next(Path("dist").glob("book_normalizer-*.whl"))
+          names = set(ZipFile(wheel).namelist())
+          required = {
+              "book_normalizer/gui/assets/check.svg",
+              "book_normalizer/gui/assets/chevron_down.svg",
+              "book_normalizer/gui/assets/chevron_up.svg",
+              "book_normalizer/gui/assets/icon.svg",
+              "book_normalizer/gui/assets/icon.ico",
+          }
+          missing = sorted(required - names)
+          if missing:
+              raise SystemExit(f"Wheel is missing bundled GUI assets: {missing}")
+          PY
+
       - name: Pytest with coverage
         shell: bash
         run: |

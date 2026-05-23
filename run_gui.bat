@@ -21,7 +21,7 @@ if exist "%VENV_PY%" (
 
 echo GUI dependencies were not installed in Windows .venv-windows.
 echo run_gui.bat only starts the native Windows GUI.
-echo For Linux/WSL use run_gui.sh separately.
+echo For Linux or macOS use run_gui.sh separately.
 goto error
 
 :launch_windows

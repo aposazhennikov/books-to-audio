@@ -7,7 +7,7 @@ Books to Audio is organized as a four-stage pipeline:
 3. ComfyUI synthesis reads the v2 manifest, writes chunk WAV files, and updates each chunk with `synthesized`, `failed`, `error`, and `audio_file`.
 4. Manifest assembly reads `audio_file` values in manifest order and writes `chapter_NNN.wav`.
 
-The supported path is v2 manifest + ComfyUI. v1 manifests and the legacy WSL runner have been removed; generate/use `chunks_manifest_v2.json`.
+The supported path is v2 manifest + ComfyUI. v1 manifests and the legacy external runner have been removed; generate/use `chunks_manifest_v2.json`.
 
 Key modules:
 

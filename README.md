@@ -206,7 +206,7 @@ ollama serve
 
 На Windows можно поставить Ollama Desktop или указать полный путь к `ollama.exe`
 в `install.py --ollama-bin`. Главное, чтобы `http://localhost:11434` отвечал из
-приложения, а при работе через WSL/dev shell был доступен тот же endpoint.
+приложения; в dev shell должен быть доступен тот же endpoint.
 
 Рекомендуемые модели для 8 GB VRAM / 16 GB RAM:
 

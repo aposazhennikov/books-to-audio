@@ -28,6 +28,7 @@ from book_normalizer.gui.widgets.voice_table import VoiceTableWidget
 from book_normalizer.gui.workers.tts_worker import ExportSegmentsWorker
 from book_normalizer.languages import normalize_book_language
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
+from book_normalizer.runtime_paths import configured_ollama_endpoint
 
 
 class VoicesPage(QWidget):
@@ -119,7 +120,7 @@ class VoicesPage(QWidget):
         llm_layout.addRow(self._llm_provider_label, self._llm_provider)
 
         self._llm_endpoint_label = QLabel()
-        self._llm_endpoint = QLineEdit("http://localhost:11434")
+        self._llm_endpoint = QLineEdit(configured_ollama_endpoint())
         self._llm_endpoint.setMinimumHeight(28)
         llm_layout.addRow(self._llm_endpoint_label, self._llm_endpoint)
 
@@ -409,7 +410,7 @@ class VoicesPage(QWidget):
             self._llm_endpoint.setText("https://api.openai.com/v1")
             self._llm_model.setText("gpt-4o-mini")
         else:
-            self._llm_endpoint.setText("http://localhost:11434")
+            self._llm_endpoint.setText(configured_ollama_endpoint())
             self._llm_model.setText(PRIMARY_QWEN3_MODEL)
 
     def set_book(self, book: object, output_dir: Path) -> None:

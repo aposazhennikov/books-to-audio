@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from book_normalizer.runtime_paths import configured_models_dir
+
 MODEL_DIR_ENV_VARS = ("BOOKS_TO_AUDIO_MODELS_DIR", "COMFYUI_MODELS_DIR")
 MODEL_SUBDIRS = (
     "audio_encoders",
@@ -18,6 +20,9 @@ MODEL_SUBDIRS = (
 
 def default_comfyui_models_dir() -> Path:
     """Return the default shared ComfyUI models directory for this platform."""
+    configured = configured_models_dir()
+    if configured is not None:
+        return configured
     if os.name == "nt":
         return Path("D:/ComfyUI-external/models")
     return Path("/mnt/d/ComfyUI-external/models")

@@ -8,6 +8,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from book_normalizer.runtime_paths import configured_ollama_endpoint
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +31,7 @@ class OllamaChatClient:
 
     def __init__(
         self,
-        endpoint: str = "http://localhost:11434",
+        endpoint: str | None = None,
         *,
         api_key: str = "",
         timeout: float = 300.0,
@@ -162,11 +164,11 @@ class OllamaChatClient:
             self.unload_model(model)
 
 
-def _normalise_endpoint(endpoint: str) -> str:
-    value = (endpoint or "http://localhost:11434").strip().rstrip("/")
+def _normalise_endpoint(endpoint: str | None) -> str:
+    value = (endpoint or configured_ollama_endpoint()).strip().rstrip("/")
     if value.endswith("/v1"):
         value = value[:-3].rstrip("/")
-    return value or "http://localhost:11434"
+    return value or configured_ollama_endpoint()
 
 
 def _parse_json_response(content: str) -> Any:

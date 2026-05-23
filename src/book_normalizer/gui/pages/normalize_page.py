@@ -28,6 +28,7 @@ from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.normalize_worker import NormalizeWorker
 from book_normalizer.languages import DEFAULT_BOOK_LANGUAGE, SUPPORTED_LANGUAGE_CODES
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
+from book_normalizer.runtime_paths import configured_ollama_endpoint
 
 _PDF_EXTENSIONS = {".pdf"}
 
@@ -158,7 +159,7 @@ class NormalizePage(QWidget):
         )
         self._add_setting(settings, 1, 0, self._llm_normalize_label_wrap, self._llm_normalize)
 
-        self._llm_endpoint = QLineEdit("http://localhost:11434")
+        self._llm_endpoint = QLineEdit(configured_ollama_endpoint())
         self._llm_endpoint_label = QLabel()
         self._llm_endpoint_label_wrap = self._label_with_help(
             self._llm_endpoint_label, "norm.llm_tip"
@@ -351,7 +352,7 @@ class NormalizePage(QWidget):
             ocr_dpi=self._ocr_dpi.value(),
             ocr_psm=self._ocr_psm.value(),
             llm_normalize=self._llm_normalize.isChecked(),
-            llm_endpoint=self._llm_endpoint.text().strip() or "http://localhost:11434",
+            llm_endpoint=self._llm_endpoint.text().strip() or configured_ollama_endpoint(),
             llm_model=self._llm_model.text().strip() or PRIMARY_QWEN3_MODEL,
             book_language=str(self._book_language.currentData() or DEFAULT_BOOK_LANGUAGE),
         )

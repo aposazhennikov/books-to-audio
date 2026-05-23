@@ -125,7 +125,12 @@ def main() -> int:
         _install_system_tools(extras)
 
     if args.dry_run:
-        _say("Dry run only; no files were changed.", "Пробный запуск: файлы не изменялись.", "warn")
+        _write_runtime_config(paths, project_root)
+        _say(
+            "Dry run: venv and dependencies were not changed; runtime paths/log were refreshed.",
+            "Пробный запуск: venv и зависимости не изменялись; runtime-пути и лог обновлены.",
+            "warn",
+        )
         editable_flag = "" if args.no_editable else "-e "
         print(f"Would run: {venv_python} -m pip install {editable_flag}{_project_spec(extras)}")
         print(f"Would write runtime config: {(project_root / RUNTIME_CONFIG_PATH).resolve()}")
@@ -681,30 +686,45 @@ def _installer_env(paths: InstallPaths) -> dict[str, str]:
 def _print_system_dependency_notes(extras: set[str], paths: InstallPaths) -> None:
     notes: list[str] = []
     if "ocr" in extras and not _command_available(paths.tesseract_cmd):
-        notes.append(
+        notes.append(_bilingual_line(
             f"Tesseract was not found at '{paths.tesseract_cmd}'. "
-            "Scanned PDF OCR will be unavailable until it is installed or the path is corrected."
-        )
+            "Scanned PDF OCR will be unavailable until it is installed or the path is corrected.",
+            f"Tesseract не найден по пути '{paths.tesseract_cmd}'. "
+            "OCR сканированных PDF будет недоступен, пока Tesseract не установлен или путь не исправлен.",
+        ))
     if "audio" in extras and not _command_available(paths.ffmpeg_bin):
-        notes.append(
+        notes.append(_bilingual_line(
             f"FFmpeg was not found at '{paths.ffmpeg_bin}'. "
-            "WAV output works, but MP3 export via pydub needs FFmpeg."
-        )
+            "WAV output works, but MP3 export via pydub needs FFmpeg.",
+            f"FFmpeg не найден по пути '{paths.ffmpeg_bin}'. "
+            "WAV будет работать, но экспорт MP3 через pydub требует FFmpeg.",
+        ))
     if "tts-sage" in extras and shutil.which("git") is None:
-        notes.append("Git is not on PATH. Direct Git dependencies such as SageAttention need Git.")
+        notes.append(_bilingual_line(
+            "Git is not on PATH. Direct Git dependencies such as SageAttention need Git.",
+            "Git не найден в PATH. Прямые Git-зависимости вроде SageAttention требуют Git.",
+        ))
 
     command = _system_package_hint(extras)
     if notes:
-        print("System dependency notes:")
+        print("System dependency notes / Системные зависимости:")
         for note in notes:
             print(f"- {note}")
         if command:
-            print("Suggested system packages:")
+            print("Suggested system packages / Рекомендуемые системные пакеты:")
             print(f"  {command}")
         print()
     elif command:
-        print("System dependency notes: required command-line tools look available.")
+        print(
+            "System dependency notes: required command-line tools look available. / "
+            "Системные зависимости: нужные CLI-утилиты выглядят доступными."
+        )
         print()
+
+
+def _bilingual_line(en: str, ru: str) -> str:
+    """Return a compact English/Russian terminal line."""
+    return f"{en} / {ru}"
 
 
 def _install_system_tools(extras: set[str]) -> None:

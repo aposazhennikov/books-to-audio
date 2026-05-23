@@ -37,43 +37,62 @@ def test_installer_entrypoints_do_not_contain_mojibake() -> None:
 def test_installer_dry_run_overwrites_bilingual_log(tmp_path: Path) -> None:
     log_path = Path("install.log")
     log_path.write_text("OLD INSTALL LOG", encoding="utf-8")
+    config_path = Path(RUNTIME_CONFIG_PATH)
+    env_path = RUNTIME_CONFIG_PATH.with_suffix(".env")
+    previous_config = config_path.read_text(encoding="utf-8") if config_path.exists() else None
+    previous_env = env_path.read_text(encoding="utf-8") if env_path.exists() else None
 
     models_dir = tmp_path / "models"
     hf_cache_dir = tmp_path / "hf-cache"
-    result = subprocess.run(
-        [
-            sys.executable,
-            "install.py",
-            "--dry-run",
-            "--yes",
-            "--no-system-check",
-            "--venv",
-            str(tmp_path / ".venv"),
-            "--install-root",
-            str(tmp_path / "install-root"),
-            "--models-dir",
-            str(models_dir),
-            "--hf-cache-dir",
-            str(hf_cache_dir),
-            "--tesseract-bin",
-            str(tmp_path / "tools" / "tesseract.exe"),
-            "--ffmpeg-bin",
-            str(tmp_path / "tools" / "ffmpeg.exe"),
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "install.py",
+                "--dry-run",
+                "--yes",
+                "--no-system-check",
+                "--venv",
+                str(tmp_path / ".venv"),
+                "--install-root",
+                str(tmp_path / "install-root"),
+                "--models-dir",
+                str(models_dir),
+                "--hf-cache-dir",
+                str(hf_cache_dir),
+                "--tesseract-bin",
+                str(tmp_path / "tools" / "tesseract.exe"),
+                "--ffmpeg-bin",
+                str(tmp_path / "tools" / "ffmpeg.exe"),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
 
-    log_text = log_path.read_text(encoding="utf-8")
-    assert "OLD INSTALL LOG" not in log_text
-    assert "Books to Audio installer" in result.stdout
-    assert "Установщик Books to Audio" in result.stdout
-    assert "Пробный запуск" in log_text
-    assert str(models_dir) in log_text
-    assert str(hf_cache_dir) in log_text
+        log_text = log_path.read_text(encoding="utf-8")
+        runtime_config = json.loads(Path(RUNTIME_CONFIG_PATH).read_text(encoding="utf-8"))
+        assert "OLD INSTALL LOG" not in log_text
+        assert "Books to Audio installer" in result.stdout
+        assert "Установщик Books to Audio" in result.stdout
+        assert "Пробный запуск" in log_text
+        assert str(models_dir) in log_text
+        assert str(hf_cache_dir) in log_text
+        assert runtime_config["models_dir"] == str(models_dir)
+        assert runtime_config["hf_cache_dir"] == str(hf_cache_dir)
+        assert runtime_config["tesseract_cmd"] == str(tmp_path / "tools" / "tesseract.exe")
+        assert "BOOKS_TO_AUDIO_RUNTIME_CONFIG" in env_path.read_text(encoding="utf-8")
+    finally:
+        if previous_config is None:
+            config_path.unlink(missing_ok=True)
+        else:
+            config_path.write_text(previous_config, encoding="utf-8")
+        if previous_env is None:
+            env_path.unlink(missing_ok=True)
+        else:
+            env_path.write_text(previous_env, encoding="utf-8")
 
 
 def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatch) -> None:
@@ -201,3 +220,27 @@ def test_command_available_accepts_explicit_tool_path(tmp_path: Path) -> None:
 
     assert _command_available(str(tool))
     assert not _command_available(str(tmp_path / "missing.exe"))
+
+
+def test_system_dependency_notes_are_bilingual(tmp_path: Path, capsys) -> None:
+    from install import _print_system_dependency_notes
+
+    paths = InstallPaths(
+        install_root=tmp_path,
+        venv_dir=tmp_path / ".venv",
+        models_dir=tmp_path / "models",
+        hf_cache_dir=tmp_path / "hf-cache",
+        ollama_endpoint="http://localhost:11434",
+        ollama_bin="ollama",
+        tesseract_cmd=str(tmp_path / "missing-tesseract"),
+        ffmpeg_bin=str(tmp_path / "missing-ffmpeg"),
+    )
+
+    _print_system_dependency_notes({"ocr", "audio"}, paths)
+
+    out = capsys.readouterr().out
+    assert "System dependency notes / Системные зависимости" in out
+    assert "Tesseract was not found" in out
+    assert "Tesseract не найден" in out
+    assert "FFmpeg was not found" in out
+    assert "FFmpeg не найден" in out

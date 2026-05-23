@@ -211,6 +211,60 @@ def test_synthesis_page_actions_are_visible_without_settings_scrollbar() -> None
     window.deleteLater()
 
 
+def test_zoomed_normalization_controls_do_not_overlap() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(0)
+    render_widget(window, 760, 520, scale=1.45)
+
+    page = window._normalize_page
+    _assert_no_visual_overlap(
+        window,
+        [
+            page._book_language,
+            page._llm_normalize,
+            page._btn_run,
+            page._progress,
+            page._raw_text,
+            page._norm_text,
+        ],
+    )
+    assert page._book_language_label_wrap.isHidden()
+    assert page._llm_normalize_label_wrap.isHidden()
+
+    window.close()
+    window.deleteLater()
+
+
+def test_zoomed_chunk_markup_controls_do_not_overlap() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    render_widget(window, 760, 520, scale=1.45)
+
+    page = window._voices_page
+    _assert_no_visual_overlap(
+        window,
+        [
+            page._speaker_mode,
+            page._chunk_size,
+            page._btn_detect,
+            page._btn_load,
+            page._btn_save,
+            page._btn_build,
+            page._voice_table,
+        ],
+    )
+    assert page._stress_mode.isHidden()
+    assert page._progress.isHidden()
+    assert page._top_tabs.geometry().bottom() <= page._voice_table.geometry().top()
+
+    window.close()
+    window.deleteLater()
+
+
 @pytest.mark.gui_snapshot
 def test_main_window_snapshot_matches_baseline() -> None:
     app = qapp()
@@ -255,4 +309,23 @@ def test_main_window_snapshot_uses_portable_smoke_on_non_windows(
 
     assert_snapshot_matches("main_window_1180x760", image)
     assert not diff_path.exists()
+
+
+def _assert_no_visual_overlap(root: QtWidgets.QWidget, widgets: list[QtWidgets.QWidget]) -> None:
+    rects = []
+    for widget in widgets:
+        if not widget.isVisible():
+            continue
+        top_left = widget.mapTo(root, widget.rect().topLeft())
+        rect = QtCore.QRect(top_left, widget.size()).adjusted(0, 0, -1, -1)
+        rects.append((widget, rect))
+
+    for index, (left_widget, left_rect) in enumerate(rects):
+        for right_widget, right_rect in rects[index + 1:]:
+            assert not left_rect.intersects(right_rect), (
+                left_widget.objectName() or left_widget.__class__.__name__,
+                right_widget.objectName() or right_widget.__class__.__name__,
+                left_rect.getRect(),
+                right_rect.getRect(),
+            )
 

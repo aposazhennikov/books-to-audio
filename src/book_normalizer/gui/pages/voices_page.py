@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -65,13 +66,13 @@ class VoicesPage(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
 
-        settings = QFormLayout()
+        settings = QGridLayout()
+        self._settings_layout = settings
         settings.setHorizontalSpacing(16)
         settings.setVerticalSpacing(6)
-        settings.setFieldGrowthPolicy(
-            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow,
-        )
-        settings.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        settings.setColumnStretch(0, 3)
+        settings.setColumnStretch(1, 0)
+        settings.setColumnStretch(2, 3)
 
         # Speaker mode.
         self._speaker_mode = QComboBox()
@@ -80,7 +81,8 @@ class VoicesPage(QWidget):
         )
         self._speaker_mode_label = QLabel()
         self._speaker_mode_label.setToolTip(t("voice.speaker_mode_hint"))
-        settings.addRow(self._speaker_mode_label, self._speaker_mode)
+        settings.addWidget(self._speaker_mode_label, 0, 0)
+        settings.addWidget(self._speaker_mode, 1, 0)
 
         self._speaker_mode_hint = QLabel()
         self._speaker_mode_hint.setWordWrap(True)
@@ -88,7 +90,7 @@ class VoicesPage(QWidget):
             "color: rgba(51,65,85,0.62); font-size: 10px;"
             "padding: 0 0 4px 0;",
         )
-        settings.addRow("", self._speaker_mode_hint)
+        settings.addWidget(self._speaker_mode_hint, 2, 0, 1, 3)
 
         # Max chunk chars.
         self._chunk_size = QSpinBox()
@@ -101,11 +103,13 @@ class VoicesPage(QWidget):
         self._chunk_size.setFixedWidth(128)
         self._chunk_size.setFixedHeight(38)
         self._chunk_size_label = QLabel()
-        settings.addRow(self._chunk_size_label, self._chunk_size)
+        settings.addWidget(self._chunk_size_label, 0, 1)
+        settings.addWidget(self._chunk_size, 1, 1)
 
         self._stress_mode = QComboBox()
         self._stress_mode_label = QLabel()
-        settings.addRow(self._stress_mode_label, self._stress_mode)
+        settings.addWidget(self._stress_mode_label, 0, 2)
+        settings.addWidget(self._stress_mode, 1, 2)
 
         left_layout.addLayout(settings)
 
@@ -323,15 +327,13 @@ class VoicesPage(QWidget):
     def _sync_settings_panel_height(self) -> None:
         """Balance the scrollable settings area against the assignment table."""
         tight_viewport = self.width() < 960 or self.height() < 560
-        target = (
-            max(140, round(110 * self._ui_scale))
-            if tight_viewport
-            else max(210, round(230 * self._ui_scale))
+        target = max(
+            154 if tight_viewport else 230,
+            round((105 if tight_viewport else 230) * self._ui_scale),
         )
         if self.height() > 0:
-            reserve_base = 210 if tight_viewport else 260
-            table_reserve = max(reserve_base, round(reserve_base * self._ui_scale))
-            target = min(target, max(120, self.height() - table_reserve))
+            table_reserve = 185 if tight_viewport else max(260, round(260 * self._ui_scale))
+            target = min(target, max(154 if tight_viewport else 210, self.height() - table_reserve))
         self._top_tabs.setMinimumHeight(target)
         self._top_tabs.setMaximumHeight(target)
 
@@ -340,6 +342,29 @@ class VoicesPage(QWidget):
         compact = self.width() < 960
         self._compact_mode = compact
         self._voice_table.set_compact_mode(compact)
+        self._settings_layout.setVerticalSpacing(12 if compact else 6)
+        self._chunk_size.setFixedHeight(42 if compact else 38)
+        self._chunk_size.setFixedWidth(118 if compact else 128)
+        self._progress.setVisible(not compact)
+        for button in (
+            self._btn_detect,
+            self._btn_load,
+            self._btn_save,
+            self._btn_build,
+        ):
+            if compact:
+                button.setFixedHeight(42)
+            else:
+                button.setMaximumHeight(16777215)
+                button.setMinimumHeight(max(38, round(38 * self._ui_scale)))
+        for label in (
+            self._speaker_mode_label,
+            self._chunk_size_label,
+            self._stress_mode_label,
+        ):
+            label.setVisible(not compact)
+        self._speaker_mode_hint.setVisible(not compact)
+        self._stress_mode.setVisible(not compact)
         self._btn_detect.setMinimumWidth(0 if compact else 320)
         self._btn_detect.setText(t("voice.compact_detect") if compact else t("voice.detect"))
         self._btn_load.setText(

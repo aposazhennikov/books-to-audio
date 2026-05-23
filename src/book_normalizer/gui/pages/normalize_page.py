@@ -250,21 +250,28 @@ class NormalizePage(QWidget):
         """Show/hide OCR settings based on selected file type."""
         is_pdf = self._selected_path.lower().endswith(".pdf") if self._selected_path else False
         for w in self._ocr_widgets:
-            w.setVisible(is_pdf)
+            is_label = w in {
+                self._ocr_mode_label_wrap,
+                self._ocr_dpi_label_wrap,
+                self._ocr_psm_label_wrap,
+            }
+            w.setVisible(is_pdf and (not is_label or not self._compact_mode))
             w.setEnabled(is_pdf)
         self._ocr_not_applicable_label.setVisible(
             bool(self._selected_path) and not is_pdf
         )
+        self._book_language_label_wrap.setVisible(not self._compact_mode)
 
     def _update_llm_visibility(self) -> None:
         """Show local LLM settings only when LLM normalization is enabled."""
         enabled = self._llm_normalize.isChecked()
-        for widget in (
-            self._llm_endpoint_label_wrap,
-            self._llm_endpoint,
-            self._llm_model_label_wrap,
-            self._llm_model,
-        ):
+        label_widgets = (self._llm_endpoint_label_wrap, self._llm_model_label_wrap)
+        field_widgets = (self._llm_endpoint, self._llm_model)
+        self._llm_normalize_label_wrap.setVisible(not self._compact_mode)
+        for widget in label_widgets:
+            widget.setVisible(enabled and not self._compact_mode)
+            widget.setEnabled(enabled)
+        for widget in field_widgets:
             widget.setVisible(enabled)
             widget.setEnabled(enabled)
 
@@ -278,6 +285,8 @@ class NormalizePage(QWidget):
         if self._compact_mode == compact:
             return
         self._compact_mode = compact
+        self._update_ocr_visibility()
+        self._update_llm_visibility()
         self._apply_action_labels()
 
     @staticmethod

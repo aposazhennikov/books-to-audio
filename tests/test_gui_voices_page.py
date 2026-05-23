@@ -150,7 +150,7 @@ def test_voices_page_uses_compact_centered_chunk_size_field(qapp) -> None:
     assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
     assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
     assert page._chunk_size.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
-    assert page._chunk_size.height() == 38
+    assert 38 <= page._chunk_size.height() <= 42
     assert page._chunk_size.width() <= 160
 
     page.deleteLater()

@@ -216,12 +216,26 @@ def test_normalize_page_uses_readable_psm_options_and_centered_dpi(qapp) -> None
     ] == [3, 4, 6, 11, 13]
     current_text = page._ocr_psm.itemText(page._ocr_psm.findData(6)).lower()
     assert "6" in current_text
-    assert "block" in current_text or "блок" in current_text
+    assert "cropped text" in current_text
+    assert "main body block" in current_text
+    psm_help = page._ocr_psm.toolTip().lower()
+    assert "book page" in psm_help
+    assert "do not use for full pages" in psm_help
     assert page._raw_label.text() == "Original text"
     assert page._norm_label.text() == "After normalization"
 
     page.deleteLater()
     set_language("ru")
+
+    ru_page = NormalizePage()
+    ru_texts = [
+        ru_page._ocr_psm.itemText(index)
+        for index in range(ru_page._ocr_psm.count())
+    ]
+    assert any("Книжная страница" in text for text in ru_texts)
+    assert any("Фрагменты" in text for text in ru_texts)
+    assert "не использовать для полной страницы" in ru_page._ocr_psm.toolTip()
+    ru_page.deleteLater()
 
 
 def test_normalize_page_allows_manual_normalized_text_edits(qapp, qtbot) -> None:

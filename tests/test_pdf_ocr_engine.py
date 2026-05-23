@@ -43,3 +43,28 @@ def test_tesseract_available_does_not_probe_wsl_when_native_missing(monkeypatch)
 
     assert tesseract_available() is False
     assert calls == []
+
+
+def test_tesseract_available_uses_configured_native_binary(monkeypatch, tmp_path) -> None:
+    configured = tmp_path / "Tesseract-OCR" / "tesseract.exe"
+    configured.parent.mkdir()
+    configured.write_text("", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_import(name, *args, **kwargs):  # noqa: ANN001
+        if name == "pytesseract":
+            raise ImportError("missing")
+        return real_import(name, *args, **kwargs)
+
+    def fake_run(args, *_args, **_kwargs):  # noqa: ANN001
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0)
+
+    real_import = __import__
+    monkeypatch.setenv("BOOKS_TO_AUDIO_TESSERACT_CMD", str(configured))
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    monkeypatch.setattr(pdf_ocr_engine.shutil, "which", lambda name: None)
+    monkeypatch.setattr(pdf_ocr_engine.subprocess, "run", fake_run)
+
+    assert tesseract_available() is True
+    assert calls == [[str(configured), "--version"]]

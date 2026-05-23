@@ -12,6 +12,7 @@ from install import (
     INSTALL_TOOL_PACKAGES,
     RUNTIME_CONFIG_PATH,
     InstallPaths,
+    _command_available,
     _hash_tree,
     _pull_ollama_models,
     _write_hash_manifest_entry,
@@ -23,6 +24,13 @@ def test_installer_always_installs_packaging_build_tool() -> None:
     assert "build" in INSTALL_TOOL_PACKAGES
 
 
+def test_installer_entrypoints_do_not_contain_mojibake() -> None:
+    markers = ("РЈ", "Рџ", "СЃ", "вЂ", "К»")
+    for path in (Path("install.py"), Path("install.bat"), Path("install.sh")):
+        text = path.read_text(encoding="utf-8")
+        assert not any(marker in text for marker in markers), path
+
+
 def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     paths = InstallPaths(
@@ -32,6 +40,8 @@ def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatc
         hf_cache_dir=tmp_path / "hf-cache",
         ollama_endpoint="http://127.0.0.1:11435",
         ollama_bin="ollama",
+        tesseract_cmd=str(tmp_path / "tools" / "tesseract.exe"),
+        ffmpeg_bin=str(tmp_path / "tools" / "ffmpeg.exe"),
     )
 
     _write_runtime_config(paths, tmp_path)
@@ -40,9 +50,13 @@ def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatc
     assert payload["models_dir"] == str(paths.models_dir)
     assert payload["hf_cache_dir"] == str(paths.hf_cache_dir)
     assert payload["ollama_endpoint"] == "http://127.0.0.1:11435"
+    assert payload["tesseract_cmd"] == str(paths.tesseract_cmd)
+    assert payload["ffmpeg_bin"] == str(paths.ffmpeg_bin)
     env_text = (tmp_path / RUNTIME_CONFIG_PATH).with_suffix(".env").read_text(encoding="utf-8")
     assert "BOOKS_TO_AUDIO_MODELS_DIR=" in env_text
     assert "BOOKS_TO_AUDIO_OLLAMA_ENDPOINT=http://127.0.0.1:11435" in env_text
+    assert "BOOKS_TO_AUDIO_TESSERACT_CMD=" in env_text
+    assert "BOOKS_TO_AUDIO_FFMPEG_BIN=" in env_text
 
 
 def test_hash_tree_changes_when_file_changes(tmp_path: Path) -> None:
@@ -76,6 +90,8 @@ def test_pull_ollama_models_skips_already_present_model(tmp_path: Path, monkeypa
         hf_cache_dir=tmp_path / "hf-cache",
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
+        tesseract_cmd="tesseract",
+        ffmpeg_bin="ffmpeg",
     )
     pulled: list[list[str]] = []
 
@@ -90,3 +106,12 @@ def test_pull_ollama_models_skips_already_present_model(tmp_path: Path, monkeypa
     _pull_ollama_models(paths, verify_hashes=False)
 
     assert pulled == [["ollama", "pull", DEFAULT_OLLAMA_MODELS[1]]]
+
+
+def test_command_available_accepts_explicit_tool_path(tmp_path: Path) -> None:
+    tool = tmp_path / "tools" / "tesseract.exe"
+    tool.parent.mkdir()
+    tool.write_text("", encoding="utf-8")
+
+    assert _command_available(str(tool))
+    assert not _command_available(str(tmp_path / "missing.exe"))

@@ -158,41 +158,41 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u0430\u0437\u043c\u0435\u0442\u043a\u0443, \u043a\u043e\u0442\u043e\u0440\u0430\u044f \u0431\u043b\u0438\u0436\u0435 \u0432\u0441\u0435\u0433\u043e \u043a \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0435 \u043f\u043e\u0441\u043b\u0435 \u0440\u0435\u043d\u0434\u0435\u0440\u0430.",
     },
     "norm.ocr_psm_3": {
-        "en": "3 - Auto: unknown page layout",
-        "ru": "3 - \u0410\u0432\u0442\u043e: \u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u0440\u0430\u0437\u043c\u0435\u0442\u043a\u0430 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b",
+        "en": "3 - Auto: mixed or unknown page layout",
+        "ru": "3 - Авто: смешанная или неизвестная разметка",
     },
     "norm.ocr_psm_4": {
-        "en": "4 - One column: normal book page",
-        "ru": "4 - \u041e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430: \u043e\u0431\u044b\u0447\u043d\u0430\u044f \u043a\u043d\u0438\u0436\u043d\u0430\u044f \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430",
+        "en": "4 - Book page: one continuous text column",
+        "ru": "4 - Книжная страница: один столбец текста",
     },
     "norm.ocr_psm_6": {
-        "en": "6 - One block: cropped body text",
-        "ru": "6 - \u041e\u0434\u0438\u043d \u0431\u043b\u043e\u043a: \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u043d\u044b\u0439 \u043e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u0442\u0435\u043a\u0441\u0442",
+        "en": "6 - Cropped text: one main body block",
+        "ru": "6 - Обрезанный текст: один основной блок",
     },
     "norm.ocr_psm_11": {
-        "en": "11 - Sparse: captions/forms/fragments",
-        "ru": "11 - \u0420\u0430\u0437\u0440\u0435\u0436\u0435\u043d\u043d\u044b\u0439: \u043f\u043e\u0434\u043f\u0438\u0441\u0438, \u0444\u043e\u0440\u043c\u044b, \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u044b",
+        "en": "11 - Fragments: captions, stamps, scattered text",
+        "ru": "11 - Фрагменты: подписи, штампы, редкий текст",
     },
     "norm.ocr_psm_13": {
-        "en": "13 - One raw line: short text strip",
-        "ru": "13 - \u041e\u0434\u043d\u0430 \u0441\u0442\u0440\u043e\u043a\u0430: \u043a\u043e\u0440\u043e\u0442\u043a\u0438\u0439 \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442 \u0431\u0435\u0437 \u0432\u0435\u0440\u0441\u0442\u043a\u0438",
+        "en": "13 - Single line: short strip, not a page",
+        "ru": "13 - Одна строка: короткая полоска, не страница",
     },
     "norm.ocr_psm_tip": {
         "en": (
             "Tesseract Page Segmentation Mode (PSM):\n"
-            "3 auto = unknown layout or several blocks.\n"
-            "4 one column = a normal book page with one continuous text column.\n"
-            "6 one block = page already cropped to the main body text; best default for clean scans.\n"
-            "11 sparse = scattered captions, forms, stamps, or fragmented OCR areas.\n"
-            "13 raw line = exactly one short line; rarely useful for full pages."
+            "3 auto = mixed layout, several blocks, or unknown page structure.\n"
+            "4 book page = one normal continuous text column; best first choice for most scanned books.\n"
+            "6 cropped text = the image already contains only one main text block.\n"
+            "11 fragments = captions, stamps, marginal notes, forms, or scattered text pieces.\n"
+            "13 single line = one short horizontal text strip; do not use for full pages."
         ),
         "ru": (
             "\u0420\u0435\u0436\u0438\u043c \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0430\u0446\u0438\u0438 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b Tesseract (PSM):\n"
-            "3 \u0430\u0432\u0442\u043e = \u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u0440\u0430\u0437\u043c\u0435\u0442\u043a\u0430 \u0438\u043b\u0438 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u0431\u043b\u043e\u043a\u043e\u0432.\n"
-            "4 \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 = \u043e\u0431\u044b\u0447\u043d\u0430\u044f \u043a\u043d\u0438\u0436\u043d\u0430\u044f \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u0441 \u043e\u0434\u043d\u043e\u0439 \u043d\u0435\u043f\u0440\u0435\u0440\u044b\u0432\u043d\u043e\u0439 \u043a\u043e\u043b\u043e\u043d\u043a\u043e\u0439.\n"
-            "6 \u043e\u0434\u0438\u043d \u0431\u043b\u043e\u043a = \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u0443\u0436\u0435 \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u0430 \u0434\u043e \u043e\u0441\u043d\u043e\u0432\u043d\u043e\u0433\u043e \u0442\u0435\u043a\u0441\u0442\u0430; \u043b\u0443\u0447\u0448\u0438\u0439 \u0434\u0435\u0444\u043e\u043b\u0442 \u0434\u043b\u044f \u0447\u0438\u0441\u0442\u044b\u0445 \u0441\u043a\u0430\u043d\u043e\u0432.\n"
-            "11 \u0440\u0430\u0437\u0440\u0435\u0436\u0435\u043d\u043d\u044b\u0439 = \u043f\u043e\u0434\u043f\u0438\u0441\u0438, \u0444\u043e\u0440\u043c\u044b, \u0448\u0442\u0430\u043c\u043f\u044b \u0438\u043b\u0438 \u0440\u0430\u0437\u0440\u043e\u0437\u043d\u0435\u043d\u043d\u044b\u0435 OCR-\u043e\u0431\u043b\u0430\u0441\u0442\u0438.\n"
-            "13 \u043e\u0434\u043d\u0430 \u0441\u0442\u0440\u043e\u043a\u0430 = \u0440\u043e\u0432\u043d\u043e \u043e\u0434\u043d\u0430 \u043a\u043e\u0440\u043e\u0442\u043a\u0430\u044f \u0441\u0442\u0440\u043e\u043a\u0430; \u0434\u043b\u044f \u043f\u043e\u043b\u043d\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b \u043f\u043e\u0447\u0442\u0438 \u043d\u0435 \u043d\u0443\u0436\u0435\u043d."
+            "3 авто = смешанная верстка, несколько блоков или непонятная структура страницы.\n"
+            "4 книжная страница = один нормальный столбец текста; лучший первый выбор для большинства сканов книг.\n"
+            "6 обрезанный текст = на изображении уже остался только один основной блок текста.\n"
+            "11 фрагменты = подписи, штампы, заметки на полях, формы или разрозненные куски текста.\n"
+            "13 одна строка = одна короткая горизонтальная полоска текста; не использовать для полной страницы."
         ),
     },
     "norm.ocr_not_applicable": {

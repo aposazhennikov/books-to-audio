@@ -67,6 +67,8 @@ class InstallPaths:
     hf_cache_dir: Path
     ollama_endpoint: str
     ollama_bin: str
+    tesseract_cmd: str
+    ffmpeg_bin: str
 
 
 class _TeeStream:
@@ -110,12 +112,17 @@ def main() -> int:
     print(f"Models:  {paths.models_dir}")
     print(f"HF_HOME: {paths.hf_cache_dir}")
     print(f"Ollama:  {paths.ollama_endpoint} ({paths.ollama_bin})")
+    print(f"OCR:     {paths.tesseract_cmd}")
+    print(f"FFmpeg:  {paths.ffmpeg_bin}")
     print(f"Log:     {(project_root / LOG_PATH).resolve()}")
     print(f"Extras:  {', '.join(sorted(extras)) if extras else 'core only'}")
     print()
 
     if args.system_check:
-        _print_system_dependency_notes(extras)
+        _print_system_dependency_notes(extras, paths)
+
+    if args.install_system_tools:
+        _install_system_tools(extras)
 
     if args.dry_run:
         _say("Dry run only; no files were changed.", "Пробный запуск: файлы не изменялись.", "warn")
@@ -194,6 +201,13 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--hf-cache-dir", default="", help="Hugging Face cache folder.")
     parser.add_argument("--ollama-endpoint", default="", help="Local Ollama endpoint. Default: http://localhost:11434")
     parser.add_argument("--ollama-bin", default="", help="Path or command name for Ollama. Default: ollama")
+    parser.add_argument("--tesseract-bin", default="", help="Path or command name for Tesseract OCR.")
+    parser.add_argument("--ffmpeg-bin", default="", help="Path or command name for FFmpeg.")
+    parser.add_argument(
+        "--install-system-tools",
+        action="store_true",
+        help="Run the suggested native package-manager command for missing OCR/audio/GUI tools.",
+    )
     parser.add_argument(
         "--download-ollama-models",
         action="store_true",
@@ -318,6 +332,20 @@ def _resolve_install_paths(args: argparse.Namespace, project_root: Path) -> Inst
         "ollama",
         interactive,
     )
+    tesseract_cmd = _prompt_text(
+        "Tesseract command/path",
+        "Команда/путь Tesseract",
+        args.tesseract_bin,
+        _default_command("tesseract"),
+        interactive,
+    )
+    ffmpeg_bin = _prompt_text(
+        "FFmpeg command/path",
+        "Команда/путь FFmpeg",
+        args.ffmpeg_bin,
+        _default_command("ffmpeg"),
+        interactive,
+    )
     return InstallPaths(
         install_root=install_root,
         venv_dir=venv_dir,
@@ -325,6 +353,8 @@ def _resolve_install_paths(args: argparse.Namespace, project_root: Path) -> Inst
         hf_cache_dir=hf_cache_dir,
         ollama_endpoint=ollama_endpoint,
         ollama_bin=ollama_bin,
+        tesseract_cmd=tesseract_cmd,
+        ffmpeg_bin=ffmpeg_bin,
     )
 
 
@@ -396,6 +426,10 @@ def _default_models_dir() -> Path:
     if platform.system() == "Windows":
         return Path("D:/ComfyUI-external/models")
     return Path.home() / "books-to-audio-models"
+
+
+def _default_command(command: str) -> str:
+    return shutil.which(command) or command
 
 
 def _ensure_python_version() -> None:
@@ -492,6 +526,8 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
         "hf_cache_dir": str(paths.hf_cache_dir),
         "ollama_endpoint": paths.ollama_endpoint,
         "ollama_bin": paths.ollama_bin,
+        "tesseract_cmd": paths.tesseract_cmd,
+        "ffmpeg_bin": paths.ffmpeg_bin,
     }
     config_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
@@ -506,6 +542,8 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
                 f"COMFYUI_MODELS_DIR={paths.models_dir}",
                 f"HF_HOME={paths.hf_cache_dir}",
                 f"BOOKS_TO_AUDIO_OLLAMA_ENDPOINT={paths.ollama_endpoint}",
+                f"BOOKS_TO_AUDIO_TESSERACT_CMD={paths.tesseract_cmd}",
+                f"BOOKS_TO_AUDIO_FFMPEG_BIN={paths.ffmpeg_bin}",
                 "",
             ]
         ),
@@ -634,15 +672,23 @@ def _installer_env(paths: InstallPaths) -> dict[str, str]:
     env["COMFYUI_MODELS_DIR"] = str(paths.models_dir)
     env["HF_HOME"] = str(paths.hf_cache_dir)
     env["BOOKS_TO_AUDIO_OLLAMA_ENDPOINT"] = paths.ollama_endpoint
+    env["BOOKS_TO_AUDIO_TESSERACT_CMD"] = paths.tesseract_cmd
+    env["BOOKS_TO_AUDIO_FFMPEG_BIN"] = paths.ffmpeg_bin
     return env
 
 
-def _print_system_dependency_notes(extras: set[str]) -> None:
+def _print_system_dependency_notes(extras: set[str], paths: InstallPaths) -> None:
     notes: list[str] = []
-    if "ocr" in extras and shutil.which("tesseract") is None:
-        notes.append("Tesseract is not on PATH. Scanned PDF OCR will be unavailable until it is installed.")
-    if "audio" in extras and shutil.which("ffmpeg") is None:
-        notes.append("FFmpeg is not on PATH. WAV output works, but MP3 export via pydub needs FFmpeg.")
+    if "ocr" in extras and not _command_available(paths.tesseract_cmd):
+        notes.append(
+            f"Tesseract was not found at '{paths.tesseract_cmd}'. "
+            "Scanned PDF OCR will be unavailable until it is installed or the path is corrected."
+        )
+    if "audio" in extras and not _command_available(paths.ffmpeg_bin):
+        notes.append(
+            f"FFmpeg was not found at '{paths.ffmpeg_bin}'. "
+            "WAV output works, but MP3 export via pydub needs FFmpeg."
+        )
     if "tts-sage" in extras and shutil.which("git") is None:
         notes.append("Git is not on PATH. Direct Git dependencies such as SageAttention need Git.")
 
@@ -658,6 +704,27 @@ def _print_system_dependency_notes(extras: set[str]) -> None:
     elif command:
         print("System dependency notes: required command-line tools look available.")
         print()
+
+
+def _install_system_tools(extras: set[str]) -> None:
+    command = _system_package_hint(extras)
+    if not command:
+        _say(
+            "No native system tools are required for the selected extras.",
+            "Для выбранных опций системные утилиты не требуются.",
+            "ok",
+        )
+        return
+    _say("Installing native system tools...", "Устанавливаю системные утилиты нативным менеджером пакетов...", "info")
+    print("+ " + command)
+    subprocess.run(command, shell=True, check=True)
+
+
+def _command_available(command: str) -> bool:
+    path = Path(command).expanduser()
+    if path.is_absolute() or path.parent != Path("."):
+        return path.exists()
+    return shutil.which(command) is not None
 
 
 def _system_package_hint(extras: set[str]) -> str:

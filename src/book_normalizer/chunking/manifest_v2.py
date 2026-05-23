@@ -64,6 +64,12 @@ class ManifestChunkV2(BaseModel):
     audio_file: str | None = None
     pause_after_ms: int = 0
     boundary_after: str = ""
+    speaker: str = ""
+    character_description: str = ""
+    emotion: str = ""
+    section_kind: str = ""
+    deleted: bool = False
+    excluded_from_tts: bool = False
 
     @field_validator("voice_label")
     @classmethod
@@ -285,6 +291,12 @@ def chunks_to_manifest(
                 audio_file=raw_chunk.get("audio_file"),
                 pause_after_ms=int(raw_chunk.get("pause_after_ms") or 0),
                 boundary_after=str(raw_chunk.get("boundary_after") or ""),
+                speaker=str(raw_chunk.get("speaker") or ""),
+                character_description=str(raw_chunk.get("character_description") or ""),
+                emotion=str(raw_chunk.get("emotion") or ""),
+                section_kind=str(raw_chunk.get("section_kind") or ""),
+                deleted=bool(raw_chunk.get("deleted", False)),
+                excluded_from_tts=bool(raw_chunk.get("excluded_from_tts", False)),
             )
         )
 

@@ -163,6 +163,7 @@ def build_chunks_from_segments(
     pending_intonation = segments[0].get("intonation", "neutral")
     pending_role = _role_from_segment(segments[0])
     pending_language = str(segments[0].get("language") or "").strip()
+    pending_meta = _segment_role_metadata(segments[0])
     pending_pause_after_ms = 0
     pending_boundary_after = ""
 
@@ -185,6 +186,7 @@ def build_chunks_from_segments(
                 "language": pending_language,
                 "intonation": pending_intonation,
                 "text": combined,
+                **pending_meta,
             }
             _add_pause_fields(
                 record,
@@ -205,6 +207,7 @@ def build_chunks_from_segments(
                     "language": pending_language,
                     "intonation": pending_intonation,
                     "text": sub,
+                    **pending_meta,
                 }
                 if offset == len(sub_chunks) - 1:
                     _add_pause_fields(
@@ -231,6 +234,7 @@ def build_chunks_from_segments(
         seg_intonation = seg.get("intonation", "neutral")
         seg_role = _role_from_segment(seg)
         seg_language = str(seg.get("language") or "").strip()
+        seg_meta = _segment_role_metadata(seg)
         seg_text = seg.get("text", "").strip()
         if not seg_text:
             continue
@@ -240,6 +244,7 @@ def build_chunks_from_segments(
             and seg_voice == pending_voice
             and seg_intonation == pending_intonation
             and seg_language == pending_language
+            and seg_meta == pending_meta
         )
 
         if same_group and pending_text_parts and pending_pause_after_ms > 0:
@@ -250,6 +255,7 @@ def build_chunks_from_segments(
             pending_intonation = seg_intonation
             pending_role = seg_role
             pending_language = seg_language
+            pending_meta = seg_meta
             _apply_pending_pause(
                 str(seg.get("boundary_after") or ""),
                 int(seg.get("pause_after_ms") or 0),
@@ -277,6 +283,7 @@ def build_chunks_from_segments(
             pending_intonation = seg_intonation
             pending_role = seg_role
             pending_language = seg_language
+            pending_meta = seg_meta
             _apply_pending_pause(
                 str(seg.get("boundary_after") or ""),
                 int(seg.get("pause_after_ms") or 0),
@@ -432,6 +439,20 @@ def _role_from_segment(seg: dict[str, Any]) -> str:
     if role in {"narrator", "male", "female", "unknown"}:
         return role
     return "narrator"
+
+
+def _segment_role_metadata(seg: dict[str, Any]) -> dict[str, str]:
+    """Metadata that distinguishes character/emotion chunks."""
+    return {
+        key: str(seg.get(key) or "").strip()
+        for key in (
+            "speaker",
+            "character_description",
+            "emotion",
+            "section_kind",
+        )
+        if str(seg.get(key) or "").strip()
+    }
 
 
 def _is_scene_break_text(text: str) -> bool:

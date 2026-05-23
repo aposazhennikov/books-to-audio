@@ -74,6 +74,7 @@ class NormalizePage(QWidget):
         self._worker: NormalizeWorker | None = None
         self._selected_path: str = ""
         self._help_buttons: dict[str, object] = {}
+        self._compact_mode = False
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -267,6 +268,18 @@ class NormalizePage(QWidget):
             widget.setVisible(enabled)
             widget.setEnabled(enabled)
 
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Keep action labels readable when the window is narrow or zoomed."""
+        super().resizeEvent(event)
+        self._sync_compact_mode()
+
+    def _sync_compact_mode(self) -> None:
+        compact = self.width() < 900
+        if self._compact_mode == compact:
+            return
+        self._compact_mode = compact
+        self._apply_action_labels()
+
     @staticmethod
     def _add_setting(
         grid: QGridLayout,
@@ -315,12 +328,19 @@ class NormalizePage(QWidget):
         self._llm_model_label.setToolTip(t("norm.llm_tip"))
         self._update_help_buttons()
         self._btn_run.setText(t("norm.run"))
-        self._btn_apply_norm_edits.setText(t("norm.apply_manual_edits"))
+        self._apply_action_labels()
         self._btn_apply_norm_edits.setToolTip(t("norm.apply_manual_edits_tip"))
         self._raw_text.setPlaceholderText(t("norm.raw_placeholder"))
         self._norm_text.setPlaceholderText(t("norm.norm_placeholder"))
         self._raw_label.setText(t("norm.raw_placeholder"))
         self._norm_label.setText(t("norm.norm_placeholder"))
+
+    def _apply_action_labels(self) -> None:
+        self._btn_apply_norm_edits.setText(
+            t("norm.apply_manual_edits_compact")
+            if self._compact_mode
+            else t("norm.apply_manual_edits")
+        )
 
     def _populate_book_language_combo(self) -> None:
         """Populate supported book languages while preserving selection."""

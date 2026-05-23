@@ -368,7 +368,6 @@ class VoiceTableWidget(QWidget):
 
     def retranslate(self) -> None:
         """Update translatable strings."""
-        self._apply_toolbar_labels()
         self._refresh_voice_combo_labels()
 
         self._table.setHorizontalHeaderLabels([
@@ -395,6 +394,7 @@ class VoiceTableWidget(QWidget):
         self._full_text_editor.setPlaceholderText(t("voice.editor_full_placeholder"))
         self._btn_full_refresh.setText(t("voice.editor_refresh_full"))
         self._btn_full_apply.setText(t("voice.editor_apply_full"))
+        self._apply_toolbar_labels()
         self._update_segment_char_count()
         self._update_full_char_count()
 
@@ -445,6 +445,11 @@ class VoiceTableWidget(QWidget):
             self._btn_apply_all.setText(t("voice.apply_all"))
             self._btn_apply_dialogue.setText(t("voice.apply_dialogue"))
             self._btn_apply_narrator.setText(t("voice.apply_narrator"))
+            self._btn_segment_split.setText(t("voice.editor_split"))
+            self._btn_segment_merge.setText(t("voice.editor_merge_next"))
+            self._btn_segment_delete_empty.setText(t("voice.editor_delete_empty"))
+            self._btn_segment_delete.setText(t("voice.editor_delete"))
+            self._btn_segment_restore.setText(t("voice.editor_restore"))
             return
 
         self._btn_all_narrator.setText(t("voice.compact_narrator"))
@@ -454,6 +459,11 @@ class VoiceTableWidget(QWidget):
         self._btn_apply_all.setText(t("voice.compact_all"))
         self._btn_apply_dialogue.setText(t("voice.compact_dialogue"))
         self._btn_apply_narrator.setText(t("voice.compact_author"))
+        self._btn_segment_split.setText(t("voice.compact_split"))
+        self._btn_segment_merge.setText(t("voice.compact_merge"))
+        self._btn_segment_delete_empty.setText(t("voice.compact_empty"))
+        self._btn_segment_delete.setText(t("voice.compact_delete"))
+        self._btn_segment_restore.setText(t("voice.compact_restore"))
 
     def _apply_table_layout(self) -> None:
         """Apply column visibility and widget widths for the current mode."""

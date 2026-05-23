@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from tests.gui.helpers import assert_layout_sane, assert_snapshot_matches, qapp, render_widget
+from tests.gui.helpers import (
+    assert_layout_sane,
+    assert_snapshot_matches,
+    assert_visible_buttons_actionable,
+    qapp,
+    render_widget,
+)
 
 MainWindow = pytest.importorskip("book_normalizer.gui.main_window").MainWindow
 QtCore = pytest.importorskip("PyQt6.QtCore")
@@ -45,6 +51,33 @@ def test_main_window_tabs_survive_basic_navigation() -> None:
         window._tabs.setCurrentIndex(index)
         render_widget(window, 1180, 760, scale=1.0)
         assert_layout_sane(window)
+
+    window.close()
+    window.deleteLater()
+
+
+@pytest.mark.parametrize(
+    ("size", "scale"),
+    [
+        ((760, 520), 1.45),
+        ((1180, 760), 1.0),
+        ((2048, 715), 1.45),
+    ],
+)
+def test_visible_buttons_are_connected_and_fit(
+    size: tuple[int, int],
+    scale: float,
+) -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    render_widget(window, size[0], size[1], scale=scale)
+    assert not window._tabs.tabBar().usesScrollButtons()
+
+    for index in range(window._tabs.count()):
+        window._tabs.setCurrentIndex(index)
+        render_widget(window, size[0], size[1], scale=scale)
+        assert_visible_buttons_actionable(window)
 
     window.close()
     window.deleteLater()

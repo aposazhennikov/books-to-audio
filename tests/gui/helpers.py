@@ -79,6 +79,18 @@ def assert_layout_sane(widget: QWidget) -> None:
         assert button.height() + 4 >= hint.height(), button.text()
 
 
+def assert_visible_buttons_actionable(widget: QWidget) -> None:
+    """Ensure visible buttons are wired and not visually clipped."""
+    flush_events()
+    for button in widget.findChildren(QPushButton):
+        if not button.isVisible() or not button.text():
+            continue
+        hint = button.sizeHint()
+        assert button.receivers(button.clicked) > 0, button.text()
+        assert button.width() + 4 >= min(hint.width(), 320), button.text()
+        assert button.height() + 4 >= hint.height(), button.text()
+
+
 def assert_snapshot_matches(name: str, image: QImage, *, tolerance: float = 0.015) -> None:
     """Compare a widget capture to a golden PNG if present.
 

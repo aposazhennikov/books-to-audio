@@ -441,6 +441,7 @@ class SynthesisPage(QWidget):
         self._help_buttons: list[tuple[QToolButton, str]] = []
         self._voice_mode = "custom"
         self._saved_voices = []
+        self._compact_mode = False
         self._run_kind = "idle"
         self._preview_output_dir: Path | None = None
         self._last_test_audio_path: Path | None = None
@@ -573,6 +574,18 @@ class SynthesisPage(QWidget):
         self.retranslate()
         self._refresh_saved_voices()
         self._update_custom_voice_controls()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Keep command buttons readable as the page width changes."""
+        super().resizeEvent(event)
+        self._sync_compact_mode()
+
+    def _sync_compact_mode(self) -> None:
+        compact = self.width() < 900
+        if self._compact_mode == compact:
+            return
+        self._compact_mode = compact
+        self._apply_action_labels()
 
     def _build_test_fragment_panel(self) -> QFrame:
         """Build controls for selecting the exact preview text."""
@@ -1489,11 +1502,8 @@ class SynthesisPage(QWidget):
             btn.setToolTip(t(help_key))
             btn.setStatusTip(t(help_key))
 
-        self._btn_test.setText(t("synth.test_start"))
+        self._apply_action_labels()
         self._btn_test.setToolTip(t("synth.test_help"))
-        self._btn_play_test.setText(t("synth.test_play"))
-        self._btn_start.setText(t("synth.start"))
-        self._btn_stop.setText(t("synth.stop"))
         self._status.setText(t("synth.waiting"))
         self._log_edit.setPlaceholderText(t("synth.log_placeholder"))
         self._refresh_chapter_combo()
@@ -2412,6 +2422,20 @@ class SynthesisPage(QWidget):
         self._models_dir_edit.setEnabled(not active)
         self._btn_models_dir.setEnabled(not active)
 
+    def _apply_action_labels(self) -> None:
+        """Use short command labels on narrow windows."""
+        if self._compact_mode:
+            self._btn_test.setText(t("synth.compact_test_start"))
+            self._btn_play_test.setText(t("synth.compact_test_play"))
+            self._btn_start.setText(t("synth.compact_start"))
+            self._btn_stop.setText(t("synth.stop"))
+            return
+
+        self._btn_test.setText(t("synth.test_start"))
+        self._btn_play_test.setText(t("synth.test_play"))
+        self._btn_start.setText(t("synth.start"))
+        self._btn_stop.setText(t("synth.stop"))
+
     def _toggle_test_playback(self) -> None:
         if not self._last_test_audio_path:
             return
@@ -2425,7 +2449,9 @@ class SynthesisPage(QWidget):
         if state == QMediaPlayer.PlaybackState.PlayingState:
             self._btn_play_test.setText(t("synth.test_pause"))
         else:
-            self._btn_play_test.setText(t("synth.test_play"))
+            self._btn_play_test.setText(
+                t("synth.compact_test_play") if self._compact_mode else t("synth.test_play")
+            )
 
     # ── Signal handlers ───────────────────────────────────────────────────────
 

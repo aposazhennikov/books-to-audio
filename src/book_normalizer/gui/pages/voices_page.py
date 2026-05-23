@@ -45,6 +45,7 @@ class VoicesPage(QWidget):
         self._manifest_path: Path | None = None
         self._worker: ExportSegmentsWorker | None = None
         self._ui_scale = 1.0
+        self._compact_mode = False
         self._setup_ui()
 
     # ── UI setup ──
@@ -304,6 +305,7 @@ class VoicesPage(QWidget):
 
         self._voice_table.retranslate()
         self._voice_preview.retranslate()
+        self._sync_compact_mode()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Keep the voice table readable as the page width changes."""
@@ -336,7 +338,17 @@ class VoicesPage(QWidget):
     def _sync_compact_mode(self) -> None:
         """Switch heavy table controls into compact mode on narrow widths."""
         compact = self.width() < 960
+        self._compact_mode = compact
         self._voice_table.set_compact_mode(compact)
+        self._btn_detect.setMinimumWidth(0 if compact else 320)
+        self._btn_detect.setText(t("voice.compact_detect") if compact else t("voice.detect"))
+        self._btn_load.setText(
+            t("voice.compact_load_manifest") if compact else t("voice.load_manifest")
+        )
+        self._btn_save.setText(
+            t("voice.compact_save_manifest") if compact else t("voice.save_manifest")
+        )
+        self._btn_build.setText(t("voice.compact_build_chunks") if compact else t("voice.build_chunks"))
 
     def _current_speaker_mode(self) -> str:
         """Return the internal speaker attribution mode."""

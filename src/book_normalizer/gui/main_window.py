@@ -82,6 +82,7 @@ class MainWindow(QMainWindow):
 
         # ── Tabs ──
         self._tabs = QTabWidget()
+        self._tabs.tabBar().setUsesScrollButtons(False)
         self._normalize_page = NormalizePage()
         self._roles_page = RolesPage()
         self._voices_page = VoicesPage()
@@ -165,13 +166,20 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "_tabs"):
             return
 
+        very_compact = self.width() < 820 and self._ui_scale >= 1.2
         compact = self.width() < 860
         suffix = "_short" if compact else ""
-        self._tabs.setTabText(0, t(f"tab.normalize{suffix}"))
-        self._tabs.setTabText(1, t(f"tab.roles{suffix}"))
-        self._tabs.setTabText(2, t(f"tab.chunks{suffix}"))
-        self._tabs.setTabText(3, t(f"tab.voices{suffix}"))
-        self._tabs.setTabText(4, t(f"tab.assemble{suffix}"))
+        full_keys = [
+            "tab.normalize",
+            "tab.roles",
+            "tab.chunks",
+            "tab.voices",
+            "tab.assemble",
+        ]
+        for index, key in enumerate(full_keys):
+            label = str(index + 1) if very_compact else t(f"{key}{suffix}")
+            self._tabs.setTabText(index, label)
+            self._tabs.setTabToolTip(index, t(key))
 
     def _on_normalization_done(self, book: object) -> None:
         """Called when normalization completes."""

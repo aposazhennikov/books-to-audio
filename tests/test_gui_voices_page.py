@@ -140,3 +140,14 @@ def test_voices_page_detect_save_and_build_buttons_use_real_manifest_flow(
     manifest = json.loads(chunks_path.read_text(encoding="utf-8"))
     assert manifest["language"] == "en"
     assert manifest["chapters"][0]["chunks"][0]["text"] == "Edited line."
+
+
+def test_voices_page_uses_compact_centered_chunk_size_field(qapp) -> None:
+    page = VoicesPage()
+
+    assert page._chunk_size.alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
+    assert page._chunk_size.alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+    assert page._chunk_size.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
+    assert page._chunk_size.width() <= 160
+
+    page.deleteLater()

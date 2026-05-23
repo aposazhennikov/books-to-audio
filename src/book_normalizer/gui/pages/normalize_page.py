@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -17,7 +18,6 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSpinBox,
-    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -90,7 +90,7 @@ class NormalizePage(QWidget):
         )
         self._path_label.setStyleSheet(
             "font-weight: 700; font-size: 13px; padding: 6px 12px;"
-            "background: rgba(15,23,42,0.62); border: 1px solid rgba(148,163,184,0.12);"
+            "background: rgba(255,255,255,0.70); border: 1px solid rgba(91,115,142,0.16);"
             "border-radius: 8px;"
         )
         file_row.addWidget(self._path_label, stretch=1)
@@ -129,6 +129,9 @@ class NormalizePage(QWidget):
         self._ocr_dpi.setRange(72, 1200)
         self._ocr_dpi.setValue(400)
         self._ocr_dpi.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._ocr_dpi.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self._ocr_dpi.setFixedWidth(128)
+        self._ocr_dpi.setMinimumHeight(38)
         self._ocr_dpi_label = QLabel()
         self._ocr_dpi_label_wrap = self._label_with_help(
             self._ocr_dpi_label, "norm.ocr_dpi_tip"
@@ -147,7 +150,7 @@ class NormalizePage(QWidget):
 
         self._ocr_not_applicable_label = QLabel()
         self._ocr_not_applicable_label.setStyleSheet(
-            "color: rgba(226,232,240,0.52); font-style: italic; font-size: 12px;"
+            "color: rgba(51,65,85,0.64); font-style: italic; font-size: 12px;"
             "padding: 4px 0;"
         )
         settings.addWidget(self._ocr_not_applicable_label, 4, 0, 1, 3)
@@ -189,13 +192,12 @@ class NormalizePage(QWidget):
         layout.addWidget(self._progress)
 
         # ── Text comparison panels ──
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(10)
-        splitter.setChildrenCollapsible(False)
+        text_row = QHBoxLayout()
+        text_row.setSpacing(14)
 
         self._raw_label = QLabel()
         self._raw_label.setStyleSheet(
-            "font-weight: 800; font-size: 11px; color: rgba(226,232,240,0.62);"
+            "font-weight: 800; font-size: 11px; color: rgba(51,65,85,0.64);"
             "text-transform: uppercase;"
         )
         raw_container = QWidget()
@@ -208,7 +210,7 @@ class NormalizePage(QWidget):
         self._raw_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._raw_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         raw_layout.addWidget(self._raw_text)
-        splitter.addWidget(raw_container)
+        text_row.addWidget(raw_container, stretch=1)
 
         norm_container = QWidget()
         norm_layout = QVBoxLayout(norm_container)
@@ -216,20 +218,27 @@ class NormalizePage(QWidget):
         norm_layout.setSpacing(4)
         self._norm_label = QLabel()
         self._norm_label.setStyleSheet(
-            "font-weight: 800; font-size: 11px; color: rgba(226,232,240,0.62);"
+            "font-weight: 800; font-size: 11px; color: rgba(51,65,85,0.64);"
             "text-transform: uppercase;"
         )
-        norm_layout.addWidget(self._norm_label)
+        norm_header = QHBoxLayout()
+        norm_header.setContentsMargins(0, 0, 0, 0)
+        norm_header.setSpacing(8)
+        norm_header.addWidget(self._norm_label)
+        norm_header.addStretch()
+        self._btn_apply_norm_edits = QPushButton()
+        self._btn_apply_norm_edits.clicked.connect(self._apply_normalized_edits)
+        self._btn_apply_norm_edits.setEnabled(False)
+        norm_header.addWidget(self._btn_apply_norm_edits)
+        norm_layout.addLayout(norm_header)
         self._norm_text = QPlainTextEdit()
-        self._norm_text.setReadOnly(True)
+        self._norm_text.setReadOnly(False)
         self._norm_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._norm_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         norm_layout.addWidget(self._norm_text)
-        splitter.addWidget(norm_container)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 1)
+        text_row.addWidget(norm_container, stretch=1)
 
-        layout.addWidget(splitter, stretch=1)
+        layout.addLayout(text_row, stretch=1)
 
         self._update_ocr_visibility()
         self._update_llm_visibility()
@@ -265,10 +274,11 @@ class NormalizePage(QWidget):
         label: QWidget,
         field: QWidget,
     ) -> None:
-        field.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
-        )
+        if field.maximumWidth() == 16777215 and field.sizePolicy().horizontalPolicy() != QSizePolicy.Policy.Fixed:
+            field.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
         grid.addWidget(label, row * 2, column)
         grid.addWidget(field, row * 2 + 1, column)
 
@@ -304,6 +314,8 @@ class NormalizePage(QWidget):
         self._llm_model_label.setToolTip(t("norm.llm_tip"))
         self._update_help_buttons()
         self._btn_run.setText(t("norm.run"))
+        self._btn_apply_norm_edits.setText(t("norm.apply_manual_edits"))
+        self._btn_apply_norm_edits.setToolTip(t("norm.apply_manual_edits_tip"))
         self._raw_text.setPlaceholderText(t("norm.raw_placeholder"))
         self._norm_text.setPlaceholderText(t("norm.norm_placeholder"))
         self._raw_label.setText(t("norm.raw_placeholder"))
@@ -368,6 +380,7 @@ class NormalizePage(QWidget):
         self._progress.reset()
         self._raw_text.clear()
         self._norm_text.clear()
+        self._btn_apply_norm_edits.setEnabled(False)
 
         self._worker = NormalizeWorker(
             input_path=path,
@@ -393,6 +406,37 @@ class NormalizePage(QWidget):
             raw_lines, norm_lines = _book_preview_lines(book)
             self._raw_text.setPlainText("\n\n".join(raw_lines))
             self._norm_text.setPlainText("\n\n".join(norm_lines))
+            self._btn_apply_norm_edits.setEnabled(True)
+
+    def _apply_normalized_edits(self) -> None:
+        """Apply the editable normalized preview back to the current Book."""
+        if self._book is None:
+            return
+
+        edited_blocks = [
+            block.strip()
+            for block in self._norm_text.toPlainText().split("\n\n")
+            if block.strip() and not block.strip().startswith("===")
+        ]
+        paragraphs = [
+            para
+            for chapter in getattr(self._book, "chapters", [])
+            for para in getattr(chapter, "paragraphs", [])
+            if (getattr(para, "raw_text", "") or getattr(para, "normalized_text", "")).strip()
+        ]
+        if len(edited_blocks) != len(paragraphs):
+            self._progress.set_status(
+                t(
+                    "norm.manual_edit_mismatch",
+                    edited=len(edited_blocks),
+                    paragraphs=len(paragraphs),
+                )
+            )
+            return
+
+        for para, text in zip(paragraphs, edited_blocks, strict=True):
+            para.normalized_text = text
+        self._progress.set_status(t("norm.manual_edit_applied", n=len(paragraphs)))
 
     def _on_error(self, msg: str) -> None:
         self._btn_run.setEnabled(True)

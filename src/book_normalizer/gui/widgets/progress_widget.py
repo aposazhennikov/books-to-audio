@@ -28,7 +28,7 @@ class ProgressWidget(QWidget):
         self._status.setWordWrap(True)
         self._status.setStyleSheet(
             "font-weight: 600; font-size: 12px;"
-            "color: rgba(226,232,240,0.72);",
+            "color: rgba(51,65,85,0.72);",
         )
         layout.addWidget(self._status)
 
@@ -47,7 +47,7 @@ class ProgressWidget(QWidget):
         self._eta.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._eta.setStyleSheet(
             "font-weight: 600; font-size: 12px;"
-            "color: rgba(196,181,253,0.92);",
+            "color: rgba(2,132,199,0.92);",
         )
         bar_layout.addWidget(self._eta)
         self._bar_row.setVisible(False)

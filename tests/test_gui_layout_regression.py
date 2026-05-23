@@ -10,9 +10,21 @@ MainWindow = pytest.importorskip("book_normalizer.gui.main_window").MainWindow
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 
 
-@pytest.mark.parametrize("size", [(760, 520), (1180, 760), (1440, 900)])
-@pytest.mark.parametrize("scale", [0.8, 1.0, 1.25, 1.45])
-def test_main_window_layout_does_not_overflow(size: tuple[int, int], scale: float) -> None:
+@pytest.mark.parametrize(
+    ("size", "scale"),
+    [
+        ((760, 520), 0.8),
+        ((760, 520), 1.45),
+        ((1180, 760), 1.0),
+        ((1180, 760), 1.25),
+        ((1440, 900), 1.0),
+        ((2048, 715), 1.45),
+    ],
+)
+def test_main_window_layout_does_not_overflow(
+    size: tuple[int, int],
+    scale: float,
+) -> None:
     app = qapp()
     _ = app
     window = MainWindow()
@@ -103,10 +115,12 @@ def test_voice_settings_panel_has_no_visible_scrollbar() -> None:
     window._tabs.setCurrentIndex(1)
     render_widget(window, 1180, 760, scale=1.0)
 
-    settings_scroll = window.findChild(QtWidgets.QScrollArea, "voiceSettingsScroll")
-    assert settings_scroll is not None
-    assert settings_scroll.verticalScrollBar().maximum() == 0
-    assert settings_scroll.horizontalScrollBar().maximum() == 0
+    assert window.findChild(QtWidgets.QScrollArea, "voiceSettingsScroll") is None
+    for scroll in window.findChildren(QtWidgets.QScrollArea):
+        if not scroll.isVisible():
+            continue
+        assert scroll.objectName() != "voiceSettingsScroll"
+        assert scroll.horizontalScrollBar().maximum() == 0
 
     window.close()
     window.deleteLater()

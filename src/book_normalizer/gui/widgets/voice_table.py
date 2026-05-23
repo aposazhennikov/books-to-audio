@@ -38,17 +38,17 @@ INTONATION_KEYS = [
     "neutral", "calm", "excited", "joyful", "sad", "angry", "whisper",
 ]
 
-_DIALOGUE_BG = QColor(139, 92, 246, 28)
+_DIALOGUE_BG = QColor(14, 165, 233, 28)
 
 
 def _editor_style() -> str:
     return (
         "QPlainTextEdit {"
-        "  background: rgba(8,13,23,0.78);"
-        "  border: 1px solid rgba(148,163,184,0.16);"
+        "  background: rgba(255,255,255,0.90);"
+        "  border: 1px solid rgba(91,115,142,0.18);"
         "  border-radius: 8px;"
         "  padding: 8px;"
-        "  color: rgba(248,250,252,0.92);"
+        "  color: rgba(30,41,59,0.92);"
         "  font-size: 12px;"
         "}"
     )
@@ -87,7 +87,7 @@ def _populate_voice_combo(combo: QComboBox, current: str = "narrator_calm") -> N
         model = combo.model()
         item = model.item(idx)
         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-        item.setForeground(QBrush(QColor(196, 181, 253, 190)))
+        item.setForeground(QBrush(QColor(2, 132, 199, 190)))
 
         presets = [p for p in VOICE_PRESETS if p.category == cat_id]
         for p in presets:
@@ -226,20 +226,20 @@ class VoiceTableWidget(QWidget):
         self._editor_tabs = QTabWidget()
         self._editor_tabs.setObjectName("voiceTextEditorTabs")
         self._editor_tabs.setStyleSheet(
-            "QTabWidget::pane {"
-            "  border: 1px solid rgba(148,163,184,0.14);"
+        "QTabWidget::pane {"
+            "  border: 1px solid rgba(91,115,142,0.16);"
             "  border-radius: 8px;"
-            "  background: rgba(15,23,42,0.54);"
+            "  background: rgba(255,255,255,0.66);"
             "}"
             "QTabBar::tab {"
             "  padding: 6px 12px;"
             "  margin-right: 4px;"
             "  border-radius: 7px;"
-            "  color: rgba(226,232,240,0.68);"
+            "  color: rgba(51,65,85,0.70);"
             "}"
             "QTabBar::tab:selected {"
-            "  color: #f8fafc;"
-            "  background: rgba(99,102,241,0.22);"
+            "  color: #0f172a;"
+            "  background: rgba(224,242,254,0.82);"
             "}"
         )
         self._editor_tabs.addTab(self._build_segment_editor(), "")
@@ -263,13 +263,13 @@ class VoiceTableWidget(QWidget):
         header.setSpacing(8)
         self._segment_editor_title = QLabel()
         self._segment_editor_title.setStyleSheet(
-            "font-weight: 800; color: rgba(248,250,252,0.88);",
+            "font-weight: 800; color: rgba(30,41,59,0.88);",
         )
         header.addWidget(self._segment_editor_title)
         header.addStretch()
         self._segment_char_label = QLabel()
         self._segment_char_label.setStyleSheet(
-            "color: rgba(226,232,240,0.52); font-size: 11px;",
+            "color: rgba(51,65,85,0.60); font-size: 11px;",
         )
         header.addWidget(self._segment_char_label)
         outer.addLayout(header)
@@ -312,13 +312,13 @@ class VoiceTableWidget(QWidget):
         header.setSpacing(8)
         self._full_text_title = QLabel()
         self._full_text_title.setStyleSheet(
-            "font-weight: 800; color: rgba(248,250,252,0.88);",
+            "font-weight: 800; color: rgba(30,41,59,0.88);",
         )
         header.addWidget(self._full_text_title)
         header.addStretch()
         self._full_char_label = QLabel()
         self._full_char_label.setStyleSheet(
-            "color: rgba(226,232,240,0.52); font-size: 11px;",
+            "color: rgba(51,65,85,0.60); font-size: 11px;",
         )
         header.addWidget(self._full_char_label)
         outer.addLayout(header)

@@ -35,11 +35,11 @@ _SCRIPT_PATH = _PROJECT_ROOT / "scripts" / "generate_voice_previews.py"
 _DEFAULT_PREVIEW_DIR = _PROJECT_ROOT / "voice_previews"
 
 _STYLE_STATUS_NORMAL = (
-    "color: rgba(226,232,240,0.54); font-size: 11px;"
+    "color: rgba(51,65,85,0.60); font-size: 11px;"
     "background: transparent; border: none; padding: 2px 0;"
 )
 _STYLE_STATUS_ACTIVE = (
-    "color: rgba(196,181,253,0.92); font-size: 11px;"
+    "color: rgba(2,132,199,0.92); font-size: 11px;"
     "background: transparent; border: none; padding: 2px 0;"
 )
 _STYLE_STATUS_OK = (

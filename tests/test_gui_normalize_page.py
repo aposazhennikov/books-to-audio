@@ -204,6 +204,9 @@ def test_normalize_page_uses_readable_psm_options_and_centered_dpi(qapp) -> None
     page = NormalizePage()
 
     assert page._ocr_dpi.alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
+    assert page._ocr_dpi.alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+    assert page._ocr_dpi.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
+    assert page._ocr_dpi.width() <= 160
     assert [
         page._ocr_psm.itemData(index)
         for index in range(page._ocr_psm.count())
@@ -218,6 +221,35 @@ def test_normalize_page_uses_readable_psm_options_and_centered_dpi(qapp) -> None
     set_language("ru")
 
 
+def test_normalize_page_allows_manual_normalized_text_edits(qapp, qtbot) -> None:
+    page = NormalizePage()
+    qtbot.addWidget(page)
+    book = Book(
+        chapters=[
+            Chapter(
+                title="Chapter",
+                index=0,
+                paragraphs=[
+                    Paragraph(raw_text="Raw one.", normalized_text="Norm one."),
+                    Paragraph(raw_text="Raw two.", normalized_text="Norm two."),
+                ],
+            )
+        ]
+    )
+
+    page._on_finished(book)
+    assert not page._norm_text.isReadOnly()
+    assert page._btn_apply_norm_edits.isEnabled()
+
+    page._norm_text.setPlainText("=== Chapter ===\n\nEdited one.\n\nEdited two.")
+    qtbot.mouseClick(page._btn_apply_norm_edits, QtCore.Qt.MouseButton.LeftButton)
+
+    assert book.chapters[0].paragraphs[0].normalized_text == "Edited one."
+    assert book.chapters[0].paragraphs[1].normalized_text == "Edited two."
+
+    page.deleteLater()
+
+
 def test_normalize_page_pdf_layout_stays_sane_at_small_size(qapp) -> None:
     page = NormalizePage()
     page._selected_path = "book.pdf"
@@ -225,6 +257,7 @@ def test_normalize_page_pdf_layout_stays_sane_at_small_size(qapp) -> None:
 
     render_widget(page, 760, 520, scale=1.0)
     assert_layout_sane(page)
+    assert not page.findChildren(QtWidgets.QSplitter)
 
     page.deleteLater()
 

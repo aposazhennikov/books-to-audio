@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -15,6 +16,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -82,7 +84,7 @@ class VoicesPage(QWidget):
         self._speaker_mode_hint = QLabel()
         self._speaker_mode_hint.setWordWrap(True)
         self._speaker_mode_hint.setStyleSheet(
-            "color: rgba(226,232,240,0.48); font-size: 10px;"
+            "color: rgba(51,65,85,0.62); font-size: 10px;"
             "padding: 0 0 4px 0;",
         )
         settings.addRow("", self._speaker_mode_hint)
@@ -92,6 +94,10 @@ class VoicesPage(QWidget):
         self._chunk_size.setRange(30, 2000)
         self._chunk_size.setValue(600)
         self._chunk_size.setSingleStep(10)
+        self._chunk_size.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._chunk_size.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self._chunk_size.setFixedWidth(128)
+        self._chunk_size.setMinimumHeight(38)
         self._chunk_size_label = QLabel()
         settings.addRow(self._chunk_size_label, self._chunk_size)
 
@@ -175,9 +181,9 @@ class VoicesPage(QWidget):
             "  background: rgba(16,185,129,0.26);"
             "}"
             "QPushButton:disabled {"
-            "  color: rgba(226,232,240,0.24);"
-            "  background: rgba(15,23,42,0.50);"
-            "  border-color: rgba(148,163,184,0.08);"
+            "  color: rgba(71,85,105,0.42);"
+            "  background: rgba(226,232,240,0.56);"
+            "  border-color: rgba(148,163,184,0.14);"
             "}",
         )
         action_row.addWidget(self._btn_build)
@@ -190,7 +196,7 @@ class VoicesPage(QWidget):
         self._manifest_label = QLabel("")
         self._manifest_label.setWordWrap(True)
         self._manifest_label.setStyleSheet(
-            "color: rgba(226,232,240,0.52); font-size: 10px;"
+            "color: rgba(51,65,85,0.62); font-size: 10px;"
             "padding: 2px 0;",
         )
         self._manifest_label.setTextInteractionFlags(
@@ -210,7 +216,7 @@ class VoicesPage(QWidget):
         self._preview_title = QLabel()
         self._preview_title.setStyleSheet(
             "font-weight: 700; font-size: 14px;"
-            "color: rgba(248,250,252,0.86); padding: 4px 0;",
+            "color: rgba(30,41,59,0.86); padding: 4px 0;",
         )
         right_layout.addWidget(self._preview_title)
 
@@ -230,21 +236,12 @@ class VoicesPage(QWidget):
         scroll.setWidget(self._voice_preview)
         right_layout.addWidget(scroll)
 
-        settings_scroll = QScrollArea()
-        settings_scroll.setObjectName("voiceSettingsScroll")
-        settings_scroll.setWidgetResizable(True)
-        settings_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        left_panel.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
         )
-        settings_scroll.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
-        )
-        settings_scroll.setStyleSheet(
-            "QScrollArea { border: none; background: transparent; }",
-        )
-        settings_scroll.setWidget(left_panel)
 
-        self._top_tabs.addTab(settings_scroll, "")
+        self._top_tabs.addTab(left_panel, "")
         self._top_tabs.addTab(right_panel, "")
         layout.addWidget(self._top_tabs, stretch=2)
 
@@ -264,7 +261,7 @@ class VoicesPage(QWidget):
         # Stats.
         self._stats_label = QLabel("")
         self._stats_label.setStyleSheet(
-            "color: rgba(226,232,240,0.64); font-size: 12px;"
+            "color: rgba(51,65,85,0.70); font-size: 12px;"
             "font-weight: 600; padding: 4px 0;",
         )
         layout.addWidget(self._stats_label)

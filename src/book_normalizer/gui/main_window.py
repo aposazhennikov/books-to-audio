@@ -54,7 +54,7 @@ class MainWindow(QMainWindow):
 
         self._title = QLabel()
         self._title.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
-        self._title.setStyleSheet("color: #f8fafc;")
+        self._title.setStyleSheet("color: #14233a;")
         header_row.addWidget(self._title)
 
         header_row.addStretch()
@@ -62,7 +62,7 @@ class MainWindow(QMainWindow):
         # Language switcher.
         self._lang_label = QLabel()
         self._lang_label.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 12px; font-weight: 600;"
+            "color: rgba(51,65,85,0.70); font-size: 12px; font-weight: 600;"
         )
         header_row.addWidget(self._lang_label)
 

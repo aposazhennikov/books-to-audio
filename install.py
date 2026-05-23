@@ -519,9 +519,30 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
 def _pull_ollama_models(paths: InstallPaths, verify_hashes: bool) -> None:
     _say("Pulling Ollama language models...", "Скачиваю модели Ollama...", "info")
     for model in DEFAULT_OLLAMA_MODELS:
+        if _ollama_model_is_present(paths, model):
+            _say(
+                f"Ollama model already present: {model}",
+                f"Модель Ollama уже есть: {model}",
+                "ok",
+            )
+            continue
         _run([paths.ollama_bin, "pull", model], paths)
     if verify_hashes:
         _record_command_hash("ollama_models", [paths.ollama_bin, "list"], paths)
+
+
+def _ollama_model_is_present(paths: InstallPaths, model: str) -> bool:
+    """Return True when Ollama already has the requested model locally."""
+    result = subprocess.run(
+        [paths.ollama_bin, "show", model],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        env=_installer_env(paths),
+    )
+    return result.returncode == 0
 
 
 def _install_tts_models(venv_python: Path, paths: InstallPaths, verify_hashes: bool) -> None:

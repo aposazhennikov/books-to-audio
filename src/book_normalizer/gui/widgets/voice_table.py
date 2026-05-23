@@ -245,8 +245,8 @@ class VoiceTableWidget(QWidget):
         self._editor_tabs.addTab(self._build_segment_editor(), "")
         self._editor_tabs.addTab(self._build_full_text_editor(), "")
         splitter.addWidget(self._editor_tabs)
-        splitter.setStretchFactor(0, 4)
-        splitter.setStretchFactor(1, 2)
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 3)
         layout.addWidget(splitter)
 
         self.retranslate()
@@ -275,7 +275,7 @@ class VoiceTableWidget(QWidget):
         outer.addLayout(header)
 
         self._segment_editor = QPlainTextEdit()
-        self._segment_editor.setMinimumHeight(92)
+        self._segment_editor.setMinimumHeight(64)
         self._segment_editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._segment_editor.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
@@ -324,7 +324,7 @@ class VoiceTableWidget(QWidget):
         outer.addLayout(header)
 
         self._full_text_editor = QPlainTextEdit()
-        self._full_text_editor.setMinimumHeight(120)
+        self._full_text_editor.setMinimumHeight(88)
         self._full_text_editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._full_text_editor.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
@@ -394,10 +394,10 @@ class VoiceTableWidget(QWidget):
         """Keep table row and editor heights in step with global UI zoom."""
         self._ui_scale = max(0.8, min(1.45, scale))
         self._segment_editor.setMinimumHeight(
-            max(72, min(110, round(92 * self._ui_scale))),
+            max(58, min(96, round(64 * self._ui_scale))),
         )
         self._full_text_editor.setMinimumHeight(
-            max(84, min(128, round(120 * self._ui_scale))),
+            max(72, min(118, round(88 * self._ui_scale))),
         )
         self._apply_table_layout()
 

@@ -140,33 +140,24 @@ class VoicesPage(QWidget):
         left_layout.addWidget(self._llm_panel)
 
         # Action buttons.
-        action_stack = QVBoxLayout()
-        action_stack.setSpacing(8)
+        action_row = QHBoxLayout()
+        action_row.setSpacing(8)
 
         self._btn_detect = QPushButton()
         self._btn_detect.setObjectName("primaryBtn")
         self._btn_detect.setMinimumHeight(38)
         self._btn_detect.clicked.connect(self._run_detection)
         self._btn_detect.setEnabled(False)
-        action_stack.addWidget(self._btn_detect)
-
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
+        action_row.addWidget(self._btn_detect, stretch=2)
 
         self._btn_load = QPushButton()
         self._btn_load.clicked.connect(self._load_manifest)
-        btn_row.addWidget(self._btn_load)
+        action_row.addWidget(self._btn_load)
 
         self._btn_save = QPushButton()
         self._btn_save.clicked.connect(self._save_manifest)
         self._btn_save.setEnabled(False)
-        btn_row.addWidget(self._btn_save)
-        action_stack.addLayout(btn_row)
-        left_layout.addLayout(action_stack)
-
-        # Build TTS chunks button.
-        btn_row2 = QHBoxLayout()
-        btn_row2.setSpacing(8)
+        action_row.addWidget(self._btn_save)
 
         self._btn_build = QPushButton()
         self._btn_build.setMinimumHeight(34)
@@ -189,9 +180,8 @@ class VoicesPage(QWidget):
             "  border-color: rgba(148,163,184,0.08);"
             "}",
         )
-        btn_row2.addWidget(self._btn_build)
-        btn_row2.addStretch()
-        left_layout.addLayout(btn_row2)
+        action_row.addWidget(self._btn_build)
+        left_layout.addLayout(action_row)
 
         self._progress = ProgressWidget()
         left_layout.addWidget(self._progress)
@@ -206,6 +196,7 @@ class VoicesPage(QWidget):
         self._manifest_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
+        self._manifest_label.setVisible(False)
         left_layout.addWidget(self._manifest_label)
 
         left_layout.addStretch()
@@ -224,6 +215,7 @@ class VoicesPage(QWidget):
         right_layout.addWidget(self._preview_title)
 
         scroll = QScrollArea()
+        scroll.setObjectName("voicePreviewScroll")
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
@@ -239,6 +231,7 @@ class VoicesPage(QWidget):
         right_layout.addWidget(scroll)
 
         settings_scroll = QScrollArea()
+        settings_scroll.setObjectName("voiceSettingsScroll")
         settings_scroll.setWidgetResizable(True)
         settings_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
@@ -328,9 +321,15 @@ class VoicesPage(QWidget):
 
     def _sync_settings_panel_height(self) -> None:
         """Balance the scrollable settings area against the assignment table."""
-        target = max(180, round(170 * self._ui_scale))
+        tight_viewport = self.width() < 960 or self.height() < 560
+        target = (
+            max(140, round(110 * self._ui_scale))
+            if tight_viewport
+            else max(260, round(285 * self._ui_scale))
+        )
         if self.height() > 0:
-            table_reserve = max(150, round(145 * self._ui_scale))
+            reserve_base = 210 if tight_viewport else 260
+            table_reserve = max(reserve_base, round(reserve_base * self._ui_scale))
             target = min(target, max(120, self.height() - table_reserve))
         self._top_tabs.setMinimumHeight(target)
 
@@ -467,6 +466,7 @@ class VoicesPage(QWidget):
         self._manifest_label.setText(
             t("voice.manifest_path", path=str(self._manifest_path)),
         )
+        self._manifest_label.setVisible(True)
         self._progress.set_status(
             t("voice.segments_ready", n=len(segments)),
         )
@@ -538,6 +538,7 @@ class VoicesPage(QWidget):
         self._manifest_label.setText(
             t("voice.manifest_path", path=str(chunks_path)),
         )
+        self._manifest_label.setVisible(True)
         self.chunks_built.emit(str(chunks_path))
 
     # ── Load / Save ──
@@ -557,6 +558,7 @@ class VoicesPage(QWidget):
             self._manifest_label.setText(
                 t("voice.manifest_path", path=str(self._manifest_path)),
             )
+            self._manifest_label.setVisible(True)
 
     def _save_manifest(self) -> None:
         if not self._manifest_path:
@@ -577,6 +579,7 @@ class VoicesPage(QWidget):
         self._manifest_label.setText(
             t("voice.manifest_path", path=str(self._manifest_path)),
         )
+        self._manifest_label.setVisible(True)
 
     def get_manifest_path(self) -> Path | None:
         """Return path to the current manifest file."""

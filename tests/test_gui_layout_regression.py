@@ -96,6 +96,22 @@ def test_zoomed_voice_settings_do_not_overlap_assignment_table(
     window.deleteLater()
 
 
+def test_voice_settings_panel_has_no_visible_scrollbar() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(1)
+    render_widget(window, 1180, 760, scale=1.0)
+
+    settings_scroll = window.findChild(QtWidgets.QScrollArea, "voiceSettingsScroll")
+    assert settings_scroll is not None
+    assert settings_scroll.verticalScrollBar().maximum() == 0
+    assert settings_scroll.horizontalScrollBar().maximum() == 0
+
+    window.close()
+    window.deleteLater()
+
+
 @pytest.mark.gui_snapshot
 def test_main_window_snapshot_matches_baseline() -> None:
     app = qapp()

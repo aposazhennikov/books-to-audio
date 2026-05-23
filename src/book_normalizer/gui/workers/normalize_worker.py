@@ -16,6 +16,7 @@ from book_normalizer.languages import (
     tesseract_language,
 )
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL, model_plan_for_language
+from book_normalizer.runtime_paths import configured_ollama_endpoint
 
 
 def _apply_selected_book_language(book: object, language: str) -> object:
@@ -89,7 +90,7 @@ class NormalizeWorker(QThread):
         ocr_dpi: int = 400,
         ocr_psm: int = 6,
         llm_normalize: bool = False,
-        llm_endpoint: str = "http://localhost:11434",
+        llm_endpoint: str = "",
         llm_model: str = PRIMARY_QWEN3_MODEL,
         llm_api_key: str = "",
         skip_stress: bool = False,
@@ -102,7 +103,7 @@ class NormalizeWorker(QThread):
         self._ocr_dpi = ocr_dpi
         self._ocr_psm = ocr_psm
         self._llm_normalize = llm_normalize
-        self._llm_endpoint = llm_endpoint
+        self._llm_endpoint = llm_endpoint or configured_ollama_endpoint()
         self._llm_model = llm_model
         self._llm_api_key = llm_api_key
         self._skip_stress = skip_stress

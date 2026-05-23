@@ -9,6 +9,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from book_normalizer.gui.i18n import t
 from book_normalizer.languages import normalize_book_language
+from book_normalizer.runtime_paths import configured_ollama_endpoint
 from book_normalizer.tts.model_download import MODEL_DOWNLOAD_WARNING, install_tts_models
 from book_normalizer.tts.synthesis_controller import SynthesisController, SynthesisRequest
 
@@ -35,7 +36,7 @@ class ExportSegmentsWorker(QThread):
         self._book = book
         self._output_dir = output_dir
         self._speaker_mode = speaker_mode
-        self._llm_endpoint = llm_endpoint
+        self._llm_endpoint = llm_endpoint or configured_ollama_endpoint()
         self._llm_model = llm_model
         self._llm_api_key = llm_api_key
         self._stress_mode = stress_mode
@@ -53,7 +54,7 @@ class ExportSegmentsWorker(QThread):
             if self._speaker_mode == "llm":
                 self.progress.emit(t("voice.attributing", mode=self._speaker_mode))
                 segmenter = LlmVoiceSegmenter(
-                    endpoint=self._llm_endpoint or "http://localhost:11434",
+                    endpoint=self._llm_endpoint,
                     model=self._llm_model or "",
                     api_key=self._llm_api_key or "",
                     language=language,
@@ -75,7 +76,7 @@ class ExportSegmentsWorker(QThread):
                     attributor = create_attributor(
                         SpeakerMode(self._speaker_mode),
                         cache_dir=self._output_dir / "speaker_cache",
-                        llm_endpoint=self._llm_endpoint or "",
+                        llm_endpoint=self._llm_endpoint,
                         llm_model=self._llm_model or "",
                         llm_api_key=self._llm_api_key or "",
                     )

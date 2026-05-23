@@ -147,22 +147,22 @@ QPushButton#primaryBtn:disabled {
 }
 
 QPushButton#dangerBtn {
-    background: rgba(239, 68, 68, 0.16);
-    border: 1px solid rgba(248, 113, 113, 0.34);
-    color: #fca5a5;
+    background: rgba(254, 226, 226, 0.92);
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    color: #b91c1c;
     font-size: 14px;
     font-weight: 700;
     min-height: 20px;
 }
 
 QPushButton#dangerBtn:hover {
-    background: rgba(239, 68, 68, 0.30);
-    color: #ffffff;
+    background: rgba(254, 202, 202, 0.96);
+    color: #7f1d1d;
 }
 
 QPushButton#dangerBtn:disabled {
     background: rgba(239, 68, 68, 0.08);
-    color: rgba(252, 165, 165, 0.32);
+    color: rgba(127, 29, 29, 0.30);
     border-color: rgba(248, 113, 113, 0.12);
 }
 

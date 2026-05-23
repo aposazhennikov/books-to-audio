@@ -95,9 +95,10 @@ class VoicesPage(QWidget):
         self._chunk_size.setValue(600)
         self._chunk_size.setSingleStep(10)
         self._chunk_size.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._chunk_size.lineEdit().setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._chunk_size.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self._chunk_size.setFixedWidth(128)
-        self._chunk_size.setMinimumHeight(38)
+        self._chunk_size.setFixedHeight(38)
         self._chunk_size_label = QLabel()
         settings.addRow(self._chunk_size_label, self._chunk_size)
 
@@ -152,6 +153,7 @@ class VoicesPage(QWidget):
         self._btn_detect = QPushButton()
         self._btn_detect.setObjectName("primaryBtn")
         self._btn_detect.setMinimumHeight(38)
+        self._btn_detect.setMinimumWidth(320)
         self._btn_detect.clicked.connect(self._run_detection)
         self._btn_detect.setEnabled(False)
         action_row.addWidget(self._btn_detect, stretch=2)
@@ -171,14 +173,14 @@ class VoicesPage(QWidget):
         self._btn_build.setEnabled(False)
         self._btn_build.setStyleSheet(
             "QPushButton {"
-            "  background: rgba(16,185,129,0.16);"
-            "  color: #99f6e4;"
-            "  border: 1px solid rgba(45,212,191,0.32);"
+            "  background: rgba(204,251,241,0.78);"
+            "  color: #0f766e;"
+            "  border: 1px solid rgba(20,184,166,0.30);"
             "  border-radius: 8px; font-weight: 700;"
             "  padding: 6px 16px;"
             "}"
             "QPushButton:hover {"
-            "  background: rgba(16,185,129,0.26);"
+            "  background: rgba(153,246,228,0.86);"
             "}"
             "QPushButton:disabled {"
             "  color: rgba(71,85,105,0.42);"

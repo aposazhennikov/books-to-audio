@@ -57,6 +57,7 @@ class RolesPage(QWidget):
 
         self._btn_extract = QPushButton()
         self._btn_extract.setObjectName("primaryBtn")
+        self._btn_extract.setMinimumWidth(320)
         self._btn_extract.setEnabled(False)
         self._btn_extract.clicked.connect(self._run_role_extraction)
         controls.addWidget(self._btn_extract)

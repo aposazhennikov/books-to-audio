@@ -7,6 +7,7 @@ import pytest
 from tests.gui.helpers import assert_layout_sane, assert_snapshot_matches, qapp, render_widget
 
 MainWindow = pytest.importorskip("book_normalizer.gui.main_window").MainWindow
+QtCore = pytest.importorskip("PyQt6.QtCore")
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 
 
@@ -144,6 +145,29 @@ def test_chunk_editor_action_buttons_are_not_clipped() -> None:
         parent = button.parentWidget()
         assert parent is not None
         assert button.geometry().bottom() <= parent.rect().bottom()
+        bottom_in_window = button.mapTo(window, button.rect().bottomLeft()).y()
+        assert bottom_in_window <= window.rect().bottom()
+
+    window.close()
+    window.deleteLater()
+
+
+def test_synthesis_page_actions_are_visible_without_settings_scrollbar() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(3)
+    render_widget(window, 1180, 760, scale=1.0)
+
+    page = window._synthesis_page
+    for scroll in page.findChildren(QtWidgets.QScrollArea):
+        if not scroll.isVisible():
+            continue
+        assert scroll.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert scroll.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+
+    for button in (page._btn_test, page._btn_play_test, page._btn_start, page._btn_stop):
+        assert button.isVisible()
         bottom_in_window = button.mapTo(window, button.rect().bottomLeft()).y()
         assert bottom_in_window <= window.rect().bottom()
 

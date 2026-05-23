@@ -25,6 +25,7 @@ def test_all_gui_translations_cover_every_supported_language() -> None:
                 assert text.strip(), f"{key}:{lang}"
             assert _format_fields(text) == en_fields, f"{key}:{lang}"
             assert "??" not in text, f"{key}:{lang}"
+            assert "wsl" not in text.lower(), f"{key}:{lang}"
 
 
 def test_main_window_switches_every_supported_gui_language(qtbot) -> None:

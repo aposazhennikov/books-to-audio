@@ -129,9 +129,10 @@ class NormalizePage(QWidget):
         self._ocr_dpi.setRange(72, 1200)
         self._ocr_dpi.setValue(400)
         self._ocr_dpi.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._ocr_dpi.lineEdit().setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._ocr_dpi.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self._ocr_dpi.setFixedWidth(128)
-        self._ocr_dpi.setMinimumHeight(38)
+        self._ocr_dpi.setFixedHeight(38)
         self._ocr_dpi_label = QLabel()
         self._ocr_dpi_label_wrap = self._label_with_help(
             self._ocr_dpi_label, "norm.ocr_dpi_tip"

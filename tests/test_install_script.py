@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from install import (
     DEFAULT_OLLAMA_MODELS,
     HASH_MANIFEST_PATH,
+    INSTALL_TOOL_PACKAGES,
     RUNTIME_CONFIG_PATH,
     InstallPaths,
     _hash_tree,
@@ -16,6 +17,10 @@ from install import (
     _write_hash_manifest_entry,
     _write_runtime_config,
 )
+
+
+def test_installer_always_installs_packaging_build_tool() -> None:
+    assert "build" in INSTALL_TOOL_PACKAGES
 
 
 def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatch) -> None:

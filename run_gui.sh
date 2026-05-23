@@ -3,6 +3,7 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$SCRIPT_DIR"
+export PYTHONUTF8=1
 
 if [ ! -x ".venv/bin/python" ]; then
     ./install.sh --no-system-check

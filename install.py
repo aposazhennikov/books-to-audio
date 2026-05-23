@@ -24,12 +24,14 @@ DEFAULT_OLLAMA_MODELS = (
     "hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M",
     "hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M",
 )
+INSTALL_TOOL_PACKAGES = ("pip", "setuptools", "wheel", "build")
 LOG_PATH = Path("install.log")
 RUNTIME_CONFIG_PATH = Path("data/local_runtime_paths.json")
 HASH_MANIFEST_PATH = Path("data/install_hashes.json")
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 VERIFY_MODULES = {
     "core": [
+        "build",
         "book_normalizer",
         "click",
         "docx",
@@ -148,7 +150,7 @@ def main() -> int:
     _write_runtime_config(paths, project_root)
 
     _say("Upgrading pip/build tools...", "Обновляю pip и build-инструменты...", "info")
-    _run([str(venv_python), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"], paths)
+    _run([str(venv_python), "-m", "pip", "install", "--upgrade", *INSTALL_TOOL_PACKAGES], paths)
 
     install_cmd = [str(venv_python), "-m", "pip", "install"]
     if args.upgrade:
@@ -246,7 +248,7 @@ def _configure_console(log_path: Path) -> None:
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if callable(reconfigure):
-            reconfigure(encoding="utf-8", errors="replace")
+            reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_file = log_path.open("w", encoding="utf-8")
     sys.stdout = _TeeStream(sys.stdout, log_file)  # type: ignore[assignment]

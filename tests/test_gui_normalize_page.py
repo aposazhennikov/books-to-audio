@@ -205,7 +205,10 @@ def test_normalize_page_uses_readable_psm_options_and_centered_dpi(qapp) -> None
 
     assert page._ocr_dpi.alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
     assert page._ocr_dpi.alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+    assert page._ocr_dpi.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
+    assert page._ocr_dpi.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
     assert page._ocr_dpi.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
+    assert page._ocr_dpi.height() == 38
     assert page._ocr_dpi.width() <= 160
     assert [
         page._ocr_psm.itemData(index)

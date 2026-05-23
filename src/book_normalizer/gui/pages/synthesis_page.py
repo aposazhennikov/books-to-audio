@@ -335,9 +335,9 @@ class _CloneVoiceRow(QWidget):
         self._wav_edit.setPlaceholderText("reference.wav")
         self._wav_edit.setReadOnly(True)
         self._wav_edit.setStyleSheet(
-            "color: rgba(226,232,240,0.78); font-size: 11px; padding: 4px 6px;"
-            "background: rgba(15,23,42,0.72); border-radius: 6px;"
-            "border: 1px solid rgba(148,163,184,0.16);",
+            "color: #1e293b; font-size: 11px; padding: 4px 6px;"
+            "background: rgba(255,255,255,0.92); border-radius: 6px;"
+            "border: 1px solid rgba(91,115,142,0.18);",
         )
         row1.addWidget(self._wav_edit, stretch=1)
 
@@ -349,10 +349,10 @@ class _CloneVoiceRow(QWidget):
         self._btn_remove = QPushButton()
         self._btn_remove.setMaximumWidth(34)
         self._btn_remove.setStyleSheet(
-            "QPushButton { color: rgba(252,165,165,0.86); font-weight: 700;"
-            "background: rgba(239,68,68,0.08); border: 1px solid rgba(248,113,113,0.16);"
+            "QPushButton { color: #b91c1c; font-weight: 700;"
+            "background: rgba(254,226,226,0.82); border: 1px solid rgba(248,113,113,0.24);"
             "border-radius: 7px; padding: 2px; }"
-            "QPushButton:hover { color: #ffffff; background: rgba(239,68,68,0.24); }",
+            "QPushButton:hover { color: #7f1d1d; background: rgba(254,202,202,0.96); }",
         )
         self._btn_remove.clicked.connect(self._on_remove)
         row1.addWidget(self._btn_remove)
@@ -362,9 +362,9 @@ class _CloneVoiceRow(QWidget):
         # Row 2: transcript text field.
         self._transcript = QLineEdit()
         self._transcript.setStyleSheet(
-            "color: rgba(226,232,240,0.78); font-size: 11px; padding: 4px 6px;"
-            "background: rgba(15,23,42,0.72); border-radius: 6px;"
-            "border: 1px solid rgba(148,163,184,0.16);",
+            "color: #1e293b; font-size: 11px; padding: 4px 6px;"
+            "background: rgba(255,255,255,0.92); border-radius: 6px;"
+            "border: 1px solid rgba(91,115,142,0.18);",
         )
         layout.addWidget(self._transcript)
 
@@ -457,7 +457,7 @@ class SynthesisPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.horizontalScrollBar().setEnabled(False)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
@@ -481,7 +481,7 @@ class SynthesisPage(QWidget):
         )
         self._manifest_label.setStyleSheet(
             "font-weight: 700; font-size: 13px; padding: 6px 12px;"
-            "background: rgba(15,23,42,0.62); border: 1px solid rgba(148,163,184,0.12);"
+            "background: rgba(255,255,255,0.86); border: 1px solid rgba(91,115,142,0.18);"
             "border-radius: 8px;",
         )
         file_row.addWidget(self._manifest_label, stretch=1)
@@ -533,11 +533,11 @@ class SynthesisPage(QWidget):
         self._btn_stop.setEnabled(False)
         btn_row.addWidget(self._btn_stop)
 
-        layout.addLayout(btn_row)
         layout.addStretch()
 
         scroll.setWidget(container)
         outer.addWidget(scroll, stretch=1)
+        outer.addLayout(btn_row)
 
         # ── Progress + log (outside scroll, always visible) ───────────────
         bottom = QVBoxLayout()
@@ -553,8 +553,8 @@ class SynthesisPage(QWidget):
         _make_text_edit_compact(self._log_edit)
         self._log_edit.setStyleSheet(
             "font-family: 'Cascadia Code', Consolas, monospace;"
-            "font-size: 11px; background: rgba(9,14,24,0.86);"
-            "border: 1px solid rgba(148,163,184,0.12); border-radius: 8px; padding: 6px;",
+            "font-size: 11px; background: rgba(255,255,255,0.90);"
+            "border: 1px solid rgba(91,115,142,0.18); border-radius: 8px; padding: 6px;",
         )
         bottom.addWidget(self._log_edit)
 
@@ -564,7 +564,7 @@ class SynthesisPage(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
         self._status.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 12px; padding: 2px 0;",
+            "color: rgba(51,65,85,0.70); font-size: 12px; padding: 2px 0;",
         )
         bottom.addWidget(self._status)
 
@@ -580,9 +580,9 @@ class SynthesisPage(QWidget):
         frame.setObjectName("testFragmentPanel")
         frame.setStyleSheet(
             "QFrame#testFragmentPanel {"
-            "  background: rgba(15,23,42,0.72);"
-            "  border: 1px solid rgba(148,163,184,0.14);"
-            "  border-radius: 12px;"
+            "  background: rgba(255,255,255,0.82);"
+            "  border: 1px solid rgba(91,115,142,0.18);"
+            "  border-radius: 10px;"
             "}"
         )
         outer = QVBoxLayout(frame)
@@ -591,14 +591,14 @@ class SynthesisPage(QWidget):
 
         self._test_source_title = QLabel()
         self._test_source_title.setStyleSheet(
-            "font-weight: 800; font-size: 13px; color: #ddd6fe;",
+            "font-weight: 800; font-size: 13px; color: #0f172a;",
         )
         outer.addWidget(self._test_source_title)
 
         self._test_source_desc = QLabel()
         self._test_source_desc.setWordWrap(True)
         self._test_source_desc.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 11px;",
+            "color: rgba(51,65,85,0.62); font-size: 11px;",
         )
         outer.addWidget(self._test_source_desc)
 
@@ -651,7 +651,7 @@ class SynthesisPage(QWidget):
         self._test_chunk_preview.setMaximumHeight(94)
         _make_text_edit_compact(self._test_chunk_preview)
         self._test_chunk_preview.setStyleSheet(
-            "color: rgba(226,232,240,0.76); font-size: 12px;"
+            "color: rgba(30,41,59,0.86); font-size: 12px;"
         )
         self._test_custom_text_edit = QPlainTextEdit()
         self._test_custom_text_edit.setMaximumHeight(118)
@@ -692,9 +692,9 @@ class SynthesisPage(QWidget):
         frame.setObjectName("sampleVoicePanel")
         frame.setStyleSheet(
             "QFrame#sampleVoicePanel {"
-            "  background: rgba(18,24,36,0.94);"
-            "  border: 1px solid rgba(139,92,246,0.24);"
-            "  border-radius: 14px;"
+            "  background: rgba(255,255,255,0.86);"
+            "  border: 1px solid rgba(91,115,142,0.18);"
+            "  border-radius: 10px;"
             "}"
         )
         outer = QVBoxLayout(frame)
@@ -703,14 +703,14 @@ class SynthesisPage(QWidget):
 
         self._sample_title = QLabel()
         self._sample_title.setStyleSheet(
-            "font-weight: 800; font-size: 14px; color: #ddd6fe;"
+            "font-weight: 800; font-size: 14px; color: #0f172a;"
         )
         outer.addWidget(self._sample_title)
 
         self._sample_desc = QLabel()
         self._sample_desc.setWordWrap(True)
         self._sample_desc.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 11px;"
+            "color: rgba(51,65,85,0.62); font-size: 11px;"
         )
         outer.addWidget(self._sample_desc)
 
@@ -793,7 +793,7 @@ class SynthesisPage(QWidget):
         playback_row.addWidget(self._btn_sample_play)
         self._sample_duration_label = QLabel("0:00 / 0:00")
         self._sample_duration_label.setStyleSheet(
-            "color: rgba(226,232,240,0.76); font-size: 12px;"
+            "color: rgba(51,65,85,0.70); font-size: 12px;"
         )
         playback_row.addWidget(self._sample_duration_label)
         playback_row.addStretch()
@@ -918,7 +918,7 @@ class SynthesisPage(QWidget):
         self._speech_rate_value_label = QLabel("1.00x")
         self._speech_rate_value_label.setMinimumWidth(96)
         self._speech_rate_value_label.setStyleSheet(
-            "color: rgba(226,232,240,0.76); font-size: 12px;"
+            "color: rgba(51,65,85,0.70); font-size: 12px;"
         )
         speech_rate_row.addWidget(self._speech_rate_value_label)
         self._speech_rate_label = QLabel()
@@ -946,7 +946,7 @@ class SynthesisPage(QWidget):
         self._sample_status = QLabel()
         self._sample_status.setWordWrap(True)
         self._sample_status.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 11px;"
+            "color: rgba(51,65,85,0.62); font-size: 11px;"
         )
         outer.addWidget(self._sample_status)
         return frame
@@ -960,14 +960,14 @@ class SynthesisPage(QWidget):
 
         self._preset_title = QLabel()
         self._preset_title.setStyleSheet(
-            "font-weight: 800; font-size: 14px; color: #ddd6fe;"
+            "font-weight: 800; font-size: 14px; color: #0f172a;"
         )
         layout.addWidget(self._preset_title)
 
         self._preset_desc = QLabel()
         self._preset_desc.setWordWrap(True)
         self._preset_desc.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 11px;"
+            "color: rgba(51,65,85,0.62); font-size: 11px;"
         )
         layout.addWidget(self._preset_desc)
 
@@ -997,14 +997,14 @@ class SynthesisPage(QWidget):
 
         self._advanced_title = QLabel()
         self._advanced_title.setStyleSheet(
-            "font-weight: 800; font-size: 14px; color: #ddd6fe;"
+            "font-weight: 800; font-size: 14px; color: #0f172a;"
         )
         layout.addWidget(self._advanced_title)
 
         self._advanced_desc = QLabel()
         self._advanced_desc.setWordWrap(True)
         self._advanced_desc.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 11px;"
+            "color: rgba(51,65,85,0.62); font-size: 11px;"
         )
         layout.addWidget(self._advanced_desc)
 
@@ -1140,7 +1140,7 @@ class SynthesisPage(QWidget):
         layout.addLayout(form)
         self._chapter_info = QLabel()
         self._chapter_info.setStyleSheet(
-            "color: rgba(226,232,240,0.48); font-size: 11px;"
+            "color: rgba(51,65,85,0.54); font-size: 11px;"
         )
         layout.addWidget(self._chapter_info)
         layout.addStretch()
@@ -1273,9 +1273,9 @@ class SynthesisPage(QWidget):
         frame.setObjectName("clonePanel")
         frame.setStyleSheet(
             "QFrame#clonePanel {"
-            "  background: rgba(16,185,129,0.08);"
-            "  border: 1px solid rgba(45,212,191,0.22);"
-            "  border-radius: 14px;"
+            "  background: rgba(240,253,250,0.82);"
+            "  border: 1px solid rgba(20,184,166,0.22);"
+            "  border-radius: 10px;"
             "  padding: 0px;"
             "}"
         )
@@ -1291,7 +1291,7 @@ class SynthesisPage(QWidget):
 
         self._clone_title = QLabel()
         self._clone_title.setStyleSheet(
-            "font-weight: 800; font-size: 14px; color: #99f6e4;"
+            "font-weight: 800; font-size: 14px; color: #0f766e;"
         )
         header.addWidget(self._clone_title, stretch=1)
         outer.addLayout(header)
@@ -1300,7 +1300,7 @@ class SynthesisPage(QWidget):
         self._clone_desc = QLabel()
         self._clone_desc.setWordWrap(True)
         self._clone_desc.setStyleSheet(
-            "color: rgba(226,232,240,0.58); font-size: 11px; padding: 0 0 4px 0;"
+            "color: rgba(51,65,85,0.62); font-size: 11px; padding: 0 0 4px 0;"
         )
         outer.addWidget(self._clone_desc)
 
@@ -1316,7 +1316,7 @@ class SynthesisPage(QWidget):
         lbl_role = QLabel()
         lbl_role.setObjectName("cloneColRole")
         lbl_role.setStyleSheet(
-            "color: rgba(226,232,240,0.42); font-size: 10px; font-weight: 600;"
+            "color: rgba(51,65,85,0.54); font-size: 10px; font-weight: 600;"
         )
         lbl_role.setMinimumWidth(128)
         lbl_role.setMaximumWidth(180)
@@ -1324,7 +1324,7 @@ class SynthesisPage(QWidget):
         lbl_wav = QLabel()
         lbl_wav.setObjectName("cloneColWav")
         lbl_wav.setStyleSheet(
-            "color: rgba(226,232,240,0.42); font-size: 10px; font-weight: 600;"
+            "color: rgba(51,65,85,0.54); font-size: 10px; font-weight: 600;"
         )
         col_header.addWidget(lbl_wav, stretch=1)
         col_header.addSpacing(72 + 34 + 6)  # WAV btn + remove btn width.
@@ -1333,14 +1333,14 @@ class SynthesisPage(QWidget):
         # Separator.
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: rgba(148,163,184,0.12);")
+        sep.setStyleSheet("color: rgba(91,115,142,0.16);")
         body_layout.addWidget(sep)
 
         # Transcript column hint.
         col_transcript = QLabel()
         col_transcript.setObjectName("cloneColTranscript")
         col_transcript.setStyleSheet(
-            "color: rgba(226,232,240,0.42); font-size: 10px; padding: 0 0 2px 0;"
+            "color: rgba(51,65,85,0.54); font-size: 10px; padding: 0 0 2px 0;"
         )
         body_layout.addWidget(col_transcript)
 
@@ -1356,12 +1356,12 @@ class SynthesisPage(QWidget):
         self._btn_add_clone = QPushButton()
         self._btn_add_clone.setStyleSheet(
             "QPushButton {"
-            "  background: rgba(16,185,129,0.14);"
-            "  color: #99f6e4;"
-            "  border: 1px dashed rgba(45,212,191,0.45);"
+            "  background: rgba(204,251,241,0.60);"
+            "  color: #0f766e;"
+            "  border: 1px dashed rgba(20,184,166,0.45);"
             "  border-radius: 8px; padding: 5px 14px; font-size: 12px;"
             "}"
-            "QPushButton:hover { background: rgba(16,185,129,0.24); }"
+            "QPushButton:hover { background: rgba(153,246,228,0.72); }"
         )
         self._btn_add_clone.clicked.connect(self._add_clone_row)
         add_row.addWidget(self._btn_add_clone)
@@ -1382,7 +1382,7 @@ class SynthesisPage(QWidget):
         lbl = QLabel()
         lbl.setWordWrap(True)
         lbl.setStyleSheet(
-            "color: rgba(255,255,255,0.4); font-size: 11px;"
+            "color: rgba(51,65,85,0.54); font-size: 11px;"
             "background: transparent; border: none; padding: 0 0 4px 0;",
         )
         return lbl

@@ -66,13 +66,14 @@ def main() -> None:
     args = parser.parse_args()
 
     run_ollama = args.run_ollama or os.environ.get("RUN_OLLAMA_TESTS") == "1"
+    out_dir = Path(args.out_dir)
     report = run_benchmark(
         books_dir=Path(args.books_dir),
         run_ollama=run_ollama,
         limit_books=args.limit_books,
         max_chars=args.max_chars,
+        review_dir=out_dir / "llm_reviews" if run_ollama else None,
     )
-    out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out_path = out_dir / f"quality_report_{stamp}.json"
@@ -86,17 +87,37 @@ def run_benchmark(
     run_ollama: bool,
     limit_books: int = 5,
     max_chars: int = 1200,
+    review_dir: Path | None = None,
 ) -> dict[str, Any]:
     cases: list[dict[str, Any]] = []
     for language in SUPPORTED_LANGUAGE_CODES:
-        cases.append(_run_case(_synthetic_book(language), source="synthetic", run_ollama=run_ollama))
+        source = "synthetic"
+        cases.append(
+            _run_case(
+                _synthetic_book(language),
+                source=source,
+                run_ollama=run_ollama,
+                review_report_path=_case_review_path(review_dir, source, language),
+            )
+        )
 
     if books_dir.exists():
         for path in _iter_book_paths(books_dir)[:limit_books]:
             try:
                 book = _load_book_for_benchmark(path)
                 excerpt = _excerpt_book(book, max_chars=max_chars)
-                cases.append(_run_case(excerpt, source=str(path), run_ollama=run_ollama))
+                cases.append(
+                    _run_case(
+                        excerpt,
+                        source=str(path),
+                        run_ollama=run_ollama,
+                        review_report_path=_case_review_path(
+                            review_dir,
+                            str(path),
+                            excerpt.metadata.language,
+                        ),
+                    )
+                )
             except Exception as exc:  # noqa: BLE001
                 cases.append({
                     "source": str(path),
@@ -113,7 +134,13 @@ def run_benchmark(
     }
 
 
-def _run_case(book: Book, *, source: str, run_ollama: bool) -> dict[str, Any]:
+def _run_case(
+    book: Book,
+    *,
+    source: str,
+    run_ollama: bool,
+    review_report_path: Path | None = None,
+) -> dict[str, Any]:
     language = book.metadata.language
     before = book.normalized_text or book.raw_text
     record: dict[str, Any] = {
@@ -130,7 +157,7 @@ def _run_case(book: Book, *, source: str, run_ollama: bool) -> dict[str, Any]:
 
     if run_ollama:
         try:
-            normalizer = LlmNormalizer(language=language)
+            normalizer = LlmNormalizer(language=language, review_report_path=review_report_path)
             accepted, rejected = normalizer.normalize_book(book)
             segmenter = LlmVoiceSegmenter(language=language)
             segments = segmenter.segment_book(book)
@@ -154,6 +181,8 @@ def _run_case(book: Book, *, source: str, run_ollama: bool) -> dict[str, Any]:
                 "segments_preserve_text": segments_preserve_text,
                 "chunk_text_preserved": chunk_text_preserved,
             })
+            if review_report_path and review_report_path.exists():
+                record["llm_normalization_review_report"] = str(review_report_path)
             if not structure_ok:
                 record["error"] = "segment/chunk manifest does not preserve normalized text"
         except (LlmSegmentationError, Exception) as exc:  # noqa: BLE001
@@ -329,6 +358,13 @@ def _synthetic_book(language: str) -> Book:
 def _iter_book_paths(books_dir: Path) -> list[Path]:
     suffixes = {".txt", ".fb2", ".epub", ".docx", ".pdf"}
     return sorted(path for path in books_dir.rglob("*") if path.suffix.lower() in suffixes)
+
+
+def _case_review_path(review_dir: Path | None, source: str, language: str) -> Path | None:
+    if review_dir is None:
+        return None
+    safe = "".join(char if char.isalnum() else "_" for char in source)[:80].strip("_")
+    return review_dir / f"{language}_{safe or 'case'}_normalization_review.json"
 
 
 def _canonical_exact(text: str) -> str:

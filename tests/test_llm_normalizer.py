@@ -278,6 +278,30 @@ class TestLlmNormalizerMocked:
         assert result.accepted_text == original
         assert seen_models == [PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
 
+    def test_writes_review_report_when_all_models_fail_validation(self, tmp_path: Path) -> None:
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        report_path = tmp_path / "review.json"
+        normalizer = LlmNormalizer(
+            cache_dir=tmp_path / "cache",
+            language="en",
+            max_retries=1,
+            review_report_path=report_path,
+        )
+        original = "Alpha beta gamma."
+
+        with patch.object(normalizer, "_query_llm", return_value="Alpha beta."):
+            result = normalizer.normalize_paragraph(original, 0, 0)
+
+        assert not result.is_valid
+        assert result.accepted_text == original
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+        assert payload["requires_human_review"] is True
+        assert payload["language"] == "en"
+        assert len(payload["failures"]) == 2
+        assert payload["failures"][0]["source_preview"] == original
+        assert payload["failures"][0]["output_preview"] == "Alpha beta."
+
     @pytest.mark.parametrize("language", ["ru", "en", "zh", "kk", "uz"])
     def test_language_prompt_is_selected_for_supported_languages(self, language: str) -> None:
         from book_normalizer.normalization.llm_normalizer import _system_prompt_for_language

@@ -246,6 +246,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "LLM normalization complete: accepted {accepted}, rejected {rejected}",
         "ru": "LLM-\u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0433\u043e\u0442\u043e\u0432\u0430: \u043f\u0440\u0438\u043d\u044f\u0442\u043e {accepted}, \u043e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e {rejected}",
     },
+    "norm.llm_review_required": {
+        "en": "LLM left {rejected} paragraph(s) unchanged. Review report: {path}",
+        "ru": "LLM \u043e\u0441\u0442\u0430\u0432\u0438\u043b\u0430 {rejected} \u0430\u0431\u0437\u0430\u0446(\u0435\u0432) \u0431\u0435\u0437 \u043f\u0440\u0430\u0432\u043a\u0438. Review-report: {path}",
+    },
     "norm.detecting_chapters": {
         "en": "Detecting chapters\u2026",
         "ru": "\u041e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0438\u0435 \u0433\u043b\u0430\u0432\u2026",
@@ -1844,6 +1848,11 @@ def _install_extra_translations() -> None:
             "zh": "13 - 单行：短文本条",
             "kk": "13 - Бір жол: қысқа мәтін жолағы",
             "uz": "13 - Bir qator: qisqa matn bo'lagi",
+        },
+        "norm.llm_review_required": {
+            "zh": "LLM 保留了 {rejected} 个段落未修改。Review report：{path}",
+            "kk": "LLM {rejected} абзацты өзгертпей қалдырды. Review report: {path}",
+            "uz": "LLM {rejected} paragrafni o'zgartirmay qoldirdi. Review report: {path}",
         },
         "synth.sage_help": {
             "zh": "SageAttention 是本机 TTS Python 环境中的可选加速内核。仅在已安装并在 GPU 上测试后启用。",

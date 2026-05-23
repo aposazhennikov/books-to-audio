@@ -30,9 +30,10 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from hashlib import sha1
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from book_normalizer.languages import get_book_language, normalize_book_language
 from book_normalizer.llm.model_router import model_plan_for_language
@@ -111,6 +112,29 @@ _NORMALIZATION_SCHEMA = {
     "required": ["text"],
 }
 
+
+@dataclass
+class NormalizationFailure:
+    """One LLM normalization attempt that needs human review."""
+
+    chapter_index: int
+    paragraph_index: int
+    model: str
+    reason: str
+    source_preview: str
+    output_preview: str = ""
+
+    def to_record(self) -> dict[str, Any]:
+        return {
+            "chapter_index": self.chapter_index,
+            "paragraph_index": self.paragraph_index,
+            "model": self.model,
+            "reason": self.reason,
+            "source_preview": self.source_preview,
+            "output_preview": self.output_preview,
+        }
+
+
 # ── LlmNormalizer ─────────────────────────────────────────────────────────────
 
 
@@ -137,6 +161,7 @@ class LlmNormalizer:
         max_retries: int = 2,
         language: str = "ru",
         lightweight: bool = False,
+        review_report_path: Path | None = None,
     ) -> None:
         self._endpoint = endpoint.rstrip("/")
         self._language = normalize_book_language(language)
@@ -151,6 +176,8 @@ class LlmNormalizer:
         self._validator = validator or TextPreservationValidator()
         self._api_key = api_key
         self._max_retries = max_retries
+        self._review_report_path = review_report_path
+        self._failures: list[NormalizationFailure] = []
         self._client = OllamaChatClient(
             endpoint=endpoint,
             api_key=api_key,
@@ -256,6 +283,15 @@ class LlmNormalizer:
                         type(exc).__name__,
                         exc,
                     )
+                    self._failures.append(
+                        NormalizationFailure(
+                            chapter_index=chapter_index,
+                            paragraph_index=paragraph_index,
+                            model=model,
+                            reason=f"{type(exc).__name__}: {exc}",
+                            source_preview=text[:500],
+                        )
+                    )
                     continue
 
                 if raw:
@@ -273,6 +309,16 @@ class LlmNormalizer:
                         self._max_retries,
                         model,
                         "; ".join(result.issues),
+                    )
+                    self._failures.append(
+                        NormalizationFailure(
+                            chapter_index=chapter_index,
+                            paragraph_index=paragraph_index,
+                            model=model,
+                            reason="; ".join(result.issues),
+                            source_preview=text[:500],
+                            output_preview=raw[:500],
+                        )
                     )
                     corrected = raw
                     self._client.unload_model(model)
@@ -301,6 +347,7 @@ class LlmNormalizer:
             paragraph_index,
             "; ".join(issues),
         )
+        self._write_review_report()
 
         similarity = 0.0
         if corrected is not None:
@@ -371,6 +418,13 @@ class LlmNormalizer:
             f"language={self._language}, "
             f"paragraphs={total}, accepted={accepted}, rejected={rejected}",
         )
+        if rejected and self._review_report_path is not None:
+            self._write_review_report()
+            book.add_audit(
+                "llm_normalization",
+                "review_required",
+                f"report={self._review_report_path}, rejected={rejected}",
+            )
         return accepted, rejected
 
     # ── LLM query ─────────────────────────────────────────────────────────────
@@ -463,6 +517,24 @@ class LlmNormalizer:
             source_text,
         ))
         return sha1(payload.encode("utf-8")).hexdigest()[:16]
+
+    def _write_review_report(self) -> None:
+        if self._review_report_path is None or not self._failures:
+            return
+        self._review_report_path.parent.mkdir(parents=True, exist_ok=True)
+        self._review_report_path.write_text(
+            json.dumps(
+                {
+                    "language": self._language,
+                    "models": list(self._model_candidates),
+                    "failures": [failure.to_record() for failure in self._failures],
+                    "requires_human_review": True,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

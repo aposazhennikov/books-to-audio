@@ -115,12 +115,43 @@ def test_llm_normalize_marks_book_for_smart_voice_markup(tmp_path, monkeypatch) 
     assert result is book
     assert captured["language"] == "uz"
     assert captured["model"] == "gemma3:4b"
+    assert "llm_norm_reviews" in str(captured["review_report_path"])
     assert book.metadata.extra["llm_processing_enabled"] is True
     assert book.metadata.extra["llm_language"] == "uz"
     assert book.metadata.extra["llm_model_candidates"] == [
         PRIMARY_QWEN3_MODEL,
         FALLBACK_QWEN3_MODEL,
     ]
+
+
+def test_llm_normalize_records_review_report_for_rejected_paragraphs(tmp_path, monkeypatch) -> None:
+    class _FakeNormalizer:
+        def __init__(self, **kwargs):
+            self.review_report_path = kwargs["review_report_path"]
+
+        def normalize_book(self, book, progress_callback=None):  # noqa: ANN001
+            self.review_report_path.parent.mkdir(parents=True, exist_ok=True)
+            self.review_report_path.write_text("{}", encoding="utf-8")
+            if progress_callback is not None:
+                progress_callback(1, 1, 0, 1)
+            return (0, 1)
+
+    monkeypatch.setattr("book_normalizer.normalization.llm_normalizer.LlmNormalizer", _FakeNormalizer)
+    book = Book(
+        metadata=Metadata(language="en"),
+        chapters=[
+            Chapter(
+                index=0,
+                paragraphs=[Paragraph(raw_text="Alpha.", normalized_text="Alpha.", index_in_chapter=0)],
+            ),
+        ],
+    )
+    worker = NormalizeWorker(input_path=tmp_path / "book.txt", book_language="en")
+
+    worker._llm_normalize_with_progress(book)
+
+    report_path = book.metadata.extra["llm_normalization_review_report"]
+    assert "llm_norm_reviews" in report_path
 
 
 def test_gui_ocr_progress_uses_native_tesseract_runtime(tmp_path, monkeypatch) -> None:

@@ -218,12 +218,20 @@ class NormalizeWorker(QThread):
 
     def _llm_cache_dir(self) -> Path:
         """Return a stable cache directory for GUI LLM normalization."""
+        digest = self._source_digest()
+        return Path("data") / "user_memory" / "llm_norm_cache" / digest
+
+    def _llm_review_report_path(self) -> Path:
+        """Return the review report path for rejected LLM normalization windows."""
+        return Path("data") / "user_memory" / "llm_norm_reviews" / f"{self._source_digest()}.json"
+
+    def _source_digest(self) -> str:
+        """Return a stable digest for the selected source file path."""
         try:
             source = str(self._input_path.resolve()).casefold()
         except OSError:
             source = str(self._input_path).casefold()
-        digest = sha1(source.encode("utf-8")).hexdigest()[:16]
-        return Path("data") / "user_memory" / "llm_norm_cache" / digest
+        return sha1(source.encode("utf-8")).hexdigest()[:16]
 
     def _llm_normalize_with_progress(self, book):
         """Run optional LLM normalization over already rule-normalized text."""
@@ -236,12 +244,14 @@ class NormalizeWorker(QThread):
         start_time = time.time()
         report_interval = max(1, total_paragraphs // 50)
 
+        review_report_path = self._llm_review_report_path()
         normalizer = LlmNormalizer(
             endpoint=self._llm_endpoint,
             model=self._llm_model,
             cache_dir=self._llm_cache_dir(),
             api_key=self._llm_api_key,
             language=self._book_language,
+            review_report_path=review_report_path,
         )
 
         def report(done: int, total: int, accepted: int, rejected: int) -> None:
@@ -273,6 +283,8 @@ class NormalizeWorker(QThread):
             metadata.extra["llm_processing_enabled"] = True
             metadata.extra["llm_language"] = self._book_language
             metadata.extra["llm_model_candidates"] = list(plan.candidates)
+            if rejected:
+                metadata.extra["llm_normalization_review_report"] = str(review_report_path)
         self.progress.emit(
             t(
                 "norm.llm_done",
@@ -280,6 +292,14 @@ class NormalizeWorker(QThread):
                 rejected=rejected,
             )
         )
+        if rejected:
+            self.progress.emit(
+                t(
+                    "norm.llm_review_required",
+                    rejected=rejected,
+                    path=review_report_path,
+                )
+            )
         return book
 
     def run(self) -> None:

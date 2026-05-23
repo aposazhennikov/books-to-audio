@@ -5,7 +5,8 @@ Books to Audio - инструмент для подготовки русскоя
 нарезка на TTS-чанки, синтез через ComfyUI/Qwen3-TTS и сборка WAV/MP3.
 
 GUI доступен на русском, английском, китайском, казахском и узбекском языках.
-Пока озвучка и обработка книг рассчитаны только на русский язык.
+Нормализация, LLM-разметка голосов и chunk manifest покрывают языки
+`ru/en/zh/kk/uz`; русские правила ударений и `ё` применяются только для `ru`.
 
 ## Поддерживаемые OS
 
@@ -61,7 +62,12 @@ Linux/macOS:
 .venv/bin/python -m book_normalizer.gui.app
 ```
 
-`install.py` создает `.venv`, обновляет `pip`, ставит пакет в editable-режиме и проверяет импорты. Windows wrapper `install.bat` использует `.venv-windows`, чтобы не смешивать Windows GUI и Linux/WSL `.venv`. По умолчанию ставится desktop-профиль: GUI, OCR, LLM-клиент и audio helpers.
+`install.py` создает `.venv`, обновляет `pip`, ставит пакет в editable-режиме,
+проверяет импорты, спрашивает пути для моделей/Hugging Face/Ollama в
+интерактивном терминале и сохраняет их в `data/local_runtime_paths.json`.
+Windows wrapper `install.bat` использует `.venv-windows`, чтобы не смешивать
+Windows GUI и Linux `.venv`. По умолчанию ставится desktop-профиль: GUI, OCR,
+LLM-клиент и audio helpers. `install.log` перезаписывается при каждом запуске.
 
 ## Системные зависимости
 
@@ -123,6 +129,10 @@ python install.py --with-tts              # прямой Qwen-TTS runner, луч
 python install.py --with-sage             # Qwen-TTS + SageAttention, только Linux/CUDA
 python install.py --recreate              # пересоздать .venv
 python install.py --dry-run               # показать план без установки
+python install.py --yes                   # не спрашивать пути, взять defaults/flags
+python install.py --interactive           # явно спросить пути и optional downloads
+python install.py --download-ollama-models
+python install.py --download-tts-models --verify-hashes
 ```
 
 Старый вариант тоже работает:
@@ -178,18 +188,25 @@ tesseract --list-langs
 
 Для русских книг должен быть язык `rus`. Если его нет, установите `tesseract-ocr-rus`, `tesseract-langpack-rus` или `tesseract-lang` в зависимости от OS.
 
-## Настройка LLM через WSL Ollama
+## Настройка LLM через нативную Ollama
 
-LLM используется для нормализации текста и умной разметки голосов. Команды ниже запускайте в Ubuntu WSL, чтобы модели и сервер жили в одной Linux-среде с GPU/CUDA.
+LLM используется для нормализации текста и умной разметки голосов. Ollama должна
+работать нативно в той OS, где запускается приложение, либо быть доступной по
+HTTP endpoint. Важно не держать одновременно несколько больших моделей:
+приложение отправляет запросы через native `/api/chat`, использует
+`num_parallel=1`, `num_ctx=4096`, `think=false`, `keep_alive` и выгружает модели
+после батчей.
 
-Установка Ollama в WSL:
+Установка Ollama:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ollama serve
 ```
 
-Если нет `sudo`, можно поставить user-local архив Ollama в `~/.local/bin`; главное, чтобы команда `ollama --version` работала внутри WSL.
+На Windows можно поставить Ollama Desktop или указать полный путь к `ollama.exe`
+в `install.py --ollama-bin`. Главное, чтобы `http://localhost:11434` отвечал из
+приложения, а при работе через WSL/dev shell был доступен тот же endpoint.
 
 Рекомендуемые модели для 8 GB VRAM / 16 GB RAM:
 
@@ -211,9 +228,14 @@ fallback       -> hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
 http://localhost:11434
 ```
 
-В коде LLM-запросы идут через `/api/chat` с `think=false`, `num_ctx=4096`, `num_parallel=1`, JSON/schema output и явной выгрузкой моделей после батчей. `gemma3:12b` не используется по умолчанию: размер модели плюс KV/cache слишком рискованны для 8 GB VRAM.
+`gemma3:12b` не используется по умолчанию: размер модели плюс KV/cache слишком
+рискованны для 8 GB VRAM.
 
-Если включить `LLM/GPU нормализация`, книга получает metadata-флаг `llm_processing_enabled`, а вкладка голосов автоматически выбирает LLM smart markup с тем же language/model profile. Если 8B не проходит validation, приложение пробует 4B; если обе модели не сохраняют текст, создается review report вместо тихого heuristic downgrade.
+Если включить `LLM/GPU нормализация`, книга получает metadata-флаг
+`llm_processing_enabled`, а вкладка голосов автоматически выбирает LLM smart
+markup с тем же language/model profile. Если 8B не проходит validation,
+приложение пробует 4B; если модели не сохраняют текст, создается review report
+с проблемными окнами вместо тихого downgrade.
 
 Ручной benchmark качества:
 
@@ -285,7 +307,8 @@ normalize-book install-tts-models --models-dir /path/to/models \
 репозиторий требует авторизации, задайте `HF_TOKEN` или передайте `--token`.
 Python-зависимость для скачивания: `huggingface-hub` (ставится через `install.py`).
 Для прямого Qwen-TTS runner также нужны `qwen-tts`, `torch`, `soundfile`, `numpy`;
-на практике для production-озвучки рекомендуется Linux/WSL с CUDA GPU.
+на практике для production-озвучки рекомендуется нативный CUDA GPU-хост или
+ComfyUI endpoint с достаточной VRAM.
 
 Direct `scripts/tts_runner.py` legacy flow has been removed. Use `chunks_manifest_v2.json` + ComfyUI synthesis.
 

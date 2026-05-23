@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from tests.gui import helpers as gui_helpers
 from tests.gui.helpers import (
     assert_layout_sane,
     assert_snapshot_matches,
@@ -217,4 +220,39 @@ def test_main_window_snapshot_matches_baseline() -> None:
     assert_snapshot_matches("main_window_1180x760", image)
     window.close()
     window.deleteLater()
+
+
+def test_main_window_snapshot_uses_portable_smoke_on_non_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = qapp()
+    _ = app
+    expected_path = (
+        Path(__file__).resolve().parent
+        / "gui"
+        / "snapshots"
+        / "main_window_1180x760.png"
+    )
+    expected = gui_helpers.QImage(str(expected_path))
+    assert not expected.isNull()
+
+    image = gui_helpers.QImage(expected.size(), gui_helpers.QImage.Format.Format_RGB32)
+    for y in range(image.height()):
+        for x in range(image.width()):
+            image.setPixelColor(
+                x,
+                y,
+                gui_helpers.QColor(
+                    180 + ((x * 7 + y * 3) % 76),
+                    180 + ((x * 5 + y * 11) % 76),
+                    180 + ((x * 13 + y * 17) % 76),
+                ),
+            )
+
+    diff_path = expected_path.with_name("main_window_1180x760.diff.png")
+    diff_path.unlink(missing_ok=True)
+    monkeypatch.setattr(gui_helpers.platform, "system", lambda: "Darwin")
+
+    assert_snapshot_matches("main_window_1180x760", image)
+    assert not diff_path.exists()
 

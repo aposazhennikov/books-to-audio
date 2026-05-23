@@ -101,7 +101,8 @@ def assert_snapshot_matches(name: str, image: QImage, *, tolerance: float = 0.01
     platform_name = platform.system().lower()
     generic_path = snapshot_dir / f"{name}.png"
     platform_path = snapshot_dir / f"{name}_{platform_name}.png"
-    expected_path = platform_path if platform_path.exists() else generic_path
+    has_platform_snapshot = platform_path.exists()
+    expected_path = platform_path if has_platform_snapshot else generic_path
     if os.environ.get("UPDATE_GUI_SNAPSHOTS") == "1":
         update_path = platform_path if platform_name != "windows" else generic_path
         assert image.save(str(update_path))
@@ -112,12 +113,14 @@ def assert_snapshot_matches(name: str, image: QImage, *, tolerance: float = 0.01
     expected = QImage(str(expected_path))
     assert expected.size() == image.size()
     mismatch = _pixel_mismatch_ratio(expected, image)
+    if mismatch <= tolerance:
+        return
+    if not has_platform_snapshot and platform_name != "windows":
+        _assert_portable_visual_smoke(image)
+        return
     if mismatch > tolerance:
         diff_path = snapshot_dir / f"{name}.diff.png"
         _write_diff(expected, image, diff_path)
-        if not platform_path.exists() and platform_name != "windows":
-            _assert_portable_visual_smoke(image)
-            return
     assert mismatch <= tolerance
 
 

@@ -54,7 +54,8 @@ def resolve_model_path(
 
     For example, ``Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`` resolves to
     ``D:/ComfyUI-external/models/audio_encoders/Qwen3-TTS-12Hz-1.7B-CustomVoice``
-    on Windows or ``/mnt/d/ComfyUI-external/models/audio_encoders/...`` in WSL.
+    on Windows or a POSIX path such as
+    ``/mnt/d/ComfyUI-external/models/audio_encoders/...`` on Linux.
     If no local folder is found, the original model name is returned so
     ``from_pretrained`` can keep its normal HuggingFace behavior.
     """

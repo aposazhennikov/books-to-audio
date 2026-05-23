@@ -530,8 +530,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "OpenAI API ключ:",
     },
     "voice.generate_previews": {
-        "en": "Generate Previews (WSL)",
-        "ru": "Сгенерировать превью (WSL)",
+        "en": "Generate Previews",
+        "ru": "Сгенерировать превью",
     },
     "voice.refresh_previews": {
         "en": "Refresh",
@@ -546,8 +546,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "{count}/{total} \u043f\u0440\u0435\u0432\u044c\u044e \u0433\u043e\u0442\u043e\u0432\u044b",
     },
     "voice.generating_previews": {
-        "en": "Generating previews via WSL (this takes a few minutes)\u2026",
-        "ru": "\u0413\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f \u043f\u0440\u0435\u0432\u044c\u044e \u0447\u0435\u0440\u0435\u0437 WSL (\u044d\u0442\u043e \u0437\u0430\u0439\u043c\u0451\u0442 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u043c\u0438\u043d\u0443\u0442)\u2026",
+        "en": "Generating previews locally (this takes a few minutes)\u2026",
+        "ru": "\u0413\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f \u043f\u0440\u0435\u0432\u044c\u044e \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e (\u044d\u0442\u043e \u0437\u0430\u0439\u043c\u0451\u0442 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u043c\u0438\u043d\u0443\u0442)\u2026",
     },
     "voice.preview_panel": {
         "en": "Voice Library",
@@ -989,8 +989,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "torch.compile может ускорить следующие чанки после более медленного прогрева. Оставьте выключенным для максимально предсказуемого запуска.",
     },
     "synth.sage_help": {
-        "en": "SageAttention is an optional faster attention kernel in WSL. Enable only if it is installed and tested on your GPU.",
-        "ru": "SageAttention — опциональное ускорение attention в WSL. Включайте только если оно установлено и проверено на вашей GPU.",
+        "en": "SageAttention is an optional faster attention kernel for the local TTS Python environment. Enable only if it is installed and tested on your GPU.",
+        "ru": "SageAttention — опциональное ускорение attention для локального TTS Python. Включайте только если оно установлено и проверено на вашей GPU.",
     },
     "synth.sample_audio_help": {
         "en": "A short clean recording of the target voice. WAV/FLAC is best; noisy audio gives worse cloning.",
@@ -1367,13 +1367,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.sage_hint": {
         "en": (
             "SageAttention replaces SDPA with quantized attention kernels.\n"
-            "Requires SageAttention in the WSL TTS venv; GitHub v2 is preferred:\n"
+            "Requires SageAttention in the local TTS Python environment; GitHub v2 is preferred:\n"
             "  pip install git+https://github.com/thu-ml/SageAttention.git\n"
             "If enabled and unavailable, synthesis stops with an explicit error."
         ),
         "ru": (
             "SageAttention заменяет SDPA квантованными attention-ядрами.\n"
-            "Нужен SageAttention в WSL TTS venv; GitHub v2 предпочтительнее:\n"
+            "Нужен SageAttention в локальном TTS Python; GitHub v2 предпочтительнее:\n"
             "  pip install git+https://github.com/thu-ml/SageAttention.git\n"
             "Если включено, но пакет недоступен, синтез остановится с явной ошибкой."
         ),
@@ -1775,6 +1775,26 @@ def _install_extra_translations() -> None:
         },
         "app.subtitle": {"en": "", "ru": "", "zh": "", "kk": "", "uz": ""},
         "app.lang_label": {"zh": "语言：", "kk": "Тіл:", "uz": "Til:"},
+        "voice.generate_previews": {
+            "zh": "生成预览",
+            "kk": "Алдын ала тыңдауды жасау",
+            "uz": "Oldindan tinglashlarni yaratish",
+        },
+        "voice.generating_previews": {
+            "zh": "正在本机生成预览（可能需要几分钟）…",
+            "kk": "Алдын ала тыңдаулар жергілікті жасалуда (бірнеше минут алуы мүмкін)…",
+            "uz": "Oldindan tinglashlar lokal yaratilmoqda (bir necha daqiqa olishi mumkin)…",
+        },
+        "synth.sage_help": {
+            "zh": "SageAttention 是本机 TTS Python 环境中的可选加速内核。仅在已安装并在 GPU 上测试后启用。",
+            "kk": "SageAttention — жергілікті TTS Python ортасына арналған қосымша жылдам attention ядросы. Тек орнатылып, GPU-да тексерілген болса қосыңыз.",
+            "uz": "SageAttention lokal TTS Python muhiti uchun ixtiyoriy tezroq attention yadrosi. Faqat GPU qurilmangizda o‘rnatilgan va sinovdan o‘tgan bo‘lsa yoqing.",
+        },
+        "synth.sage_hint": {
+            "zh": "SageAttention 用量化 attention 内核替换 SDPA。\n需要在本机 TTS Python 环境中安装 SageAttention；推荐 GitHub v2：\n  pip install git+https://github.com/thu-ml/SageAttention.git\n如果启用但不可用，合成会以明确错误停止。",
+            "kk": "SageAttention SDPA-ны квантталған attention ядроларымен ауыстырады.\nЖергілікті TTS Python ортасында SageAttention қажет; GitHub v2 ұсынылады:\n  pip install git+https://github.com/thu-ml/SageAttention.git\nҚосылып, бірақ қолжетімсіз болса, синтез анық қатемен тоқтайды.",
+            "uz": "SageAttention SDPA o‘rniga kvantlangan attention yadrolarini ishlatadi.\nLokal TTS Python muhitida SageAttention kerak; GitHub v2 tavsiya etiladi:\n  pip install git+https://github.com/thu-ml/SageAttention.git\nYoqilgan, lekin mavjud bo‘lmasa, sintez aniq xato bilan to‘xtaydi.",
+        },
         "tab.normalize": {"zh": "1. 规范化", "kk": "1. Нормалдау"},
         "tab.normalize_short": {"zh": "1. 规范", "kk": "1. Норм."},
         "tab.voices": {"zh": "2. 声音", "kk": "2. Дауыстар"},
@@ -1909,27 +1929,6 @@ def _install_extra_translations() -> None:
                 "zh": "超时：生成耗时过长",
                 "kk": "Таймаут: жасау тым ұзаққа созылды",
                 "uz": "Vaqt tugadi: yaratish juda uzoq davom etdi",
-            },
-            "voice.wsl_unavailable": {
-                "en": "WSL not available. Install WSL first.",
-                "ru": "WSL недоступен. Сначала установите WSL.",
-                "zh": "WSL 不可用。请先安装 WSL。",
-                "kk": "WSL қолжетімсіз. Алдымен WSL орнатыңыз.",
-                "uz": "WSL mavjud emas. Avval WSL o'rnating.",
-            },
-            "voice.wsl_not_found": {
-                "en": "WSL not found on this system.",
-                "ru": "WSL не найден в этой системе.",
-                "zh": "此系统未找到 WSL。",
-                "kk": "Бұл жүйеде WSL табылмады.",
-                "uz": "Bu tizimda WSL topilmadi.",
-            },
-            "voice.wsl_check_failed": {
-                "en": "WSL check failed: {msg}",
-                "ru": "Проверка WSL не удалась: {msg}",
-                "zh": "WSL 检查失败：{msg}",
-                "kk": "WSL тексеруі сәтсіз: {msg}",
-                "uz": "WSL tekshiruvi bajarilmadi: {msg}",
             },
             "voice.script_not_found": {
                 "en": "Script not found: {path}",

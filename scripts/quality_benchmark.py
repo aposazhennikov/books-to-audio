@@ -3,8 +3,8 @@
 
 Default mode is offline and fast: it checks synthetic multilingual samples and
 any local books under ``books/`` without calling Ollama. Set
-``RUN_OLLAMA_TESTS=1`` or pass ``--run-ollama`` to exercise the local WSL
-Ollama stack and write reviewable reports under ``output/quality_reports``.
+``RUN_OLLAMA_TESTS=1`` or pass ``--run-ollama`` to exercise the local Ollama
+stack and write reviewable reports under ``output/quality_reports``.
 """
 
 from __future__ import annotations

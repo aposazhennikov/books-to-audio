@@ -21,16 +21,10 @@ from book_normalizer.loaders.pdf_ocr_engine import (
     ocr_image_via_tesseract_cli as _ocr_image_via_tesseract_cli,
 )
 from book_normalizer.loaders.pdf_ocr_engine import (
-    ocr_image_via_wsl as _ocr_image_via_wsl,
-)
-from book_normalizer.loaders.pdf_ocr_engine import (
     tesseract_available as _tesseract_available,
 )
 from book_normalizer.loaders.pdf_ocr_engine import (
     tesseract_cli_available as _tesseract_cli_available,
-)
-from book_normalizer.loaders.pdf_ocr_engine import (
-    wsl_tesseract_available as _wsl_tesseract_available,
 )
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 from book_normalizer.normalization.cleanup import remove_repeated_headers
@@ -345,7 +339,7 @@ def _should_keep_image_ocr_text(text: str, language_code: str = "ru") -> bool:
 
 
 def _load_tesseract_runtime() -> tuple[str, Any | None]:
-    """Resolve pytesseract, local Tesseract CLI, or the WSL bridge."""
+    """Resolve pytesseract or the local Tesseract CLI in the current OS."""
     try:
         import pytesseract
 
@@ -354,9 +348,7 @@ def _load_tesseract_runtime() -> tuple[str, Any | None]:
     except Exception:
         if _tesseract_cli_available():
             return "cli", None
-        if _wsl_tesseract_available():
-            return "wsl", None
-        raise RuntimeError("Tesseract is not installed (neither native nor WSL).")
+        raise RuntimeError("Tesseract is not installed in the current OS environment.")
 
 
 def _preprocess_image_for_ocr(img: Any) -> Any:
@@ -479,7 +471,7 @@ def _prepare_ocr_page_images(img: Any) -> list[Any]:
 
 
 def _encode_png(img: Any) -> bytes:
-    """Encode a PIL image to PNG bytes for WSL Tesseract."""
+    """Encode a PIL image to PNG bytes for Tesseract CLI."""
     import io
 
     buf = io.BytesIO()
@@ -496,14 +488,14 @@ def _ocr_pil_image_with_tesseract(
     runtime: str,
     pytesseract_module: Any | None = None,
 ) -> str:
-    """Run Tesseract against a PIL image, either natively or via WSL."""
+    """Run Tesseract against a PIL image through pytesseract or local CLI."""
     if preprocess:
         img = _preprocess_image_for_ocr(img)
 
-    if runtime == "wsl":
-        return _ocr_image_via_wsl(_encode_png(img), lang, psm=psm)
     if runtime == "cli":
         return _ocr_image_via_tesseract_cli(_encode_png(img), lang, psm=psm)
+    if runtime != "pytesseract":
+        raise RuntimeError(f"Unsupported Tesseract runtime: {runtime}")
 
     if pytesseract_module is None:
         import pytesseract as pytesseract_module
@@ -1180,13 +1172,8 @@ def _ocr_pdf_with_tesseract(
             pytesseract = None
             ocr_runtime = "cli"
             logger.info("Using Tesseract via local CLI.")
-        elif _wsl_tesseract_available():
-            from PIL import Image
-            pytesseract = None
-            ocr_runtime = "wsl"
-            logger.info("Using Tesseract via WSL bridge.")
         else:
-            raise RuntimeError("Tesseract is not installed (neither native nor WSL).")
+            raise RuntimeError("Tesseract is not installed in the current OS environment.")
 
     zoom = dpi / 72
     matrix = fitz.Matrix(zoom, zoom)

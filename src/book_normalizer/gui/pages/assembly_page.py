@@ -260,7 +260,7 @@ class AssemblyPage(QWidget):
 
     @staticmethod
     def _translate_output(text: str) -> str:
-        """Replace known English phrases from WSL script with i18n."""
+        """Replace known English phrases from assembly tooling with i18n."""
         import re
         text = text.replace("No WAV chunks in", t("asm.no_wav_in"))
         text = text.replace("No chapter dirs found in", t("asm.no_chapters_in"))

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shlex
 import subprocess
 from pathlib import Path
 
@@ -28,8 +27,8 @@ from book_normalizer.gui.i18n import (
     voice_preset_label,
 )
 from book_normalizer.gui.voice_presets import VOICE_PRESETS, VoicePreset
+from book_normalizer.tts.local_runtime import build_tts_preview_command, check_tts_python
 from book_normalizer.tts.model_paths import default_comfyui_models_dir
-from book_normalizer.tts.wsl_runtime import build_wsl_tts_activation_script
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _SCRIPT_PATH = _PROJECT_ROOT / "scripts" / "generate_voice_previews.py"
@@ -55,26 +54,8 @@ _STYLE_STATUS_ERR = (
 )
 
 
-def _to_wsl(path: Path) -> str:
-    """Convert Windows path to WSL path."""
-    p = str(path.resolve()).replace("\\", "/")
-    if len(p) >= 2 and p[1] == ":":
-        drive = p[0].lower()
-        p = f"/mnt/{drive}{p[2:]}"
-    return p
-
-
-def _to_wsl_text(path_text: str) -> str:
-    """Convert a Windows path string to WSL path syntax."""
-    p = path_text.strip().replace("\\", "/")
-    if len(p) >= 2 and p[1] == ":":
-        drive = p[0].lower()
-        p = f"/mnt/{drive}{p[2:]}"
-    return p
-
-
 class GeneratePreviewsWorker(QThread):
-    """Background worker — streams WSL TTS output line by line."""
+    """Background worker: streams local TTS output line by line."""
 
     progress_line = pyqtSignal(str)
     progress_pct = pyqtSignal(int, int, str)
@@ -99,22 +80,19 @@ class GeneratePreviewsWorker(QThread):
 
     def run(self) -> None:
         try:
-            wsl_script = _to_wsl(_SCRIPT_PATH)
-            wsl_out = _to_wsl(self._out_dir)
+            ok, detail = check_tts_python()
+            if not ok:
+                self.error.emit(detail)
+                return
 
-            ids_arg = ",".join(self._voice_ids)
-            models_dir = _to_wsl_text(str(default_comfyui_models_dir()))
-            cmd = [
-                "wsl", "-e", "bash", "-c",
-                build_wsl_tts_activation_script()
-                + "\nPYTHONUNBUFFERED=1 "
-                f"python -u {shlex.quote(wsl_script)} "
-                f"--out {shlex.quote(wsl_out)} "
-                f"--model {shlex.quote(self._model)} "
-                f"--models-dir {shlex.quote(models_dir)} "
-                f"--ids {shlex.quote(ids_arg)} "
-                f"--text {shlex.quote(self._text)}",
-            ]
+            cmd = build_tts_preview_command(
+                script_path=_SCRIPT_PATH,
+                out_dir=self._out_dir,
+                text=self._text,
+                voice_ids=self._voice_ids,
+                model=self._model,
+                models_dir=default_comfyui_models_dir(),
+            )
 
             self.progress_line.emit(t("voice.gen_loading"))
 
@@ -583,7 +561,7 @@ class VoicePreviewPanel(QWidget):
             )
 
     def _generate_previews(self) -> None:
-        """Generate selected preview WAVs via WSL TTS."""
+        """Generate selected preview WAVs through the local Python runtime."""
         selected = [
             c.preset.id for c in self._cards if c.is_selected
         ]
@@ -597,24 +575,6 @@ class VoicePreviewPanel(QWidget):
             out_dir = self._preview_dir
         out_dir.mkdir(parents=True, exist_ok=True)
         self._preview_dir = out_dir
-
-        # Quick WSL check.
-        try:
-            check = subprocess.run(
-                ["wsl", "--status"],
-                capture_output=True, text=True, timeout=10,
-            )
-            if check.returncode != 0:
-                self._on_generate_error(
-                    t("voice.wsl_unavailable")
-                )
-                return
-        except FileNotFoundError:
-            self._on_generate_error(t("voice.wsl_not_found"))
-            return
-        except Exception as exc:
-            self._on_generate_error(t("voice.wsl_check_failed", msg=str(exc)))
-            return
 
         if not _SCRIPT_PATH.exists():
             self._on_generate_error(t("voice.script_not_found", path=str(_SCRIPT_PATH)))

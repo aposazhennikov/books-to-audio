@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate short preview WAV files for all voice presets.
 
-Usage (in WSL with qwen3tts venv activated):
+Usage (with the local Qwen3-TTS Python environment activated):
     python scripts/generate_voice_previews.py --out voice_previews/
     python scripts/generate_voice_previews.py --out voice_previews/ --ids narrator_calm,male_young
 

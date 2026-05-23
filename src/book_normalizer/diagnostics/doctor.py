@@ -12,8 +12,8 @@ from typing import Any
 
 from book_normalizer.comfyui.client import ComfyUIClient
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder, WorkflowBuilderError
+from book_normalizer.tts.local_runtime import check_tts_python
 from book_normalizer.tts.model_paths import default_comfyui_models_dir
-from book_normalizer.tts.wsl_runtime import build_wsl_tts_activation_script
 
 
 @dataclass
@@ -43,8 +43,8 @@ def run_doctor(
     checks = [
         _check_python(),
         _check_tesseract(),
-        _check_wsl_venv(),
-        _check_cuda_wsl(),
+        _check_tts_python(),
+        _check_cuda_native(),
         _check_models_dir(models_dir),
         _check_workflow(workflow_path),
     ]
@@ -82,13 +82,19 @@ def _check_tesseract() -> DoctorCheck:
         return DoctorCheck("Tesseract", "warn", "Not found. OCR for scanned PDFs will be unavailable.")
 
 
-def _check_wsl_venv() -> DoctorCheck:
-    if not shutil.which("wsl"):
-        return DoctorCheck("WSL TTS venv", "warn", "wsl.exe not found on PATH.")
-    script = build_wsl_tts_activation_script() + "\npython - <<'PY'\nimport sys\nprint(sys.executable)\nPY"
+def _check_tts_python() -> DoctorCheck:
+    ok, detail = check_tts_python()
+    if ok:
+        return DoctorCheck("Local TTS Python", "ok", detail)
+    return DoctorCheck("Local TTS Python", "warn", detail)
+
+
+def _check_cuda_native() -> DoctorCheck:
+    if not shutil.which("nvidia-smi"):
+        return DoctorCheck("CUDA", "warn", "nvidia-smi not found on PATH.")
     try:
         result = subprocess.run(
-            ["wsl", "-e", "bash", "-lc", script],
+            ["nvidia-smi", "-L"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -97,30 +103,10 @@ def _check_wsl_venv() -> DoctorCheck:
             check=False,
         )
     except Exception as exc:
-        return DoctorCheck("WSL TTS venv", "warn", f"Could not inspect WSL venv: {exc}")
+        return DoctorCheck("CUDA", "warn", f"Could not run nvidia-smi: {exc}")
     if result.returncode != 0:
-        return DoctorCheck("WSL TTS venv", "warn", (result.stderr or result.stdout).strip())
-    return DoctorCheck("WSL TTS venv", "ok", result.stdout.strip().splitlines()[-1])
-
-
-def _check_cuda_wsl() -> DoctorCheck:
-    if not shutil.which("wsl"):
-        return DoctorCheck("CUDA in WSL", "warn", "wsl.exe not found on PATH.")
-    try:
-        result = subprocess.run(
-            ["wsl", "-e", "bash", "-lc", "command -v nvidia-smi >/dev/null && nvidia-smi -L"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=20,
-            check=False,
-        )
-    except Exception as exc:
-        return DoctorCheck("CUDA in WSL", "warn", f"Could not run nvidia-smi: {exc}")
-    if result.returncode != 0:
-        return DoctorCheck("CUDA in WSL", "warn", "nvidia-smi is not available inside WSL.")
-    return DoctorCheck("CUDA in WSL", "ok", result.stdout.strip() or "nvidia-smi succeeded.")
+        return DoctorCheck("CUDA", "warn", (result.stderr or result.stdout).strip() or "nvidia-smi failed.")
+    return DoctorCheck("CUDA", "ok", result.stdout.strip() or "nvidia-smi succeeded.")
 
 
 def _check_models_dir(models_dir: Path) -> DoctorCheck:

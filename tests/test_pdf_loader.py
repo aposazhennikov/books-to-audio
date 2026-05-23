@@ -334,7 +334,7 @@ class TestStructuredPdfExtractionHelpers:
         _write_image_only_pdf(pdf_file)
 
         with (
-            patch("book_normalizer.loaders.pdf_loader._load_tesseract_runtime", return_value=(False, object())),
+            patch("book_normalizer.loaders.pdf_loader._load_tesseract_runtime", return_value=("pytesseract", object())),
             patch("book_normalizer.loaders.pdf_loader._ocr_rendered_image", return_value=_good_ocr_text()),
         ):
             structured = _extract_pdf_structured(pdf_file, run_ocr=True)
@@ -351,7 +351,7 @@ class TestStructuredPdfExtractionHelpers:
         _write_image_only_pdf(pdf_file)
 
         with (
-            patch("book_normalizer.loaders.pdf_loader._load_tesseract_runtime", return_value=(False, object())),
+            patch("book_normalizer.loaders.pdf_loader._load_tesseract_runtime", return_value=("pytesseract", object())),
             patch("book_normalizer.loaders.pdf_loader._ocr_rendered_image", return_value="||| 123 !!!"),
         ):
             structured = _extract_pdf_structured(pdf_file, run_ocr=True)
@@ -402,7 +402,7 @@ class TestStructuredPdfExtractionHelpers:
 
         logo_text = "Логотип издательства"
         with (
-            patch("book_normalizer.loaders.pdf_loader._load_tesseract_runtime", return_value=(False, object())),
+            patch("book_normalizer.loaders.pdf_loader._load_tesseract_runtime", return_value=("pytesseract", object())),
             patch("book_normalizer.loaders.pdf_loader._ocr_rendered_image", return_value=logo_text),
         ):
             structured = _extract_pdf_structured(pdf_file, run_ocr=True)

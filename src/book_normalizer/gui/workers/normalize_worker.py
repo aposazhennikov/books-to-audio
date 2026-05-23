@@ -113,28 +113,22 @@ class NormalizeWorker(QThread):
         import fitz
 
         from book_normalizer.loaders.pdf_loader import (
+            _load_tesseract_runtime,
             _ocr_pil_image_with_tesseract,
             _postprocess_ocr_text,
             _prepare_ocr_page_images,
             _repair_ocr_cross_segment_breaks,
             _should_keep_ocr_text,
-            _wsl_tesseract_available,
             remove_repeated_headers,
         )
 
         resolved = path.resolve()
         ocr_lang = tesseract_language(self._book_language)
-        use_wsl = False
         try:
-            import pytesseract
             from PIL import Image
-            pytesseract.get_tesseract_version()
-        except Exception:
-            if _wsl_tesseract_available():
-                from PIL import Image
-                use_wsl = True
-            else:
-                raise RuntimeError("Tesseract is not installed.")
+        except Exception as exc:
+            raise RuntimeError("Pillow is not installed. Install the OCR dependencies first.") from exc
+        ocr_runtime, pytesseract_module = _load_tesseract_runtime()
 
         zoom = dpi / 72
         matrix = fitz.Matrix(zoom, zoom)
@@ -158,8 +152,8 @@ class NormalizeWorker(QThread):
                         lang=ocr_lang,
                         psm=psm,
                         preprocess=True,
-                        use_wsl=use_wsl,
-                        pytesseract_module=None if use_wsl else pytesseract,
+                        runtime=ocr_runtime,
+                        pytesseract_module=pytesseract_module,
                     )
                     page_text = _postprocess_ocr_text(page_text)
                     if _should_keep_ocr_text(page_text, self._book_language):

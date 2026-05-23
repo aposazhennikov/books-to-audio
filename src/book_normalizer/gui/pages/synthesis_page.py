@@ -94,7 +94,7 @@ _TEST_CHUNK_LABEL_MAX_CHARS = 64
 
 
 def _host_path_from_text(path_text: str | Path) -> Path:
-    """Normalize Windows or WSL-style path text to a host filesystem path."""
+    """Normalize pasted host path text across Windows and POSIX styles."""
     text = str(path_text).strip()
     if os.name == "nt" and text.startswith("/mnt/") and len(text) > 6:
         drive = text[5]

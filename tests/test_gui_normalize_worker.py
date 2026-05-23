@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+from types import SimpleNamespace
+
 import pytest
 
 from book_normalizer.config import OcrMode
@@ -117,4 +120,71 @@ def test_llm_normalize_marks_book_for_smart_voice_markup(tmp_path, monkeypatch) 
     assert book.metadata.extra["llm_model_candidates"] == [
         PRIMARY_QWEN3_MODEL,
         FALLBACK_QWEN3_MODEL,
+    ]
+
+
+def test_gui_ocr_progress_uses_native_tesseract_runtime(tmp_path, monkeypatch) -> None:
+    from book_normalizer.loaders import pdf_loader
+
+    class _FakePixmap:
+        width = 1
+        height = 1
+        samples = b"\x00"
+
+    class _FakePage:
+        def get_pixmap(self, **_kwargs):  # noqa: ANN001
+            return _FakePixmap()
+
+    class _FakeDoc:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):  # noqa: ANN001
+            return False
+
+        def __len__(self):
+            return 1
+
+        def __getitem__(self, index):  # noqa: ANN001
+            assert index == 0
+            return _FakePage()
+
+    fake_fitz = SimpleNamespace(
+        Matrix=lambda *_args: object(),
+        csGRAY=object(),
+        open=lambda _path: _FakeDoc(),
+    )
+    monkeypatch.setitem(sys.modules, "fitz", fake_fitz)
+    monkeypatch.setattr(pdf_loader, "_load_tesseract_runtime", lambda: ("cli", None))
+    monkeypatch.setattr(pdf_loader, "_prepare_ocr_page_images", lambda _img: ["segment"])
+    monkeypatch.setattr(pdf_loader, "_postprocess_ocr_text", lambda text: text)
+    monkeypatch.setattr(pdf_loader, "_should_keep_ocr_text", lambda _text, _language: True)
+    monkeypatch.setattr(pdf_loader, "_repair_ocr_cross_segment_breaks", lambda text: text)
+    monkeypatch.setattr(pdf_loader, "remove_repeated_headers", lambda text, **_kwargs: text)
+    calls: list[dict[str, object]] = []
+
+    def fake_ocr(_img, *, lang, psm, preprocess, runtime, pytesseract_module):  # noqa: ANN001
+        calls.append({
+            "lang": lang,
+            "psm": psm,
+            "preprocess": preprocess,
+            "runtime": runtime,
+            "pytesseract_module": pytesseract_module,
+        })
+        return "Распознанный текст"
+
+    monkeypatch.setattr(pdf_loader, "_ocr_pil_image_with_tesseract", fake_ocr)
+    worker = NormalizeWorker(input_path=tmp_path / "scan.pdf", book_language="ru")
+
+    text = worker._ocr_with_progress(tmp_path / "scan.pdf", OcrMode.AUTO, dpi=72, psm=6)
+
+    assert text == "Распознанный текст"
+    assert calls == [
+        {
+            "lang": "rus",
+            "psm": 6,
+            "preprocess": True,
+            "runtime": "cli",
+            "pytesseract_module": None,
+        }
     ]

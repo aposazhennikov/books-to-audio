@@ -297,10 +297,11 @@ def _resolve_install_paths(args: argparse.Namespace, project_root: Path) -> Inst
         interactive,
     )
     venv_default = (project_root / args.venv).resolve()
+    venv_arg = "" if interactive and args.venv == ".venv" else args.venv
     venv_dir = _prompt_path(
         "Python virtual environment",
         "Python virtualenv",
-        args.venv,
+        venv_arg,
         venv_default,
         interactive,
     )

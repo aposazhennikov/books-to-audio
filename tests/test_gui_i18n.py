@@ -7,6 +7,20 @@ from book_normalizer.gui.main_window import MainWindow
 from tests.gui.helpers import assert_layout_sane, flush_events, qapp
 
 _FORMAT_FIELD_RE = re.compile(r"(?<!\{)\{([^{}]+)\}(?!\})")
+_MOJIBAKE_MARKERS = (
+    "РЈ",
+    "Рџ",
+    "РЎ",
+    "Рќ",
+    "Рћ",
+    "Рљ",
+    "Рґ",
+    "СЃ",
+    "вЂ",
+    "К»",
+    "Кј",
+    "Тљ",
+)
 
 
 def _format_fields(text: str) -> set[str]:
@@ -26,6 +40,7 @@ def test_all_gui_translations_cover_every_supported_language() -> None:
             assert _format_fields(text) == en_fields, f"{key}:{lang}"
             assert "??" not in text, f"{key}:{lang}"
             assert "wsl" not in text.lower(), f"{key}:{lang}"
+            assert not any(marker in text for marker in _MOJIBAKE_MARKERS), f"{key}:{lang}"
 
 
 def test_main_window_switches_every_supported_gui_language(qtbot) -> None:

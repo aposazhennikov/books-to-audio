@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +17,7 @@ from install import (
     _command_available,
     _hash_tree,
     _pull_ollama_models,
+    _resolve_install_paths,
     _write_hash_manifest_entry,
     _write_runtime_config,
 )
@@ -29,6 +32,48 @@ def test_installer_entrypoints_do_not_contain_mojibake() -> None:
     for path in (Path("install.py"), Path("install.bat"), Path("install.sh")):
         text = path.read_text(encoding="utf-8")
         assert not any(marker in text for marker in markers), path
+
+
+def test_installer_dry_run_overwrites_bilingual_log(tmp_path: Path) -> None:
+    log_path = Path("install.log")
+    log_path.write_text("OLD INSTALL LOG", encoding="utf-8")
+
+    models_dir = tmp_path / "models"
+    hf_cache_dir = tmp_path / "hf-cache"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "install.py",
+            "--dry-run",
+            "--yes",
+            "--no-system-check",
+            "--venv",
+            str(tmp_path / ".venv"),
+            "--install-root",
+            str(tmp_path / "install-root"),
+            "--models-dir",
+            str(models_dir),
+            "--hf-cache-dir",
+            str(hf_cache_dir),
+            "--tesseract-bin",
+            str(tmp_path / "tools" / "tesseract.exe"),
+            "--ffmpeg-bin",
+            str(tmp_path / "tools" / "ffmpeg.exe"),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
+
+    log_text = log_path.read_text(encoding="utf-8")
+    assert "OLD INSTALL LOG" not in log_text
+    assert "Books to Audio installer" in result.stdout
+    assert "Установщик Books to Audio" in result.stdout
+    assert "Пробный запуск" in log_text
+    assert str(models_dir) in log_text
+    assert str(hf_cache_dir) in log_text
 
 
 def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatch) -> None:
@@ -57,6 +102,47 @@ def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatc
     assert "BOOKS_TO_AUDIO_OLLAMA_ENDPOINT=http://127.0.0.1:11435" in env_text
     assert "BOOKS_TO_AUDIO_TESSERACT_CMD=" in env_text
     assert "BOOKS_TO_AUDIO_FFMPEG_BIN=" in env_text
+
+
+def test_interactive_installer_prompts_for_all_runtime_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    answers = iter([
+        str(tmp_path / "install-root"),
+        str(tmp_path / "venv"),
+        str(tmp_path / "models"),
+        str(tmp_path / "hf-cache"),
+        "http://127.0.0.1:11435",
+        str(tmp_path / "ollama.exe"),
+        str(tmp_path / "tesseract.exe"),
+        str(tmp_path / "ffmpeg.exe"),
+    ])
+    args = SimpleNamespace(
+        dry_run=False,
+        yes=False,
+        interactive=True,
+        install_root="",
+        venv=".venv",
+        models_dir="",
+        hf_cache_dir="",
+        ollama_endpoint="",
+        ollama_bin="",
+        tesseract_bin="",
+        ffmpeg_bin="",
+    )
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    paths = _resolve_install_paths(args, tmp_path)
+
+    assert paths.install_root == tmp_path / "install-root"
+    assert paths.venv_dir == tmp_path / "venv"
+    assert paths.models_dir == tmp_path / "models"
+    assert paths.hf_cache_dir == tmp_path / "hf-cache"
+    assert paths.ollama_endpoint == "http://127.0.0.1:11435"
+    assert paths.ollama_bin == str(tmp_path / "ollama.exe")
+    assert paths.tesseract_cmd == str(tmp_path / "tesseract.exe")
+    assert paths.ffmpeg_bin == str(tmp_path / "ffmpeg.exe")
 
 
 def test_hash_tree_changes_when_file_changes(tmp_path: Path) -> None:

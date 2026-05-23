@@ -4,11 +4,15 @@ import os
 
 import pytest
 
+from tests.gui.helpers import assert_layout_sane, render_widget
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from book_normalizer.gui.i18n import set_language
 from book_normalizer.models.book import Book, Chapter, Paragraph
 
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
+QtCore = pytest.importorskip("PyQt6.QtCore")
 QApplication = QtWidgets.QApplication
 normalize_page = pytest.importorskip("book_normalizer.gui.pages.normalize_page")
 _book_preview_lines = normalize_page._book_preview_lines
@@ -109,11 +113,13 @@ def test_normalize_page_passes_selected_book_language_to_worker(
     page._path_label.setText(str(book_path))
     page._btn_run.setEnabled(True)
     page._book_language.setCurrentIndex(page._book_language.findData("en"))
+    page._ocr_psm.setCurrentIndex(page._ocr_psm.findData(11))
 
     page._run_normalization()
 
     assert captured["input_path"] == book_path
     assert captured["book_language"] == "en"
+    assert captured["ocr_psm"] == 11
     page.deleteLater()
 
 
@@ -132,6 +138,36 @@ def test_normalize_page_hides_llm_field_help_until_enabled(qapp) -> None:
 
     assert page._llm_endpoint_label_wrap.isHidden()
     assert page._llm_model_label_wrap.isHidden()
+
+    page.deleteLater()
+
+
+def test_normalize_page_uses_readable_psm_options_and_centered_dpi(qapp) -> None:
+    set_language("en")
+    page = NormalizePage()
+
+    assert page._ocr_dpi.alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
+    assert [
+        page._ocr_psm.itemData(index)
+        for index in range(page._ocr_psm.count())
+    ] == [3, 4, 6, 11, 13]
+    current_text = page._ocr_psm.itemText(page._ocr_psm.findData(6)).lower()
+    assert "6" in current_text
+    assert "block" in current_text or "блок" in current_text
+    assert page._raw_label.text() == "Original text"
+    assert page._norm_label.text() == "After normalization"
+
+    page.deleteLater()
+    set_language("ru")
+
+
+def test_normalize_page_pdf_layout_stays_sane_at_small_size(qapp) -> None:
+    page = NormalizePage()
+    page._selected_path = "book.pdf"
+    page._update_ocr_visibility()
+
+    render_widget(page, 760, 520, scale=1.0)
+    assert_layout_sane(page)
 
     page.deleteLater()
 

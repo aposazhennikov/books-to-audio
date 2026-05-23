@@ -288,6 +288,34 @@ QComboBox QAbstractItemView {
     padding: 4px;
 }
 
+QCheckBox {
+    color: rgba(226, 232, 240, 0.82);
+    spacing: 8px;
+    font-weight: 500;
+}
+
+QCheckBox:disabled {
+    color: rgba(226, 232, 240, 0.36);
+}
+
+QCheckBox::indicator {
+    width: 15px;
+    height: 15px;
+    border-radius: 4px;
+    border: 1px solid rgba(148, 163, 184, 0.42);
+    background: rgba(15, 23, 42, 0.82);
+}
+
+QCheckBox::indicator:hover {
+    border-color: rgba(139, 92, 246, 0.62);
+}
+
+QCheckBox::indicator:checked {
+    background: #8b5cf6;
+    border-color: #a78bfa;
+    image: url({{CHECK_MARK}});
+}
+
 QSpinBox::up-button,
 QDoubleSpinBox::up-button {
     subcontrol-origin: border;
@@ -479,6 +507,7 @@ def _resolve_theme(scale: float = 1.0) -> str:
 
     assets = Path(__file__).resolve().parent / "assets"
     replacements = {
+        "{{CHECK_MARK}}": assets / "check.svg",
         "{{CHEVRON_DOWN}}": assets / "chevron_down.svg",
         "{{CHEVRON_UP}}": assets / "chevron_up.svg",
     }

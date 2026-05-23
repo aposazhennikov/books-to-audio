@@ -114,25 +114,45 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "norm.ocr_psm": {"en": "Tesseract PSM:", "ru": "Tesseract PSM:"},
     "norm.ocr_psm_hint": {
-        "en": "6 = cropped text block (recommended) | 4 = single column | 3 = auto",
-        "ru": "6 = \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u043d\u044b\u0439 \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 (\u0440\u0435\u043a\u043e\u043c.) | 4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 | 3 = \u0430\u0432\u0442\u043e",
+        "en": "Choose the layout that best matches the rendered page.",
+        "ru": "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u0430\u0437\u043c\u0435\u0442\u043a\u0443, \u043a\u043e\u0442\u043e\u0440\u0430\u044f \u0431\u043b\u0438\u0436\u0435 \u0432\u0441\u0435\u0433\u043e \u043a \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0435 \u043f\u043e\u0441\u043b\u0435 \u0440\u0435\u043d\u0434\u0435\u0440\u0430.",
+    },
+    "norm.ocr_psm_3": {
+        "en": "3 - Auto: unknown page layout",
+        "ru": "3 - \u0410\u0432\u0442\u043e: \u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u0440\u0430\u0437\u043c\u0435\u0442\u043a\u0430 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b",
+    },
+    "norm.ocr_psm_4": {
+        "en": "4 - One column: normal book page",
+        "ru": "4 - \u041e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430: \u043e\u0431\u044b\u0447\u043d\u0430\u044f \u043a\u043d\u0438\u0436\u043d\u0430\u044f \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430",
+    },
+    "norm.ocr_psm_6": {
+        "en": "6 - One block: cropped body text",
+        "ru": "6 - \u041e\u0434\u0438\u043d \u0431\u043b\u043e\u043a: \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u043d\u044b\u0439 \u043e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u0442\u0435\u043a\u0441\u0442",
+    },
+    "norm.ocr_psm_11": {
+        "en": "11 - Sparse: captions/forms/fragments",
+        "ru": "11 - \u0420\u0430\u0437\u0440\u0435\u0436\u0435\u043d\u043d\u044b\u0439: \u043f\u043e\u0434\u043f\u0438\u0441\u0438, \u0444\u043e\u0440\u043c\u044b, \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u044b",
+    },
+    "norm.ocr_psm_13": {
+        "en": "13 - One raw line: short text strip",
+        "ru": "13 - \u041e\u0434\u043d\u0430 \u0441\u0442\u0440\u043e\u043a\u0430: \u043a\u043e\u0440\u043e\u0442\u043a\u0438\u0439 \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442 \u0431\u0435\u0437 \u0432\u0435\u0440\u0441\u0442\u043a\u0438",
     },
     "norm.ocr_psm_tip": {
         "en": (
             "Tesseract Page Segmentation Mode (PSM):\n"
-            "3 = fully automatic (default Tesseract)\n"
-            "4 = single column of variable-size text\n"
-            "6 = uniform cropped text block (recommended after auto spread splitting)\n"
-            "11 = sparse text, find as much as possible\n"
-            "13 = raw line, treat as single text line"
+            "3 auto = unknown layout or several blocks.\n"
+            "4 one column = a normal book page with one continuous text column.\n"
+            "6 one block = page already cropped to the main body text; best default for clean scans.\n"
+            "11 sparse = scattered captions, forms, stamps, or fragmented OCR areas.\n"
+            "13 raw line = exactly one short line; rarely useful for full pages."
         ),
         "ru": (
             "\u0420\u0435\u0436\u0438\u043c \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0430\u0446\u0438\u0438 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b Tesseract (PSM):\n"
-            "3 = \u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439\n"
-            "4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 \u0442\u0435\u043a\u0441\u0442\u0430\n"
-            "6 = \u0440\u043e\u0432\u043d\u044b\u0439 \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u043d\u044b\u0439 \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 (\u0440\u0435\u043a\u043e\u043c. \u043f\u043e\u0441\u043b\u0435 \u0430\u0432\u0442\u043e-\u0440\u0430\u0437\u0434\u0435\u043b\u0435\u043d\u0438\u044f \u0440\u0430\u0437\u0432\u043e\u0440\u043e\u0442\u043e\u0432)\n"
-            "11 = \u0440\u0430\u0437\u0440\u0435\u0436\u0435\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442\n"
-            "13 = \u043e\u0434\u043d\u0430 \u0441\u0442\u0440\u043e\u043a\u0430 \u0442\u0435\u043a\u0441\u0442\u0430"
+            "3 \u0430\u0432\u0442\u043e = \u043d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u0440\u0430\u0437\u043c\u0435\u0442\u043a\u0430 \u0438\u043b\u0438 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u0431\u043b\u043e\u043a\u043e\u0432.\n"
+            "4 \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 = \u043e\u0431\u044b\u0447\u043d\u0430\u044f \u043a\u043d\u0438\u0436\u043d\u0430\u044f \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u0441 \u043e\u0434\u043d\u043e\u0439 \u043d\u0435\u043f\u0440\u0435\u0440\u044b\u0432\u043d\u043e\u0439 \u043a\u043e\u043b\u043e\u043d\u043a\u043e\u0439.\n"
+            "6 \u043e\u0434\u0438\u043d \u0431\u043b\u043e\u043a = \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u0443\u0436\u0435 \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u0430 \u0434\u043e \u043e\u0441\u043d\u043e\u0432\u043d\u043e\u0433\u043e \u0442\u0435\u043a\u0441\u0442\u0430; \u043b\u0443\u0447\u0448\u0438\u0439 \u0434\u0435\u0444\u043e\u043b\u0442 \u0434\u043b\u044f \u0447\u0438\u0441\u0442\u044b\u0445 \u0441\u043a\u0430\u043d\u043e\u0432.\n"
+            "11 \u0440\u0430\u0437\u0440\u0435\u0436\u0435\u043d\u043d\u044b\u0439 = \u043f\u043e\u0434\u043f\u0438\u0441\u0438, \u0444\u043e\u0440\u043c\u044b, \u0448\u0442\u0430\u043c\u043f\u044b \u0438\u043b\u0438 \u0440\u0430\u0437\u0440\u043e\u0437\u043d\u0435\u043d\u043d\u044b\u0435 OCR-\u043e\u0431\u043b\u0430\u0441\u0442\u0438.\n"
+            "13 \u043e\u0434\u043d\u0430 \u0441\u0442\u0440\u043e\u043a\u0430 = \u0440\u043e\u0432\u043d\u043e \u043e\u0434\u043d\u0430 \u043a\u043e\u0440\u043e\u0442\u043a\u0430\u044f \u0441\u0442\u0440\u043e\u043a\u0430; \u0434\u043b\u044f \u043f\u043e\u043b\u043d\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b \u043f\u043e\u0447\u0442\u0438 \u043d\u0435 \u043d\u0443\u0436\u0435\u043d."
         ),
     },
     "norm.ocr_not_applicable": {
@@ -239,12 +259,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0413\u043e\u0442\u043e\u0432\u043e: {n} \u0433\u043b\u0430\u0432, {time} \u0432\u0441\u0435\u0433\u043e",
     },
     "norm.raw_placeholder": {
-        "en": "Raw text (before normalization)",
-        "ru": "\u0418\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442 (\u0434\u043e \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u0438)",
+        "en": "Original text",
+        "ru": "\u041e\u0440\u0438\u0433\u0438\u043d\u0430\u043b \u0438\u0437 \u0444\u0430\u0439\u043b\u0430",
     },
     "norm.norm_placeholder": {
-        "en": "Normalized text (after)",
-        "ru": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u043e\u0432\u0430\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442 (\u043f\u043e\u0441\u043b\u0435)",
+        "en": "After normalization",
+        "ru": "\u041f\u043e\u0441\u043b\u0435 \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u0438",
     },
     "norm.select_file": {
         "en": "Select Book File",
@@ -1784,6 +1804,46 @@ def _install_extra_translations() -> None:
             "zh": "正在本机生成预览（可能需要几分钟）…",
             "kk": "Алдын ала тыңдаулар жергілікті жасалуда (бірнеше минут алуы мүмкін)…",
             "uz": "Oldindan tinglashlar lokal yaratilmoqda (bir necha daqiqa olishi mumkin)…",
+        },
+        "norm.raw_placeholder": {
+            "zh": "原始文本",
+            "kk": "Файлдағы түпнұсқа мәтін",
+            "uz": "Fayldagi asl matn",
+        },
+        "norm.norm_placeholder": {
+            "zh": "规范化后",
+            "kk": "Нормалдаудан кейін",
+            "uz": "Normallashtirishdan keyin",
+        },
+        "norm.ocr_psm_hint": {
+            "zh": "选择最接近页面渲染结果的版式。",
+            "kk": "Рендерленген бетке ең жақын орналасуды таңдаңыз.",
+            "uz": "Render qilingan sahifaga eng yaqin tuzilmani tanlang.",
+        },
+        "norm.ocr_psm_3": {
+            "zh": "3 - 自动：未知页面版式",
+            "kk": "3 - Авто: бет орналасуы белгісіз",
+            "uz": "3 - Avto: sahifa tuzilmasi noma'lum",
+        },
+        "norm.ocr_psm_4": {
+            "zh": "4 - 单栏：普通书页",
+            "kk": "4 - Бір баған: кәдімгі кітап беті",
+            "uz": "4 - Bir ustun: oddiy kitob sahifasi",
+        },
+        "norm.ocr_psm_6": {
+            "zh": "6 - 单块：裁剪后的正文",
+            "kk": "6 - Бір блок: қиылған негізгі мәтін",
+            "uz": "6 - Bir blok: kesilgan asosiy matn",
+        },
+        "norm.ocr_psm_11": {
+            "zh": "11 - 稀疏：题注/表单/片段",
+            "kk": "11 - Сирек: жазулар, формалар, фрагменттер",
+            "uz": "11 - Siyrak: izohlar, shakllar, bo'laklar",
+        },
+        "norm.ocr_psm_13": {
+            "zh": "13 - 单行：短文本条",
+            "kk": "13 - Бір жол: қысқа мәтін жолағы",
+            "uz": "13 - Bir qator: qisqa matn bo'lagi",
         },
         "synth.sage_help": {
             "zh": "SageAttention 是本机 TTS Python 环境中的可选加速内核。仅在已安装并在 GPU 上测试后启用。",

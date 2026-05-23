@@ -31,6 +31,7 @@ from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
 from book_normalizer.runtime_paths import configured_ollama_endpoint
 
 _PDF_EXTENSIONS = {".pdf"}
+_PSM_VALUES = (3, 4, 6, 11, 13)
 
 
 def _book_preview_lines(book: object, limit: int | None = None) -> tuple[list[str], list[str]]:
@@ -127,6 +128,7 @@ class NormalizePage(QWidget):
         self._ocr_dpi = QSpinBox()
         self._ocr_dpi.setRange(72, 1200)
         self._ocr_dpi.setValue(400)
+        self._ocr_dpi.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._ocr_dpi_label = QLabel()
         self._ocr_dpi_label_wrap = self._label_with_help(
             self._ocr_dpi_label, "norm.ocr_dpi_tip"
@@ -134,9 +136,8 @@ class NormalizePage(QWidget):
         self._add_setting(settings, 0, 2, self._ocr_dpi_label_wrap, self._ocr_dpi)
         self._ocr_widgets.extend([self._ocr_dpi_label_wrap, self._ocr_dpi])
 
-        self._ocr_psm = QSpinBox()
-        self._ocr_psm.setRange(0, 13)
-        self._ocr_psm.setValue(6)
+        self._ocr_psm = QComboBox()
+        self._populate_psm_combo()
         self._ocr_psm_label = QLabel()
         self._ocr_psm_label_wrap = self._label_with_help(
             self._ocr_psm_label, "norm.ocr_psm_tip"
@@ -189,6 +190,8 @@ class NormalizePage(QWidget):
 
         # ── Text comparison panels ──
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(10)
+        splitter.setChildrenCollapsible(False)
 
         self._raw_label = QLabel()
         self._raw_label.setStyleSheet(
@@ -202,6 +205,8 @@ class NormalizePage(QWidget):
         raw_layout.addWidget(self._raw_label)
         self._raw_text = QPlainTextEdit()
         self._raw_text.setReadOnly(True)
+        self._raw_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self._raw_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         raw_layout.addWidget(self._raw_text)
         splitter.addWidget(raw_container)
 
@@ -217,8 +222,12 @@ class NormalizePage(QWidget):
         norm_layout.addWidget(self._norm_label)
         self._norm_text = QPlainTextEdit()
         self._norm_text.setReadOnly(True)
+        self._norm_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self._norm_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         norm_layout.addWidget(self._norm_text)
         splitter.addWidget(norm_container)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
 
         layout.addWidget(splitter, stretch=1)
 
@@ -275,6 +284,7 @@ class NormalizePage(QWidget):
         self._ocr_dpi.setToolTip(t("norm.ocr_dpi_tip"))
         self._ocr_dpi_label.setToolTip(t("norm.ocr_dpi_tip"))
         self._ocr_psm_label.setText(t("norm.ocr_psm"))
+        self._populate_psm_combo()
         self._ocr_psm.setToolTip(t("norm.ocr_psm_tip"))
         self._ocr_psm_label.setToolTip(t("norm.ocr_psm_tip"))
         self._ocr_not_applicable_label.setText(t("norm.ocr_not_applicable"))
@@ -311,6 +321,19 @@ class NormalizePage(QWidget):
             idx = self._book_language.findData(DEFAULT_BOOK_LANGUAGE)
         self._book_language.setCurrentIndex(idx if idx >= 0 else 0)
         self._book_language.blockSignals(False)
+
+    def _populate_psm_combo(self) -> None:
+        """Populate human-readable Tesseract PSM options."""
+        current = self._ocr_psm.currentData() if hasattr(self, "_ocr_psm") else 6
+        self._ocr_psm.blockSignals(True)
+        self._ocr_psm.clear()
+        for value in _PSM_VALUES:
+            self._ocr_psm.addItem(t(f"norm.ocr_psm_{value}"), value)
+        idx = self._ocr_psm.findData(current if current is not None else 6)
+        if idx < 0:
+            idx = self._ocr_psm.findData(6)
+        self._ocr_psm.setCurrentIndex(idx if idx >= 0 else 0)
+        self._ocr_psm.blockSignals(False)
 
     def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
         """Create a form label with a reusable help button."""
@@ -350,7 +373,7 @@ class NormalizePage(QWidget):
             input_path=path,
             ocr_mode=self._ocr_mode.currentText(),
             ocr_dpi=self._ocr_dpi.value(),
-            ocr_psm=self._ocr_psm.value(),
+            ocr_psm=int(self._ocr_psm.currentData() or 6),
             llm_normalize=self._llm_normalize.isChecked(),
             llm_endpoint=self._llm_endpoint.text().strip() or configured_ollama_endpoint(),
             llm_model=self._llm_model.text().strip() or PRIMARY_QWEN3_MODEL,

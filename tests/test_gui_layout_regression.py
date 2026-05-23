@@ -126,6 +126,31 @@ def test_voice_settings_panel_has_no_visible_scrollbar() -> None:
     window.deleteLater()
 
 
+def test_chunk_editor_action_buttons_are_not_clipped() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    render_widget(window, 1180, 760, scale=1.0)
+
+    table = window._voices_page._voice_table
+    for button in (
+        table._btn_segment_split,
+        table._btn_segment_merge,
+        table._btn_segment_delete_empty,
+        table._btn_segment_delete,
+        table._btn_segment_restore,
+    ):
+        parent = button.parentWidget()
+        assert parent is not None
+        assert button.geometry().bottom() <= parent.rect().bottom()
+        bottom_in_window = button.mapTo(window, button.rect().bottomLeft()).y()
+        assert bottom_in_window <= window.rect().bottom()
+
+    window.close()
+    window.deleteLater()
+
+
 @pytest.mark.gui_snapshot
 def test_main_window_snapshot_matches_baseline() -> None:
     app = qapp()

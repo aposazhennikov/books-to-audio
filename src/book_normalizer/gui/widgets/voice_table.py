@@ -128,6 +128,7 @@ class VoiceTableWidget(QWidget):
         self._manifest_is_v2 = False
         self._compact_mode = False
         self._ui_scale = 1.0
+        self._row_to_segment_index: list[int] = []
         self._populating = False
         self._loading_editor = False
         self._player = QSoundEffect(self) if QSoundEffect is not None else None
@@ -139,6 +140,17 @@ class VoiceTableWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
+
+        # Chapter navigation.
+        nav = QHBoxLayout()
+        nav.setSpacing(6)
+        self._chapter_filter_label = QLabel()
+        nav.addWidget(self._chapter_filter_label)
+        self._chapter_filter = QComboBox()
+        self._chapter_filter.currentIndexChanged.connect(lambda _idx: self._populate_table())
+        nav.addWidget(self._chapter_filter)
+        nav.addStretch()
+        layout.addLayout(nav)
 
         # Toolbar row 1: preset quick-assign.
         toolbar1 = QHBoxLayout()
@@ -225,6 +237,7 @@ class VoiceTableWidget(QWidget):
 
         self._editor_tabs = QTabWidget()
         self._editor_tabs.setObjectName("voiceTextEditorTabs")
+        self._editor_tabs.setMinimumHeight(158)
         self._editor_tabs.setStyleSheet(
         "QTabWidget::pane {"
             "  border: 1px solid rgba(91,115,142,0.16);"
@@ -297,6 +310,13 @@ class VoiceTableWidget(QWidget):
         self._btn_segment_delete_empty = QPushButton()
         self._btn_segment_delete_empty.clicked.connect(self._delete_empty_segment)
         actions.addWidget(self._btn_segment_delete_empty)
+        self._btn_segment_delete = QPushButton()
+        self._btn_segment_delete.setObjectName("dangerBtn")
+        self._btn_segment_delete.clicked.connect(self._delete_selected_segment)
+        actions.addWidget(self._btn_segment_delete)
+        self._btn_segment_restore = QPushButton()
+        self._btn_segment_restore.clicked.connect(self._restore_selected_segment)
+        actions.addWidget(self._btn_segment_restore)
         actions.addStretch()
         outer.addLayout(actions)
         return panel
@@ -361,6 +381,7 @@ class VoiceTableWidget(QWidget):
             t("voice.col_audio"),
             t("voice.col_retry"),
         ])
+        self._chapter_filter_label.setText(t("voice.chapter_filter"))
         self._editor_tabs.setTabText(0, t("voice.editor_segment_tab"))
         self._editor_tabs.setTabText(1, t("voice.editor_full_tab"))
         self._segment_editor_title.setText(t("voice.editor_segment_title"))
@@ -368,6 +389,8 @@ class VoiceTableWidget(QWidget):
         self._btn_segment_split.setText(t("voice.editor_split"))
         self._btn_segment_merge.setText(t("voice.editor_merge_next"))
         self._btn_segment_delete_empty.setText(t("voice.editor_delete_empty"))
+        self._btn_segment_delete.setText(t("voice.editor_delete"))
+        self._btn_segment_restore.setText(t("voice.editor_restore"))
         self._full_text_title.setText(t("voice.editor_full_title"))
         self._full_text_editor.setPlaceholderText(t("voice.editor_full_placeholder"))
         self._btn_full_refresh.setText(t("voice.editor_refresh_full"))
@@ -398,6 +421,9 @@ class VoiceTableWidget(QWidget):
         )
         self._full_text_editor.setMinimumHeight(
             max(72, min(118, round(88 * self._ui_scale))),
+        )
+        self._editor_tabs.setMinimumHeight(
+            max(150, min(210, round(158 * self._ui_scale))),
         )
         self._apply_table_layout()
 
@@ -482,6 +508,7 @@ class VoiceTableWidget(QWidget):
         self._manifest_meta = data if isinstance(data, dict) else {}
         self._segments = flatten_v2_manifest(data) if self._manifest_is_v2 else data
         self._migrate_legacy()
+        self._refresh_chapter_filter()
         self._populate_table()
 
     def set_segments(self, segments: list[dict[str, Any]]) -> None:
@@ -490,6 +517,7 @@ class VoiceTableWidget(QWidget):
         self._manifest_meta = {}
         self._segments = segments
         self._migrate_legacy()
+        self._refresh_chapter_filter()
         self._populate_table()
 
     def _migrate_legacy(self) -> None:
@@ -508,20 +536,54 @@ class VoiceTableWidget(QWidget):
                 seg["is_dialogue"] = seg.get(
                     "role", "narrator",
                 ) in ("male", "female")
+            seg["deleted"] = bool(seg.get("deleted") or seg.get("excluded_from_tts", False))
+
+    def _refresh_chapter_filter(self) -> None:
+        """Refresh chapter choices while preserving the current selection."""
+        selected = self._chapter_filter.currentData()
+        chapters = sorted({
+            int(seg.get("chapter_index", 0))
+            for seg in self._segments
+        })
+        self._chapter_filter.blockSignals(True)
+        self._chapter_filter.clear()
+        self._chapter_filter.addItem(t("voice.chapter_all"), None)
+        for chapter_index in chapters:
+            self._chapter_filter.addItem(
+                t("voice.chapter_item", chapter=chapter_index + 1),
+                chapter_index,
+            )
+        idx = self._chapter_filter.findData(selected)
+        self._chapter_filter.setCurrentIndex(idx if idx >= 0 else 0)
+        self._chapter_filter.blockSignals(False)
+
+    def _visible_segment_pairs(self) -> list[tuple[int, dict[str, Any]]]:
+        chapter = self._chapter_filter.currentData()
+        pairs = list(enumerate(self._segments))
+        if chapter is None:
+            return pairs
+        return [
+            (index, segment)
+            for index, segment in pairs
+            if int(segment.get("chapter_index", 0)) == int(chapter)
+        ]
 
     # ── Table population ──
 
     def _populate_table(self) -> None:
         self._populating = True
-        self._table.setRowCount(len(self._segments))
+        visible_segments = self._visible_segment_pairs()
+        self._row_to_segment_index = [index for index, _segment in visible_segments]
+        self._table.setRowCount(len(visible_segments))
 
-        for row, seg in enumerate(self._segments):
+        for row, (segment_index, seg) in enumerate(visible_segments):
             is_dlg = seg.get("is_dialogue", False)
             role = seg.get("role", "narrator")
             is_speech = is_dlg or role in ("male", "female")
+            is_deleted = bool(seg.get("deleted"))
 
             # Column 0: row number.
-            idx_item = QTableWidgetItem(str(row + 1))
+            idx_item = QTableWidgetItem(str(segment_index + 1))
             idx_item.setFlags(
                 idx_item.flags() & ~Qt.ItemFlag.ItemIsEditable,
             )
@@ -530,6 +592,9 @@ class VoiceTableWidget(QWidget):
 
             # Column 1: segment type.
             type_text = (
+                t("voice.type_deleted")
+                if is_deleted
+                else
                 t("voice.type_speech")
                 if is_speech
                 else t("voice.type_narrator")
@@ -539,14 +604,17 @@ class VoiceTableWidget(QWidget):
                 type_item.flags() & ~Qt.ItemFlag.ItemIsEditable,
             )
             type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if is_speech:
-                type_item.setBackground(QColor(124, 92, 252, 25))
+            if is_deleted:
+                type_item.setBackground(QColor(248, 113, 113, 34))
+                type_item.setForeground(QBrush(QColor(185, 28, 28, 210)))
+            elif is_speech:
+                type_item.setBackground(QColor(14, 165, 233, 28))
                 type_item.setForeground(
-                    QBrush(QColor(124, 92, 252, 200)),
+                    QBrush(QColor(2, 132, 199, 210)),
                 )
             else:
                 type_item.setForeground(
-                    QBrush(QColor(255, 255, 255, 100)),
+                    QBrush(QColor(71, 85, 105, 150)),
                 )
             self._table.setItem(row, 1, type_item)
 
@@ -564,7 +632,10 @@ class VoiceTableWidget(QWidget):
             text = str(seg.get("text", ""))
             text_item = QTableWidgetItem(text)
             text_item.setToolTip(text)
-            if is_speech:
+            if is_deleted:
+                text_item.setBackground(QColor(248, 113, 113, 24))
+                text_item.setForeground(QBrush(QColor(100, 116, 139, 190)))
+            elif is_speech:
                 text_item.setBackground(_DIALOGUE_BG)
             self._table.setItem(row, 3, text_item)
 
@@ -572,7 +643,7 @@ class VoiceTableWidget(QWidget):
             current_voice = seg.get("voice_id", "narrator_calm")
             voice_combo = _make_voice_combo(current_voice)
             voice_combo.currentIndexChanged.connect(
-                lambda _i, r=row, c=voice_combo: (
+                lambda _i, r=segment_index, c=voice_combo: (
                     self._on_voice_changed(r, c.currentData())
                 ),
             )
@@ -582,7 +653,7 @@ class VoiceTableWidget(QWidget):
             current_inton = seg.get("intonation", "neutral")
             inton_combo = _make_intonation_combo(current_inton)
             inton_combo.currentIndexChanged.connect(
-                lambda _i, r=row, c=inton_combo: (
+                lambda _i, r=segment_index, c=inton_combo: (
                     self._on_intonation_changed(r, c.currentData())
                 ),
             )
@@ -598,13 +669,13 @@ class VoiceTableWidget(QWidget):
             # Column 7: mark a synthesized chunk for retry in ComfyUI failed-only mode.
             retry_btn = QPushButton(t("voice.mark_retry"))
             retry_btn.setEnabled(self._manifest_is_v2)
-            retry_btn.clicked.connect(lambda _checked=False, r=row: self._mark_retry(r))
+            retry_btn.clicked.connect(lambda _checked=False, r=segment_index: self._mark_retry(r))
             self._table.setCellWidget(row, 7, retry_btn)
 
         self._populating = False
         self._apply_table_layout()
         self._sync_full_text_from_segments()
-        if self._segments and not self._table.selectedItems():
+        if visible_segments and not self._table.selectedItems():
             self._table.setCurrentCell(0, 3)
         else:
             self._load_selected_segment()
@@ -614,7 +685,7 @@ class VoiceTableWidget(QWidget):
     def _on_table_item_changed(self, item: QTableWidgetItem) -> None:
         if self._populating or item.column() != 3:
             return
-        row = item.row()
+        row = self._segment_index_for_table_row(item.row())
         if 0 <= row < len(self._segments):
             text = item.text()
             self._segments[row]["text"] = text
@@ -627,8 +698,20 @@ class VoiceTableWidget(QWidget):
         self._load_selected_segment()
 
     def _current_row(self) -> int:
-        row = self._table.currentRow()
-        return row if 0 <= row < len(self._segments) else -1
+        return self._segment_index_for_table_row(self._table.currentRow())
+
+    def _segment_index_for_table_row(self, table_row: int) -> int:
+        if 0 <= table_row < len(self._row_to_segment_index):
+            return self._row_to_segment_index[table_row]
+        return -1
+
+    def _select_segment_index(self, segment_index: int) -> None:
+        try:
+            table_row = self._row_to_segment_index.index(segment_index)
+        except ValueError:
+            table_row = 0 if self._row_to_segment_index else -1
+        if table_row >= 0:
+            self._table.setCurrentCell(table_row, 3)
 
     def _load_selected_segment(self) -> None:
         row = self._current_row()
@@ -722,8 +805,9 @@ class VoiceTableWidget(QWidget):
         current["boundary_after"] = ""
         self._segments.insert(row + 1, new_segment)
         self._renumber_segments()
+        self._refresh_chapter_filter()
         self._populate_table()
-        self._table.setCurrentCell(row + 1, 3)
+        self._select_segment_index(row + 1)
         self.data_changed.emit()
 
     def _merge_next_segment(self) -> None:
@@ -741,8 +825,9 @@ class VoiceTableWidget(QWidget):
             current["boundary_after"] = next_segment.get("boundary_after", "")
         del self._segments[row + 1]
         self._renumber_segments()
+        self._refresh_chapter_filter()
         self._populate_table()
-        self._table.setCurrentCell(row, 3)
+        self._select_segment_index(row)
         self.data_changed.emit()
 
     def _delete_empty_segment(self) -> None:
@@ -753,9 +838,30 @@ class VoiceTableWidget(QWidget):
             return
         del self._segments[row]
         self._renumber_segments()
+        self._refresh_chapter_filter()
         self._populate_table()
         if self._segments:
-            self._table.setCurrentCell(min(row, len(self._segments) - 1), 3)
+            self._select_segment_index(min(row, len(self._segments) - 1))
+        self.data_changed.emit()
+
+    def _delete_selected_segment(self) -> None:
+        row = self._current_row()
+        if row < 0:
+            return
+        self._segments[row]["deleted"] = True
+        self._segments[row]["excluded_from_tts"] = True
+        self._populate_table()
+        self._select_segment_index(row)
+        self.data_changed.emit()
+
+    def _restore_selected_segment(self) -> None:
+        row = self._current_row()
+        if row < 0:
+            return
+        self._segments[row]["deleted"] = False
+        self._segments[row]["excluded_from_tts"] = False
+        self._populate_table()
+        self._select_segment_index(row)
         self.data_changed.emit()
 
     def _sync_full_text_from_segments(self) -> None:
@@ -789,6 +895,7 @@ class VoiceTableWidget(QWidget):
         self._segments = rebuilt
         self._migrate_legacy()
         self._renumber_segments()
+        self._refresh_chapter_filter()
         self._populate_table()
         self.data_changed.emit()
 
@@ -882,6 +989,14 @@ class VoiceTableWidget(QWidget):
     def get_segments(self) -> list[dict[str, Any]]:
         """Return the current segment data with voice assignments."""
         return self._segments
+
+    def get_active_segments(self) -> list[dict[str, Any]]:
+        """Return segments that should still be sent to synthesis/chunking."""
+        return [
+            segment
+            for segment in self._segments
+            if not segment.get("deleted") and not segment.get("excluded_from_tts")
+        ]
 
     def get_chunks(self) -> list[dict[str, Any]]:
         """Alias for backward compatibility."""

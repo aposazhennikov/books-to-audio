@@ -322,13 +322,14 @@ class VoicesPage(QWidget):
         target = (
             max(140, round(110 * self._ui_scale))
             if tight_viewport
-            else max(260, round(285 * self._ui_scale))
+            else max(210, round(230 * self._ui_scale))
         )
         if self.height() > 0:
             reserve_base = 210 if tight_viewport else 260
             table_reserve = max(reserve_base, round(reserve_base * self._ui_scale))
             target = min(target, max(120, self.height() - table_reserve))
         self._top_tabs.setMinimumHeight(target)
+        self._top_tabs.setMaximumHeight(target)
 
     def _sync_compact_mode(self) -> None:
         """Switch heavy table controls into compact mode on narrow widths."""
@@ -430,7 +431,7 @@ class VoicesPage(QWidget):
         self._voice_table.load_manifest(self._manifest_path)
         self._btn_save.setEnabled(True)
         self._btn_build.setEnabled(True)
-        segments = self._voice_table.get_segments()
+        segments = self._voice_table.get_active_segments()
         self._update_stats(segments)
         self._manifest_label.setText(
             t("voice.manifest_path", path=str(self._manifest_path)),
@@ -472,7 +473,7 @@ class VoicesPage(QWidget):
         self._btn_save.setEnabled(True)
         self._btn_build.setEnabled(True)
 
-        segments = self._voice_table.get_segments()
+        segments = self._voice_table.get_active_segments()
         self._update_stats(segments)
         self._manifest_label.setText(
             t("voice.manifest_path", path=str(self._manifest_path)),
@@ -511,7 +512,7 @@ class VoicesPage(QWidget):
             build_chunks_from_segments,
         )
 
-        segments = self._voice_table.get_segments()
+        segments = self._voice_table.get_active_segments()
         if not segments:
             return
 

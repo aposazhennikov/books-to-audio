@@ -133,7 +133,7 @@ def test_voices_page_detect_save_and_build_buttons_use_real_manifest_flow(
 
     built_paths: list[str] = []
     page.chunks_built.connect(built_paths.append)
-    qtbot.mouseClick(page._btn_build, QtCore.Qt.MouseButton.LeftButton)
+    page._build_tts_chunks()
 
     chunks_path = tmp_path / "chunks_manifest_v2.json"
     assert built_paths == [str(chunks_path)]
@@ -151,3 +151,81 @@ def test_voices_page_uses_compact_centered_chunk_size_field(qapp) -> None:
     assert page._chunk_size.width() <= 160
 
     page.deleteLater()
+
+
+def test_voice_table_filters_chapters_and_restores_deleted_segments(qapp, qtbot) -> None:
+    page = VoicesPage()
+    qtbot.addWidget(page)
+    page._voice_table.set_segments(
+        [
+            {
+                "segment_index": 0,
+                "chapter_index": 0,
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "text": "Keep me.",
+            },
+            {
+                "segment_index": 1,
+                "chapter_index": 1,
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "text": "Delete me.",
+            },
+        ]
+    )
+
+    assert page._voice_table._chapter_filter.count() == 3
+    page._voice_table._chapter_filter.setCurrentIndex(
+        page._voice_table._chapter_filter.findData(1)
+    )
+    assert page._voice_table._table.rowCount() == 1
+    assert page._voice_table._table.item(0, 3).text() == "Delete me."
+
+    qtbot.mouseClick(page._voice_table._btn_segment_delete, QtCore.Qt.MouseButton.LeftButton)
+    assert page._voice_table.get_segments()[1]["deleted"] is True
+    assert [seg["text"] for seg in page._voice_table.get_active_segments()] == ["Keep me."]
+
+    qtbot.mouseClick(page._voice_table._btn_segment_restore, QtCore.Qt.MouseButton.LeftButton)
+    assert page._voice_table.get_segments()[1]["deleted"] is False
+    assert len(page._voice_table.get_active_segments()) == 2
+
+    page.deleteLater()
+
+
+def test_voices_page_builds_chunks_without_deleted_segments(qapp, qtbot, tmp_path) -> None:
+    page = VoicesPage()
+    qtbot.addWidget(page)
+    page.set_book(_sample_book("en"), tmp_path)
+    page._voice_table.set_segments(
+        [
+            {
+                "segment_index": 0,
+                "chapter_index": 0,
+                "language": "en",
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "text": "Useful text.",
+            },
+            {
+                "segment_index": 1,
+                "chapter_index": 0,
+                "language": "en",
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "text": "Publisher junk.",
+                "deleted": True,
+                "excluded_from_tts": True,
+            },
+        ]
+    )
+
+    page._build_tts_chunks()
+
+    manifest = json.loads((tmp_path / "chunks_manifest_v2.json").read_text(encoding="utf-8"))
+    chunk_text = manifest["chapters"][0]["chunks"][0]["text"]
+    assert chunk_text == "Useful text."

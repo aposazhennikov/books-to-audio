@@ -4,6 +4,7 @@ setlocal
 cd /d "%~dp0"
 chcp 65001 >nul
 set "PYTHONUTF8=1"
+set "PYTHONPATH=%CD%\src;%PYTHONPATH%"
 
 set "VENV_PY=.venv-windows\Scripts\python.exe"
 

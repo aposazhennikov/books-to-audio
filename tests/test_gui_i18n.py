@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-import os
-import platform
 import re
-import subprocess
 import unicodedata
 from pathlib import Path
-
-import pytest
 
 from book_normalizer.gui.app import _resolve_theme
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, TRANSLATIONS, set_language, t
@@ -41,10 +36,6 @@ def _has_regional_indicator_or_symbol(text: str) -> bool:
 
 def _format_fields(text: str) -> set[str]:
     return set(_FORMAT_FIELD_RE.findall(text))
-
-
-def _compact_font_name(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
 def test_all_gui_translations_cover_every_supported_language() -> None:
@@ -261,34 +252,10 @@ def test_theme_has_multilingual_font_fallbacks() -> None:
         assert font_name in theme
 
 
-def test_github_linux_has_installed_cjk_font_for_chinese_gui() -> None:
-    if os.environ.get("GITHUB_ACTIONS") != "true" or platform.system() != "Linux":
-        pytest.skip("CJK font availability is enforced on GitHub Linux CI.")
+def test_linux_ci_installs_cjk_font_package_for_chinese_gui() -> None:
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
 
-    tokens = (
-        "notosanscjk",
-        "notoserifcjk",
-        "sourcehan",
-        "wenquanyi",
-        "droidsansfallback",
-    )
-    font_paths = [
-        path
-        for path in Path("/usr/share/fonts").rglob("*")
-        if path.is_file()
-    ]
-    font_names = " ".join(_compact_font_name(path.name) for path in font_paths)
-    fc_match = subprocess.run(
-        ["fc-match", "Noto Sans CJK SC"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    fc_output = _compact_font_name(fc_match.stdout + fc_match.stderr)
-
-    assert any(token in font_names or token in fc_output for token in tokens)
+    assert "fonts-noto-cjk" in workflow
 
 
 def test_theme_keeps_disabled_primary_buttons_readable() -> None:

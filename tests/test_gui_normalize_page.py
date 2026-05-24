@@ -8,7 +8,7 @@ from tests.gui.helpers import assert_layout_sane, render_widget
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from book_normalizer.gui.i18n import set_language
+from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, set_language
 from book_normalizer.models.book import Book, Chapter, Paragraph
 
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
@@ -236,6 +236,30 @@ def test_normalize_page_uses_readable_psm_options_and_centered_dpi(qapp) -> None
     assert any("Фрагменты" in text for text in ru_texts)
     assert "не использовать для полной страницы" in ru_page._ocr_psm.toolTip()
     ru_page.deleteLater()
+
+
+def test_normalize_page_retranslates_psm_options_for_all_languages(qapp) -> None:
+    for code, _label in SUPPORTED_LANGUAGES:
+        set_language(code)
+        page = NormalizePage()
+        page.retranslate()
+
+        texts = [page._ocr_psm.itemText(index) for index in range(page._ocr_psm.count())]
+        assert [page._ocr_psm.itemData(index) for index in range(page._ocr_psm.count())] == [
+            3,
+            4,
+            6,
+            11,
+            13,
+        ]
+        assert all(text.strip() for text in texts)
+        assert all("??" not in text for text in texts)
+        assert "??" not in page._ocr_psm.toolTip()
+        assert "\ufffd" not in page._ocr_psm.toolTip()
+        assert page._ocr_psm.currentData() == 6
+        page.deleteLater()
+
+    set_language("ru")
 
 
 def test_normalize_page_allows_manual_normalized_text_edits(qapp, qtbot) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, TRANSLATIONS, set_language, t
 from book_normalizer.gui.main_window import MainWindow
@@ -21,6 +22,14 @@ _MOJIBAKE_MARKERS = (
     "Кј",
     "Тљ",
 )
+
+
+def _has_regional_indicator_or_symbol(text: str) -> bool:
+    return any(
+        "\U0001f1e6" <= char <= "\U0001f1ff"
+        or unicodedata.category(char) == "So"
+        for char in text
+    )
 
 
 def _format_fields(text: str) -> set[str]:
@@ -70,5 +79,48 @@ def test_main_window_switches_every_supported_gui_language(qtbot) -> None:
             window._tabs.setCurrentIndex(tab_index)
             flush_events(app)
         assert_layout_sane(window)
+
+    set_language("ru")
+
+
+def test_language_selector_uses_text_codes_not_flag_emoji(qtbot) -> None:
+    app = qapp()
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    flush_events(app)
+
+    combo = window._lang_combo
+    expected_codes = [code.upper() for code, _label in SUPPORTED_LANGUAGES]
+    assert combo.count() == len(expected_codes)
+    for index, code in enumerate(expected_codes):
+        text = combo.itemText(index)
+        assert text.startswith(code)
+        assert not _has_regional_indicator_or_symbol(text), text
+
+    window.close()
+    window.deleteLater()
+
+
+def test_tesseract_psm_help_is_readable_in_every_supported_language() -> None:
+    expectations = {
+        "en": ("book page", "do not use for full pages"),
+        "ru": ("книжная страница", "не использовать для полной страницы"),
+        "zh": ("书页", "不要用于整页"),
+        "kk": ("кітап беті", "толық бетке қолданбаңыз"),
+        "uz": ("kitob sahifasi", "to'liq sahifa uchun ishlatmang"),
+    }
+
+    for code, _label in SUPPORTED_LANGUAGES:
+        set_language(code)
+        options = [t(f"norm.ocr_psm_{value}") for value in (3, 4, 6, 11, 13)]
+        help_text = t("norm.ocr_psm_tip").lower()
+        assert len(options) == 5
+        assert all(option.strip() for option in options)
+        assert all("??" not in option for option in options)
+        assert "??" not in help_text
+        assert "\ufffd" not in help_text
+        for fragment in expectations[code]:
+            assert fragment in help_text
 
     set_language("ru")

@@ -9,11 +9,11 @@ from typing import Any
 _LANG: str = "ru"
 
 SUPPORTED_LANGUAGES: tuple[tuple[str, str], ...] = (
-    ("ru", "🇷🇺  Русский"),
-    ("en", "🇬🇧  English"),
-    ("zh", "🇨🇳  中文"),
-    ("kk", "🇰🇿  Қазақша"),
-    ("uz", "🇺🇿  Oʻzbekcha"),
+    ("ru", "RU  Русский"),
+    ("en", "EN  English"),
+    ("zh", "ZH  中文"),
+    ("kk", "KK  Қазақша"),
+    ("uz", "UZ  Oʻzbekcha"),
 )
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
@@ -2061,29 +2061,55 @@ def _install_extra_translations() -> None:
             "uz": "Render qilingan sahifaga eng yaqin tuzilmani tanlang.",
         },
         "norm.ocr_psm_3": {
-            "zh": "3 - 自动：未知页面版式",
-            "kk": "3 - Авто: бет орналасуы белгісіз",
-            "uz": "3 - Avto: sahifa tuzilmasi noma'lum",
+            "zh": "3 - 自动：混合或未知页面",
+            "kk": "3 - Авто: аралас не белгісіз бет",
+            "uz": "3 - Avto: aralash yoki noma'lum sahifa",
         },
         "norm.ocr_psm_4": {
-            "zh": "4 - 单栏：普通书页",
-            "kk": "4 - Бір баған: кәдімгі кітап беті",
-            "uz": "4 - Bir ustun: oddiy kitob sahifasi",
+            "zh": "4 - 书页：连续正文栏",
+            "kk": "4 - Кітап беті: үздіксіз мәтін бағаны",
+            "uz": "4 - Kitob sahifasi: uzluksiz matn ustuni",
         },
         "norm.ocr_psm_6": {
-            "zh": "6 - 单块：裁剪后的正文",
-            "kk": "6 - Бір блок: қиылған негізгі мәтін",
-            "uz": "6 - Bir blok: kesilgan asosiy matn",
+            "zh": "6 - 裁剪正文：一个主文本块",
+            "kk": "6 - Қиылған мәтін: бір негізгі блок",
+            "uz": "6 - Kesilgan matn: bitta asosiy blok",
         },
         "norm.ocr_psm_11": {
-            "zh": "11 - 稀疏：题注/表单/片段",
-            "kk": "11 - Сирек: жазулар, формалар, фрагменттер",
-            "uz": "11 - Siyrak: izohlar, shakllar, bo'laklar",
+            "zh": "11 - 零散片段：题注/印章/边注",
+            "kk": "11 - Фрагменттер: жазу, мөр, шеткі белгі",
+            "uz": "11 - Bo'laklar: izoh, muhr, chet yozuv",
         },
         "norm.ocr_psm_13": {
-            "zh": "13 - 单行：短文本条",
-            "kk": "13 - Бір жол: қысқа мәтін жолағы",
-            "uz": "13 - Bir qator: qisqa matn bo'lagi",
+            "zh": "13 - 单行：短横向文字，不是整页",
+            "kk": "13 - Бір жол: қысқа жолақ, толық бет емес",
+            "uz": "13 - Bir qator: qisqa yozuv, to'liq sahifa emas",
+        },
+        "norm.ocr_psm_tip": {
+            "zh": (
+                "Tesseract 页面分割模式 (PSM)：\n"
+                "3 自动 = 页面结构不确定、混排、多个正文块时使用。\n"
+                "4 书页 = 普通扫描书籍的一整页，正文基本是一条连续栏；优先尝试。\n"
+                "6 裁剪正文 = 图片已经只剩一个主要正文块，没有页眉、页脚或边注。\n"
+                "11 零散片段 = 题注、印章、边注、表单或分散文字。\n"
+                "13 单行 = 只有一条短横向文字；不要用于整页。"
+            ),
+            "kk": (
+                "Tesseract бет сегментациясы (PSM):\n"
+                "3 авто = бет құрылымы белгісіз, аралас орналасу немесе бірнеше мәтін блогы бар.\n"
+                "4 кітап беті = сканерленген кітаптың толық беті, мәтін бір үздіксіз баған сияқты; алдымен осыны көріңіз.\n"
+                "6 қиылған мәтін = суретте тек бір негізгі мәтін блогы қалған, тақырып/төменгі колонтитул/шеткі белгі жоқ.\n"
+                "11 фрагменттер = жазулар, мөрлер, шеткі белгілер, формалар немесе бөлек жатқан мәтіндер.\n"
+                "13 бір жол = қысқа көлденең мәтін ғана; толық бетке қолданбаңыз."
+            ),
+            "uz": (
+                "Tesseract sahifa segmentatsiyasi (PSM):\n"
+                "3 avto = sahifa tuzilmasi noma'lum, aralash yoki bir nechta matn bloki bor.\n"
+                "4 kitob sahifasi = skanerlangan kitobning to'liq sahifasi, matn uzluksiz ustun ko'rinishida; avval shuni sinang.\n"
+                "6 kesilgan matn = rasmda faqat bitta asosiy matn bloki qolgan, sarlavha yoki chet yozuvlar yo'q.\n"
+                "11 bo'laklar = izohlar, muhrlar, chet yozuvlar, blanklar yoki tarqoq matn.\n"
+                "13 bir qator = faqat qisqa gorizontal yozuv; to'liq sahifa uchun ishlatmang."
+            ),
         },
         "norm.llm_review_required": {
             "zh": "LLM 保留了 {rejected} 个段落未修改。Review report：{path}",

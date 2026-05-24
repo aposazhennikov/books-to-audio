@@ -44,6 +44,23 @@ def test_installer_entrypoints_do_not_contain_mojibake() -> None:
         assert not any(marker in text for marker in markers), path
 
 
+def test_installer_entrypoints_do_not_route_through_wsl() -> None:
+    for path in (Path("install.py"), Path("install.bat"), Path("install.sh")):
+        assert "wsl" not in path.read_text(encoding="utf-8").lower(), path
+
+
+def test_installer_wrappers_pause_without_requiring_enter() -> None:
+    shell_text = Path("install.sh").read_text(encoding="utf-8")
+    batch_text = Path("install.bat").read_text(encoding="utf-8").lower()
+
+    assert "Press any key to exit terminal" in shell_text
+    assert "Нажмите любую кнопку" in shell_text
+    assert "BOOKS_TO_AUDIO_FROM_RUN_GUI" in shell_text
+    assert "stty raw -echo" in shell_text
+    assert "dd bs=1 count=1" in shell_text
+    assert "pause >nul" in batch_text
+
+
 def test_installer_dry_run_overwrites_bilingual_log(tmp_path: Path) -> None:
     log_path = Path("install.log")
     log_path.write_text("OLD INSTALL LOG", encoding="utf-8")

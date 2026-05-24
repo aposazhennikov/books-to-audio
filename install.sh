@@ -5,6 +5,29 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$SCRIPT_DIR"
 export PYTHONUTF8=1
 
+pause_for_key() {
+    if [ ! -t 0 ] || [ -n "${BOOKS_TO_AUDIO_FROM_RUN_GUI:-}" ]; then
+        return
+    fi
+
+    printf '\n%s\n%s\n' \
+        "Press any key to exit terminal..." \
+        "Нажмите любую кнопку для выхода из терминала..."
+
+    old_stty=$(stty -g 2>/dev/null || true)
+    if [ -n "$old_stty" ]; then
+        stty raw -echo 2>/dev/null || true
+        dd bs=1 count=1 of=/dev/null 2>/dev/null || true
+        stty "$old_stty" 2>/dev/null || true
+        printf '\n'
+        return
+    fi
+
+    # Fallback for unusual terminals that do not expose stty state.
+    # shellcheck disable=SC2034
+    read -r _
+}
+
 USE_EXISTING_VENV=1
 for arg in "$@"; do
     if [ "$arg" = "--recreate" ]; then
@@ -51,12 +74,6 @@ if [ -z "$goto_done" ]; then
     EXIT_CODE=1
 fi
 
-if [ -t 0 ] && [ -z "${BOOKS_TO_AUDIO_FROM_RUN_GUI:-}" ]; then
-    printf '\n%s\n%s\n' \
-        "Press any key to exit terminal..." \
-        "Нажмите любую кнопку для выхода из терминала..."
-    # shellcheck disable=SC2034
-    read -r _
-fi
+pause_for_key
 
 exit "$EXIT_CODE"

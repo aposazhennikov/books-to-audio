@@ -274,6 +274,9 @@ def test_zoomed_chunk_markup_controls_do_not_overlap() -> None:
     assert page._progress.isHidden()
     assert page._top_tabs.geometry().bottom() <= page._voice_table.geometry().top()
     assert page._voice_table._editor_tabs.isHidden()
+    assert page._voice_table._chapter_nav_panel.isHidden()
+    assert page._voice_table._preset_toolbar_panel.isHidden()
+    assert page._voice_table._quick_apply_panel.isHidden()
     assert page._voice_table._table.horizontalScrollBar().maximum() == 0
 
     window.close()

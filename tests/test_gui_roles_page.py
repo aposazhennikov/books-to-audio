@@ -110,3 +110,16 @@ def test_roles_page_runs_llm_segments_and_writes_inventory(
     assert page._table.rowCount() == 1
 
     page.deleteLater()
+
+
+def test_roles_page_labels_llm_fields_and_shows_endpoint_start(qapp) -> None:
+    page = RolesPage()
+
+    assert page._llm_endpoint_label.text()
+    assert page._llm_model_label.text()
+    assert page._llm_endpoint.cursorPosition() == 0
+    assert page._llm_model.cursorPosition() == 0
+    assert page._llm_endpoint.maximumWidth() <= 260
+    assert page._btn_extract.maximumWidth() <= 340
+
+    page.deleteLater()

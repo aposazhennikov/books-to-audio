@@ -142,7 +142,9 @@ class VoiceTableWidget(QWidget):
         layout.setSpacing(6)
 
         # Chapter navigation.
-        nav = QHBoxLayout()
+        self._chapter_nav_panel = QWidget()
+        nav = QHBoxLayout(self._chapter_nav_panel)
+        nav.setContentsMargins(0, 0, 0, 0)
         nav.setSpacing(6)
         self._chapter_filter_label = QLabel()
         nav.addWidget(self._chapter_filter_label)
@@ -150,10 +152,12 @@ class VoiceTableWidget(QWidget):
         self._chapter_filter.currentIndexChanged.connect(lambda _idx: self._populate_table())
         nav.addWidget(self._chapter_filter)
         nav.addStretch()
-        layout.addLayout(nav)
+        layout.addWidget(self._chapter_nav_panel)
 
         # Toolbar row 1: preset quick-assign.
-        toolbar1 = QHBoxLayout()
+        self._preset_toolbar_panel = QWidget()
+        toolbar1 = QHBoxLayout(self._preset_toolbar_panel)
+        toolbar1.setContentsMargins(0, 0, 0, 0)
         toolbar1.setSpacing(4)
 
         self._btn_all_narrator = QPushButton()
@@ -179,10 +183,12 @@ class VoiceTableWidget(QWidget):
         toolbar1.addWidget(self._btn_auto)
 
         toolbar1.addStretch()
-        layout.addLayout(toolbar1)
+        layout.addWidget(self._preset_toolbar_panel)
 
         # Toolbar row 2: custom quick-assign via combo.
-        toolbar2 = QHBoxLayout()
+        self._quick_apply_panel = QWidget()
+        toolbar2 = QHBoxLayout(self._quick_apply_panel)
+        toolbar2.setContentsMargins(0, 0, 0, 0)
         toolbar2.setSpacing(4)
 
         self._quick_combo = _make_voice_combo("narrator_calm")
@@ -206,7 +212,7 @@ class VoiceTableWidget(QWidget):
         toolbar2.addWidget(self._btn_apply_narrator)
 
         toolbar2.addStretch()
-        layout.addLayout(toolbar2)
+        layout.addWidget(self._quick_apply_panel)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
@@ -507,7 +513,11 @@ class VoiceTableWidget(QWidget):
 
     def _sync_editor_visibility(self) -> None:
         """Hide the chunk editor until there is something meaningful to edit."""
-        self._editor_tabs.setVisible(bool(self._segments))
+        has_segments = bool(self._segments)
+        self._chapter_nav_panel.setVisible(has_segments)
+        self._preset_toolbar_panel.setVisible(has_segments)
+        self._quick_apply_panel.setVisible(has_segments)
+        self._editor_tabs.setVisible(has_segments)
 
     def _scaled_table_row_height(self, base_height: int) -> int:
         return max(

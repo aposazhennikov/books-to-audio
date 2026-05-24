@@ -8,7 +8,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QHBoxLayout,
+    QGridLayout,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -45,22 +45,33 @@ class RolesPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
-        controls = QHBoxLayout()
-        controls.setSpacing(8)
+        controls = QGridLayout()
+        controls.setHorizontalSpacing(10)
+        controls.setVerticalSpacing(4)
+        controls.setColumnStretch(0, 0)
+        controls.setColumnStretch(1, 1)
+        controls.setColumnStretch(2, 0)
 
+        self._llm_endpoint_label = QLabel()
         self._llm_endpoint = QLineEdit(configured_ollama_endpoint())
-        self._llm_endpoint.setMaximumWidth(260)
-        controls.addWidget(self._llm_endpoint)
+        self._llm_endpoint.setMaximumWidth(230)
+        self._llm_endpoint.setCursorPosition(0)
+        controls.addWidget(self._llm_endpoint_label, 0, 0)
+        controls.addWidget(self._llm_endpoint, 1, 0)
 
+        self._llm_model_label = QLabel()
         self._llm_model = QLineEdit(PRIMARY_QWEN3_MODEL)
-        controls.addWidget(self._llm_model, stretch=1)
+        self._llm_model.setCursorPosition(0)
+        controls.addWidget(self._llm_model_label, 0, 1)
+        controls.addWidget(self._llm_model, 1, 1)
 
         self._btn_extract = QPushButton()
         self._btn_extract.setObjectName("primaryBtn")
-        self._btn_extract.setMinimumWidth(320)
+        self._btn_extract.setMinimumWidth(260)
+        self._btn_extract.setMaximumWidth(340)
         self._btn_extract.setEnabled(False)
         self._btn_extract.clicked.connect(self._run_role_extraction)
-        controls.addWidget(self._btn_extract)
+        controls.addWidget(self._btn_extract, 1, 2)
         layout.addLayout(controls)
 
         self._progress = ProgressWidget()
@@ -87,7 +98,9 @@ class RolesPage(QWidget):
 
     def retranslate(self) -> None:
         """Update translatable strings."""
+        self._llm_endpoint_label.setText(t("roles.llm_endpoint"))
         self._llm_endpoint.setPlaceholderText(t("roles.llm_endpoint"))
+        self._llm_model_label.setText(t("roles.llm_model"))
         self._llm_model.setPlaceholderText(t("roles.llm_model"))
         self._btn_extract.setText(t("roles.extract"))
         self._table.setHorizontalHeaderLabels(

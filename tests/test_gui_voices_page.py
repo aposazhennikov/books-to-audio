@@ -163,6 +163,9 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
 
     table = page._voice_table
     assert table._editor_tabs.isHidden()
+    assert table._chapter_nav_panel.isHidden()
+    assert table._preset_toolbar_panel.isHidden()
+    assert table._quick_apply_panel.isHidden()
     assert table._table.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     for column in (0, 1, 2, 5, 6, 7):
         assert table._table.isColumnHidden(column)
@@ -182,6 +185,9 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     render_widget(page, 760, 520, scale=1.45)
 
     assert table._editor_tabs.isVisible()
+    assert table._chapter_nav_panel.isVisible()
+    assert table._preset_toolbar_panel.isVisible()
+    assert table._quick_apply_panel.isVisible()
     assert not table._table.isColumnHidden(3)
     assert not table._table.isColumnHidden(4)
 

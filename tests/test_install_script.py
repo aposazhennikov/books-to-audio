@@ -85,6 +85,13 @@ def test_installer_wrappers_bootstrap_python_with_native_package_managers() -> N
     assert "%LOCALAPPDATA%\\Programs\\Python\\Python312\\python.exe" in batch_text
 
 
+def test_ci_linux_gui_job_installs_cjk_fonts() -> None:
+    workflow_text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert "Install Linux GUI/OCR system packages" in workflow_text
+    assert "fonts-noto-cjk" in workflow_text
+
+
 def test_installer_summary_and_next_steps_are_bilingual(
     tmp_path: Path,
     capsys,

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import os
+import platform
 import re
 import unicodedata
+
+import pytest
 
 from book_normalizer.gui.app import _resolve_theme
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, TRANSLATIONS, set_language, t
@@ -224,6 +228,19 @@ def test_theme_has_multilingual_font_fallbacks() -> None:
         "Noto Sans",
     ):
         assert font_name in theme
+
+
+def test_ci_linux_has_installed_cjk_font_for_chinese_gui() -> None:
+    if os.environ.get("CI") != "true" or platform.system() != "Linux":
+        pytest.skip("CJK font availability is enforced on Linux CI.")
+
+    qt_gui = pytest.importorskip("PyQt6.QtGui")
+    families = set(qt_gui.QFontDatabase.families())
+
+    assert any(
+        any(token in family for token in ("Noto Sans CJK", "WenQuanYi", "Source Han"))
+        for family in families
+    )
 
 
 def test_theme_keeps_disabled_primary_buttons_readable() -> None:

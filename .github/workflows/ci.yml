@@ -31,7 +31,15 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0 tesseract-ocr tesseract-ocr-rus ffmpeg
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libxcb-cursor0 \
+            libxkbcommon-x11-0 \
+            tesseract-ocr \
+            tesseract-ocr-rus \
+            ffmpeg \
+            fonts-noto-cjk
 
       - name: Install dependencies
         run: |

@@ -295,6 +295,7 @@ def test_normalize_page_allows_manual_normalized_text_edits(qapp, qtbot) -> None
 
     page._on_finished(book)
     assert not page._norm_text.isReadOnly()
+    assert not page._btn_apply_norm_edits.isHidden()
     assert page._btn_apply_norm_edits.isEnabled()
 
     page._norm_text.setPlainText("=== Chapter ===\n\nEdited one.\n\nEdited two.")
@@ -302,6 +303,35 @@ def test_normalize_page_allows_manual_normalized_text_edits(qapp, qtbot) -> None
 
     assert book.chapters[0].paragraphs[0].normalized_text == "Edited one."
     assert book.chapters[0].paragraphs[1].normalized_text == "Edited two."
+
+    page.deleteLater()
+
+
+def test_normalize_page_hides_manual_apply_until_text_exists(qapp, qtbot) -> None:
+    page = NormalizePage()
+    qtbot.addWidget(page)
+
+    assert page._btn_apply_norm_edits.isHidden()
+    assert not page._btn_apply_norm_edits.isEnabled()
+
+    page._on_finished(
+        Book(
+            chapters=[
+                Chapter(
+                    index=0,
+                    paragraphs=[
+                        Paragraph(raw_text="Raw.", normalized_text="Normalized."),
+                    ],
+                )
+            ]
+        )
+    )
+    assert not page._btn_apply_norm_edits.isHidden()
+    assert page._btn_apply_norm_edits.isEnabled()
+
+    page._set_manual_edit_available(False)
+    assert page._btn_apply_norm_edits.isHidden()
+    assert not page._btn_apply_norm_edits.isEnabled()
 
     page.deleteLater()
 

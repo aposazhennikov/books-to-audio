@@ -232,6 +232,7 @@ class NormalizePage(QWidget):
         self._btn_apply_norm_edits = QPushButton()
         self._btn_apply_norm_edits.clicked.connect(self._apply_normalized_edits)
         self._btn_apply_norm_edits.setEnabled(False)
+        self._btn_apply_norm_edits.setVisible(False)
         norm_header.addWidget(self._btn_apply_norm_edits)
         norm_layout.addLayout(norm_header)
         self._norm_text = QPlainTextEdit()
@@ -412,7 +413,7 @@ class NormalizePage(QWidget):
         self._progress.reset()
         self._raw_text.clear()
         self._norm_text.clear()
-        self._btn_apply_norm_edits.setEnabled(False)
+        self._set_manual_edit_available(False)
 
         self._worker = NormalizeWorker(
             input_path=path,
@@ -438,7 +439,12 @@ class NormalizePage(QWidget):
             raw_lines, norm_lines = _book_preview_lines(book)
             self._raw_text.setPlainText("\n\n".join(raw_lines))
             self._norm_text.setPlainText("\n\n".join(norm_lines))
-            self._btn_apply_norm_edits.setEnabled(True)
+            self._set_manual_edit_available(True)
+
+    def _set_manual_edit_available(self, available: bool) -> None:
+        """Show manual-edit apply only when normalized text exists."""
+        self._btn_apply_norm_edits.setVisible(available)
+        self._btn_apply_norm_edits.setEnabled(available)
 
     def _apply_normalized_edits(self) -> None:
         """Apply the editable normalized preview back to the current Book."""

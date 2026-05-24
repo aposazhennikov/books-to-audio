@@ -36,6 +36,34 @@ if not errorlevel 1 (
 echo Python 3.10 or newer was not found on Windows.
 echo Python 3.10+ не найден в Windows.
 echo.
+where winget >nul 2>nul
+if not errorlevel 1 (
+    echo Installing Python 3.12 with native Windows winget...
+    echo Устанавливаю Python 3.12 через нативный Windows winget...
+    winget install -e --id Python.Python.3.12 --scope user --accept-package-agreements --accept-source-agreements
+    if not errorlevel 1 (
+        echo Retrying installer with the newly installed Python...
+        echo Повторно запускаю установщик с новым Python...
+        if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
+            "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" install.py %VENV_ARGS% %*
+            set "EXIT_CODE=%errorlevel%"
+            goto done
+        )
+        python -c "import sys, venv; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul
+        if not errorlevel 1 (
+            python install.py %VENV_ARGS% %*
+            set "EXIT_CODE=%errorlevel%"
+            goto done
+        )
+        py -3 -c "import sys, venv; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul
+        if not errorlevel 1 (
+            py -3 install.py %VENV_ARGS% %*
+            set "EXIT_CODE=%errorlevel%"
+            goto done
+        )
+    )
+)
+echo.
 echo Install Python 3.12 for Windows and enable "Add python.exe to PATH":
 echo Установите Python 3.12 для Windows и включите "Add python.exe to PATH":
 echo   https://www.python.org/downloads/

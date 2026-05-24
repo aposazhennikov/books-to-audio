@@ -64,6 +64,24 @@ def test_installer_wrappers_pause_without_requiring_enter() -> None:
     assert "pause >nul" in batch_text
 
 
+def test_installer_wrappers_bootstrap_python_with_native_package_managers() -> None:
+    shell_text = Path("install.sh").read_text(encoding="utf-8")
+    batch_text = Path("install.bat").read_text(encoding="utf-8")
+
+    assert "bootstrap_python()" in shell_text
+    assert "brew install python@3.12" in shell_text
+    assert "apt-get install -y python3 python3-venv python3-pip" in shell_text
+    assert "dnf install -y python3 python3-pip" in shell_text
+    assert "pacman -S --needed python python-pip" in shell_text
+    assert "run_installer_with_python()" in shell_text
+    assert "shift" in shell_text
+    assert '"$python_cmd" install.py "$@"' in shell_text
+
+    assert "winget install -e --id Python.Python.3.12 --scope user" in batch_text
+    assert "--accept-package-agreements --accept-source-agreements" in batch_text
+    assert "%LOCALAPPDATA%\\Programs\\Python\\Python312\\python.exe" in batch_text
+
+
 def test_installer_summary_and_next_steps_are_bilingual(
     tmp_path: Path,
     capsys,

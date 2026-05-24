@@ -28,6 +28,50 @@ pause_for_key() {
     read -r _
 }
 
+bootstrap_python() {
+    printf '%s\n%s\n' \
+        "Trying to install Python 3 with the native system package manager..." \
+        "Пробую установить Python 3 нативным менеджером пакетов системы..."
+
+    if command -v brew >/dev/null 2>&1; then
+        brew install python@3.12 || brew install python
+        return $?
+    fi
+
+    if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip
+        return $?
+    fi
+
+    if command -v dnf >/dev/null 2>&1; then
+        sudo dnf install -y python3 python3-pip
+        return $?
+    fi
+
+    if command -v pacman >/dev/null 2>&1; then
+        sudo pacman -S --needed python python-pip
+        return $?
+    fi
+
+    return 1
+}
+
+run_installer_with_python() {
+    python_cmd=$1
+    shift
+    if ! command -v "$python_cmd" >/dev/null 2>&1; then
+        return 1
+    fi
+    "$python_cmd" -c "import sys, venv; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >/dev/null 2>&1
+    if [ "$?" -ne 0 ]; then
+        return 1
+    fi
+    "$python_cmd" install.py "$@"
+    EXIT_CODE=$?
+    goto_done=1
+    return 0
+}
+
 USE_EXISTING_VENV=1
 for arg in "$@"; do
     if [ "$arg" = "--recreate" ]; then
@@ -46,23 +90,18 @@ else
 fi
 
 if [ -z "$goto_done" ]; then
-    if command -v python3 >/dev/null 2>&1; then
-        python3 -c "import sys, venv; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >/dev/null 2>&1
-        if [ "$?" -eq 0 ]; then
-            python3 install.py "$@"
-            EXIT_CODE=$?
-            goto_done=1
-        fi
-    fi
+    run_installer_with_python python3 "$@"
 fi
 
 if [ -z "$goto_done" ]; then
-    if command -v python >/dev/null 2>&1; then
-        python -c "import sys, venv; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >/dev/null 2>&1
-        if [ "$?" -eq 0 ]; then
-            python install.py "$@"
-            EXIT_CODE=$?
-            goto_done=1
+    run_installer_with_python python "$@"
+fi
+
+if [ -z "$goto_done" ]; then
+    if bootstrap_python; then
+        run_installer_with_python python3 "$@"
+        if [ -z "$goto_done" ]; then
+            run_installer_with_python python "$@"
         fi
     fi
 fi

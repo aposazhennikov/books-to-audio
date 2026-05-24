@@ -139,6 +139,8 @@ def run_llm_normalize_book(
         endpoint=llm_endpoint,
         model=llm_model,
         cache_dir=cache_dir,
+        language=getattr(book.metadata, "language", "ru"),
+        review_report_path=book_dir / "llm_normalization_review_report.json",
     )
 
     print(f"LLM normalizer: model={llm_model}, endpoint={llm_endpoint}")
@@ -200,6 +202,8 @@ def export_llm(
         model=model,
         cache_dir=cache_dir,
         max_chunk_chars=max_chunk_chars,
+        language=getattr(book.metadata, "language", "ru"),
+        review_report_path=book_dir / "llm_chunking_review_report.json",
     )
 
     all_chunk_specs = []

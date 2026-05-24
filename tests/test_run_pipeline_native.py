@@ -57,6 +57,56 @@ def test_stage1_normalize_invokes_click_command_in_process(
     assert captured["standalone_mode"] is False
 
 
+def test_stage3_passes_language_and_review_report_to_native_chunker(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pipeline = _load_run_pipeline()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    (book_dir / "001_chapter_01.txt").write_text("Salom. \"Kim bor?\"", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class _FakeSpec:
+        chapter_index = 0
+
+        def to_dict(self) -> dict[str, object]:
+            return {
+                "chapter_index": 0,
+                "chunk_index": 0,
+                "narrator": "Salom.",
+                "voice_tone": "calm",
+                "text": "Salom.",
+            }
+
+    class _FakeChunker:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def chunk_chapter(self, chapter_index: int, text: str) -> list[_FakeSpec]:
+            assert chapter_index == 0
+            assert "Salom" in text
+            return [_FakeSpec()]
+
+    import book_normalizer.chunking.llm_chunker as llm_chunker
+
+    monkeypatch.setattr(llm_chunker, "LlmChunker", _FakeChunker)
+
+    manifest_path = pipeline.run_stage3_llm_chunking(
+        book_dir,
+        "http://127.0.0.1:11434",
+        "model",
+        "uz",
+        chapter_filter=None,
+        llm_max_retries=1,
+        max_chunk_chars=400,
+    )
+
+    assert manifest_path == book_dir / "chunks_manifest_v2.json"
+    assert captured["language"] == "uz"
+    assert captured["review_report_path"] == book_dir / "llm_chunking_review_report.json"
+
+
 def test_synthesis_and_assembly_stages_invoke_script_mains_in_process(
     tmp_path: Path,
     monkeypatch,

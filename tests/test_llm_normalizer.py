@@ -484,14 +484,16 @@ class TestLlmChunkerFormat:
         assert [spec.chunk_index for spec in specs] == list(range(len(specs)))
         assert all(len(spec.text) <= 18 for spec in specs)
 
-    def test_chunker_rejects_text_loss_and_falls_back(self, tmp_path: Path) -> None:
-        """LLM chunking must not silently drop source words."""
-        from book_normalizer.chunking.llm_chunker import LlmChunker
+    def test_chunker_rejects_text_loss_and_writes_review_report(self, tmp_path: Path) -> None:
+        """LLM chunking must not silently downgrade when source words are lost."""
+        from book_normalizer.chunking.llm_chunker import LlmChunker, LlmChunkingError
 
+        report_path = tmp_path / "review.json"
         chunker = LlmChunker(
             model="test-model",
             cache_dir=tmp_path / "cache",
             max_retries=1,
+            review_report_path=report_path,
         )
 
         with patch.object(
@@ -499,13 +501,38 @@ class TestLlmChunkerFormat:
             "_query_llm",
             return_value=[{"narrator": "alpha beta", "voice_tone": "calm"}],
         ):
+            with pytest.raises(LlmChunkingError):
+                chunker.chunk_chapter(
+                    chapter_index=0,
+                    chapter_text="alpha beta gamma delta.",
+                )
+
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+        assert payload["requires_human_review"] is True
+        assert payload["language"] == "ru"
+        assert payload["failures"][0]["reason"] == "text_preservation_failed"
+
+    def test_chunker_tries_fallback_model_after_primary_text_loss(self, tmp_path: Path) -> None:
+        from book_normalizer.chunking.llm_chunker import LlmChunker
+        from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3_MODEL
+
+        chunker = LlmChunker(cache_dir=tmp_path / "cache", max_retries=1, language="en")
+        seen_models: list[str] = []
+
+        def fake_query(_: str, __: str, *, model: str | None = None):
+            seen_models.append(str(model))
+            if model == PRIMARY_QWEN3_MODEL:
+                return [{"narrator": "alpha beta", "voice_tone": "calm"}]
+            return [{"narrator": "alpha beta gamma delta.", "voice_tone": "calm"}]
+
+        with patch.object(chunker, "_query_llm", side_effect=fake_query):
             specs = chunker.chunk_chapter(
                 chapter_index=0,
                 chapter_text="alpha beta gamma delta.",
             )
 
+        assert seen_models == [PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
         assert " ".join(spec.text for spec in specs) == "alpha beta gamma delta."
-        assert specs[0].voice_label == "narrator"
 
     def test_chunker_keeps_short_dialogue_chunks(self) -> None:
         """Short replies like 'Да.' are valid chunks and must not be filtered."""
@@ -530,7 +557,22 @@ class TestLlmChunkerFormat:
         assert p1 != p2
         assert p1 != p3
 
-    def test_chunker_sends_quoted_source_as_json_input(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize(
+        ("language", "expected_name"),
+        [
+            ("ru", "Russian"),
+            ("en", "English"),
+            ("zh", "Chinese"),
+            ("kk", "Kazakh"),
+            ("uz", "Uzbek"),
+        ],
+    )
+    def test_chunker_sends_quoted_source_as_json_input(
+        self,
+        tmp_path: Path,
+        language: str,
+        expected_name: str,
+    ) -> None:
         from book_normalizer.chunking.llm_chunker import LlmChunker
         from book_normalizer.llm.ollama_client import OllamaChatAttempt
 
@@ -546,7 +588,11 @@ class TestLlmChunkerFormat:
                     data=[{"narrator": text, "voice_tone": "calm"}],
                 )
 
-        chunker = LlmChunker(model="test-model", cache_dir=tmp_path / "cache")
+        chunker = LlmChunker(
+            model="test-model",
+            cache_dir=tmp_path / "cache",
+            language=language,
+        )
         chunker._client = _FakeClient()
 
         items = chunker._query_llm("system prompt", text)
@@ -554,11 +600,19 @@ class TestLlmChunkerFormat:
         assert items == [{"narrator": text, "voice_tone": "calm"}]
         user_content = captured["messages"][1]["content"]
         payload = json.loads(user_content.split("INPUT_JSON:\n", 1)[1])
+        assert payload["language"] == expected_name
+        assert payload["language_code"] == language
         assert payload["text"] == text
 
-    def test_chunker_fallback_on_empty_llm(self, tmp_path: Path) -> None:
-        """LlmChunker uses heuristic fallback when LLM always returns empty."""
-        chunker = self._make_chunker(tmp_path)
+    def test_chunker_can_use_explicit_heuristic_fallback_on_empty_llm(self, tmp_path: Path) -> None:
+        """Heuristic fallback is available only when explicitly requested."""
+        from book_normalizer.chunking.llm_chunker import LlmChunker
+
+        chunker = LlmChunker(
+            model="test-model",
+            cache_dir=tmp_path / "cache",
+            allow_heuristic_fallback=True,
+        )
 
         with patch.object(chunker, "_query_llm", return_value=""):
             specs = chunker.chunk_chapter(

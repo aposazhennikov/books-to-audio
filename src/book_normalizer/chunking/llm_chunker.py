@@ -1,4 +1,4 @@
-"""LLM-based chunker for multi-voice Russian TTS synthesis.
+"""LLM-based chunker for multi-voice multilingual TTS synthesis.
 
 Replaces the three-step pipeline (DialogueDetector → LlmAttributor →
 chunk_annotated_book) with a single LLM pass that simultaneously:
@@ -15,8 +15,8 @@ The chapter text is processed in windows of ~2 000 chars (split at paragraph
 boundaries) to stay within the model context limit.  Results are cached per
 (chapter_index, window_index) to support interrupted runs.
 
-On repeated LLM failures the module falls back to the rule-based
-HeuristicAttributor + chunk_annotated_book pipeline.
+On repeated LLM failures the module writes a review report and raises instead
+of silently downgrading to heuristic markup.
 """
 
 # ruff: noqa: E501
@@ -32,6 +32,7 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.languages import get_book_language, normalize_book_language
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL, model_plan_for_language
 from book_normalizer.llm.ollama_client import OllamaChatClient
 
@@ -63,56 +64,60 @@ VALID_VOICES = frozenset(VOICE_ID_MAP)
 # ── LLM system prompt ─────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """\
-Ты — движок разметки аудиокниги для многоголосового TTS.
-Раздели текст на МАЛЕНЬКИЕ чанки (30–{max_chunk_chars} символов), каждому назначь роль и интонацию.
+You are a multilingual audiobook markup engine for {language_name} fiction.
+Split input text into small ordered TTS chunks, usually 30-{max_chunk_chars} characters.
 
-═══ ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ═══
+Hard rules:
+1. Preserve the source text completely and in the same order. Do not rewrite,
+   translate, summarize, add words, remove words, or change punctuation.
+2. Separate dialogue from narration and speech tags. A spoken line and an
+   author tag must not be in the same chunk.
+3. Use exactly one text key per item:
+   "narrator" for narration, descriptions, chapter titles, prefaces, annotations,
+   and speech tags;
+   "men" for direct speech by a male character;
+   "women" for direct speech by a female character.
+   If gender is not proven by nearby context, use narrator.
+4. voice_tone must be a short English label, for example calm, tense, angry,
+   whisper, sad, cheerful, fearful, urgent. Match the scene; do not mark
+   everything as calm.
+5. Return only a JSON array. No markdown and no comments.
 
-1. ОБЯЗАТЕЛЬНО разделяй прямую речь и авторский текст — они НИКОГДА не идут в одном чанке.
-
-2. ПРЯМАЯ РЕЧЬ — всё после «—» в начале или внутри предложения, а также текст в «»/«».
-   «— Уходи!» → отдельный чанк men или women
-   «— Я вернусь, — прошептал он.» → «— Я вернусь,» отдельно / «прошептал он.» отдельно
-
-3. РОЛИ (выбери одну):
-   "narrator" — авторский текст, описания, теги речи («сказал», «ответила», «крикнул»)
-   "men"      — реплика мужчины (маркеры: сказал / спросил / воскликнул / крикнул / прошептал)
-   "women"    — реплика женщины (маркеры: сказала / спросила / воскликнула / крикнула / прошептала)
-   Если пол неизвестен из контекста — narrator.
-
-4. voice_tone — 1–4 слова на АНГЛИЙСКОМ, РАЗНООБРАЗНО:
-   боевая сцена → "tense", "urgent", "intense"
-   гнев, грубость → "angry", "furious", "cold and harsh"
-   крик → "shouting", "loud and urgent"
-   шёпот → "whisper", "low and tense"
-   страх, тревога → "fearful", "anxious"
-   грусть → "sad", "tired and sad"
-   радость → "happy", "cheerful"
-   спокойное повествование → "calm"
-   НЕ пиши везде "calm" — подбирай по смыслу сцены!
-
-═══ ПРИМЕР ═══
-
-ВВОД:
-Иван вошёл в комнату. — Где ты был? — резко спросила Мария. — Не твоё дело, — огрызнулся он и хлопнул дверью. Она отвернулась к окну.
-
-ВЫВОД:
+Example output:
 [
-  {{"narrator": "Иван вошёл в комнату.", "voice_tone": "calm"}},
-  {{"women": "— Где ты был?", "voice_tone": "angry"}},
-  {{"narrator": "резко спросила Мария.", "voice_tone": "calm"}},
-  {{"men": "— Не твоё дело,", "voice_tone": "cold and angry"}},
-  {{"narrator": "огрызнулся он и хлопнул дверью. Она отвернулась к окну.", "voice_tone": "tense"}}
+  {{"narrator": "Ivan entered the room.", "voice_tone": "calm"}},
+  {{"women": "\"Where were you?\"", "voice_tone": "angry"}},
+  {{"narrator": "Maria asked sharply.", "voice_tone": "calm"}}
 ]
 
-═══ СТРОГИЕ ЗАПРЕТЫ ═══
-— НЕ объединяй реплику «—» и авторский текст в одном чанке
-— НЕ придумывай текст — бери ТОЛЬКО из оригинала
-— НЕ пиши voice_tone на русском
-— Верни ТОЛЬКО JSON-массив, без markdown, без комментариев
-
-Предыдущий голос в цепочке: {last_voice}
+Previous voice in sequence: {last_voice}
 """
+
+
+class LlmChunkingError(RuntimeError):
+    """Raised when LLM chunking cannot preserve the source text."""
+
+
+@dataclass(frozen=True)
+class ChunkingFailure:
+    """One failed LLM chunking attempt recorded for human review."""
+
+    chapter_index: int
+    window_index: int
+    model: str
+    reason: str
+    source_preview: str
+    output_preview: str = ""
+
+    def to_record(self) -> dict[str, Any]:
+        return {
+            "chapter_index": self.chapter_index,
+            "window_index": self.window_index,
+            "model": self.model,
+            "reason": self.reason,
+            "source_preview": self.source_preview,
+            "output_preview": self.output_preview,
+        }
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -174,7 +179,7 @@ class LlmChunker:
 
     Uses an OpenAI-compatible endpoint (default: Ollama at port 11434).
     Results are cached per chapter window to support interrupted runs.
-    Falls back to rule-based chunking when the LLM consistently fails.
+    Raises with a review report when the LLM consistently fails validation.
     """
 
     def __init__(
@@ -186,15 +191,23 @@ class LlmChunker:
         max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
         api_key: str = "",
         max_retries: int = MAX_RETRIES,
+        language: str = "ru",
+        review_report_path: Path | None = None,
+        allow_heuristic_fallback: bool = False,
     ) -> None:
         self._endpoint = endpoint.rstrip("/")
-        self._model_plan = model_plan_for_language("ru", preferred_model=model)
+        self._language = normalize_book_language(language)
+        self._language_name = get_book_language(self._language).english_name
+        self._model_plan = model_plan_for_language(self._language, preferred_model=model)
         self._model = self._model_plan.primary_model
         self._cache_dir = cache_dir
         self._window_chars = window_chars
         self._max_chunk_chars = max(1, max_chunk_chars)
         self._api_key = api_key
         self._max_retries = max_retries
+        self._review_report_path = review_report_path
+        self._allow_heuristic_fallback = allow_heuristic_fallback
+        self._failures: list[ChunkingFailure] = []
         self._client = OllamaChatClient(
             endpoint=endpoint,
             api_key=api_key,
@@ -245,13 +258,21 @@ class LlmChunker:
                     raw = self._process_window(
                         window_text, last_voice, chapter_index, win_idx
                     )
-                except RuntimeError:
-                    logger.warning(
-                        "Chapter %d: LLM chunking failed; falling back to heuristic chunking",
-                        chapter_index,
-                        exc_info=True,
-                    )
-                    return self._heuristic_fallback(chapter_index, chapter_text)
+                except RuntimeError as exc:
+                    if self._allow_heuristic_fallback:
+                        logger.warning(
+                            "Chapter %d: LLM chunking failed; explicit heuristic "
+                            "fallback is enabled",
+                            chapter_index,
+                            exc_info=True,
+                        )
+                        return self._heuristic_fallback(chapter_index, chapter_text)
+                    self._write_review_report()
+                    raise LlmChunkingError(
+                        "LLM chunking failed validation for "
+                        f"chapter {chapter_index}, window {win_idx}: {exc}. "
+                        f"Review report: {self._review_report_path or '(not configured)'}"
+                    ) from exc
                 all_raw.extend(raw)
                 self._save_cache(chapter_index, win_idx, window_text, last_voice, raw)
 
@@ -278,11 +299,28 @@ class LlmChunker:
             )
 
         if not all_raw:
-            logger.warning(
-                "LLM chunker produced no chunks for chapter %d — falling back to heuristic",
-                chapter_index,
+            if self._allow_heuristic_fallback:
+                logger.warning(
+                    "LLM chunker produced no chunks for chapter %d; explicit "
+                    "heuristic fallback is enabled",
+                    chapter_index,
+                )
+                return self._heuristic_fallback(chapter_index, chapter_text)
+            self._failures.append(
+                ChunkingFailure(
+                    chapter_index=chapter_index,
+                    window_index=-1,
+                    model=",".join(self._model_plan.candidates),
+                    reason="empty_chapter_result",
+                    source_preview=chapter_text[:500],
+                )
             )
-            return self._heuristic_fallback(chapter_index, chapter_text)
+            self._write_review_report()
+            raise LlmChunkingError(
+                "LLM chunker produced no chunks for "
+                f"chapter {chapter_index}. "
+                f"Review report: {self._review_report_path or '(not configured)'}"
+            )
 
         return _build_chunk_specs(
             chapter_index, all_raw, self._max_chunk_chars,
@@ -299,60 +337,97 @@ class LlmChunker:
     ) -> list[dict[str, str]]:
         """Query the LLM for one text window, with retry.
 
-        If all attempts fail, this raises RuntimeError. ``chunk_chapter`` catches
-        it and falls back to rule-based chunking for the whole chapter so the
-        output does not silently mix LLM and heuristic chunks.
+        If all attempts fail, this raises RuntimeError. ``chunk_chapter`` turns
+        that into a reviewable LlmChunkingError unless explicit heuristic
+        fallback was requested by the caller.
         """
-        prompt = _SYSTEM_PROMPT.format(
-            last_voice=last_voice,
-            max_chunk_chars=self._max_chunk_chars,
-        )
+        prompt = self._system_prompt(last_voice)
 
         last_error: Exception | None = None
 
-        for attempt in range(1, self._max_retries + 1):
-            try:
-                raw = _normalise_llm_items(self._query_llm(prompt, text))
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
-                logger.warning(
-                    "Chapter %d window %d: LLM attempt %d/%d failed: %s: %s",
-                    chapter_index,
-                    window_index,
-                    attempt,
-                    self._max_retries,
-                    type(exc).__name__,
-                    exc,
-                )
-                continue
-
-            if raw:
-                if not _items_preserve_source_text(text, raw):
+        for model in self._model_plan.candidates:
+            for attempt in range(1, self._max_retries + 1):
+                try:
+                    raw = _normalise_llm_items(self._query_llm(prompt, text, model=model))
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    self._failures.append(
+                        ChunkingFailure(
+                            chapter_index=chapter_index,
+                            window_index=window_index,
+                            model=model,
+                            reason=f"{type(exc).__name__}: {exc}",
+                            source_preview=text[:500],
+                        )
+                    )
                     logger.warning(
-                        "Chapter %d window %d: LLM attempt %d/%d failed text "
-                        "preservation check",
+                        "Chapter %d window %d: LLM model %s attempt %d/%d "
+                        "failed: %s: %s",
                         chapter_index,
                         window_index,
+                        model,
                         attempt,
                         self._max_retries,
+                        type(exc).__name__,
+                        exc,
                     )
                     continue
-                logger.debug(
-                    "Chapter %d window %d: LLM returned %d chunks (attempt %d)",
+
+                if raw:
+                    if not _items_preserve_source_text(text, raw):
+                        output_preview = " ".join(
+                            _extract_voice_text(item)[1] for item in raw
+                        )[:500]
+                        self._failures.append(
+                            ChunkingFailure(
+                                chapter_index=chapter_index,
+                                window_index=window_index,
+                                model=model,
+                                reason="text_preservation_failed",
+                                source_preview=text[:500],
+                                output_preview=output_preview,
+                            )
+                        )
+                        logger.warning(
+                            "Chapter %d window %d: LLM model %s attempt %d/%d "
+                            "failed text preservation check",
+                            chapter_index,
+                            window_index,
+                            model,
+                            attempt,
+                            self._max_retries,
+                        )
+                        continue
+                    logger.debug(
+                        "Chapter %d window %d: LLM model %s returned %d chunks "
+                        "(attempt %d)",
+                        chapter_index,
+                        window_index,
+                        model,
+                        len(raw),
+                        attempt,
+                    )
+                    return raw
+
+                self._failures.append(
+                    ChunkingFailure(
+                        chapter_index=chapter_index,
+                        window_index=window_index,
+                        model=model,
+                        reason="empty_result",
+                        source_preview=text[:500],
+                    )
+                )
+                logger.warning(
+                    "Chapter %d window %d: LLM model %s attempt %d/%d "
+                    "returned empty result",
                     chapter_index,
                     window_index,
-                    len(raw),
+                    model,
                     attempt,
+                    self._max_retries,
                 )
-                return raw
-
-            logger.warning(
-                "Chapter %d window %d: LLM attempt %d/%d returned empty result",
-                chapter_index,
-                window_index,
-                attempt,
-                self._max_retries,
-            )
+            self._client.unload_model(model)
 
         message = (
             f"Chapter {chapter_index} window {window_index}: all LLM attempts failed; "
@@ -361,11 +436,18 @@ class LlmChunker:
         logger.error(message)
         raise RuntimeError(message)
 
-    def _query_llm(self, system_prompt: str, user_text: str) -> list[dict[str, str]]:
+    def _query_llm(
+        self,
+        system_prompt: str,
+        user_text: str,
+        *,
+        model: str | None = None,
+    ) -> list[dict[str, str]]:
         """Send one native Ollama chat request and parse JSON."""
+        target_model = model or self._model
 
         attempt = self._client.chat_json_with_fallback(
-            models=self._model_plan.candidates,
+            models=[target_model],
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
@@ -374,7 +456,14 @@ class LlmChunker:
                         "Input is JSON. Chunk only input.text. "
                         "Preserve quoted dialogue, apostrophes, punctuation, and word order.\n"
                         "INPUT_JSON:\n"
-                        + json.dumps({"language": "Russian", "text": user_text}, ensure_ascii=False)
+                        + json.dumps(
+                            {
+                                "language": self._language_name,
+                                "language_code": self._language,
+                                "text": user_text,
+                            },
+                            ensure_ascii=False,
+                        )
                     ),
                 },
             ],
@@ -394,6 +483,13 @@ class LlmChunker:
             temperature=0.1,
         )
         return _normalise_llm_items(attempt.data)
+
+    def _system_prompt(self, last_voice: str) -> str:
+        return _SYSTEM_PROMPT.format(
+            language_name=self._language_name,
+            last_voice=last_voice,
+            max_chunk_chars=self._max_chunk_chars,
+        )
 
     # ── Cache ─────────────────────────────────────────────────────────────────
 
@@ -462,17 +558,31 @@ class LlmChunker:
 
     def _cache_fingerprint(self, window_text: str, last_voice: str) -> str:
         """Return a cache fingerprint for text + LLM settings."""
-        prompt = _SYSTEM_PROMPT.format(
-            last_voice=last_voice,
-            max_chunk_chars=self._max_chunk_chars,
-        )
+        prompt = self._system_prompt(last_voice)
         payload = "\n\0".join((
-            self._model,
+            self._language,
+            ",".join(self._model_plan.candidates),
             self._endpoint,
             prompt,
             window_text,
         ))
         return sha1(payload.encode("utf-8")).hexdigest()[:16]
+
+    def _write_review_report(self) -> None:
+        """Persist LLM failures for manual inspection when validation fails."""
+        if self._review_report_path is None:
+            return
+        payload = {
+            "requires_human_review": True,
+            "language": self._language,
+            "models": list(self._model_plan.candidates),
+            "failures": [failure.to_record() for failure in self._failures],
+        }
+        self._review_report_path.parent.mkdir(parents=True, exist_ok=True)
+        self._review_report_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     # ── Fallback ──────────────────────────────────────────────────────────────
 

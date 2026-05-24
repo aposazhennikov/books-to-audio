@@ -85,6 +85,7 @@ _SRC_DIR = str(Path(__file__).resolve().parent.parent / "src")
 sys.path.insert(0, _SRC_DIR)
 
 from book_normalizer.cli import process_command  # noqa: E402
+from book_normalizer.languages import SUPPORTED_LANGUAGE_CODES, normalize_book_language  # noqa: E402
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL  # noqa: E402
 
 # ── Stage helpers ─────────────────────────────────────────────────────────────
@@ -163,6 +164,7 @@ def run_stage2_llm_normalize(
     book_dir: Path,
     llm_endpoint: str,
     llm_model: str,
+    language: str,
     chapter_filter: int | None,
 ) -> None:
     """Apply LLM grammar/punctuation/yofication correction to each chapter."""
@@ -173,6 +175,8 @@ def run_stage2_llm_normalize(
         endpoint=llm_endpoint,
         model=llm_model,
         cache_dir=cache_dir,
+        language=language,
+        review_report_path=book_dir / "llm_normalization_review_report.json",
     )
 
     chapters = load_chapter_texts(book_dir)
@@ -224,6 +228,7 @@ def run_stage3_llm_chunking(
     book_dir: Path,
     llm_endpoint: str,
     llm_model: str,
+    language: str,
     chapter_filter: int | None,
     llm_max_retries: int | None,
     max_chunk_chars: int,
@@ -237,6 +242,8 @@ def run_stage3_llm_chunking(
         "model": llm_model,
         "cache_dir": cache_dir,
         "max_chunk_chars": max_chunk_chars,
+        "language": language,
+        "review_report_path": book_dir / "llm_chunking_review_report.json",
     }
     if llm_max_retries is not None:
         init_kwargs["max_retries"] = llm_max_retries
@@ -417,6 +424,12 @@ def main(argv: list[str] | None = None) -> None:
         help="Native Ollama endpoint (default: http://localhost:11434).",
     )
     parser.add_argument(
+        "--language",
+        default="ru",
+        choices=SUPPORTED_LANGUAGE_CODES,
+        help="Book language for LLM routing (default: ru).",
+    )
+    parser.add_argument(
         "--llm-normalize", action="store_true",
         help="Run LLM grammar/punctuation/yofication pass (Stage 2).",
     )
@@ -470,6 +483,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if args.max_chunk_chars < 30:
         parser.error("--max-chunk-chars must be at least 30.")
+    args.language = normalize_book_language(args.language)
 
     book_path = Path(args.book)
     output_root = Path(args.out)
@@ -506,7 +520,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.llm_normalize:
         stage_banner(2, "LLM normalization (grammar + punctuation + yofication)")
         run_stage2_llm_normalize(
-            book_dir, args.llm_endpoint, args.llm_model, args.chapter
+            book_dir, args.llm_endpoint, args.llm_model, args.language, args.chapter
         )
     else:
         stage_banner(2, "LLM normalization — SKIPPED (use --llm-normalize to enable)")
@@ -517,6 +531,7 @@ def main(argv: list[str] | None = None) -> None:
         book_dir,
         args.llm_endpoint,
         args.llm_model,
+        args.language,
         args.chapter,
         args.llm_max_retries,
         args.max_chunk_chars,

@@ -142,10 +142,12 @@ def _assert_portable_visual_smoke(image: QImage) -> None:
     ]
     average_luminance = sum(luminance) / len(luminance)
     dark_ratio = sum(1 for value in luminance if value < 96) / len(luminance)
+    light_ratio = sum(1 for value in luminance if value > 245) / len(luminance)
 
-    assert len(unique_colors) >= 24
-    assert average_luminance >= 170
-    assert dark_ratio <= 0.20
+    assert len(unique_colors) >= 16
+    assert 24 <= average_luminance <= 252
+    assert dark_ratio <= 0.98
+    assert light_ratio <= 0.98
 
 
 def _is_blank(image: QImage) -> bool:

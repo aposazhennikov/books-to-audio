@@ -238,6 +238,40 @@ def test_synthesis_mode_tabs_are_localized_for_supported_languages(qtbot) -> Non
     set_language("ru")
 
 
+def test_synthesis_sample_panel_labels_are_localized(qtbot) -> None:
+    expected = {
+        "ru": ("Образец голоса", "Новый образец на всю книгу", "Аудио образца:", "Слушать", "Текст образца:"),
+        "en": ("CustomVoice Sample", "New sample for whole book", "Sample audio:", "Play", "Sample text:"),
+        "zh": ("声音样本", "整本书使用新样本", "样本音频：", "播放", "样本文本："),
+        "kk": ("Дауыс үлгісі", "Бүкіл кітапқа жаңа үлгі", "Үлгі аудио:", "Тыңдау", "Үлгі мәтіні:"),
+        "uz": ("Ovoz namunasi", "Butun kitob uchun yangi namuna", "Namuna audiosi:", "Eshitish", "Namuna matni:"),
+    }
+
+    app = qapp()
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    flush_events(app)
+
+    combo = window._lang_combo
+    window._tabs.setCurrentIndex(3)
+    page = window._synthesis_page
+    for code, labels in expected.items():
+        index = combo.findData(code)
+        assert index >= 0
+        combo.setCurrentIndex(index)
+        flush_events(app)
+        assert (
+            page._sample_title.text(),
+            page._custom_strategy_combo.itemText(0),
+            page._sample_audio_label.text(),
+            page._btn_sample_play.text(),
+            page._sample_transcript_label.text(),
+        ) == labels
+
+    set_language("ru")
+
+
 def test_theme_has_multilingual_font_fallbacks() -> None:
     theme = _resolve_theme()
 

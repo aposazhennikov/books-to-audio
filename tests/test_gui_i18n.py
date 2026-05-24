@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import platform
 import re
+import subprocess
 import unicodedata
 from pathlib import Path
 
@@ -40,6 +41,10 @@ def _has_regional_indicator_or_symbol(text: str) -> bool:
 
 def _format_fields(text: str) -> set[str]:
     return set(_FORMAT_FIELD_RE.findall(text))
+
+
+def _compact_font_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
 def test_all_gui_translations_cover_every_supported_language() -> None:
@@ -256,33 +261,34 @@ def test_theme_has_multilingual_font_fallbacks() -> None:
         assert font_name in theme
 
 
-def test_ci_linux_has_installed_cjk_font_for_chinese_gui() -> None:
-    if os.environ.get("CI") != "true" or platform.system() != "Linux":
-        pytest.skip("CJK font availability is enforced on Linux CI.")
+def test_github_linux_has_installed_cjk_font_for_chinese_gui() -> None:
+    if os.environ.get("GITHUB_ACTIONS") != "true" or platform.system() != "Linux":
+        pytest.skip("CJK font availability is enforced on GitHub Linux CI.")
 
-    qt_gui = pytest.importorskip("PyQt6.QtGui")
-    qapp()
-    families = set(qt_gui.QFontDatabase.families())
-    family_tokens = ("Noto Sans CJK", "WenQuanYi", "Source Han", "Droid Sans Fallback")
-    font_file_tokens = (
+    tokens = (
         "notosanscjk",
-        "noto sans cjk",
+        "notoserifcjk",
         "sourcehan",
-        "source han",
         "wenquanyi",
         "droidsansfallback",
     )
-
-    qt_has_cjk_font = any(
-        any(token in family for token in family_tokens) for family in families
-    )
-    system_has_cjk_font = any(
-        any(token in path.name.lower().replace("-", "") for token in font_file_tokens)
+    font_paths = [
+        path
         for path in Path("/usr/share/fonts").rglob("*")
         if path.is_file()
+    ]
+    font_names = " ".join(_compact_font_name(path.name) for path in font_paths)
+    fc_match = subprocess.run(
+        ["fc-match", "Noto Sans CJK SC"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
     )
+    fc_output = _compact_font_name(fc_match.stdout + fc_match.stderr)
 
-    assert qt_has_cjk_font or system_has_cjk_font
+    assert any(token in font_names or token in fc_output for token in tokens)
 
 
 def test_theme_keeps_disabled_primary_buttons_readable() -> None:

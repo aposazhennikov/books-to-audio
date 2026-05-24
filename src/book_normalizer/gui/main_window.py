@@ -23,7 +23,7 @@ from book_normalizer.gui.pages.roles_page import RolesPage
 from book_normalizer.gui.pages.synthesis_page import SynthesisPage
 from book_normalizer.gui.pages.voices_page import VoicesPage
 from book_normalizer.gui.resources import application_icon
-from book_normalizer.gui.ui_scaler import apply_widget_scale_metrics
+from book_normalizer.gui.ui_scaler import apply_widget_scale_metrics, make_app_font
 
 
 class MainWindow(QMainWindow):
@@ -54,7 +54,7 @@ class MainWindow(QMainWindow):
         header_row.setSpacing(12)
 
         self._title = QLabel()
-        self._title.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+        self._title.setFont(make_app_font(22, QFont.Weight.Bold))
         self._title.setStyleSheet("color: #14233a;")
         header_row.addWidget(self._title)
 
@@ -109,9 +109,7 @@ class MainWindow(QMainWindow):
             max(700, round(760 * min(scale, 1.0))),
             max(480, round(520 * min(scale, 1.0))),
         )
-        self._title.setFont(
-            QFont("Segoe UI", max(16, round(22 * scale)), QFont.Weight.Bold)
-        )
+        self._title.setFont(make_app_font(max(16, round(22 * scale)), QFont.Weight.Bold))
         self._lang_combo.setMinimumWidth(max(148, round(164 * scale)))
         self._lang_combo.setMaximumWidth(max(190, round(240 * scale)))
         for child in self.findChildren(QWidget):

@@ -26,7 +26,9 @@ QColor = QtGui.QColor
 def qapp():
     app = QApplication.instance() or QApplication([])
     from book_normalizer.gui.app import _resolve_theme
+    from book_normalizer.gui.ui_scaler import BASE_FONT_SIZE, make_app_font
 
+    app.setFont(make_app_font(BASE_FONT_SIZE))
     app.setStyleSheet(_resolve_theme(1.0))
     return app
 
@@ -34,7 +36,9 @@ def qapp():
 def render_widget(widget: QWidget, width: int, height: int, *, scale: float = 1.0) -> QImage:
     app = qapp()
     from book_normalizer.gui.app import _resolve_theme
+    from book_normalizer.gui.ui_scaler import BASE_FONT_SIZE, make_app_font
 
+    app.setFont(make_app_font(max(10, round(BASE_FONT_SIZE * scale))))
     app.setStyleSheet(_resolve_theme(scale))
     if hasattr(widget, "set_ui_scale"):
         widget.set_ui_scale(scale)

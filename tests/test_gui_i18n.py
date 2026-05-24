@@ -170,6 +170,7 @@ def test_theme_has_multilingual_font_fallbacks() -> None:
     theme = _resolve_theme()
 
     for font_name in (
+        "Segoe UI",
         "Microsoft YaHei",
         "PingFang SC",
         "Noto Sans CJK",

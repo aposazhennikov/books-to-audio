@@ -21,6 +21,19 @@ MIN_UI_SCALE = 0.8
 MAX_UI_SCALE = 1.45
 SCALE_STEP = 0.05
 BASE_FONT_SIZE = 13
+MULTILINGUAL_FONT_FAMILIES = (
+    "Segoe UI",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Noto Sans CJK SC",
+    "Noto Sans CJK",
+    "WenQuanYi Zen Hei",
+    "Noto Sans",
+    "Inter",
+    "Helvetica Neue",
+)
 
 _FONT_SIZE_RE = re.compile(r"(font-size\s*:\s*)(\d+(?:\.\d+)?)(px)", re.IGNORECASE)
 _BASE_STYLESHEET_PROPERTY = "_books_to_audio_base_stylesheet"
@@ -48,6 +61,22 @@ def scale_stylesheet(stylesheet: str, scale: float) -> str:
         return f"{match.group(1)}{size}{match.group(3)}"
 
     return _FONT_SIZE_RE.sub(repl, stylesheet)
+
+
+def make_app_font(
+    point_size: int,
+    weight: QFont.Weight | None = None,
+) -> QFont:
+    """Create the application font with multilingual fallback families."""
+    font = QFont()
+    if hasattr(font, "setFamilies"):
+        font.setFamilies(list(MULTILINGUAL_FONT_FAMILIES))
+    else:  # pragma: no cover - Qt 6 exposes setFamilies
+        font.setFamily(MULTILINGUAL_FONT_FAMILIES[0])
+    font.setPointSize(point_size)
+    if weight is not None:
+        font.setWeight(weight)
+    return font
 
 
 def apply_widget_scale_metrics(root: QWidget, scale: float) -> None:
@@ -193,7 +222,7 @@ class UiScaler(QObject):
 
         old_scale = self._scale
         self._scale = new_scale
-        self._app.setFont(QFont("Segoe UI", max(10, round(BASE_FONT_SIZE * new_scale))))
+        self._app.setFont(make_app_font(max(10, round(BASE_FONT_SIZE * new_scale))))
         self._app.setStyleSheet(self._theme_factory(new_scale))
 
         for widget in self._app.topLevelWidgets():

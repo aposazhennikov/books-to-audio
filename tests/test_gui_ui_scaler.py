@@ -3,9 +3,11 @@ from __future__ import annotations
 from book_normalizer.gui.ui_scaler import (
     MAX_UI_SCALE,
     MIN_UI_SCALE,
+    MULTILINGUAL_FONT_FAMILIES,
     SCALE_STEP,
     UiScaler,
     clamp_scale,
+    make_app_font,
     scale_stylesheet,
 )
 
@@ -84,6 +86,27 @@ def test_scale_stylesheet_scales_font_size_px_only() -> None:
 
 def test_scale_stylesheet_keeps_tiny_fonts_readable() -> None:
     assert "font-size: 9px" in scale_stylesheet("font-size: 4px;", 0.8)
+
+
+def test_make_app_font_carries_multilingual_fallbacks() -> None:
+    font = make_app_font(13)
+
+    families = font.families() if hasattr(font, "families") else [font.family()]
+    assert families[: len(MULTILINGUAL_FONT_FAMILIES)] == list(
+        MULTILINGUAL_FONT_FAMILIES,
+    )
+    assert font.pointSize() == 13
+
+
+def test_gui_test_harness_uses_runtime_multilingual_font() -> None:
+    from tests.gui.helpers import qapp
+
+    app = qapp()
+    families = app.font().families() if hasattr(app.font(), "families") else [app.font().family()]
+
+    assert families[: len(MULTILINGUAL_FONT_FAMILIES)] == list(
+        MULTILINGUAL_FONT_FAMILIES,
+    )
 
 
 def test_ctrl_wheel_changes_ui_scale() -> None:

@@ -167,6 +167,25 @@ def test_zoomed_roles_table_headers_do_not_clip() -> None:
     window.deleteLater()
 
 
+def test_zoomed_synthesis_manifest_action_does_not_clip() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(3)
+    render_widget(window, 760, 520, scale=1.45)
+
+    page = window._synthesis_page
+    button = page._btn_load
+    text_width = button.fontMetrics().horizontalAdvance(button.text())
+
+    assert button.text() == "Открыть"
+    assert text_width + 60 <= button.width()
+    assert _rect_in_window(window, button).right() <= window.rect().right()
+
+    window.close()
+    window.deleteLater()
+
+
 def test_voice_settings_panel_has_no_visible_scrollbar() -> None:
     app = qapp()
     _ = app

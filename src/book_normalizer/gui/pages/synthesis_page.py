@@ -490,6 +490,8 @@ class SynthesisPage(QWidget):
 
         self._btn_load = QPushButton()
         self._btn_load.clicked.connect(self._browse_manifest)
+        self._btn_load.setMaximumWidth(220)
+        self._btn_load.setMinimumWidth(156)
         file_row.addWidget(self._btn_load)
         layout.addLayout(file_row)
 
@@ -2429,9 +2431,11 @@ class SynthesisPage(QWidget):
             self._btn_test.setText(t("synth.compact_test_start"))
             self._btn_play_test.setText(t("synth.compact_test_play"))
             self._btn_start.setText(t("synth.compact_start"))
+            self._btn_load.setText(t("synth.compact_load_manifest"))
             self._btn_stop.setText(t("synth.stop"))
             return
 
+        self._btn_load.setText(t("synth.load_manifest"))
         self._btn_test.setText(t("synth.test_start"))
         self._btn_play_test.setText(t("synth.test_play"))
         self._btn_start.setText(t("synth.start"))

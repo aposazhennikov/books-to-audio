@@ -873,6 +873,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Load Manifest",
         "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
     },
+    "synth.compact_load_manifest": {
+        "en": "Open",
+        "ru": "Открыть",
+        "zh": "打开",
+        "kk": "Ашу",
+        "uz": "Ochish",
+    },
     "synth.mode_custom_voice": {
         "en": "Custom Voice",
         "ru": "Custom Voice",

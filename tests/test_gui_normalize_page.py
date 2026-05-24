@@ -216,10 +216,11 @@ def test_normalize_page_uses_readable_psm_options_and_centered_dpi(qapp) -> None
     ] == [3, 4, 6, 11, 13]
     current_text = page._ocr_psm.itemText(page._ocr_psm.findData(6)).lower()
     assert "6" in current_text
-    assert "cropped text" in current_text
-    assert "main body block" in current_text
+    assert "cropped body text" in current_text
+    assert "selected text block" in current_text
     psm_help = page._ocr_psm.toolTip().lower()
-    assert "book page" in psm_help
+    assert "normal book page" in psm_help
+    assert "reading order may need review" in psm_help
     assert "do not use for full pages" in psm_help
     assert page._raw_label.text() == "Original text"
     assert page._norm_label.text() == "After normalization"
@@ -232,19 +233,32 @@ def test_normalize_page_uses_readable_psm_options_and_centered_dpi(qapp) -> None
         ru_page._ocr_psm.itemText(index)
         for index in range(ru_page._ocr_psm.count())
     ]
-    assert any("Книжная страница" in text for text in ru_texts)
-    assert any("Фрагменты" in text for text in ru_texts)
+    assert any("Обычная страница книги" in text for text in ru_texts)
+    assert any("Разбросанные фрагменты" in text for text in ru_texts)
+    assert "порядок чтения надо проверить" in ru_page._ocr_psm.toolTip()
     assert "не использовать для полной страницы" in ru_page._ocr_psm.toolTip()
     ru_page.deleteLater()
 
 
 def test_normalize_page_retranslates_psm_options_for_all_languages(qapp) -> None:
+    vague_fragments = {
+        "single column",
+        "sparse text",
+        "один столбец",
+        "редкий текст",
+        "разреженный текст",
+        "单列",
+        "稀疏",
+        "үздіксіз мәтін бағаны",
+        "uzluksiz matn ustuni",
+    }
     for code, _label in SUPPORTED_LANGUAGES:
         set_language(code)
         page = NormalizePage()
         page.retranslate()
 
         texts = [page._ocr_psm.itemText(index) for index in range(page._ocr_psm.count())]
+        all_help = "\n".join(texts + [page._ocr_psm.toolTip()]).lower()
         assert [page._ocr_psm.itemData(index) for index in range(page._ocr_psm.count())] == [
             3,
             4,
@@ -256,6 +270,7 @@ def test_normalize_page_retranslates_psm_options_for_all_languages(qapp) -> None
         assert all("??" not in text for text in texts)
         assert "??" not in page._ocr_psm.toolTip()
         assert "\ufffd" not in page._ocr_psm.toolTip()
+        assert not any(fragment.lower() in all_help for fragment in vague_fragments)
         assert page._ocr_psm.currentData() == 6
         page.deleteLater()
 

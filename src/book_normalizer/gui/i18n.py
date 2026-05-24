@@ -152,47 +152,50 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "300 = \u0431\u044b\u0441\u0442\u0440\u043e, 400 = \u043e\u043f\u0442\u0438\u043c\u0430\u043b\u044c\u043d\u043e, 600 = \u043c\u0430\u043a\u0441\u0438\u043c\u0430\u043b\u044c\u043d\u043e\u0435 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e."
         ),
     },
-    "norm.ocr_psm": {"en": "Tesseract PSM:", "ru": "Tesseract PSM:"},
+    "norm.ocr_psm": {
+        "en": "OCR page layout (PSM):",
+        "ru": "Разметка страницы OCR (PSM):",
+    },
     "norm.ocr_psm_hint": {
         "en": "Choose the layout that best matches the rendered page.",
         "ru": "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u0430\u0437\u043c\u0435\u0442\u043a\u0443, \u043a\u043e\u0442\u043e\u0440\u0430\u044f \u0431\u043b\u0438\u0436\u0435 \u0432\u0441\u0435\u0433\u043e \u043a \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0435 \u043f\u043e\u0441\u043b\u0435 \u0440\u0435\u043d\u0434\u0435\u0440\u0430.",
     },
     "norm.ocr_psm_3": {
-        "en": "3 - Auto: mixed or unknown page layout",
-        "ru": "3 - Авто: смешанная или неизвестная разметка",
+        "en": "3 - Auto full page: unknown book layout",
+        "ru": "3 - Авто-страница: если верстка книги непонятна",
     },
     "norm.ocr_psm_4": {
-        "en": "4 - Book page: one continuous text column",
-        "ru": "4 - Книжная страница: один столбец текста",
+        "en": "4 - Normal book page: continuous reading order",
+        "ru": "4 - Обычная страница книги: сплошной порядок чтения",
     },
     "norm.ocr_psm_6": {
-        "en": "6 - Cropped text: one main body block",
-        "ru": "6 - Обрезанный текст: один основной блок",
+        "en": "6 - Cropped body text: one selected text block",
+        "ru": "6 - Вырезанный основной текст: один выбранный блок",
     },
     "norm.ocr_psm_11": {
-        "en": "11 - Fragments: captions, stamps, scattered text",
-        "ru": "11 - Фрагменты: подписи, штампы, редкий текст",
+        "en": "11 - Loose fragments: captions, stamps, margin notes",
+        "ru": "11 - Разбросанные фрагменты: подписи, штампы, поля",
     },
     "norm.ocr_psm_13": {
-        "en": "13 - Single line: short strip, not a page",
-        "ru": "13 - Одна строка: короткая полоска, не страница",
+        "en": "13 - Title or one line: short strip, not a page",
+        "ru": "13 - Заголовок или одна строка: не целая страница",
     },
     "norm.ocr_psm_tip": {
         "en": (
             "Tesseract Page Segmentation Mode (PSM):\n"
-            "3 auto = mixed layout, several blocks, or unknown page structure.\n"
-            "4 book page = one normal continuous text column; best first choice for most scanned books.\n"
-            "6 cropped text = the image already contains only one main text block.\n"
-            "11 fragments = captions, stamps, marginal notes, forms, or scattered text pieces.\n"
-            "13 single line = one short horizontal text strip; do not use for full pages."
+            "3 auto full page = use when the book page has unknown layout, several blocks, illustrations, or mixed structure.\n"
+            "4 normal book page = use for a full scanned page whose main text can be read from top to bottom in a stable order.\n"
+            "6 cropped body text = use only when the image is already a selected rectangle with one main text block.\n"
+            "11 loose fragments = use for captions, stamps, margin notes, forms, or scattered text pieces; reading order may need review.\n"
+            "13 title or one line = use for one short horizontal title/header/line; do not use for full pages."
         ),
         "ru": (
             "\u0420\u0435\u0436\u0438\u043c \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0430\u0446\u0438\u0438 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b Tesseract (PSM):\n"
-            "3 авто = смешанная верстка, несколько блоков или непонятная структура страницы.\n"
-            "4 книжная страница = один нормальный столбец текста; лучший первый выбор для большинства сканов книг.\n"
-            "6 обрезанный текст = на изображении уже остался только один основной блок текста.\n"
-            "11 фрагменты = подписи, штампы, заметки на полях, формы или разрозненные куски текста.\n"
-            "13 одна строка = одна короткая горизонтальная полоска текста; не использовать для полной страницы."
+            "3 авто-страница = когда у страницы книги непонятная верстка, несколько блоков, иллюстрации или смешанная структура.\n"
+            "4 обычная страница книги = полный скан страницы, где основной текст читается сверху вниз в стабильном порядке.\n"
+            "6 вырезанный основной текст = только если изображение уже обрезано до одного прямоугольного блока текста без полей и колонтитулов.\n"
+            "11 разбросанные фрагменты = подписи, штампы, заметки на полях, формы или отдельные куски текста; порядок чтения надо проверить.\n"
+            "13 заголовок или одна строка = одна короткая горизонтальная строка/шапка; не использовать для полной страницы."
         ),
     },
     "norm.ocr_not_applicable": {
@@ -2060,55 +2063,60 @@ def _install_extra_translations() -> None:
             "kk": "Рендерленген бетке ең жақын орналасуды таңдаңыз.",
             "uz": "Render qilingan sahifaga eng yaqin tuzilmani tanlang.",
         },
+        "norm.ocr_psm": {
+            "zh": "OCR 页面版式 (PSM)：",
+            "kk": "OCR бет құрылымы (PSM):",
+            "uz": "OCR sahifa tuzilmasi (PSM):",
+        },
         "norm.ocr_psm_3": {
-            "zh": "3 - 自动：混合或未知页面",
-            "kk": "3 - Авто: аралас не белгісіз бет",
-            "uz": "3 - Avto: aralash yoki noma'lum sahifa",
+            "zh": "3 - 自动整页：书页版式不确定",
+            "kk": "3 - Авто толық бет: кітап орналасуы белгісіз",
+            "uz": "3 - Avto to'liq sahifa: kitob tuzilmasi noma'lum",
         },
         "norm.ocr_psm_4": {
-            "zh": "4 - 书页：连续正文栏",
-            "kk": "4 - Кітап беті: үздіксіз мәтін бағаны",
-            "uz": "4 - Kitob sahifasi: uzluksiz matn ustuni",
+            "zh": "4 - 普通书页：稳定阅读顺序",
+            "kk": "4 - Кітаптың қалыпты беті: тұрақты оқу реті",
+            "uz": "4 - Oddiy kitob sahifasi: barqaror o'qish tartibi",
         },
         "norm.ocr_psm_6": {
-            "zh": "6 - 裁剪正文：一个主文本块",
-            "kk": "6 - Қиылған мәтін: бір негізгі блок",
-            "uz": "6 - Kesilgan matn: bitta asosiy blok",
+            "zh": "6 - 裁剪正文：一个选中的文本块",
+            "kk": "6 - Қиылған негізгі мәтін: бір таңдалған блок",
+            "uz": "6 - Kesilgan asosiy matn: bitta tanlangan blok",
         },
         "norm.ocr_psm_11": {
             "zh": "11 - 零散片段：题注/印章/边注",
-            "kk": "11 - Фрагменттер: жазу, мөр, шеткі белгі",
-            "uz": "11 - Bo'laklar: izoh, muhr, chet yozuv",
+            "kk": "11 - Шашыраған фрагменттер: жазу, мөр, шеткі белгі",
+            "uz": "11 - Tarqoq bo'laklar: izoh, muhr, chet yozuv",
         },
         "norm.ocr_psm_13": {
-            "zh": "13 - 单行：短横向文字，不是整页",
-            "kk": "13 - Бір жол: қысқа жолақ, толық бет емес",
-            "uz": "13 - Bir qator: qisqa yozuv, to'liq sahifa emas",
+            "zh": "13 - 标题或单行：不是整页",
+            "kk": "13 - Тақырып не бір жол: толық бет емес",
+            "uz": "13 - Sarlavha yoki bir qator: to'liq sahifa emas",
         },
         "norm.ocr_psm_tip": {
             "zh": (
                 "Tesseract 页面分割模式 (PSM)：\n"
-                "3 自动 = 页面结构不确定、混排、多个正文块时使用。\n"
-                "4 书页 = 普通扫描书籍的一整页，正文基本是一条连续栏；优先尝试。\n"
-                "6 裁剪正文 = 图片已经只剩一个主要正文块，没有页眉、页脚或边注。\n"
-                "11 零散片段 = 题注、印章、边注、表单或分散文字。\n"
-                "13 单行 = 只有一条短横向文字；不要用于整页。"
+                "3 自动整页 = 书页结构不确定、混排、多个正文块或含插图时使用。\n"
+                "4 普通书页 = 完整扫描书页，正文能按稳定顺序从上到下阅读；多数书先试它。\n"
+                "6 裁剪正文 = 图片已经是一个选中的矩形正文块，没有页眉、页脚或边注。\n"
+                "11 零散片段 = 题注、印章、边注、表单或分散文字；阅读顺序可能需要复查。\n"
+                "13 标题或单行 = 只有一条短横向标题/页眉/文字；不要用于整页。"
             ),
             "kk": (
                 "Tesseract бет сегментациясы (PSM):\n"
-                "3 авто = бет құрылымы белгісіз, аралас орналасу немесе бірнеше мәтін блогы бар.\n"
-                "4 кітап беті = сканерленген кітаптың толық беті, мәтін бір үздіксіз баған сияқты; алдымен осыны көріңіз.\n"
-                "6 қиылған мәтін = суретте тек бір негізгі мәтін блогы қалған, тақырып/төменгі колонтитул/шеткі белгі жоқ.\n"
-                "11 фрагменттер = жазулар, мөрлер, шеткі белгілер, формалар немесе бөлек жатқан мәтіндер.\n"
-                "13 бір жол = қысқа көлденең мәтін ғана; толық бетке қолданбаңыз."
+                "3 авто толық бет = кітап бетінің құрылымы белгісіз, аралас, бірнеше мәтін блогы немесе сурет бар.\n"
+                "4 кітаптың қалыпты беті = толық скан, негізгі мәтін жоғарыдан төмен тұрақты ретпен оқылады; көбіне алдымен осыны таңдаңыз.\n"
+                "6 қиылған негізгі мәтін = сурет бір таңдалған тікбұрышты мәтін блогына дейін қиылған, өріс/колонтитул жоқ.\n"
+                "11 шашыраған фрагменттер = жазулар, мөрлер, шеткі белгілер, формалар немесе бөлек мәтіндер; оқу ретін тексеріңіз.\n"
+                "13 тақырып не бір жол = бір қысқа көлденең тақырып/жол ғана; толық бетке қолданбаңыз."
             ),
             "uz": (
                 "Tesseract sahifa segmentatsiyasi (PSM):\n"
-                "3 avto = sahifa tuzilmasi noma'lum, aralash yoki bir nechta matn bloki bor.\n"
-                "4 kitob sahifasi = skanerlangan kitobning to'liq sahifasi, matn uzluksiz ustun ko'rinishida; avval shuni sinang.\n"
-                "6 kesilgan matn = rasmda faqat bitta asosiy matn bloki qolgan, sarlavha yoki chet yozuvlar yo'q.\n"
-                "11 bo'laklar = izohlar, muhrlar, chet yozuvlar, blanklar yoki tarqoq matn.\n"
-                "13 bir qator = faqat qisqa gorizontal yozuv; to'liq sahifa uchun ishlatmang."
+                "3 avto to'liq sahifa = kitob sahifasi tuzilmasi noma'lum, aralash, bir nechta matn bloki yoki rasm bor.\n"
+                "4 oddiy kitob sahifasi = to'liq skan, asosiy matn yuqoridan pastga barqaror tartibda o'qiladi; ko'p kitoblarda avval shuni sinang.\n"
+                "6 kesilgan asosiy matn = rasm bitta tanlangan to'rtburchak matn blokigacha kesilgan, chet yozuv yoki kolontitul yo'q.\n"
+                "11 tarqoq bo'laklar = izohlar, muhrlar, chet yozuvlar, blanklar yoki tarqoq matn; o'qish tartibini tekshiring.\n"
+                "13 sarlavha yoki bir qator = faqat qisqa gorizontal sarlavha/qator; to'liq sahifa uchun ishlatmang."
             ),
         },
         "norm.ocr_unavailable_native": {

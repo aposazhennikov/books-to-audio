@@ -105,22 +105,35 @@ def test_language_selector_uses_text_codes_not_flag_emoji(qtbot) -> None:
 
 def test_tesseract_psm_help_is_readable_in_every_supported_language() -> None:
     expectations = {
-        "en": ("book page", "do not use for full pages"),
-        "ru": ("книжная страница", "не использовать для полной страницы"),
-        "zh": ("书页", "不要用于整页"),
-        "kk": ("кітап беті", "толық бетке қолданбаңыз"),
-        "uz": ("kitob sahifasi", "to'liq sahifa uchun ishlatmang"),
+        "en": ("normal book page", "reading order may need review", "do not use for full pages"),
+        "ru": ("обычная страница книги", "порядок чтения надо проверить", "не использовать для полной страницы"),
+        "zh": ("普通书页", "阅读顺序可能需要复查", "不要用于整页"),
+        "kk": ("кітаптың қалыпты беті", "оқу ретін тексеріңіз", "толық бетке қолданбаңыз"),
+        "uz": ("oddiy kitob sahifasi", "o'qish tartibini tekshiring", "to'liq sahifa uchun ishlatmang"),
+    }
+    vague_fragments = {
+        "single column",
+        "sparse text",
+        "один столбец",
+        "редкий текст",
+        "разреженный текст",
+        "单列",
+        "稀疏",
+        "үздіксіз мәтін бағаны",
+        "uzluksiz matn ustuni",
     }
 
     for code, _label in SUPPORTED_LANGUAGES:
         set_language(code)
         options = [t(f"norm.ocr_psm_{value}") for value in (3, 4, 6, 11, 13)]
         help_text = t("norm.ocr_psm_tip").lower()
+        combined = "\n".join(options + [help_text]).lower()
         assert len(options) == 5
         assert all(option.strip() for option in options)
         assert all("??" not in option for option in options)
         assert "??" not in help_text
         assert "\ufffd" not in help_text
+        assert not any(fragment.lower() in combined for fragment in vague_fragments)
         for fragment in expectations[code]:
             assert fragment in help_text
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from book_normalizer.gui.i18n import set_language
 from tests.gui import helpers as gui_helpers
 from tests.gui.helpers import (
     assert_layout_sane,
@@ -207,22 +208,24 @@ def test_zoomed_synthesis_manifest_action_does_not_clip(
     app = qapp()
     _ = app
     window = MainWindow()
-    lang_index = window._lang_combo.findData(language)
-    assert lang_index >= 0
-    window._lang_combo.setCurrentIndex(lang_index)
-    window._tabs.setCurrentIndex(3)
-    render_widget(window, 760, 520, scale=1.45)
+    try:
+        lang_index = window._lang_combo.findData(language)
+        assert lang_index >= 0
+        window._lang_combo.setCurrentIndex(lang_index)
+        window._tabs.setCurrentIndex(3)
+        render_widget(window, 760, 520, scale=1.45)
 
-    page = window._synthesis_page
-    button = page._btn_load
-    text_width = button.fontMetrics().horizontalAdvance(button.text())
+        page = window._synthesis_page
+        button = page._btn_load
+        text_width = button.fontMetrics().horizontalAdvance(button.text())
 
-    assert button.text() == expected_text
-    assert text_width + 60 <= button.width()
-    assert _rect_in_window(window, button).right() <= window.rect().right()
-
-    window.close()
-    window.deleteLater()
+        assert button.text() == expected_text
+        assert text_width + 60 <= button.width()
+        assert _rect_in_window(window, button).right() <= window.rect().right()
+    finally:
+        window.close()
+        window.deleteLater()
+        set_language("ru")
 
 
 def test_voice_settings_panel_has_no_visible_scrollbar() -> None:

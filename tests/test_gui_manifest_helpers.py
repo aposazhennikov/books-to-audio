@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest
+from book_normalizer.gui.i18n import set_language
 from book_normalizer.gui.pages.synthesis_page import (
     SynthesisPage,
     _build_test_manifest_chunks,
@@ -218,17 +219,21 @@ def test_synthesis_page_test_chunk_label_shows_effective_custom_voice(
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PyQt6.QtWidgets import QApplication
 
-    app = QApplication.instance() or QApplication([])
-    _ = app
-    page = SynthesisPage()
-    manifest_path = tmp_path / "chunks_manifest_v2.json"
-    manifest_path.write_text(json.dumps(_v2_manifest()), encoding="utf-8")
+    set_language("en")
+    try:
+        app = QApplication.instance() or QApplication([])
+        _ = app
+        page = SynthesisPage()
+        manifest_path = tmp_path / "chunks_manifest_v2.json"
+        manifest_path.write_text(json.dumps(_v2_manifest()), encoding="utf-8")
 
-    page.set_manifest(manifest_path, tmp_path / "out")
+        page.set_manifest(manifest_path, tmp_path / "out")
 
-    item_text = page._test_chunk_combo.itemText(0)
-    assert "CustomVoice sample" in item_text
-    assert "narrator_calm" not in item_text
+        item_text = page._test_chunk_combo.itemText(0)
+        assert "CustomVoice sample" in item_text
+        assert "narrator_calm" not in item_text
+    finally:
+        set_language("ru")
 
 
 def test_synthesis_page_test_synthesis_uses_persisted_speech_rate(

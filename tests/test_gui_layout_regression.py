@@ -447,6 +447,40 @@ def test_main_window_snapshot_uses_portable_smoke_on_non_windows(
     assert not diff_path.exists()
 
 
+def test_main_window_snapshot_uses_portable_smoke_on_ci_without_platform_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_path = (
+        Path(__file__).resolve().parent
+        / "gui"
+        / "snapshots"
+        / "main_window_1180x760.png"
+    )
+    expected = gui_helpers.QImage(str(expected_path))
+    assert not expected.isNull()
+
+    image = gui_helpers.QImage(expected.size(), gui_helpers.QImage.Format.Format_RGB32)
+    for y in range(image.height()):
+        for x in range(image.width()):
+            image.setPixelColor(
+                x,
+                y,
+                gui_helpers.QColor(
+                    190 + ((x * 7 + y * 3) % 60),
+                    190 + ((x * 5 + y * 11) % 60),
+                    190 + ((x * 13 + y * 17) % 60),
+                ),
+            )
+
+    diff_path = expected_path.with_name("main_window_1180x760.diff.png")
+    diff_path.unlink(missing_ok=True)
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.setattr(gui_helpers.platform, "system", lambda: "Windows")
+
+    assert_snapshot_matches("main_window_1180x760", image)
+    assert not diff_path.exists()
+
+
 def _assert_no_visual_overlap(root: QtWidgets.QWidget, widgets: list[QtWidgets.QWidget]) -> None:
     rects = []
     for widget in widgets:

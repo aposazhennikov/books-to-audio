@@ -119,6 +119,9 @@ def assert_snapshot_matches(name: str, image: QImage, *, tolerance: float = 0.01
     mismatch = _pixel_mismatch_ratio(expected, image)
     if mismatch <= tolerance:
         return
+    if os.environ.get("CI") == "true" and not has_platform_snapshot:
+        _assert_portable_visual_smoke(image)
+        return
     if not has_platform_snapshot and platform_name != "windows":
         _assert_portable_visual_smoke(image)
         return

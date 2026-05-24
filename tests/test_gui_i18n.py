@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from book_normalizer.gui.app import _resolve_theme
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, TRANSLATIONS, set_language, t
 from book_normalizer.gui.main_window import MainWindow
 from tests.gui.helpers import assert_layout_sane, flush_events, qapp
@@ -124,3 +125,55 @@ def test_tesseract_psm_help_is_readable_in_every_supported_language() -> None:
             assert fragment in help_text
 
     set_language("ru")
+
+
+def test_voice_chunk_table_labels_are_polished_for_supported_languages() -> None:
+    expected = {
+        "ru": {
+            "voice.play_audio": "Слушать",
+            "voice.col_chapter": "Гл.",
+            "voice.col_audio": "Аудио",
+            "voice.type_narrator": "Автор",
+        },
+        "zh": {
+            "voice.play_audio": "播放",
+            "voice.col_chapter": "章",
+            "voice.col_audio": "音频",
+            "voice.type_narrator": "旁白",
+        },
+        "kk": {
+            "voice.play_audio": "Тыңдау",
+            "voice.col_chapter": "Тар.",
+            "voice.col_audio": "Дыбыс",
+            "voice.type_narrator": "Автор",
+        },
+        "uz": {
+            "voice.play_audio": "Eshitish",
+            "voice.col_chapter": "Bob",
+            "voice.col_audio": "Ovoz",
+            "voice.type_narrator": "Hikoya",
+        },
+    }
+
+    for code, labels in expected.items():
+        set_language(code)
+        for key, value in labels.items():
+            assert t(key) == value
+        assert "LLM Model" not in t("voice.llm_model")
+        assert "演讲" not in t("voice.stats_segments")
+        assert "Баяндауыш" not in t("voice.stats_segments")
+
+    set_language("ru")
+
+
+def test_theme_has_multilingual_font_fallbacks() -> None:
+    theme = _resolve_theme()
+
+    for font_name in (
+        "Microsoft YaHei",
+        "PingFang SC",
+        "Noto Sans CJK",
+        "WenQuanYi Zen Hei",
+        "Noto Sans",
+    ):
+        assert font_name in theme

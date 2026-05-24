@@ -2158,7 +2158,33 @@ def _install_extra_translations() -> None:
         "book_language.zh": {"zh": "中文", "kk": "Қытайша", "uz": "Xitoycha"},
         "book_language.kk": {"zh": "哈萨克语", "kk": "Қазақша", "uz": "Qozoqcha"},
         "book_language.uz": {"zh": "乌兹别克语", "kk": "Өзбекше", "uz": "Oʻzbekcha"},
-        "voice.col_chunk": {"zh": "分块"},
+        "voice.col_chapter": {"zh": "章", "kk": "Тар.", "uz": "Bob"},
+        "voice.col_chunk": {"zh": "分块", "kk": "Чанк", "uz": "Boʻlak"},
+        "voice.col_audio": {"zh": "音频", "kk": "Дыбыс", "uz": "Ovoz"},
+        "voice.col_retry": {"zh": "重试", "kk": "Қайталау", "uz": "Qayta"},
+        "voice.play_audio": {
+            "ru": "Слушать",
+            "zh": "播放",
+            "kk": "Тыңдау",
+            "uz": "Eshitish",
+        },
+        "voice.mark_retry": {"zh": "重试", "kk": "Қайталау", "uz": "Qayta"},
+        "voice.type_narrator": {"zh": "旁白", "kk": "Автор", "uz": "Hikoya"},
+        "voice.manifest_path": {
+            "zh": "清单：{path}",
+            "kk": "Манифест: {path}",
+            "uz": "Manifest: {path}",
+        },
+        "voice.llm_model": {
+            "zh": "LLM 模型：",
+            "kk": "LLM моделі:",
+            "uz": "LLM modeli:",
+        },
+        "voice.stats_segments": {
+            "zh": "{total} 段 | 对话: {speech} | 旁白: {narr}",
+            "kk": "{total} сегмент | Сөз: {speech} | Автор: {narr}",
+            "uz": "{total} segment | Nutq: {speech} | Hikoya: {narr}",
+        },
         "synth.chunks_word": {"zh": "分块"},
     }
     for key, values in polished.items():

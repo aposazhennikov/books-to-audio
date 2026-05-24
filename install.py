@@ -853,7 +853,13 @@ def _system_package_commands(extras: set[str]) -> list[list[str]]:
             if needs_audio:
                 packages.append("ffmpeg")
             if needs_gui:
-                packages.extend(["libegl1", "libgl1", "libxcb-cursor0", "libxkbcommon-x11-0"])
+                packages.extend([
+                    "libegl1",
+                    "libgl1",
+                    "libxcb-cursor0",
+                    "libxkbcommon-x11-0",
+                    "fonts-noto-cjk",
+                ])
             return [
                 ["sudo", "apt-get", "update"],
                 ["sudo", "apt-get", "install", "-y", *dict.fromkeys(packages)],
@@ -865,7 +871,12 @@ def _system_package_commands(extras: set[str]) -> list[list[str]]:
             if needs_audio:
                 packages.append("ffmpeg")
             if needs_gui:
-                packages.extend(["libglvnd-glx", "libxkbcommon-x11", "xcb-util-cursor"])
+                packages.extend([
+                    "libglvnd-glx",
+                    "libxkbcommon-x11",
+                    "xcb-util-cursor",
+                    "google-noto-sans-cjk-fonts",
+                ])
             return [["sudo", "dnf", "install", *dict.fromkeys(packages)]]
         if "arch" in distro:
             packages = []
@@ -874,7 +885,12 @@ def _system_package_commands(extras: set[str]) -> list[list[str]]:
             if needs_audio:
                 packages.append("ffmpeg")
             if needs_gui:
-                packages.extend(["libgl", "libxkbcommon-x11", "xcb-util-cursor"])
+                packages.extend([
+                    "libgl",
+                    "libxkbcommon-x11",
+                    "xcb-util-cursor",
+                    "noto-fonts-cjk",
+                ])
             return [["sudo", "pacman", "-S", *dict.fromkeys(packages)]]
     return []
 

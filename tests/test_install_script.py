@@ -399,6 +399,7 @@ def test_system_package_hints_are_derived_from_native_command_argv(monkeypatch) 
     assert "&&" in hint
     assert "tesseract-ocr-rus" in commands[1]
     assert "libxcb-cursor0" in commands[1]
+    assert "fonts-noto-cjk" in commands[1]
 
 
 def test_install_system_tools_runs_native_commands_without_shell(monkeypatch) -> None:

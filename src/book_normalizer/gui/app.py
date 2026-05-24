@@ -13,7 +13,19 @@ from book_normalizer.gui.ui_scaler import UiScaler, scale_stylesheet
 THEME = """
 /* Global */
 * {
-    font-family: "Segoe UI", "Inter", "Helvetica Neue", sans-serif;
+    font-family:
+        "Segoe UI",
+        "Microsoft YaHei UI",
+        "Microsoft YaHei",
+        "PingFang SC",
+        "Hiragino Sans GB",
+        "Noto Sans CJK SC",
+        "Noto Sans CJK",
+        "WenQuanYi Zen Hei",
+        "Noto Sans",
+        "Inter",
+        "Helvetica Neue",
+        sans-serif;
     font-size: 13px;
 }
 

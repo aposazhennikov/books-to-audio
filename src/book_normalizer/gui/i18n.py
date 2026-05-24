@@ -431,12 +431,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "kk": "\u0421\u0438\u043f\u0430\u0442\u0442\u0430\u043c\u0430",
         "uz": "Tavsif",
     },
+    "roles.col_description_short": {
+        "en": "Desc.",
+        "ru": "Опис.",
+        "zh": "描述",
+        "kk": "Сип.",
+        "uz": "Tavs.",
+    },
     "roles.col_speech": {
         "en": "Direct speech",
         "ru": "\u041f\u0440\u044f\u043c\u0430\u044f \u0440\u0435\u0447\u044c",
         "zh": "\u76f4\u63a5\u5bf9\u8bdd",
         "kk": "\u0422\u0456\u043a\u0435\u043b\u0435\u0439 \u0441\u04e9\u0437",
         "uz": "Bevosita nutq",
+    },
+    "roles.col_speech_short": {
+        "en": "Speech",
+        "ru": "Речь",
+        "zh": "台词",
+        "kk": "Сөз",
+        "uz": "Nutq",
     },
     "roles.col_emotions": {
         "en": "Emotion spectrum",
@@ -445,12 +459,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "kk": "\u042d\u043c\u043e\u0446\u0438\u044f\u043b\u0430\u0440",
         "uz": "Hissiyotlar",
     },
+    "roles.col_emotions_short": {
+        "en": "Emotions",
+        "ru": "Эмоции",
+        "zh": "情绪",
+        "kk": "Эмоц.",
+        "uz": "Hiss.",
+    },
     "roles.col_segments": {
         "en": "Segments",
         "ru": "\u0421\u0435\u0433\u043c\u0435\u043d\u0442\u044b",
         "zh": "\u7247\u6bb5",
         "kk": "\u0421\u0435\u0433\u043c\u0435\u043d\u0442\u0442\u0435\u0440",
         "uz": "Segmentlar",
+    },
+    "roles.col_segments_short": {
+        "en": "Seg.",
+        "ru": "Сегм.",
+        "zh": "片段",
+        "kk": "Сегм.",
+        "uz": "Seg.",
     },
 
     # ── Voices page ──

@@ -145,6 +145,28 @@ def test_zoomed_voice_settings_do_not_overlap_assignment_table(
     window.deleteLater()
 
 
+def test_zoomed_roles_table_headers_do_not_clip() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(1)
+    render_widget(window, 760, 520, scale=1.45)
+
+    table = window._roles_page._table
+    header = table.horizontalHeader()
+    visible_labels = [
+        table.horizontalHeaderItem(column).text()
+        for column in range(table.columnCount())
+    ]
+
+    assert visible_labels == ["Роль", "Опис.", "Речь", "Эмоции", "Сегм."]
+    for column, label in enumerate(visible_labels):
+        assert header.fontMetrics().horizontalAdvance(label) + 14 <= header.sectionSize(column)
+
+    window.close()
+    window.deleteLater()
+
+
 def test_voice_settings_panel_has_no_visible_scrollbar() -> None:
     app = qapp()
     _ = app

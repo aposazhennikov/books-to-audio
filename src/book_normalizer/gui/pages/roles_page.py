@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QGridLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -39,6 +40,7 @@ class RolesPage(QWidget):
         self._segments_path: Path | None = None
         self._roles_path: Path | None = None
         self._worker: ExportSegmentsWorker | None = None
+        self._compact_mode = False
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -91,10 +93,21 @@ class RolesPage(QWidget):
         self._table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
-        self._table.horizontalHeader().setStretchLastSection(True)
+        header = self._table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setMinimumSectionSize(48)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self._table, stretch=1)
 
         self.retranslate()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Use compact table labels before headers start clipping."""
+        super().resizeEvent(event)
+        compact = self.width() < 860
+        if compact != self._compact_mode:
+            self._compact_mode = compact
+            self._apply_table_headers()
 
     def retranslate(self) -> None:
         """Update translatable strings."""
@@ -103,17 +116,34 @@ class RolesPage(QWidget):
         self._llm_model_label.setText(t("roles.llm_model"))
         self._llm_model.setPlaceholderText(t("roles.llm_model"))
         self._btn_extract.setText(t("roles.extract"))
-        self._table.setHorizontalHeaderLabels(
-            [
-                t("roles.col_role"),
-                t("roles.col_description"),
-                t("roles.col_speech"),
-                t("roles.col_emotions"),
-                t("roles.col_segments"),
-            ]
-        )
+        self._apply_table_headers()
         if self._table.rowCount() == 0:
             self._summary.setText(t("roles.empty"))
+
+    def _apply_table_headers(self) -> None:
+        """Apply full or compact role table headers with full-text tooltips."""
+        suffix = "_short" if self._compact_mode else ""
+        keys = [
+            "roles.col_role",
+            f"roles.col_description{suffix}",
+            f"roles.col_speech{suffix}",
+            f"roles.col_emotions{suffix}",
+            f"roles.col_segments{suffix}",
+        ]
+        full_keys = [
+            "roles.col_role",
+            "roles.col_description",
+            "roles.col_speech",
+            "roles.col_emotions",
+            "roles.col_segments",
+        ]
+        self._table.setHorizontalHeaderLabels(
+            [t(key) for key in keys]
+        )
+        for column, full_key in enumerate(full_keys):
+            item = self._table.horizontalHeaderItem(column)
+            if item is not None:
+                item.setToolTip(t(full_key))
 
     def set_book(self, book: object, output_dir: Path) -> None:
         """Receive the normalized book and output folder."""

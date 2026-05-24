@@ -600,9 +600,54 @@ def test_system_package_hints_are_derived_from_native_command_argv(monkeypatch) 
     assert commands[0] == ["sudo", "apt-get", "update"]
     assert commands[1][:5] == ["sudo", "apt-get", "install", "-y", "tesseract-ocr"]
     assert "&&" in hint
-    assert "tesseract-ocr-rus" in commands[1]
+    assert {
+        "tesseract-ocr-eng",
+        "tesseract-ocr-rus",
+        "tesseract-ocr-chi-sim",
+        "tesseract-ocr-kaz",
+        "tesseract-ocr-uzb",
+    }.issubset(commands[1])
     assert "libxcb-cursor0" in commands[1]
     assert "fonts-noto-cjk" in commands[1]
+
+
+@pytest.mark.parametrize(
+    ("distro", "expected"),
+    [
+        (
+            {"linux", "fedora"},
+            {
+                "tesseract-langpack-eng",
+                "tesseract-langpack-rus",
+                "tesseract-langpack-chi_sim",
+                "tesseract-langpack-kaz",
+                "tesseract-langpack-uzb",
+            },
+        ),
+        (
+            {"linux", "arch"},
+            {
+                "tesseract-data-eng",
+                "tesseract-data-rus",
+                "tesseract-data-chi_sim",
+                "tesseract-data-kaz",
+                "tesseract-data-uzb",
+            },
+        ),
+    ],
+)
+def test_linux_install_includes_all_supported_tesseract_languages(
+    monkeypatch,
+    distro: set[str],
+    expected: set[str],
+) -> None:
+    monkeypatch.setattr("install.platform.system", lambda: "Linux")
+    monkeypatch.setattr("install._linux_id_like", lambda: distro)
+
+    commands = _system_package_commands({"ocr"})
+    flattened = {part for command in commands for part in command}
+
+    assert expected.issubset(flattened)
 
 
 def test_install_system_tools_runs_native_commands_without_shell(monkeypatch) -> None:

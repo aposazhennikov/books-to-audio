@@ -949,7 +949,14 @@ def _system_package_commands(extras: set[str]) -> list[list[str]]:
         if any(name in distro for name in ("debian", "ubuntu")):
             packages = []
             if needs_ocr:
-                packages.extend(["tesseract-ocr", "tesseract-ocr-rus"])
+                packages.extend([
+                    "tesseract-ocr",
+                    "tesseract-ocr-eng",
+                    "tesseract-ocr-rus",
+                    "tesseract-ocr-chi-sim",
+                    "tesseract-ocr-kaz",
+                    "tesseract-ocr-uzb",
+                ])
             if needs_audio:
                 packages.append("ffmpeg")
             if needs_gui:
@@ -967,7 +974,14 @@ def _system_package_commands(extras: set[str]) -> list[list[str]]:
         if any(name in distro for name in ("fedora", "rhel", "centos")):
             packages = []
             if needs_ocr:
-                packages.extend(["tesseract", "tesseract-langpack-rus"])
+                packages.extend([
+                    "tesseract",
+                    "tesseract-langpack-eng",
+                    "tesseract-langpack-rus",
+                    "tesseract-langpack-chi_sim",
+                    "tesseract-langpack-kaz",
+                    "tesseract-langpack-uzb",
+                ])
             if needs_audio:
                 packages.append("ffmpeg")
             if needs_gui:
@@ -981,7 +995,14 @@ def _system_package_commands(extras: set[str]) -> list[list[str]]:
         if "arch" in distro:
             packages = []
             if needs_ocr:
-                packages.extend(["tesseract", "tesseract-data-rus"])
+                packages.extend([
+                    "tesseract",
+                    "tesseract-data-eng",
+                    "tesseract-data-rus",
+                    "tesseract-data-chi_sim",
+                    "tesseract-data-kaz",
+                    "tesseract-data-uzb",
+                ])
             if needs_audio:
                 packages.append("ffmpeg")
             if needs_gui:

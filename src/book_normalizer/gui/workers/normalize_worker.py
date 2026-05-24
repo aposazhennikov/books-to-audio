@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 import time
 from hashlib import sha1
 from pathlib import Path
@@ -39,6 +40,12 @@ def _format_eta(seconds: float) -> str:
     return f"{m}m {s:02d}s"
 
 
+def _native_ocr_install_hint() -> str:
+    """Return the native installer command that enables OCR tools."""
+    script = "install.bat" if platform.system() == "Windows" else "./install.sh"
+    return f"{script} --interactive --install-system-tools"
+
+
 def _effective_pdf_extraction_mode(
     requested_mode: OcrMode,
     *,
@@ -49,7 +56,12 @@ def _effective_pdf_extraction_mode(
         return requested_mode
 
     if requested_mode == OcrMode.FORCE:
-        raise RuntimeError(t("norm.err_tesseract_missing_force"))
+        raise RuntimeError(
+            t(
+                "norm.err_tesseract_missing_force",
+                hint=_native_ocr_install_hint(),
+            )
+        )
 
     return OcrMode.OFF
 
@@ -72,7 +84,12 @@ def _ensure_pdf_selection_is_usable(
     if stats.get("native_unreadable") and ocr_unreadable:
         if tesseract_available:
             raise RuntimeError(t("norm.err_ocr_failed_unreadable"))
-        raise RuntimeError(t("norm.err_tesseract_missing_scanned"))
+        raise RuntimeError(
+            t(
+                "norm.err_tesseract_missing_scanned",
+                hint=_native_ocr_install_hint(),
+            )
+        )
 
 
 class NormalizeWorker(QThread):
@@ -332,7 +349,12 @@ class NormalizeWorker(QThread):
 
                 if effective_ocr == OcrMode.OFF:
                     if ocr != OcrMode.OFF:
-                        self.progress.emit(t("norm.ocr_unavailable_native"))
+                        self.progress.emit(
+                            t(
+                                "norm.ocr_unavailable_native",
+                                hint=_native_ocr_install_hint(),
+                            )
+                        )
 
                     compare = extract_pdf_with_ocr_mode(
                         self._input_path, effective_ocr,

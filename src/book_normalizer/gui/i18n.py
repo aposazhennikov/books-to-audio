@@ -247,16 +247,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u043a\u043d\u0438\u0433\u0438\u2026",
     },
     "norm.ocr_unavailable_native": {
-        "en": "Tesseract is not installed; using native PDF text extraction. Run install.bat/install.sh to add OCR tools.",
-        "ru": "Tesseract \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d; \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u044e \u0432\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u043e\u0435 \u0438\u0437\u0432\u043b\u0435\u0447\u0435\u043d\u0438\u0435 \u0442\u0435\u043a\u0441\u0442\u0430 PDF. \u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u0435 install.bat/install.sh, \u0447\u0442\u043e\u0431\u044b \u0434\u043e\u0431\u0430\u0432\u0438\u0442\u044c OCR-\u0443\u0442\u0438\u043b\u0438\u0442\u044b.",
+        "en": "Tesseract is not installed; using native PDF text extraction. Run: {hint}",
+        "ru": "Tesseract не установлен; использую встроенное извлечение текста PDF. Запустите: {hint}",
     },
     "norm.err_tesseract_missing_force": {
-        "en": "Tesseract is not installed. Run install.bat/install.sh to add OCR tools, or switch OCR mode to auto/off.",
-        "ru": "Tesseract \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d. \u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u0435 install.bat/install.sh, \u0447\u0442\u043e\u0431\u044b \u0434\u043e\u0431\u0430\u0432\u0438\u0442\u044c OCR-\u0443\u0442\u0438\u043b\u0438\u0442\u044b, \u0438\u043b\u0438 \u043f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u0435 OCR \u0432 auto/off.",
+        "en": "Tesseract is not installed. Run: {hint}. Or switch OCR mode to auto/off.",
+        "ru": "Tesseract не установлен. Запустите: {hint}. Или переключите OCR в auto/off.",
     },
     "norm.err_tesseract_missing_scanned": {
-        "en": "The PDF text layer is missing or unreadable, and Tesseract is not installed. Run install.bat/install.sh to add OCR tools, then run normalization again.",
-        "ru": "\u0422\u0435\u043a\u0441\u0442\u043e\u0432\u044b\u0439 \u0441\u043b\u043e\u0439 PDF \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0438\u043b\u0438 \u043d\u0435\u0447\u0438\u0442\u0430\u0435\u043c, \u0430 Tesseract \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d. \u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u0435 install.bat/install.sh, \u0447\u0442\u043e\u0431\u044b \u0434\u043e\u0431\u0430\u0432\u0438\u0442\u044c OCR-\u0443\u0442\u0438\u043b\u0438\u0442\u044b, \u0438 \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u0435 \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044e \u0441\u043d\u043e\u0432\u0430.",
+        "en": "The PDF text layer is missing or unreadable, and Tesseract is not installed. Run: {hint}. Then run normalization again.",
+        "ru": "Текстовый слой PDF отсутствует или нечитаем, а Tesseract не установлен. Запустите: {hint}. Затем запустите нормализацию снова.",
     },
     "norm.err_ocr_failed_unreadable": {
         "en": "The PDF text layer is unreadable, and OCR did not produce readable Russian text. Check the Tesseract Russian language pack or try another DPI/PSM setting.",
@@ -2110,6 +2110,21 @@ def _install_extra_translations() -> None:
                 "11 bo'laklar = izohlar, muhrlar, chet yozuvlar, blanklar yoki tarqoq matn.\n"
                 "13 bir qator = faqat qisqa gorizontal yozuv; to'liq sahifa uchun ishlatmang."
             ),
+        },
+        "norm.ocr_unavailable_native": {
+            "zh": "Tesseract 未安装；正在使用 PDF 内置文本提取。请运行：{hint}",
+            "kk": "Tesseract орнатылмаған; PDF ішіндегі мәтінді шығарып көремін. Іске қосыңыз: {hint}",
+            "uz": "Tesseract o'rnatilmagan; PDF ichidagi matn olinmoqda. Ishga tushiring: {hint}",
+        },
+        "norm.err_tesseract_missing_force": {
+            "zh": "Tesseract 未安装。请运行：{hint}。或把 OCR 模式切换为 auto/off。",
+            "kk": "Tesseract орнатылмаған. Іске қосыңыз: {hint}. Немесе OCR режимін auto/off етіңіз.",
+            "uz": "Tesseract o'rnatilmagan. Ishga tushiring: {hint}. Yoki OCR rejimini auto/off qiling.",
+        },
+        "norm.err_tesseract_missing_scanned": {
+            "zh": "PDF 文本层缺失或不可读，并且未安装 Tesseract。请运行：{hint}。然后重新运行规范化。",
+            "kk": "PDF мәтін қабаты жоқ немесе оқылмайды, ал Tesseract орнатылмаған. Іске қосыңыз: {hint}. Содан кейін нормалдауды қайта іске қосыңыз.",
+            "uz": "PDF matn qatlami yo'q yoki o'qilmaydi, Tesseract esa o'rnatilmagan. Ishga tushiring: {hint}. Keyin normallashtirishni qayta boshlang.",
         },
         "norm.llm_review_required": {
             "zh": "LLM 保留了 {rejected} 个段落未修改。Review report：{path}",

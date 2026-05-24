@@ -223,6 +223,37 @@ class TestOcrModeSelection:
         assert compare.ocr.text == _good_ocr_text()
         assert compare.ocr.document_type == "ocr_full_page"
 
+    def test_missing_tesseract_warning_points_to_native_install_scripts(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        pdf_file = tmp_path / "native.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+        native_structure = PdfStructuredExtraction(
+            pages={
+                1: PdfPageExtraction(
+                    page_number=1,
+                    pdf_type="programmatic",
+                    page_content=["Readable native PDF text."],
+                )
+            },
+            document_type="programmatic",
+        )
+
+        with (
+            patch("book_normalizer.loaders.pdf_loader._extract_pdf_structured", return_value=native_structure),
+            patch("book_normalizer.loaders.pdf_loader._tesseract_available", return_value=False),
+            patch("book_normalizer.loaders.pdf_loader.logger.warning") as warning,
+        ):
+            compare = extract_pdf_with_ocr_mode(pdf_file, OcrMode.FORCE)
+
+        assert compare.ocr is None
+        warning.assert_called_once()
+        warning_text = str(warning.call_args.args[0])
+        assert "install.bat --interactive --install-system-tools" in warning_text
+        assert "./install.sh --interactive --install-system-tools" in warning_text
+        assert "wsl" not in warning_text.lower()
+
 
 class TestStructuredPdfExtractionHelpers:
     def test_table_converter_keeps_multiline_cells_in_one_row(self) -> None:

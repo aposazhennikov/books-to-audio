@@ -1260,9 +1260,9 @@ def extract_pdf_with_ocr_mode(
 
     if not _tesseract_available():
         logger.warning(
-            "Tesseract OCR is not installed. Install it: "
-            "apt install tesseract-ocr tesseract-ocr-rus  (Linux) or "
-            "choco install tesseract  (Windows) + pip install pytesseract Pillow. "
+            "Tesseract OCR is not installed in this OS environment. "
+            "Run install.bat --interactive --install-system-tools on Windows "
+            "or ./install.sh --interactive --install-system-tools on Linux/macOS. "
             "Falling back to native text extraction."
         )
         return PdfOcrCompareResult(

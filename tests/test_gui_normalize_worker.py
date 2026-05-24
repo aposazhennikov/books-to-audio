@@ -8,11 +8,13 @@ from types import SimpleNamespace
 import pytest
 
 from book_normalizer.config import OcrMode
+from book_normalizer.gui.i18n import set_language
 from book_normalizer.gui.workers.normalize_worker import (
     NormalizeWorker,
     _apply_selected_book_language,
     _effective_pdf_extraction_mode,
     _ensure_pdf_selection_is_usable,
+    _native_ocr_install_hint,
 )
 from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3_MODEL
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
@@ -54,13 +56,47 @@ def test_gui_pdf_keeps_requested_mode_when_tesseract_available() -> None:
     )
 
 
+def test_native_ocr_install_hint_uses_host_os(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "book_normalizer.gui.workers.normalize_worker.platform.system",
+        lambda: "Windows",
+    )
+    assert _native_ocr_install_hint() == "install.bat --interactive --install-system-tools"
+
+    monkeypatch.setattr(
+        "book_normalizer.gui.workers.normalize_worker.platform.system",
+        lambda: "Linux",
+    )
+    assert _native_ocr_install_hint() == "./install.sh --interactive --install-system-tools"
+
+
+def test_gui_pdf_missing_tesseract_error_points_to_native_installer(monkeypatch) -> None:
+    set_language("ru")
+    monkeypatch.setattr(
+        "book_normalizer.gui.workers.normalize_worker.platform.system",
+        lambda: "Windows",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _effective_pdf_extraction_mode(
+            OcrMode.FORCE,
+            tesseract_available=False,
+        )
+
+    message = str(exc_info.value)
+    assert "install.bat --interactive --install-system-tools" in message
+    assert "wsl" not in message.lower()
+
+
 def test_gui_pdf_rejects_broken_native_without_tesseract() -> None:
-    with pytest.raises(RuntimeError, match="Tesseract"):
+    set_language("en")
+    with pytest.raises(RuntimeError) as exc_info:
         _ensure_pdf_selection_is_usable(
             OcrMode.AUTO,
             {"native_unreadable": True, "ocr_unreadable": True},
             tesseract_available=False,
         )
+    assert "./install.sh --interactive --install-system-tools" in str(exc_info.value)
 
 
 def test_gui_pdf_rejects_unreadable_ocr_when_native_is_broken() -> None:

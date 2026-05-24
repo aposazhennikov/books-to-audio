@@ -382,7 +382,7 @@ def run_stage5_assemble(
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Full books-to-audio pipeline (normalize → chunk → synthesize → assemble)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -449,7 +449,7 @@ def main() -> None:
         choices=["auto", "off", "force"],
         help="PDF OCR mode (default: auto).",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.max_chunk_chars < 30:
         parser.error("--max-chunk-chars must be at least 30.")
 

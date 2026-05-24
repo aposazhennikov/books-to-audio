@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
 import sys
+from collections.abc import Callable
 from copy import deepcopy
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 import click
@@ -192,10 +193,7 @@ def pipeline_command(
     ocr_mode: str,
 ) -> None:
     """Run the recommended normalize -> v2 chunks -> ComfyUI -> manifest assembly pipeline."""
-    script = Path(__file__).resolve().parents[2] / "scripts" / "run_pipeline.py"
-    cmd = [
-        sys.executable,
-        str(script),
+    argv = [
         "--book",
         str(input_path),
         "--out",
@@ -210,22 +208,45 @@ def pipeline_command(
         ocr_mode,
     ]
     if llm_normalize:
-        cmd.append("--llm-normalize")
+        argv.append("--llm-normalize")
     if synthesize:
-        cmd.append("--synthesize")
+        argv.append("--synthesize")
         if not workflow:
             workflow = Path("comfyui_workflows/qwen3_tts_template.json")
-        cmd.extend(["--workflow", str(workflow), "--comfyui-url", comfyui_url])
+        argv.extend(["--workflow", str(workflow), "--comfyui-url", comfyui_url])
     if assemble:
-        cmd.append("--assemble")
+        argv.append("--assemble")
     if chapter is not None:
-        cmd.extend(["--chapter", str(chapter)])
+        argv.extend(["--chapter", str(chapter)])
     if skip_stage1:
-        cmd.append("--skip-stage1")
+        argv.append("--skip-stage1")
 
-    result = subprocess.run(cmd, check=False)
-    if result.returncode != 0:
-        raise click.ClickException(f"Pipeline exited with code {result.returncode}")
+    _run_pipeline_in_process(argv)
+
+
+def _run_pipeline_in_process(argv: list[str]) -> None:
+    """Run the repository pipeline script without shelling out to a child interpreter."""
+    script = Path(__file__).resolve().parents[2] / "scripts" / "run_pipeline.py"
+    pipeline_main = _load_pipeline_main(script)
+    try:
+        pipeline_main(argv)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+        if code:
+            raise click.ClickException(f"Pipeline exited with code {code}") from exc
+
+
+def _load_pipeline_main(script: Path) -> Callable[[list[str] | None], None]:
+    """Load ``scripts/run_pipeline.py`` as a module and return its main function."""
+    spec = spec_from_file_location("books_to_audio_run_pipeline", script)
+    if spec is None or spec.loader is None:
+        raise click.ClickException(f"Cannot load pipeline script: {script}")
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    main_func = getattr(module, "main", None)
+    if not callable(main_func):
+        raise click.ClickException(f"Pipeline script has no callable main(): {script}")
+    return main_func
 
 
 @main.command(name="doctor")

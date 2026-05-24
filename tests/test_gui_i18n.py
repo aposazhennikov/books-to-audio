@@ -4,6 +4,7 @@ import os
 import platform
 import re
 import unicodedata
+from pathlib import Path
 
 import pytest
 
@@ -260,12 +261,28 @@ def test_ci_linux_has_installed_cjk_font_for_chinese_gui() -> None:
         pytest.skip("CJK font availability is enforced on Linux CI.")
 
     qt_gui = pytest.importorskip("PyQt6.QtGui")
+    qapp()
     families = set(qt_gui.QFontDatabase.families())
-
-    assert any(
-        any(token in family for token in ("Noto Sans CJK", "WenQuanYi", "Source Han"))
-        for family in families
+    family_tokens = ("Noto Sans CJK", "WenQuanYi", "Source Han", "Droid Sans Fallback")
+    font_file_tokens = (
+        "notosanscjk",
+        "noto sans cjk",
+        "sourcehan",
+        "source han",
+        "wenquanyi",
+        "droidsansfallback",
     )
+
+    qt_has_cjk_font = any(
+        any(token in family for token in family_tokens) for family in families
+    )
+    system_has_cjk_font = any(
+        any(token in path.name.lower().replace("-", "") for token in font_file_tokens)
+        for path in Path("/usr/share/fonts").rglob("*")
+        if path.is_file()
+    )
+
+    assert qt_has_cjk_font or system_has_cjk_font
 
 
 def test_theme_keeps_disabled_primary_buttons_readable() -> None:

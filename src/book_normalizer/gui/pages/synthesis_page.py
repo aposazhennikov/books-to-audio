@@ -448,6 +448,13 @@ class SynthesisPage(QWidget):
         self._last_test_audio_path: Path | None = None
         self._setup_ui()
 
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self._tick_timer.stop()
+        for player in (self._sample_player, self._test_player):
+            player.stop()
+            player.setSource(QUrl())
+        super().closeEvent(event)
+
     # ── UI construction ──────────────────────────────────────────────────────
 
     def _setup_ui(self) -> None:

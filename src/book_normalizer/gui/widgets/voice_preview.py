@@ -362,8 +362,8 @@ class VoiceCard(QWidget):
             return
 
         if self._player is None:
-            self._audio_output = QAudioOutput()
-            self._player = QMediaPlayer()
+            self._audio_output = QAudioOutput(self)
+            self._player = QMediaPlayer(self)
             self._player.setAudioOutput(self._audio_output)
             self._player.playbackStateChanged.connect(
                 self._on_state_changed,
@@ -385,6 +385,17 @@ class VoiceCard(QWidget):
     def _on_state_changed(self, state) -> None:
         if state == QMediaPlayer.PlaybackState.StoppedState:
             self._btn_play.setText("\u25B6")
+
+    def release_player(self) -> None:
+        """Stop and detach preview playback before Qt tears widgets down."""
+        if self._player is not None:
+            self._player.stop()
+            self._player.setSource(QUrl())
+        self._btn_play.setText("\u25B6")
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self.release_player()
+        super().closeEvent(event)
 
 
 class VoicePreviewPanel(QWidget):
@@ -576,6 +587,11 @@ class VoicePreviewPanel(QWidget):
                 t("voice.previews_ready", count=ready,
                   total=len(self._cards))
             )
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        for card in self._cards:
+            card.release_player()
+        super().closeEvent(event)
 
     def _generate_previews(self) -> None:
         """Generate selected preview WAVs through the local Python runtime."""

@@ -154,8 +154,8 @@ QPushButton#primaryBtn:hover {
 }
 
 QPushButton#primaryBtn:disabled {
-    background: rgba(37, 99, 235, 0.24);
-    color: rgba(255, 255, 255, 0.36);
+    background: rgba(147, 197, 253, 0.54);
+    color: rgba(30, 41, 59, 0.52);
 }
 
 QPushButton#dangerBtn {

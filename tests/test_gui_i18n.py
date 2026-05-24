@@ -178,3 +178,14 @@ def test_theme_has_multilingual_font_fallbacks() -> None:
         "Noto Sans",
     ):
         assert font_name in theme
+
+
+def test_theme_keeps_disabled_primary_buttons_readable() -> None:
+    theme = _resolve_theme()
+    block = theme.split("QPushButton#primaryBtn:disabled", maxsplit=1)[1].split(
+        "}",
+        maxsplit=1,
+    )[0]
+
+    assert "rgba(30, 41, 59, 0.52)" in block
+    assert "rgba(255, 255, 255, 0.36)" not in block

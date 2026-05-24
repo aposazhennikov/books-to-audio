@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -108,7 +109,8 @@ class AssemblyPage(QWidget):
         )
         self._dir_label.setStyleSheet(
             "font-weight: 700; font-size: 13px; padding: 6px 12px;"
-            "background: rgba(15,23,42,0.62); border: 1px solid rgba(148,163,184,0.12);"
+            "background: rgba(255,255,255,0.86);"
+            "border: 1px solid rgba(91,115,142,0.18);"
             "border-radius: 8px;"
         )
         dir_row.addWidget(self._dir_label, stretch=1)
@@ -131,6 +133,7 @@ class AssemblyPage(QWidget):
         self._pause_same.setRange(0, 5000)
         self._pause_same.setValue(300)
         self._pause_same.setSuffix(" ms")
+        _make_pause_spin_compact(self._pause_same)
         self._pause_same_label = QLabel()
         settings.addRow(
             self._label_with_help(self._pause_same_label, "asm.pause_same_help"),
@@ -141,6 +144,7 @@ class AssemblyPage(QWidget):
         self._pause_change.setRange(0, 5000)
         self._pause_change.setValue(600)
         self._pause_change.setSuffix(" ms")
+        _make_pause_spin_compact(self._pause_change)
         self._pause_change_label = QLabel()
         settings.addRow(
             self._label_with_help(
@@ -167,7 +171,7 @@ class AssemblyPage(QWidget):
         self._output_label = QLabel("")
         self._output_label.setWordWrap(True)
         self._output_label.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 12px; padding: 4px 0;"
+            "color: rgba(51,65,85,0.70); font-size: 12px; padding: 4px 0;"
         )
         layout.addWidget(self._output_label)
         layout.addStretch()
@@ -302,6 +306,15 @@ def _format_legacy_results(result: dict[str, Path], *, audio_dir: Path) -> str:
         size_mb = path.stat().st_size / 1024 / 1024
         lines.append(f"  {label}: {path.name} -> {duration:.1f}s ({size_mb:.1f} MB)")
     return "\n".join(lines)
+
+
+def _make_pause_spin_compact(spin: QSpinBox) -> None:
+    """Match pause fields to compact centered numeric controls."""
+    spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    spin.lineEdit().setAlignment(Qt.AlignmentFlag.AlignCenter)
+    spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+    spin.setFixedWidth(128)
+    spin.setFixedHeight(38)
 
 
 def _wav_duration(path: Path) -> float:

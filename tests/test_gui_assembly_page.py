@@ -9,8 +9,19 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from tests.gui.helpers import assert_layout_sane, render_widget
+from tests.gui.helpers import qapp as make_qapp
+
+QtCore = pytest.importorskip("PyQt6.QtCore")
+QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 assembly_page = pytest.importorskip("book_normalizer.gui.pages.assembly_page")
+AssemblyPage = assembly_page.AssemblyPage
 AssemblyWorker = assembly_page.AssemblyWorker
+
+
+@pytest.fixture
+def qapp():
+    return make_qapp()
 
 
 def _write_wav(path: Path, *, frames: int = 240, sample_rate: int = 24000) -> None:
@@ -133,3 +144,23 @@ def test_assembly_worker_reports_no_wav_for_empty_legacy_folder(tmp_path: Path) 
 
     assert errors == []
     assert finished == [f"No WAV chunks in {output_dir / 'audio_chunks'}"]
+
+
+def test_assembly_page_uses_light_compact_numeric_controls(qapp) -> None:
+    page = AssemblyPage()
+    render_widget(page, 760, 520, scale=1.45)
+
+    assert_layout_sane(page)
+    assert "rgba(15,23,42" not in page._dir_label.styleSheet()
+    assert "rgba(226,232,240" not in page._output_label.styleSheet()
+    for spin in (page._pause_same, page._pause_change):
+        assert spin.alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
+        assert spin.alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+        assert spin.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
+        assert spin.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+        assert spin.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
+        assert spin.width() <= 128
+        assert spin.height() == 38
+
+    page.close()
+    page.deleteLater()

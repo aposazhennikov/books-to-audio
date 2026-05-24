@@ -10,6 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
+from tests.gui.helpers import render_widget
 
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 QtCore = pytest.importorskip("PyQt6.QtCore")
@@ -152,6 +153,37 @@ def test_voices_page_uses_compact_centered_chunk_size_field(qapp) -> None:
     assert page._chunk_size.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
     assert 38 <= page._chunk_size.height() <= 42
     assert page._chunk_size.width() <= 160
+
+    page.deleteLater()
+
+
+def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
+    page = VoicesPage()
+    render_widget(page, 760, 520, scale=1.45)
+
+    table = page._voice_table
+    assert table._editor_tabs.isHidden()
+    assert table._table.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    for column in (0, 1, 2, 5, 6, 7):
+        assert table._table.isColumnHidden(column)
+
+    table.set_segments(
+        [
+            {
+                "segment_index": 0,
+                "chapter_index": 0,
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "text": "Editable segment.",
+            },
+        ]
+    )
+    render_widget(page, 760, 520, scale=1.45)
+
+    assert table._editor_tabs.isVisible()
+    assert not table._table.isColumnHidden(3)
+    assert not table._table.isColumnHidden(4)
 
     page.deleteLater()
 

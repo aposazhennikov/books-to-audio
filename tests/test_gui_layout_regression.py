@@ -168,9 +168,22 @@ def test_chunk_editor_action_buttons_are_not_clipped() -> None:
     _ = app
     window = MainWindow()
     window._tabs.setCurrentIndex(2)
+    window._voices_page._voice_table.set_segments(
+        [
+            {
+                "segment_index": 0,
+                "chapter_index": 0,
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "text": "A short editable segment.",
+            },
+        ]
+    )
     render_widget(window, 1180, 760, scale=1.0)
 
     table = window._voices_page._voice_table
+    assert table._editor_tabs.isVisible()
     for button in (
         table._btn_segment_split,
         table._btn_segment_merge,
@@ -260,6 +273,8 @@ def test_zoomed_chunk_markup_controls_do_not_overlap() -> None:
     assert page._stress_mode.isHidden()
     assert page._progress.isHidden()
     assert page._top_tabs.geometry().bottom() <= page._voice_table.geometry().top()
+    assert page._voice_table._editor_tabs.isHidden()
+    assert page._voice_table._table.horizontalScrollBar().maximum() == 0
 
     window.close()
     window.deleteLater()

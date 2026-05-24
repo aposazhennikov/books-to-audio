@@ -228,6 +228,7 @@ class VoiceTableWidget(QWidget):
             QAbstractItemView.SelectionBehavior.SelectRows,
         )
         self._table.setAlternatingRowColors(True)
+        self._table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._table.verticalHeader().setVisible(False)
         self._table.itemChanged.connect(self._on_table_item_changed)
         self._table.itemSelectionChanged.connect(
@@ -264,6 +265,7 @@ class VoiceTableWidget(QWidget):
 
         self.retranslate()
         self._apply_table_layout()
+        self._sync_editor_visibility()
 
     def _build_segment_editor(self) -> QWidget:
         """Build the focused editor for the currently selected segment."""
@@ -467,7 +469,7 @@ class VoiceTableWidget(QWidget):
 
     def _apply_table_layout(self) -> None:
         """Apply column visibility and widget widths for the current mode."""
-        hidden_cols = {0, 1, 2, 5} if self._compact_mode else set()
+        hidden_cols = {0, 1, 2, 5, 6, 7} if self._compact_mode else set()
         for col in range(self._table.columnCount()):
             self._table.setColumnHidden(col, col in hidden_cols)
 
@@ -502,6 +504,10 @@ class VoiceTableWidget(QWidget):
             intonation_combo = self._table.cellWidget(row, 5)
             if isinstance(intonation_combo, QComboBox):
                 intonation_combo.setMinimumWidth(96 if self._compact_mode else 118)
+
+    def _sync_editor_visibility(self) -> None:
+        """Hide the chunk editor until there is something meaningful to edit."""
+        self._editor_tabs.setVisible(bool(self._segments))
 
     def _scaled_table_row_height(self, base_height: int) -> int:
         return max(
@@ -684,6 +690,7 @@ class VoiceTableWidget(QWidget):
 
         self._populating = False
         self._apply_table_layout()
+        self._sync_editor_visibility()
         self._sync_full_text_from_segments()
         if visible_segments and not self._table.selectedItems():
             self._table.setCurrentCell(0, 3)

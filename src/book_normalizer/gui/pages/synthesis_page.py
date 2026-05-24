@@ -457,6 +457,7 @@ class SynthesisPage(QWidget):
 
         # Scrollable settings area.
         scroll = QScrollArea()
+        self._settings_scroll = scroll
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -464,6 +465,7 @@ class SynthesisPage(QWidget):
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
         container = QWidget()
+        self._settings_container = container
         container.setMinimumWidth(0)
         container.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -498,6 +500,11 @@ class SynthesisPage(QWidget):
         # ── Main settings form ────────────────────────────────────────────
         self._mode_tabs = QTabWidget()
         self._mode_tabs.setObjectName("synthesisModeTabs")
+        self._mode_tabs.setMinimumWidth(0)
+        self._mode_tabs.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         self._mode_tabs.currentChanged.connect(self._on_mode_changed)
         self._mode_tabs.addTab(self._build_sample_voice_panel(), "")
         self._mode_tabs.addTab(self._build_preset_speakers_tab(), "")
@@ -585,6 +592,14 @@ class SynthesisPage(QWidget):
 
     def _sync_compact_mode(self) -> None:
         compact = self.width() < 900
+        if compact:
+            viewport_width = self._settings_scroll.viewport().width()
+            compact_width = max(320, min(self.width(), viewport_width or self.width()))
+            self._settings_container.setMaximumWidth(compact_width)
+            self._mode_tabs.setMaximumWidth(compact_width)
+        else:
+            self._settings_container.setMaximumWidth(16777215)
+            self._mode_tabs.setMaximumWidth(16777215)
         if self._compact_mode == compact:
             return
         self._compact_mode = compact

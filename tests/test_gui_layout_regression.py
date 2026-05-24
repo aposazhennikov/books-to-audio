@@ -190,10 +190,26 @@ def test_zoomed_roles_model_field_stays_readable_in_compact_layout() -> None:
     window.deleteLater()
 
 
-def test_zoomed_synthesis_manifest_action_does_not_clip() -> None:
+@pytest.mark.parametrize(
+    ("language", "expected_text"),
+    [
+        ("ru", "Открыть"),
+        ("en", "Open"),
+        ("zh", "打开"),
+        ("kk", "Ашу"),
+        ("uz", "Ochish"),
+    ],
+)
+def test_zoomed_synthesis_manifest_action_does_not_clip(
+    language: str,
+    expected_text: str,
+) -> None:
     app = qapp()
     _ = app
     window = MainWindow()
+    lang_index = window._lang_combo.findData(language)
+    assert lang_index >= 0
+    window._lang_combo.setCurrentIndex(lang_index)
     window._tabs.setCurrentIndex(3)
     render_widget(window, 760, 520, scale=1.45)
 
@@ -201,7 +217,7 @@ def test_zoomed_synthesis_manifest_action_does_not_clip() -> None:
     button = page._btn_load
     text_width = button.fontMetrics().horizontalAdvance(button.text())
 
-    assert button.text() == "Открыть"
+    assert button.text() == expected_text
     assert text_width + 60 <= button.width()
     assert _rect_in_window(window, button).right() <= window.rect().right()
 

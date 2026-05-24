@@ -24,10 +24,15 @@ DEFAULT_OLLAMA_MODELS = (
     "hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M",
     "hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M",
 )
+DEFAULT_TTS_HASH_MODEL_IDS = (
+    "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    "Qwen/Qwen3-TTS-Tokenizer-12Hz",
+)
 INSTALL_TOOL_PACKAGES = ("pip", "setuptools", "wheel", "build")
 LOG_PATH = Path("install.log")
 RUNTIME_CONFIG_PATH = Path("data/local_runtime_paths.json")
 HASH_MANIFEST_PATH = Path("data/install_hashes.json")
+TTS_HASH_LABEL = "tts_models"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 VERIFY_MODULES = {
     "core": [
@@ -592,6 +597,19 @@ def _ollama_model_is_present(paths: InstallPaths, model: str) -> bool:
 
 
 def _install_tts_models(venv_python: Path, paths: InstallPaths, verify_hashes: bool) -> None:
+    hash_metadata = {"models": list(DEFAULT_TTS_HASH_MODEL_IDS)}
+    if verify_hashes and _verified_hash_matches(
+        TTS_HASH_LABEL,
+        paths.models_dir,
+        metadata=hash_metadata,
+    ):
+        _say(
+            "TTS models already verified by SHA-256; skipping download.",
+            "TTS-модели уже проверены по SHA-256; скачивание пропущено.",
+            "ok",
+        )
+        return
+
     _say("Installing default Qwen3-TTS models...", "Устанавливаю стандартные Qwen3-TTS модели...", "info")
     code = (
         "from pathlib import Path\n"
@@ -601,7 +619,7 @@ def _install_tts_models(venv_python: Path, paths: InstallPaths, verify_hashes: b
     )
     _run([str(venv_python), "-c", code], paths)
     if verify_hashes:
-        _verify_or_write_hash("models_dir", paths.models_dir)
+        _verify_or_write_hash(TTS_HASH_LABEL, paths.models_dir, metadata=hash_metadata)
 
 
 def _record_command_hash(label: str, cmd: list[str], paths: InstallPaths) -> None:
@@ -618,12 +636,43 @@ def _record_command_hash(label: str, cmd: list[str], paths: InstallPaths) -> Non
     _write_hash_manifest_entry(label, {"sha256": digest, "source": " ".join(cmd)})
 
 
-def _verify_or_write_hash(label: str, path: Path) -> None:
-    _say(f"Hashing {path}...", f"Считаю SHA-256 для {path}...", "info")
-    current = _hash_tree(path)
+def _verified_hash_matches(
+    label: str,
+    path: Path,
+    *,
+    metadata: dict[str, object] | None = None,
+) -> bool:
+    """Return True when an existing hash manifest proves this folder is intact."""
     manifest = _read_hash_manifest()
     previous = manifest.get(label)
-    if previous and previous.get("sha256") != current["sha256"]:
+    if not previous:
+        return False
+    if metadata is not None and previous.get("metadata") != metadata:
+        return False
+    current = _hash_tree(path)
+    if previous.get("sha256") != current["sha256"]:
+        raise SystemExit(
+            f"Hash mismatch for {label}: expected {previous.get('sha256')}, got {current['sha256']}"
+        )
+    return True
+
+
+def _verify_or_write_hash(
+    label: str,
+    path: Path,
+    *,
+    metadata: dict[str, object] | None = None,
+) -> None:
+    _say(f"Hashing {path}...", f"Считаю SHA-256 для {path}...", "info")
+    current = _hash_tree(path)
+    if metadata is not None:
+        current["metadata"] = metadata
+    manifest = _read_hash_manifest()
+    previous = manifest.get(label)
+    comparable_metadata = previous is not None and (
+        metadata is None or previous.get("metadata") == metadata
+    )
+    if previous and comparable_metadata and previous.get("sha256") != current["sha256"]:
         raise SystemExit(
             f"Hash mismatch for {label}: expected {previous.get('sha256')}, got {current['sha256']}"
         )

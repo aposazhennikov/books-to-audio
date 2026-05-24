@@ -8,19 +8,26 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from install import (
     DEFAULT_OLLAMA_MODELS,
+    DEFAULT_TTS_HASH_MODEL_IDS,
     HASH_MANIFEST_PATH,
     INSTALL_TOOL_PACKAGES,
     RUNTIME_CONFIG_PATH,
+    TTS_HASH_LABEL,
     InstallPaths,
     _command_available,
     _hash_tree,
     _install_system_tools,
+    _install_tts_models,
     _pull_ollama_models,
     _resolve_install_paths,
     _system_package_commands,
     _system_package_hint,
+    _verified_hash_matches,
+    _verify_or_write_hash,
     _write_hash_manifest_entry,
     _write_runtime_config,
 )
@@ -188,6 +195,79 @@ def test_write_hash_manifest_entry_overwrites_selected_label(tmp_path: Path, mon
 
     payload = json.loads(HASH_MANIFEST_PATH.read_text(encoding="utf-8"))
     assert payload == {"models_dir": {"sha256": "two"}}
+
+
+def test_verify_hash_stores_metadata_and_matches_intact_folder(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "config.json").write_text("{}", encoding="utf-8")
+    metadata = {"models": list(DEFAULT_TTS_HASH_MODEL_IDS)}
+
+    _verify_or_write_hash(TTS_HASH_LABEL, models_dir, metadata=metadata)
+
+    manifest = json.loads(HASH_MANIFEST_PATH.read_text(encoding="utf-8"))
+    assert manifest[TTS_HASH_LABEL]["metadata"] == metadata
+    assert _verified_hash_matches(TTS_HASH_LABEL, models_dir, metadata=metadata) is True
+
+
+def test_install_tts_models_skips_download_when_hash_manifest_matches(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "config.json").write_text("{}", encoding="utf-8")
+    metadata = {"models": list(DEFAULT_TTS_HASH_MODEL_IDS)}
+    _verify_or_write_hash(TTS_HASH_LABEL, models_dir, metadata=metadata)
+    paths = InstallPaths(
+        install_root=tmp_path,
+        venv_dir=tmp_path / ".venv",
+        models_dir=models_dir,
+        hf_cache_dir=tmp_path / "hf-cache",
+        ollama_endpoint="http://127.0.0.1:11434",
+        ollama_bin="ollama",
+        tesseract_cmd="tesseract",
+        ffmpeg_bin="ffmpeg",
+    )
+
+    def fail_run(*_args, **_kwargs):  # noqa: ANN002
+        raise AssertionError("download step should be skipped")
+
+    monkeypatch.setattr("install._run", fail_run)
+
+    _install_tts_models(tmp_path / ".venv" / "bin" / "python", paths, verify_hashes=True)
+
+
+def test_install_tts_models_rejects_hash_mismatch_before_download(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    model_file = models_dir / "config.json"
+    model_file.write_text("{}", encoding="utf-8")
+    metadata = {"models": list(DEFAULT_TTS_HASH_MODEL_IDS)}
+    _verify_or_write_hash(TTS_HASH_LABEL, models_dir, metadata=metadata)
+    model_file.write_text('{"corrupt": true}', encoding="utf-8")
+    paths = InstallPaths(
+        install_root=tmp_path,
+        venv_dir=tmp_path / ".venv",
+        models_dir=models_dir,
+        hf_cache_dir=tmp_path / "hf-cache",
+        ollama_endpoint="http://127.0.0.1:11434",
+        ollama_bin="ollama",
+        tesseract_cmd="tesseract",
+        ffmpeg_bin="ffmpeg",
+    )
+
+    with pytest.raises(SystemExit, match="Hash mismatch"):
+        _install_tts_models(tmp_path / ".venv" / "bin" / "python", paths, verify_hashes=True)
 
 
 def test_pull_ollama_models_skips_already_present_model(tmp_path: Path, monkeypatch) -> None:

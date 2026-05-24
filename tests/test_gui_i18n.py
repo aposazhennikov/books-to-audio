@@ -179,6 +179,39 @@ def test_voice_chunk_table_labels_are_polished_for_supported_languages() -> None
     set_language("ru")
 
 
+def test_synthesis_mode_tabs_are_localized_for_supported_languages(qtbot) -> None:
+    expected = {
+        "ru": ["Свой голос", "Готовые голоса", "Дополнительно"],
+        "en": ["Custom Voice", "Built-in Speakers", "Advanced"],
+        "zh": ["自定义声音", "内置声音", "高级"],
+        "kk": ["Өз дауысы", "Дайын дауыстар", "Қосымша"],
+        "uz": ["O'z ovozi", "Tayyor ovozlar", "Qo'shimcha"],
+    }
+    english_leaks = ("custom voice", "built-in speakers", "advanced")
+
+    app = qapp()
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.resize(760, 520)
+    window.show()
+    flush_events(app)
+
+    combo = window._lang_combo
+    window._tabs.setCurrentIndex(3)
+    for code, labels in expected.items():
+        index = combo.findData(code)
+        assert index >= 0
+        combo.setCurrentIndex(index)
+        flush_events(app)
+        page = window._synthesis_page
+        assert [page._mode_tabs.tabText(i) for i in range(3)] == labels
+        if code != "en":
+            combined = " ".join(labels).lower()
+            assert not any(leak in combined for leak in english_leaks)
+
+    set_language("ru")
+
+
 def test_theme_has_multilingual_font_fallbacks() -> None:
     theme = _resolve_theme()
 

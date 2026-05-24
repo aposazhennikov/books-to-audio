@@ -882,15 +882,24 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "synth.mode_custom_voice": {
         "en": "Custom Voice",
-        "ru": "Custom Voice",
+        "ru": "Свой голос",
+        "zh": "自定义声音",
+        "kk": "Өз дауысы",
+        "uz": "O'z ovozi",
     },
     "synth.mode_preset_speakers": {
         "en": "Built-in Speakers",
-        "ru": "Готовые спикеры",
+        "ru": "Готовые голоса",
+        "zh": "内置声音",
+        "kk": "Дайын дауыстар",
+        "uz": "Tayyor ovozlar",
     },
     "synth.mode_advanced": {
         "en": "Advanced",
         "ru": "Дополнительно",
+        "zh": "高级",
+        "kk": "Қосымша",
+        "uz": "Qo'shimcha",
     },
     "synth.preset_title": {
         "en": "Built-in Qwen speakers",
@@ -2073,6 +2082,24 @@ def _install_extra_translations() -> None:
         "tab.synthesize_short": {"zh": "4. 声音", "kk": "4. Дауыс", "uz": "4. Ovoz"},
         "tab.assemble": {"zh": "5. 章节", "kk": "5. Тараулар", "uz": "5. Boblar"},
         "tab.assemble_short": {"zh": "5. 章节", "kk": "5. Тарау", "uz": "5. Bob"},
+        "synth.mode_custom_voice": {
+            "ru": "Свой голос",
+            "zh": "自定义声音",
+            "kk": "Өз дауысы",
+            "uz": "O'z ovozi",
+        },
+        "synth.mode_preset_speakers": {
+            "ru": "Готовые голоса",
+            "zh": "内置声音",
+            "kk": "Дайын дауыстар",
+            "uz": "Tayyor ovozlar",
+        },
+        "synth.mode_advanced": {
+            "ru": "Дополнительно",
+            "zh": "高级",
+            "kk": "Қосымша",
+            "uz": "Qo'shimcha",
+        },
         "voice.generate_previews": {
             "zh": "生成预览",
             "kk": "Алдын ала тыңдауды жасау",

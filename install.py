@@ -33,6 +33,7 @@ LOG_PATH = Path("install.log")
 RUNTIME_CONFIG_PATH = Path("data/local_runtime_paths.json")
 HASH_MANIFEST_PATH = Path("data/install_hashes.json")
 TTS_HASH_LABEL = "tts_models"
+OLLAMA_HASH_LABEL = "ollama_models"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 VERIFY_MODULES = {
     "core": [
@@ -583,6 +584,20 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
 
 
 def _pull_ollama_models(paths: InstallPaths, verify_hashes: bool) -> None:
+    hash_metadata = {"models": list(DEFAULT_OLLAMA_MODELS)}
+    if verify_hashes and _verified_command_hash_matches(
+        OLLAMA_HASH_LABEL,
+        [paths.ollama_bin, "list"],
+        paths,
+        metadata=hash_metadata,
+    ):
+        _say(
+            "Ollama models already verified by SHA-256; skipping pull.",
+            "Модели Ollama уже проверены по SHA-256; скачивание пропущено.",
+            "ok",
+        )
+        return
+
     _say("Pulling Ollama language models...", "Скачиваю модели Ollama...", "info")
     for model in DEFAULT_OLLAMA_MODELS:
         if _ollama_model_is_present(paths, model):
@@ -594,7 +609,12 @@ def _pull_ollama_models(paths: InstallPaths, verify_hashes: bool) -> None:
             continue
         _run([paths.ollama_bin, "pull", model], paths)
     if verify_hashes:
-        _record_command_hash("ollama_models", [paths.ollama_bin, "list"], paths)
+        _record_command_hash(
+            OLLAMA_HASH_LABEL,
+            [paths.ollama_bin, "list"],
+            paths,
+            metadata=hash_metadata,
+        )
 
 
 def _ollama_model_is_present(paths: InstallPaths, model: str) -> bool:
@@ -637,7 +657,46 @@ def _install_tts_models(venv_python: Path, paths: InstallPaths, verify_hashes: b
         _verify_or_write_hash(TTS_HASH_LABEL, paths.models_dir, metadata=hash_metadata)
 
 
-def _record_command_hash(label: str, cmd: list[str], paths: InstallPaths) -> None:
+def _record_command_hash(
+    label: str,
+    cmd: list[str],
+    paths: InstallPaths,
+    *,
+    metadata: dict[str, object] | None = None,
+) -> None:
+    current = _hash_command_output(label, cmd, paths)
+    if metadata is not None:
+        current["metadata"] = metadata
+    _write_hash_manifest_entry(label, current)
+    _say(f"Hash verified: {label}", f"Хэш проверен: {label}", "ok")
+
+
+def _verified_command_hash_matches(
+    label: str,
+    cmd: list[str],
+    paths: InstallPaths,
+    *,
+    metadata: dict[str, object] | None = None,
+) -> bool:
+    manifest = _read_hash_manifest()
+    previous = manifest.get(label)
+    if not previous:
+        return False
+    if metadata is not None and previous.get("metadata") != metadata:
+        return False
+    current = _hash_command_output(label, cmd, paths)
+    if previous.get("sha256") != current["sha256"]:
+        raise SystemExit(
+            f"Hash mismatch for {label}: expected {previous.get('sha256')}, got {current['sha256']}"
+        )
+    return True
+
+
+def _hash_command_output(
+    label: str,
+    cmd: list[str],
+    paths: InstallPaths,
+) -> dict[str, object]:
     result = subprocess.run(
         cmd,
         capture_output=True,
@@ -647,8 +706,15 @@ def _record_command_hash(label: str, cmd: list[str], paths: InstallPaths) -> Non
         check=False,
         env=_installer_env(paths),
     )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise SystemExit(f"Cannot hash {label}: {' '.join(cmd)} failed. {detail}")
     digest = hashlib.sha256(result.stdout.encode("utf-8", errors="replace")).hexdigest()
-    _write_hash_manifest_entry(label, {"sha256": digest, "source": " ".join(cmd)})
+    return {
+        "sha256": digest,
+        "source": " ".join(cmd),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def _verified_hash_matches(

@@ -216,7 +216,8 @@ class VoicesPage(QWidget):
 
         left_layout.addStretch()
 
-        # Right panel: voice preview (scrollable, vertical only).
+        # Right panel: voice preview. Content remains wheel/touchpad scrollable,
+        # but the visual bar stays hidden to keep the tab clean at high zoom.
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -236,7 +237,7 @@ class VoicesPage(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
         scroll.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
         scroll.setStyleSheet(
             "QScrollArea { border: none; background: transparent; }",

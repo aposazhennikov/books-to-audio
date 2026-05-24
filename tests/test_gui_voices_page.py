@@ -167,6 +167,8 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     assert table._preset_toolbar_panel.isHidden()
     assert table._quick_apply_panel.isHidden()
     assert table._table.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert table._segment_editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert table._full_text_editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     for column in (0, 1, 2, 5, 6, 7):
         assert table._table.isColumnHidden(column)
 
@@ -190,6 +192,26 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     assert table._quick_apply_panel.isVisible()
     assert not table._table.isColumnHidden(3)
     assert not table._table.isColumnHidden(4)
+
+    page.deleteLater()
+
+
+def test_voice_preview_tab_hides_scrollbar_but_keeps_content_scrollable(qapp) -> None:
+    page = VoicesPage()
+    page._top_tabs.setCurrentIndex(1)
+    render_widget(page, 760, 520, scale=1.45)
+
+    scroll = page.findChild(QtWidgets.QScrollArea, "voicePreviewScroll")
+    assert scroll is not None
+    assert scroll.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert scroll.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert not scroll.verticalScrollBar().isVisible()
+    assert not scroll.horizontalScrollBar().isVisible()
+    assert page._voice_preview._phrase_input.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert page._voice_preview._phrase_input.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert scroll.widget() is page._voice_preview
+    assert scroll.verticalScrollBar().maximum() > 0
+    assert scroll.widget().sizeHint().height() > scroll.viewport().height()
 
     page.deleteLater()
 

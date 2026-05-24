@@ -121,6 +121,7 @@ def _make_text_edit_compact(edit: QPlainTextEdit) -> None:
     """Wrap long lines and prevent horizontal scrolling inside text boxes."""
     edit.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
     edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
 

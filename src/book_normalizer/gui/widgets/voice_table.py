@@ -301,6 +301,9 @@ class VoiceTableWidget(QWidget):
         self._segment_editor.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
+        self._segment_editor.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
         self._segment_editor.setStyleSheet(_editor_style())
         self._segment_editor.textChanged.connect(
             self._on_segment_editor_text_changed,
@@ -355,6 +358,9 @@ class VoiceTableWidget(QWidget):
         self._full_text_editor.setMinimumHeight(88)
         self._full_text_editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._full_text_editor.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
+        self._full_text_editor.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
         self._full_text_editor.setStyleSheet(_editor_style())

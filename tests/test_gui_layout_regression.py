@@ -150,6 +150,7 @@ def test_voice_settings_panel_has_no_visible_scrollbar() -> None:
     _ = app
     window = MainWindow()
     window._tabs.setCurrentIndex(1)
+    window._voices_page._top_tabs.setCurrentIndex(1)
     render_widget(window, 1180, 760, scale=1.0)
 
     assert window.findChild(QtWidgets.QScrollArea, "voiceSettingsScroll") is None
@@ -157,6 +158,10 @@ def test_voice_settings_panel_has_no_visible_scrollbar() -> None:
         if not scroll.isVisible():
             continue
         assert scroll.objectName() != "voiceSettingsScroll"
+        assert scroll.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert scroll.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert not scroll.verticalScrollBar().isVisible()
+        assert not scroll.horizontalScrollBar().isVisible()
         assert scroll.horizontalScrollBar().maximum() == 0
 
     window.close()
@@ -214,6 +219,11 @@ def test_synthesis_page_actions_are_visible_without_settings_scrollbar() -> None
             continue
         assert scroll.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         assert scroll.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    for editor in page.findChildren(QtWidgets.QPlainTextEdit):
+        if not editor.isVisible():
+            continue
+        assert editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert editor.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
 
     for button in (page._btn_test, page._btn_play_test, page._btn_start, page._btn_stop):
         assert button.isVisible()

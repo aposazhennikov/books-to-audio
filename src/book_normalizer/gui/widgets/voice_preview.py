@@ -441,6 +441,8 @@ class VoicePreviewPanel(QWidget):
         self._phrase_input = QTextEdit()
         self._phrase_input.setPlaceholderText(t("voice.default_phrase"))
         self._phrase_input.setMaximumHeight(48)
+        self._phrase_input.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._phrase_input.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._phrase_input.setStyleSheet(
             "QTextEdit {"
             "  background: rgba(255,255,255,0.90);"

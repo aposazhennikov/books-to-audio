@@ -110,18 +110,7 @@ def main() -> int:
     venv_python = _venv_python(paths.venv_dir)
 
     _say("Books to Audio installer", "Установщик Books to Audio", "title")
-    print(f"Project: {project_root}")
-    print(f"Python:  {sys.version.split()[0]} ({sys.executable})")
-    print(f"OS:      {platform.system()} {platform.release()}")
-    print(f"Venv:    {paths.venv_dir}")
-    print(f"Models:  {paths.models_dir}")
-    print(f"HF_HOME: {paths.hf_cache_dir}")
-    print(f"Ollama:  {paths.ollama_endpoint} ({paths.ollama_bin})")
-    print(f"OCR:     {paths.tesseract_cmd}")
-    print(f"FFmpeg:  {paths.ffmpeg_bin}")
-    print(f"Log:     {(project_root / LOG_PATH).resolve()}")
-    print(f"Extras:  {', '.join(sorted(extras)) if extras else 'core only'}")
-    print()
+    _print_install_summary(project_root, paths, extras)
 
     if args.system_check:
         _print_system_dependency_notes(extras, paths)
@@ -295,6 +284,32 @@ def _say(en: str, ru: str = "", level: str = "info") -> None:
     print(_paint(f"{prefix} {en}", colors[level]))
     if ru:
         print(_paint(f"   {ru}", colors[level]))
+
+
+def _print_install_summary(
+    project_root: Path,
+    paths: InstallPaths,
+    extras: set[str],
+) -> None:
+    """Print a bilingual, log-friendly installation summary."""
+    rows = [
+        ("Project", "Проект", str(project_root)),
+        ("Python", "Python", f"{sys.version.split()[0]} ({sys.executable})"),
+        ("OS", "ОС", f"{platform.system()} {platform.release()}"),
+        ("Virtual environment", "Виртуальное окружение", str(paths.venv_dir)),
+        ("Models folder", "Папка моделей", str(paths.models_dir)),
+        ("Hugging Face cache", "Кэш Hugging Face", str(paths.hf_cache_dir)),
+        ("Ollama endpoint/bin", "Ollama адрес/команда", f"{paths.ollama_endpoint} ({paths.ollama_bin})"),
+        ("Tesseract OCR", "Tesseract OCR", paths.tesseract_cmd),
+        ("FFmpeg", "FFmpeg", paths.ffmpeg_bin),
+        ("Log file", "Лог", str((project_root / LOG_PATH).resolve())),
+        ("Install extras", "Опции установки", ", ".join(sorted(extras)) if extras else "core only / только ядро"),
+    ]
+    width = max(len(en) for en, _ru, _value in rows)
+    for en, ru, value in rows:
+        label = _paint(f"{en:<{width}}", "1;34")
+        print(f"{label} / {ru}: {value}")
+    print()
 
 
 def _resolve_install_paths(args: argparse.Namespace, project_root: Path) -> InstallPaths:
@@ -890,10 +905,10 @@ def _print_next_steps(venv_dir: Path) -> None:
         gui_cmd = f"{venv_dir}/bin/python -m book_normalizer.gui.app"
         cli_cmd = f"{venv_dir}/bin/normalize-book doctor --skip-network"
 
-    print("Next steps:")
-    print(f"  Activate venv: {activate}")
-    print(f"  Run GUI:       {gui_cmd}")
-    print(f"  Run checks:    {cli_cmd}")
+    print(_paint("Next steps / Следующие шаги:", "1;36"))
+    print(f"  Activate venv / Активировать venv: {activate}")
+    print(f"  Run GUI       / Запустить GUI:      {gui_cmd}")
+    print(f"  Run checks    / Проверить установку: {cli_cmd}")
 
 
 if __name__ == "__main__":

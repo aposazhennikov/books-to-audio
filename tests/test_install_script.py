@@ -22,6 +22,9 @@ from install import (
     _hash_tree,
     _install_system_tools,
     _install_tts_models,
+    _paint,
+    _print_install_summary,
+    _print_next_steps,
     _pull_ollama_models,
     _resolve_install_paths,
     _system_package_commands,
@@ -59,6 +62,44 @@ def test_installer_wrappers_pause_without_requiring_enter() -> None:
     assert "stty raw -echo" in shell_text
     assert "dd bs=1 count=1" in shell_text
     assert "pause >nul" in batch_text
+
+
+def test_installer_summary_and_next_steps_are_bilingual(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    paths = InstallPaths(
+        install_root=tmp_path / "install-root",
+        venv_dir=tmp_path / ".venv",
+        models_dir=tmp_path / "models",
+        hf_cache_dir=tmp_path / "hf-cache",
+        ollama_endpoint="http://127.0.0.1:11434",
+        ollama_bin="ollama",
+        tesseract_cmd="tesseract",
+        ffmpeg_bin="ffmpeg",
+    )
+
+    _print_install_summary(tmp_path, paths, {"gui", "ocr"})
+    _print_next_steps(paths.venv_dir)
+
+    out = capsys.readouterr().out
+    assert "Project" in out and "/ Проект:" in out
+    assert "Virtual environment" in out and "/ Виртуальное окружение:" in out
+    assert "Models folder" in out and "/ Папка моделей:" in out
+    assert "Ollama endpoint/bin" in out and "/ Ollama адрес/команда:" in out
+    assert "Install extras" in out and "/ Опции установки: gui, ocr" in out
+    assert "Next steps / Следующие шаги:" in out
+    assert "Activate venv / Активировать venv:" in out
+    assert "Run GUI       / Запустить GUI:" in out
+    assert "Run checks    / Проверить установку:" in out
+
+
+def test_installer_paint_adds_ansi_only_for_tty(monkeypatch) -> None:
+    monkeypatch.setattr("install._supports_color", lambda: True)
+    assert _paint("status", "32") == "\x1b[32mstatus\x1b[0m"
+
+    monkeypatch.setattr("install._supports_color", lambda: False)
+    assert _paint("status", "32") == "status"
 
 
 def test_installer_dry_run_overwrites_bilingual_log(tmp_path: Path) -> None:

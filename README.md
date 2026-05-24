@@ -65,6 +65,9 @@ Linux/macOS:
 `install.py` создает `.venv`, обновляет `pip`, ставит пакет в editable-режиме,
 проверяет импорты, спрашивает пути для моделей/Hugging Face/Ollama в
 интерактивном терминале и сохраняет их в `data/local_runtime_paths.json`.
+Для Ollama-моделей можно выбрать отдельную папку через
+`--ollama-models-dir`; installer передает ее в native Ollama как
+`OLLAMA_MODELS`, поэтому `ollama pull` не пишет модели в неожиданное место.
 Windows wrapper `install.bat` использует `.venv-windows`, чтобы не смешивать
 Windows GUI и Linux `.venv`. По умолчанию ставится desktop-профиль: GUI, OCR,
 LLM-клиент и audio helpers. `install.log` перезаписывается при каждом запуске.
@@ -131,6 +134,7 @@ python install.py --recreate              # пересоздать .venv
 python install.py --dry-run               # показать план без установки
 python install.py --yes                   # не спрашивать пути, взять defaults/flags
 python install.py --interactive           # явно спросить пути и optional downloads
+python install.py --ollama-models-dir D:/OllamaModels
 python install.py --download-ollama-models
 python install.py --download-tts-models --verify-hashes
 ```
@@ -207,6 +211,9 @@ ollama serve
 На Windows можно поставить Ollama Desktop или указать полный путь к `ollama.exe`
 в `install.py --ollama-bin`. Главное, чтобы `http://localhost:11434` отвечал из
 приложения; в dev shell должен быть доступен тот же endpoint.
+Если модели должны лежать на другом диске, запускайте installer с
+`--ollama-models-dir` или укажите путь в interactive-режиме; он сохранится в
+`data/local_runtime_paths.json` и `.env`, а `ollama pull` получит `OLLAMA_MODELS`.
 
 Рекомендуемые модели для 8 GB VRAM / 16 GB RAM:
 

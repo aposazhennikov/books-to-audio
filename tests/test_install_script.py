@@ -93,6 +93,7 @@ def test_installer_summary_and_next_steps_are_bilingual(
         venv_dir=tmp_path / ".venv",
         models_dir=tmp_path / "models",
         hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "ollama-models",
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
         tesseract_cmd="tesseract",
@@ -106,6 +107,7 @@ def test_installer_summary_and_next_steps_are_bilingual(
     assert "Project" in out and "/ Проект:" in out
     assert "Virtual environment" in out and "/ Виртуальное окружение:" in out
     assert "Models folder" in out and "/ Папка моделей:" in out
+    assert "Ollama models folder" in out and "/ Папка моделей Ollama:" in out
     assert "Ollama endpoint/bin" in out and "/ Ollama адрес/команда:" in out
     assert "Install extras" in out and "/ Опции установки: gui, ocr" in out
     assert "Next steps / Следующие шаги:" in out
@@ -132,6 +134,7 @@ def test_installer_dry_run_overwrites_bilingual_log(tmp_path: Path) -> None:
 
     models_dir = tmp_path / "models"
     hf_cache_dir = tmp_path / "hf-cache"
+    ollama_models_dir = tmp_path / "ollama-models"
     try:
         result = subprocess.run(
             [
@@ -148,6 +151,8 @@ def test_installer_dry_run_overwrites_bilingual_log(tmp_path: Path) -> None:
                 str(models_dir),
                 "--hf-cache-dir",
                 str(hf_cache_dir),
+                "--ollama-models-dir",
+                str(ollama_models_dir),
                 "--tesseract-bin",
                 str(tmp_path / "tools" / "tesseract.exe"),
                 "--ffmpeg-bin",
@@ -168,8 +173,10 @@ def test_installer_dry_run_overwrites_bilingual_log(tmp_path: Path) -> None:
         assert "Пробный запуск" in log_text
         assert str(models_dir) in log_text
         assert str(hf_cache_dir) in log_text
+        assert str(ollama_models_dir) in log_text
         assert runtime_config["models_dir"] == str(models_dir)
         assert runtime_config["hf_cache_dir"] == str(hf_cache_dir)
+        assert runtime_config["ollama_models_dir"] == str(ollama_models_dir)
         assert runtime_config["tesseract_cmd"] == str(tmp_path / "tools" / "tesseract.exe")
         assert "BOOKS_TO_AUDIO_RUNTIME_CONFIG" in env_path.read_text(encoding="utf-8")
     finally:
@@ -190,6 +197,7 @@ def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatc
         venv_dir=tmp_path / ".venv",
         models_dir=tmp_path / "models",
         hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "ollama-models",
         ollama_endpoint="http://127.0.0.1:11435",
         ollama_bin="ollama",
         tesseract_cmd=str(tmp_path / "tools" / "tesseract.exe"),
@@ -201,11 +209,14 @@ def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatc
     payload = json.loads((tmp_path / RUNTIME_CONFIG_PATH).read_text(encoding="utf-8"))
     assert payload["models_dir"] == str(paths.models_dir)
     assert payload["hf_cache_dir"] == str(paths.hf_cache_dir)
+    assert payload["ollama_models_dir"] == str(paths.ollama_models_dir)
     assert payload["ollama_endpoint"] == "http://127.0.0.1:11435"
     assert payload["tesseract_cmd"] == str(paths.tesseract_cmd)
     assert payload["ffmpeg_bin"] == str(paths.ffmpeg_bin)
     env_text = (tmp_path / RUNTIME_CONFIG_PATH).with_suffix(".env").read_text(encoding="utf-8")
     assert "BOOKS_TO_AUDIO_MODELS_DIR=" in env_text
+    assert f"BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR={paths.ollama_models_dir}" in env_text
+    assert f"OLLAMA_MODELS={paths.ollama_models_dir}" in env_text
     assert "BOOKS_TO_AUDIO_OLLAMA_ENDPOINT=http://127.0.0.1:11435" in env_text
     assert "BOOKS_TO_AUDIO_TESSERACT_CMD=" in env_text
     assert "BOOKS_TO_AUDIO_FFMPEG_BIN=" in env_text
@@ -220,6 +231,7 @@ def test_interactive_installer_prompts_for_all_runtime_paths(
         str(tmp_path / "venv"),
         str(tmp_path / "models"),
         str(tmp_path / "hf-cache"),
+        str(tmp_path / "ollama-models"),
         "http://127.0.0.1:11435",
         str(tmp_path / "ollama.exe"),
         str(tmp_path / "tesseract.exe"),
@@ -233,6 +245,7 @@ def test_interactive_installer_prompts_for_all_runtime_paths(
         venv=".venv",
         models_dir="",
         hf_cache_dir="",
+        ollama_models_dir="",
         ollama_endpoint="",
         ollama_bin="",
         tesseract_bin="",
@@ -246,6 +259,7 @@ def test_interactive_installer_prompts_for_all_runtime_paths(
     assert paths.venv_dir == tmp_path / "venv"
     assert paths.models_dir == tmp_path / "models"
     assert paths.hf_cache_dir == tmp_path / "hf-cache"
+    assert paths.ollama_models_dir == tmp_path / "ollama-models"
     assert paths.ollama_endpoint == "http://127.0.0.1:11435"
     assert paths.ollama_bin == str(tmp_path / "ollama.exe")
     assert paths.tesseract_cmd == str(tmp_path / "tesseract.exe")
@@ -307,6 +321,7 @@ def test_install_tts_models_skips_download_when_hash_manifest_matches(
         venv_dir=tmp_path / ".venv",
         models_dir=models_dir,
         hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "ollama-models",
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
         tesseract_cmd="tesseract",
@@ -338,6 +353,7 @@ def test_install_tts_models_rejects_hash_mismatch_before_download(
         venv_dir=tmp_path / ".venv",
         models_dir=models_dir,
         hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "ollama-models",
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
         tesseract_cmd="tesseract",
@@ -354,6 +370,7 @@ def test_pull_ollama_models_skips_already_present_model(tmp_path: Path, monkeypa
         venv_dir=tmp_path / ".venv",
         models_dir=tmp_path / "models",
         hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "ollama-models",
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
         tesseract_cmd="tesseract",
@@ -361,7 +378,9 @@ def test_pull_ollama_models_skips_already_present_model(tmp_path: Path, monkeypa
     )
     pulled: list[list[str]] = []
 
-    def fake_subprocess_run(cmd, **_kwargs):  # noqa: ANN001
+    def fake_subprocess_run(cmd, **kwargs):  # noqa: ANN001
+        assert kwargs["env"]["OLLAMA_MODELS"] == str(paths.ollama_models_dir)
+        assert kwargs["env"]["BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR"] == str(paths.ollama_models_dir)
         if cmd[:2] == ["ollama", "show"]:
             return SimpleNamespace(returncode=0 if cmd[2] == DEFAULT_OLLAMA_MODELS[0] else 1)
         return SimpleNamespace(returncode=0, stdout="")
@@ -384,13 +403,17 @@ def test_pull_ollama_models_skips_when_command_hash_matches(
         venv_dir=tmp_path / ".venv",
         models_dir=tmp_path / "models",
         hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "ollama-models",
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
         tesseract_cmd="tesseract",
         ffmpeg_bin="ffmpeg",
     )
     list_output = "\n".join(DEFAULT_OLLAMA_MODELS)
-    metadata = {"models": list(DEFAULT_OLLAMA_MODELS)}
+    metadata = {
+        "models": list(DEFAULT_OLLAMA_MODELS),
+        "ollama_models_dir": str(paths.ollama_models_dir),
+    }
     _write_hash_manifest_entry(
         OLLAMA_HASH_LABEL,
         {
@@ -427,6 +450,7 @@ def test_pull_ollama_models_records_hash_metadata_after_pull(
         venv_dir=tmp_path / ".venv",
         models_dir=tmp_path / "models",
         hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "ollama-models",
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
         tesseract_cmd="tesseract",
@@ -449,7 +473,10 @@ def test_pull_ollama_models_records_hash_metadata_after_pull(
 
     manifest = json.loads(HASH_MANIFEST_PATH.read_text(encoding="utf-8"))
     assert pulled == [["ollama", "pull", model] for model in DEFAULT_OLLAMA_MODELS]
-    assert manifest[OLLAMA_HASH_LABEL]["metadata"] == {"models": list(DEFAULT_OLLAMA_MODELS)}
+    assert manifest[OLLAMA_HASH_LABEL]["metadata"] == {
+        "models": list(DEFAULT_OLLAMA_MODELS),
+        "ollama_models_dir": str(paths.ollama_models_dir),
+    }
     assert manifest[OLLAMA_HASH_LABEL]["source"] == "ollama list"
 
 
@@ -463,6 +490,7 @@ def test_pull_ollama_models_rejects_hash_mismatch_before_pull(
         venv_dir=tmp_path / ".venv",
         models_dir=tmp_path / "models",
         hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "ollama-models",
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
         tesseract_cmd="tesseract",
@@ -473,7 +501,10 @@ def test_pull_ollama_models_rejects_hash_mismatch_before_pull(
         {
             "sha256": "not-current",
             "source": "ollama list",
-            "metadata": {"models": list(DEFAULT_OLLAMA_MODELS)},
+            "metadata": {
+                "models": list(DEFAULT_OLLAMA_MODELS),
+                "ollama_models_dir": str(paths.ollama_models_dir),
+            },
         },
     )
 
@@ -508,6 +539,7 @@ def test_system_dependency_notes_are_bilingual(tmp_path: Path, capsys) -> None:
         venv_dir=tmp_path / ".venv",
         models_dir=tmp_path / "models",
         hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "ollama-models",
         ollama_endpoint="http://localhost:11434",
         ollama_bin="ollama",
         tesseract_cmd=str(tmp_path / "missing-tesseract"),

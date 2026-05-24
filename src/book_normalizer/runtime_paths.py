@@ -11,6 +11,8 @@ from typing import Any
 DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434"
 RUNTIME_CONFIG_ENV = "BOOKS_TO_AUDIO_RUNTIME_CONFIG"
 OLLAMA_ENDPOINT_ENV = "BOOKS_TO_AUDIO_OLLAMA_ENDPOINT"
+OLLAMA_MODELS_DIR_ENV = "BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR"
+OLLAMA_MODELS_ENV = "OLLAMA_MODELS"
 MODELS_DIR_ENV = "BOOKS_TO_AUDIO_MODELS_DIR"
 HF_HOME_ENV = "HF_HOME"
 TESSERACT_CMD_ENV = "BOOKS_TO_AUDIO_TESSERACT_CMD"
@@ -68,6 +70,14 @@ def configured_models_dir() -> Path | None:
 def configured_hf_cache_dir() -> Path | None:
     """Return configured Hugging Face cache directory if set."""
     return configured_path("hf_cache_dir", HF_HOME_ENV)
+
+
+def configured_ollama_models_dir() -> Path | None:
+    """Return configured Ollama model storage directory if set."""
+    value = os.environ.get(OLLAMA_MODELS_DIR_ENV) or os.environ.get(OLLAMA_MODELS_ENV)
+    if value:
+        return Path(value).expanduser()
+    return configured_path("ollama_models_dir")
 
 
 def configured_tesseract_cmd() -> Path | None:

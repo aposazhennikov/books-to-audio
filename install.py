@@ -75,6 +75,7 @@ class InstallPaths:
     ollama_bin: str
     tesseract_cmd: str
     ffmpeg_bin: str
+    ollama_models_dir: Path = Path("ollama-models")
 
 
 class _TeeStream:
@@ -199,6 +200,11 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--models-dir", default="", help="Shared TTS/ComfyUI models folder.")
     parser.add_argument("--hf-cache-dir", default="", help="Hugging Face cache folder.")
+    parser.add_argument(
+        "--ollama-models-dir",
+        default="",
+        help="Ollama model storage folder used via OLLAMA_MODELS.",
+    )
     parser.add_argument("--ollama-endpoint", default="", help="Local Ollama endpoint. Default: http://localhost:11434")
     parser.add_argument("--ollama-bin", default="", help="Path or command name for Ollama. Default: ollama")
     parser.add_argument("--tesseract-bin", default="", help="Path or command name for Tesseract OCR.")
@@ -300,6 +306,7 @@ def _print_install_summary(
         ("Virtual environment", "Виртуальное окружение", str(paths.venv_dir)),
         ("Models folder", "Папка моделей", str(paths.models_dir)),
         ("Hugging Face cache", "Кэш Hugging Face", str(paths.hf_cache_dir)),
+        ("Ollama models folder", "Папка моделей Ollama", str(paths.ollama_models_dir)),
         ("Ollama endpoint/bin", "Ollama адрес/команда", f"{paths.ollama_endpoint} ({paths.ollama_bin})"),
         ("Tesseract OCR", "Tesseract OCR", paths.tesseract_cmd),
         ("FFmpeg", "FFmpeg", paths.ffmpeg_bin),
@@ -345,6 +352,13 @@ def _resolve_install_paths(args: argparse.Namespace, project_root: Path) -> Inst
         install_root / "hf-cache",
         interactive,
     )
+    ollama_models_dir = _prompt_path(
+        "Ollama models folder",
+        "Папка моделей Ollama",
+        args.ollama_models_dir,
+        install_root / "ollama-models",
+        interactive,
+    )
     ollama_endpoint = _prompt_text(
         "Ollama endpoint",
         "Адрес Ollama",
@@ -382,6 +396,7 @@ def _resolve_install_paths(args: argparse.Namespace, project_root: Path) -> Inst
         ollama_bin=ollama_bin,
         tesseract_cmd=tesseract_cmd,
         ffmpeg_bin=ffmpeg_bin,
+        ollama_models_dir=ollama_models_dir,
     )
 
 
@@ -543,6 +558,7 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
     paths.install_root.mkdir(parents=True, exist_ok=True)
     paths.models_dir.mkdir(parents=True, exist_ok=True)
     paths.hf_cache_dir.mkdir(parents=True, exist_ok=True)
+    paths.ollama_models_dir.mkdir(parents=True, exist_ok=True)
     config_path = project_root / RUNTIME_CONFIG_PATH
     config_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -551,6 +567,7 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
         "venv_dir": str(paths.venv_dir),
         "models_dir": str(paths.models_dir),
         "hf_cache_dir": str(paths.hf_cache_dir),
+        "ollama_models_dir": str(paths.ollama_models_dir),
         "ollama_endpoint": paths.ollama_endpoint,
         "ollama_bin": paths.ollama_bin,
         "tesseract_cmd": paths.tesseract_cmd,
@@ -568,6 +585,8 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
                 f"BOOKS_TO_AUDIO_MODELS_DIR={paths.models_dir}",
                 f"COMFYUI_MODELS_DIR={paths.models_dir}",
                 f"HF_HOME={paths.hf_cache_dir}",
+                f"BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR={paths.ollama_models_dir}",
+                f"OLLAMA_MODELS={paths.ollama_models_dir}",
                 f"BOOKS_TO_AUDIO_OLLAMA_ENDPOINT={paths.ollama_endpoint}",
                 f"BOOKS_TO_AUDIO_TESSERACT_CMD={paths.tesseract_cmd}",
                 f"BOOKS_TO_AUDIO_FFMPEG_BIN={paths.ffmpeg_bin}",
@@ -584,7 +603,11 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
 
 
 def _pull_ollama_models(paths: InstallPaths, verify_hashes: bool) -> None:
-    hash_metadata = {"models": list(DEFAULT_OLLAMA_MODELS)}
+    paths.ollama_models_dir.mkdir(parents=True, exist_ok=True)
+    hash_metadata = {
+        "models": list(DEFAULT_OLLAMA_MODELS),
+        "ollama_models_dir": str(paths.ollama_models_dir),
+    }
     if verify_hashes and _verified_command_hash_matches(
         OLLAMA_HASH_LABEL,
         [paths.ollama_bin, "list"],
@@ -807,6 +830,8 @@ def _installer_env(paths: InstallPaths) -> dict[str, str]:
     env["BOOKS_TO_AUDIO_MODELS_DIR"] = str(paths.models_dir)
     env["COMFYUI_MODELS_DIR"] = str(paths.models_dir)
     env["HF_HOME"] = str(paths.hf_cache_dir)
+    env["BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR"] = str(paths.ollama_models_dir)
+    env["OLLAMA_MODELS"] = str(paths.ollama_models_dir)
     env["BOOKS_TO_AUDIO_OLLAMA_ENDPOINT"] = paths.ollama_endpoint
     env["BOOKS_TO_AUDIO_TESSERACT_CMD"] = paths.tesseract_cmd
     env["BOOKS_TO_AUDIO_FFMPEG_BIN"] = paths.ffmpeg_bin

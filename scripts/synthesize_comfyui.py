@@ -224,7 +224,7 @@ def synthesize_all(
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Synthesize audio chunks via ComfyUI + Qwen3-TTS",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -258,7 +258,7 @@ def main() -> None:
         "--failed-only", action="store_true",
         help="Retry only chunks previously marked as failed.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     manifest_path = Path(args.chunks_json)
     out_dir = Path(args.out)

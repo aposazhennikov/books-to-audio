@@ -69,12 +69,12 @@ Options:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
-import os
-import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -84,17 +84,8 @@ if hasattr(sys.stdout, "reconfigure"):
 _SRC_DIR = str(Path(__file__).resolve().parent.parent / "src")
 sys.path.insert(0, _SRC_DIR)
 
+from book_normalizer.cli import process_command  # noqa: E402
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL  # noqa: E402
-
-
-def _subprocess_env() -> dict[str, str]:
-    """Return env dict with PYTHONPATH and PYTHONUTF8 set for child processes."""
-    env = os.environ.copy()
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"{_SRC_DIR}{os.pathsep}{existing}" if existing else _SRC_DIR
-    env["PYTHONUTF8"] = "1"
-    return env
-
 
 # ── Stage helpers ─────────────────────────────────────────────────────────────
 
@@ -136,17 +127,24 @@ def run_stage1_normalize(
     ocr_mode: str,
 ) -> Path:
     """Run the normalize-book CLI to extract and normalize chapters."""
-    cmd = [
-        sys.executable, "-m", "book_normalizer.cli",
-        "process", str(book_path),
+    args = [
+        str(book_path),
         "--out", str(output_root),
         "--ocr-mode", ocr_mode,
         "-v",
     ]
-    print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, check=False, env=_subprocess_env())
-    if result.returncode != 0:
-        print(f"WARNING: normalize-book exited with code {result.returncode}")
+    print(f"Running in-process: normalize-book process {' '.join(args)}")
+    try:
+        process_command.main(
+            args=args,
+            prog_name="normalize-book process",
+            standalone_mode=False,
+        )
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+        if code:
+            print(f"ERROR: normalize-book process exited with code {code}")
+            sys.exit(code)
 
     book_dir = find_book_dir(output_root, book_path)
     if not book_dir.exists():
@@ -340,19 +338,17 @@ def run_stage4_synthesize(
     chapter_filter: int | None,
 ) -> None:
     """Synthesize audio chunks via ComfyUI."""
-    cmd = [
-        sys.executable,
-        str(Path(__file__).parent / "synthesize_comfyui.py"),
+    args = [
         "--chunks-json", str(manifest_path),
         "--out", str(out_dir),
         "--workflow", workflow_path,
         "--comfyui-url", comfyui_url,
     ]
     if chapter_filter is not None:
-        cmd += ["--chapter", str(chapter_filter)]
+        args += ["--chapter", str(chapter_filter)]
 
-    print(f"Running: {' '.join(cmd)}")
-    subprocess.run(cmd, check=False, env=_subprocess_env())
+    print(f"Running in-process: synthesize_comfyui.py {' '.join(args)}")
+    _run_script_main("synthesize_comfyui.py", args)
 
 
 # ── Stage 5: Assembly ─────────────────────────────────────────────────────────
@@ -364,19 +360,41 @@ def run_stage5_assemble(
     chapter_filter: int | None,
 ) -> None:
     """Assemble audio chunks into chapter WAV files."""
-    cmd = [
-        sys.executable,
-        str(Path(__file__).parent / "assemble_chapter.py"),
+    args = [
         "--manifest", str(manifest_path),
         "--out", str(out_dir),
     ]
     if chapter_filter is not None:
-        cmd += ["--chapter", str(chapter_filter)]
+        args += ["--chapter", str(chapter_filter)]
     else:
-        cmd.append("--all")
+        args.append("--all")
 
-    print(f"Running: {' '.join(cmd)}")
-    subprocess.run(cmd, check=False, env=_subprocess_env())
+    print(f"Running in-process: assemble_chapter.py {' '.join(args)}")
+    _run_script_main("assemble_chapter.py", args)
+
+
+def _run_script_main(script_name: str, argv: list[str]) -> None:
+    """Run a sibling script main(argv) inside this Python process."""
+    main_func = _load_script_main(Path(__file__).resolve().parent / script_name)
+    try:
+        main_func(argv)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+        if code:
+            sys.exit(code)
+
+
+def _load_script_main(script: Path) -> Callable[[list[str] | None], None]:
+    """Load a sibling script module and return its argv-aware main function."""
+    spec = importlib.util.spec_from_file_location(f"books_to_audio_{script.stem}", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load script: {script}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    main_func = getattr(module, "main", None)
+    if not callable(main_func):
+        raise RuntimeError(f"Script has no callable main(): {script}")
+    return main_func
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

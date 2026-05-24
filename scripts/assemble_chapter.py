@@ -21,7 +21,7 @@ def _wav_duration(path: Path) -> float:
         return 0.0
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Assemble v2 manifest audio chunks into chapter WAV files.")
     parser.add_argument("--manifest", required=True, help="Path to chunks_manifest_v2.json.")
     parser.add_argument("--out", required=True, help="Output directory for chapter_NNN.wav files.")
@@ -30,7 +30,7 @@ def main() -> None:
     parser.add_argument("--pause-same", type=int, default=300, help="Pause between same-voice chunks in ms.")
     parser.add_argument("--pause-change", type=int, default=600, help="Pause when the voice changes in ms.")
     parser.add_argument("--strict-missing", action="store_true", help="Fail when a synthesized audio_file is missing.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if not args.all and args.chapter is None:
         parser.error("Specify --all or --chapter N.")

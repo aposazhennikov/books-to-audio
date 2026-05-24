@@ -728,8 +728,8 @@ def _bilingual_line(en: str, ru: str) -> str:
 
 
 def _install_system_tools(extras: set[str]) -> None:
-    command = _system_package_hint(extras)
-    if not command:
+    commands = _system_package_commands(extras)
+    if not commands:
         _say(
             "No native system tools are required for the selected extras.",
             "Для выбранных опций системные утилиты не требуются.",
@@ -737,8 +737,9 @@ def _install_system_tools(extras: set[str]) -> None:
         )
         return
     _say("Installing native system tools...", "Устанавливаю системные утилиты нативным менеджером пакетов...", "info")
-    print("+ " + command)
-    subprocess.run(command, shell=True, check=True)
+    for command in commands:
+        print("+ " + _format_command(command))
+        subprocess.run(command, check=True)
 
 
 def _command_available(command: str) -> bool:
@@ -749,11 +750,16 @@ def _command_available(command: str) -> bool:
 
 
 def _system_package_hint(extras: set[str]) -> str:
+    commands = _system_package_commands(extras)
+    return " && ".join(_format_command(command) for command in commands)
+
+
+def _system_package_commands(extras: set[str]) -> list[list[str]]:
     needs_ocr = "ocr" in extras
     needs_audio = "audio" in extras
     needs_gui = "gui" in extras
     if not (needs_ocr or needs_audio or needs_gui):
-        return ""
+        return []
 
     system = platform.system()
     if system == "Darwin":
@@ -763,16 +769,16 @@ def _system_package_hint(extras: set[str]) -> str:
         if needs_audio:
             packages.append("ffmpeg")
         if packages:
-            return "brew install " + " ".join(dict.fromkeys(packages))
-        return ""
+            return [["brew", "install", *dict.fromkeys(packages)]]
+        return []
 
     if system == "Windows":
         commands = []
         if needs_ocr:
-            commands.append("winget install UB-Mannheim.TesseractOCR")
+            commands.append(["winget", "install", "UB-Mannheim.TesseractOCR"])
         if needs_audio:
-            commands.append("winget install Gyan.FFmpeg")
-        return " && ".join(commands)
+            commands.append(["winget", "install", "Gyan.FFmpeg"])
+        return commands
 
     if system == "Linux":
         distro = _linux_id_like()
@@ -784,7 +790,10 @@ def _system_package_hint(extras: set[str]) -> str:
                 packages.append("ffmpeg")
             if needs_gui:
                 packages.extend(["libegl1", "libgl1", "libxcb-cursor0", "libxkbcommon-x11-0"])
-            return "sudo apt-get update && sudo apt-get install -y " + " ".join(dict.fromkeys(packages))
+            return [
+                ["sudo", "apt-get", "update"],
+                ["sudo", "apt-get", "install", "-y", *dict.fromkeys(packages)],
+            ]
         if any(name in distro for name in ("fedora", "rhel", "centos")):
             packages = []
             if needs_ocr:
@@ -793,7 +802,7 @@ def _system_package_hint(extras: set[str]) -> str:
                 packages.append("ffmpeg")
             if needs_gui:
                 packages.extend(["libglvnd-glx", "libxkbcommon-x11", "xcb-util-cursor"])
-            return "sudo dnf install " + " ".join(dict.fromkeys(packages))
+            return [["sudo", "dnf", "install", *dict.fromkeys(packages)]]
         if "arch" in distro:
             packages = []
             if needs_ocr:
@@ -802,8 +811,12 @@ def _system_package_hint(extras: set[str]) -> str:
                 packages.append("ffmpeg")
             if needs_gui:
                 packages.extend(["libgl", "libxkbcommon-x11", "xcb-util-cursor"])
-            return "sudo pacman -S " + " ".join(dict.fromkeys(packages))
-    return ""
+            return [["sudo", "pacman", "-S", *dict.fromkeys(packages)]]
+    return []
+
+
+def _format_command(command: list[str]) -> str:
+    return " ".join(_quote(part) for part in command)
 
 
 def _linux_id_like() -> set[str]:

@@ -16,8 +16,11 @@ from install import (
     InstallPaths,
     _command_available,
     _hash_tree,
+    _install_system_tools,
     _pull_ollama_models,
     _resolve_install_paths,
+    _system_package_commands,
+    _system_package_hint,
     _write_hash_manifest_entry,
     _write_runtime_config,
 )
@@ -244,3 +247,36 @@ def test_system_dependency_notes_are_bilingual(tmp_path: Path, capsys) -> None:
     assert "Tesseract не найден" in out
     assert "FFmpeg was not found" in out
     assert "FFmpeg не найден" in out
+
+
+def test_system_package_hints_are_derived_from_native_command_argv(monkeypatch) -> None:
+    monkeypatch.setattr("install.platform.system", lambda: "Linux")
+    monkeypatch.setattr("install._linux_id_like", lambda: {"linux", "ubuntu"})
+
+    commands = _system_package_commands({"ocr", "audio", "gui"})
+    hint = _system_package_hint({"ocr", "audio", "gui"})
+
+    assert commands[0] == ["sudo", "apt-get", "update"]
+    assert commands[1][:5] == ["sudo", "apt-get", "install", "-y", "tesseract-ocr"]
+    assert "&&" in hint
+    assert "tesseract-ocr-rus" in commands[1]
+    assert "libxcb-cursor0" in commands[1]
+
+
+def test_install_system_tools_runs_native_commands_without_shell(monkeypatch) -> None:
+    monkeypatch.setattr("install.platform.system", lambda: "Windows")
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("install.subprocess.run", fake_run)
+
+    _install_system_tools({"ocr", "audio"})
+
+    assert [call[0] for call in calls] == [
+        ["winget", "install", "UB-Mannheim.TesseractOCR"],
+        ["winget", "install", "Gyan.FFmpeg"],
+    ]
+    assert all(call[1] == {"check": True} for call in calls)

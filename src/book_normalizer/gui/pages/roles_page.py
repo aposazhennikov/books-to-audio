@@ -53,6 +53,7 @@ class RolesPage(QWidget):
         controls.setColumnStretch(0, 0)
         controls.setColumnStretch(1, 1)
         controls.setColumnStretch(2, 0)
+        self._controls = controls
 
         self._llm_endpoint_label = QLabel()
         self._llm_endpoint = QLineEdit(configured_ollama_endpoint())
@@ -73,7 +74,7 @@ class RolesPage(QWidget):
         self._btn_extract.setMaximumWidth(340)
         self._btn_extract.setEnabled(False)
         self._btn_extract.clicked.connect(self._run_role_extraction)
-        controls.addWidget(self._btn_extract, 1, 2)
+        self._apply_control_layout()
         layout.addLayout(controls)
 
         self._progress = ProgressWidget()
@@ -107,6 +108,7 @@ class RolesPage(QWidget):
         compact = self.width() < 860
         if compact != self._compact_mode:
             self._compact_mode = compact
+            self._apply_control_layout()
             self._apply_table_headers()
 
     def retranslate(self) -> None:
@@ -119,6 +121,46 @@ class RolesPage(QWidget):
         self._apply_table_headers()
         if self._table.rowCount() == 0:
             self._summary.setText(t("roles.empty"))
+
+    def _apply_control_layout(self) -> None:
+        """Keep role extraction controls readable in compact windows."""
+        widgets = (
+            self._llm_endpoint_label,
+            self._llm_endpoint,
+            self._llm_model_label,
+            self._llm_model,
+            self._btn_extract,
+        )
+        for widget in widgets:
+            self._controls.removeWidget(widget)
+
+        if self._compact_mode:
+            self._controls.setVerticalSpacing(8)
+            self._controls.setColumnStretch(0, 0)
+            self._controls.setColumnStretch(1, 1)
+            self._controls.setColumnStretch(2, 1)
+            self._llm_endpoint.setMaximumWidth(230)
+            self._btn_extract.setMinimumWidth(0)
+            self._btn_extract.setMaximumWidth(16777215)
+            self._controls.addWidget(self._llm_endpoint_label, 0, 0)
+            self._controls.addWidget(self._llm_model_label, 0, 1, 1, 2)
+            self._controls.addWidget(self._llm_endpoint, 1, 0)
+            self._controls.addWidget(self._llm_model, 1, 1, 1, 2)
+            self._controls.addWidget(self._btn_extract, 2, 0, 1, 3)
+            return
+
+        self._controls.setVerticalSpacing(4)
+        self._controls.setColumnStretch(0, 0)
+        self._controls.setColumnStretch(1, 1)
+        self._controls.setColumnStretch(2, 0)
+        self._llm_endpoint.setMaximumWidth(230)
+        self._btn_extract.setMinimumWidth(260)
+        self._btn_extract.setMaximumWidth(340)
+        self._controls.addWidget(self._llm_endpoint_label, 0, 0)
+        self._controls.addWidget(self._llm_endpoint, 1, 0)
+        self._controls.addWidget(self._llm_model_label, 0, 1)
+        self._controls.addWidget(self._llm_model, 1, 1)
+        self._controls.addWidget(self._btn_extract, 1, 2)
 
     def _apply_table_headers(self) -> None:
         """Apply full or compact role table headers with full-text tooltips."""

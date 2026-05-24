@@ -167,6 +167,29 @@ def test_zoomed_roles_table_headers_do_not_clip() -> None:
     window.deleteLater()
 
 
+def test_zoomed_roles_model_field_stays_readable_in_compact_layout() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(1)
+    render_widget(window, 760, 520, scale=1.45)
+
+    page = window._roles_page
+    endpoint_rect = _rect_in_window(window, page._llm_endpoint)
+    model_rect = _rect_in_window(window, page._llm_model)
+    button_rect = _rect_in_window(window, page._btn_extract)
+
+    assert page._compact_mode is True
+    assert model_rect.width() >= 300
+    assert model_rect.top() == endpoint_rect.top()
+    assert button_rect.top() - model_rect.bottom() >= 8
+    assert button_rect.left() <= endpoint_rect.left()
+    assert button_rect.right() >= model_rect.right()
+
+    window.close()
+    window.deleteLater()
+
+
 def test_zoomed_synthesis_manifest_action_does_not_clip() -> None:
     app = qapp()
     _ = app

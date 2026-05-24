@@ -24,6 +24,7 @@ from book_normalizer.gui.pages.synthesis_page import SynthesisPage
 from book_normalizer.gui.pages.voices_page import VoicesPage
 from book_normalizer.gui.resources import application_icon
 from book_normalizer.gui.ui_scaler import apply_widget_scale_metrics, make_app_font
+from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 
 
 class MainWindow(QMainWindow):
@@ -149,6 +150,8 @@ class MainWindow(QMainWindow):
         self._voices_page.retranslate()
         self._synthesis_page.retranslate()
         self._assembly_page.retranslate()
+        for progress in self.findChildren(ProgressWidget):
+            progress.retranslate()
 
     def _retranslate(self) -> None:
         """Update all translatable strings in the main window."""

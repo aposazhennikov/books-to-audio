@@ -19,6 +19,8 @@ class ProgressWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._status_kind = "ready"
+        self._last_progress: tuple[int, int, str] = (0, 100, "")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 4, 0, 4)
         layout.setSpacing(4)
@@ -55,14 +57,48 @@ class ProgressWidget(QWidget):
 
     def set_status(self, text: str) -> None:
         """Update the status text and hide progress bar."""
+        self._status_kind = "custom"
         self._status.setText(text)
         self._bar_row.setVisible(False)
 
     def set_progress(self, current: int, total: int, eta: str = "") -> None:
         """Update progress bar and ETA."""
+        self._status_kind = "progress"
+        self._last_progress = (current, total, eta)
         self._bar_row.setVisible(True)
         self._bar.setMaximum(total)
         self._bar.setValue(current)
+        self._apply_progress_text()
+
+    def set_busy(self, text: str) -> None:
+        """Show indeterminate progress (spinner) with text."""
+        self._status_kind = "custom"
+        self._status.setText(text)
+        self._bar_row.setVisible(True)
+        self._bar.setMaximum(0)
+        self._bar.setValue(0)
+        self._eta.setText("")
+
+    def reset(self) -> None:
+        """Reset to initial state."""
+        self._status_kind = "ready"
+        self._last_progress = (0, 100, "")
+        self._bar.setValue(0)
+        self._bar.setMaximum(100)
+        self._bar_row.setVisible(False)
+        self._status.setText(t("progress.ready"))
+        self._eta.setText("")
+
+    def retranslate(self) -> None:
+        """Refresh neutral/progress text after the app language changes."""
+        if self._status_kind == "ready":
+            self._status.setText(t("progress.ready"))
+        elif self._status_kind == "progress":
+            self._apply_progress_text()
+
+    def _apply_progress_text(self) -> None:
+        """Render progress status using the active language."""
+        current, total, eta = self._last_progress
         pct = (current / total * 100) if total > 0 else 0
         remaining = total - current
         status = f"{current}/{total} ({pct:.0f}%)"
@@ -73,19 +109,3 @@ class ProgressWidget(QWidget):
             self._eta.setText(t("progress.eta", eta=eta))
         else:
             self._eta.setText("")
-
-    def set_busy(self, text: str) -> None:
-        """Show indeterminate progress (spinner) with text."""
-        self._status.setText(text)
-        self._bar_row.setVisible(True)
-        self._bar.setMaximum(0)
-        self._bar.setValue(0)
-        self._eta.setText("")
-
-    def reset(self) -> None:
-        """Reset to initial state."""
-        self._bar.setValue(0)
-        self._bar.setMaximum(100)
-        self._bar_row.setVisible(False)
-        self._status.setText(t("progress.ready"))
-        self._eta.setText("")

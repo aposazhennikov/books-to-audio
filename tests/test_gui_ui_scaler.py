@@ -6,6 +6,7 @@ from book_normalizer.gui.ui_scaler import (
     MULTILINGUAL_FONT_FAMILIES,
     SCALE_STEP,
     UiScaler,
+    apply_widget_scale_metrics,
     clamp_scale,
     make_app_font,
     scale_stylesheet,
@@ -96,6 +97,26 @@ def test_make_app_font_carries_multilingual_fallbacks() -> None:
         MULTILINGUAL_FONT_FAMILIES,
     )
     assert font.pointSize() == 13
+
+
+def test_apply_widget_scale_metrics_centers_numeric_fields() -> None:
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QSpinBox, QVBoxLayout, QWidget
+
+    root = QWidget()
+    layout = QVBoxLayout(root)
+    spin = QSpinBox()
+    spin.setValue(600)
+    layout.addWidget(spin)
+
+    apply_widget_scale_metrics(root, 1.45)
+
+    assert spin.alignment() & Qt.AlignmentFlag.AlignHCenter
+    assert spin.alignment() & Qt.AlignmentFlag.AlignVCenter
+    line_edit = spin.lineEdit()
+    assert line_edit is not None
+    assert line_edit.alignment() & Qt.AlignmentFlag.AlignHCenter
+    assert line_edit.alignment() & Qt.AlignmentFlag.AlignVCenter
 
 
 def test_gui_test_harness_uses_runtime_multilingual_font() -> None:

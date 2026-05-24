@@ -86,6 +86,14 @@ def apply_widget_scale_metrics(root: QWidget, scale: float) -> None:
     for widget in [root, *root.findChildren(QWidget)]:
         if isinstance(widget, (QComboBox, QAbstractSpinBox, QLineEdit)):
             _set_scaled_minimum_height(widget, scale, fallback=32, padding=14)
+            if isinstance(widget, QAbstractSpinBox):
+                widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                try:
+                    line_edit = widget.lineEdit()
+                except RuntimeError:
+                    line_edit = None
+                if line_edit is not None:
+                    line_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
             if isinstance(widget, QComboBox) and widget.minimumContentsLength() <= 0:
                 widget.setMinimumContentsLength(14)
                 widget.setSizeAdjustPolicy(

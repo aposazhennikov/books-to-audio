@@ -88,6 +88,31 @@ def test_main_window_switches_every_supported_gui_language(qtbot) -> None:
     set_language("ru")
 
 
+def test_progress_widgets_retranslate_ready_state(qtbot) -> None:
+    app = qapp()
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    flush_events(app)
+
+    for code, _label in SUPPORTED_LANGUAGES:
+        index = window._lang_combo.findData(code)
+        assert index >= 0
+        window._lang_combo.setCurrentIndex(index)
+        flush_events(app)
+        ready = t("progress.ready")
+        for page in (
+            window._normalize_page,
+            window._roles_page,
+            window._voices_page,
+            window._synthesis_page,
+            window._assembly_page,
+        ):
+            assert page._progress._status.text() == ready
+
+    set_language("ru")
+
+
 def test_language_selector_uses_text_codes_not_flag_emoji(qtbot) -> None:
     app = qapp()
     window = MainWindow()

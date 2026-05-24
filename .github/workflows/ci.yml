@@ -82,9 +82,36 @@ jobs:
           if [ "$RUNNER_OS" = "Linux" ]; then
             export QT_QPA_PLATFORM=offscreen
           fi
-          python -m pytest -m "not gui_snapshot" --cov=book_normalizer --cov-report=term --cov-report=xml
+          set +e
+          python -m pytest -m "not gui_snapshot" --cov=book_normalizer --cov-report=term --cov-report=xml 2>&1 | tee pytest.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            python - <<'PY'
+          from pathlib import Path
+
+          log_path = Path("pytest.log")
+          text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else "pytest.log was not written"
+          tail = "\n".join(text.splitlines()[-80:])
+          escaped = (
+              tail.replace("%", "%25")
+              .replace("\r", "%0D")
+              .replace("\n", "%0A")
+          )
+          print(f"::error title=Pytest failed::{escaped}")
+          PY
+          fi
+          exit "$status"
+
+      - name: Upload pytest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-log-${{ matrix.os }}
+          path: pytest.log
 
       - name: Upload coverage
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-xml-${{ matrix.os }}

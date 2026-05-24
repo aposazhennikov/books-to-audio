@@ -400,6 +400,7 @@ class VoiceTableWidget(QWidget):
         self._segment_editor_title.setText(t("voice.editor_segment_title"))
         self._segment_editor.setPlaceholderText(t("voice.editor_segment_placeholder"))
         self._btn_segment_split.setText(t("voice.editor_split"))
+        self._btn_segment_split.setToolTip(t("voice.editor_split_tip"))
         self._btn_segment_merge.setText(t("voice.editor_merge_next"))
         self._btn_segment_delete_empty.setText(t("voice.editor_delete_empty"))
         self._btn_segment_delete.setText(t("voice.editor_delete"))

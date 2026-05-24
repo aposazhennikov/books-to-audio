@@ -566,12 +566,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Собрать чанки для TTS",
     },
     "voice.load_manifest": {
-        "en": "Load Manifest",
-        "ru": "Загрузить манифест",
+        "en": "Load",
+        "ru": "Загрузить",
+    },
+    "voice.load_manifest_tip": {
+        "en": "Load a saved segment manifest.",
+        "ru": "Загрузить сохранённый манифест сегментов.",
     },
     "voice.save_manifest": {
-        "en": "Save Manifest",
-        "ru": "Сохранить манифест",
+        "en": "Save",
+        "ru": "Сохранить",
+    },
+    "voice.save_manifest_tip": {
+        "en": "Save current segment and voice assignments.",
+        "ru": "Сохранить текущие сегменты и назначения голосов.",
     },
     "voice.all_narrator": {
         "en": "All \u2192 Narrator",
@@ -636,8 +644,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u0442\u0440\u043e\u043a\u0443 \u0438 \u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0442\u043e\u0447\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442 \u0434\u043b\u044f TTS.",
     },
     "voice.editor_split": {
-        "en": "Split at cursor",
-        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u043f\u043e \u043a\u0443\u0440\u0441\u043e\u0440\u0443",
+        "en": "Split",
+        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c",
+    },
+    "voice.editor_split_tip": {
+        "en": "Split the selected segment at the text cursor.",
+        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0441\u0435\u0433\u043c\u0435\u043d\u0442 \u043f\u043e \u043a\u0443\u0440\u0441\u043e\u0440\u0443.",
     },
     "voice.editor_merge_next": {
         "en": "Merge next",
@@ -2232,11 +2244,29 @@ def _install_extra_translations() -> None:
         "voice.col_chunk": {"zh": "分块", "kk": "Чанк", "uz": "Boʻlak"},
         "voice.col_audio": {"zh": "音频", "kk": "Дыбыс", "uz": "Ovoz"},
         "voice.col_retry": {"zh": "重试", "kk": "Қайталау", "uz": "Qayta"},
+        "voice.load_manifest": {"zh": "加载", "kk": "Жүктеу", "uz": "Yuklash"},
+        "voice.load_manifest_tip": {
+            "zh": "加载已保存的分段清单。",
+            "kk": "Сақталған сегмент манифесін жүктеу.",
+            "uz": "Saqlangan segment manifestini yuklash.",
+        },
+        "voice.save_manifest": {"zh": "保存", "kk": "Сақтау", "uz": "Saqlash"},
+        "voice.save_manifest_tip": {
+            "zh": "保存当前分段和声音分配。",
+            "kk": "Қазіргі сегменттер мен дауыс тағайындауларын сақтау.",
+            "uz": "Joriy segmentlar va ovoz biriktirishlarini saqlash.",
+        },
         "voice.play_audio": {
             "ru": "Слушать",
             "zh": "播放",
             "kk": "Тыңдау",
             "uz": "Eshitish",
+        },
+        "voice.editor_split": {"zh": "分割", "kk": "Бөлу", "uz": "Bo'lish"},
+        "voice.editor_split_tip": {
+            "zh": "在光标位置分割选中的分段。",
+            "kk": "Таңдалған сегментті курсор тұрған жерден бөлу.",
+            "uz": "Tanlangan segmentni kursor turgan joydan bo'lish.",
         },
         "synth.sample_enable": {
             "ru": "Использовать образец голоса для этой книги",

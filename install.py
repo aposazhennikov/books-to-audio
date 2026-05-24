@@ -581,15 +581,15 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
     env_path.write_text(
         "\n".join(
             [
-                f"BOOKS_TO_AUDIO_RUNTIME_CONFIG={config_path.resolve()}",
-                f"BOOKS_TO_AUDIO_MODELS_DIR={paths.models_dir}",
-                f"COMFYUI_MODELS_DIR={paths.models_dir}",
-                f"HF_HOME={paths.hf_cache_dir}",
-                f"BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR={paths.ollama_models_dir}",
-                f"OLLAMA_MODELS={paths.ollama_models_dir}",
-                f"BOOKS_TO_AUDIO_OLLAMA_ENDPOINT={paths.ollama_endpoint}",
-                f"BOOKS_TO_AUDIO_TESSERACT_CMD={paths.tesseract_cmd}",
-                f"BOOKS_TO_AUDIO_FFMPEG_BIN={paths.ffmpeg_bin}",
+                _env_assignment("BOOKS_TO_AUDIO_RUNTIME_CONFIG", config_path.resolve()),
+                _env_assignment("BOOKS_TO_AUDIO_MODELS_DIR", paths.models_dir),
+                _env_assignment("COMFYUI_MODELS_DIR", paths.models_dir),
+                _env_assignment("HF_HOME", paths.hf_cache_dir),
+                _env_assignment("BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR", paths.ollama_models_dir),
+                _env_assignment("OLLAMA_MODELS", paths.ollama_models_dir),
+                _env_assignment("BOOKS_TO_AUDIO_OLLAMA_ENDPOINT", paths.ollama_endpoint),
+                _env_assignment("BOOKS_TO_AUDIO_TESSERACT_CMD", paths.tesseract_cmd),
+                _env_assignment("BOOKS_TO_AUDIO_FFMPEG_BIN", paths.ffmpeg_bin),
                 "",
             ]
         ),
@@ -600,6 +600,15 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
         f"Пути runtime сохранены: {config_path}",
         "ok",
     )
+
+
+def _env_assignment(key: str, value: object) -> str:
+    """Return a shell/dotenv-safe assignment, preserving paths with spaces."""
+    text = str(value)
+    if re.fullmatch(r"[A-Za-z0-9_./:@%+=,-]+", text):
+        return f"{key}={text}"
+    escaped = text.replace("'", "'\\''")
+    return f"{key}='{escaped}'"
 
 
 def _pull_ollama_models(paths: InstallPaths, verify_hashes: bool) -> None:

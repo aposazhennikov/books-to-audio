@@ -21,6 +21,7 @@ from install import (
     TTS_HASH_LABEL,
     InstallPaths,
     _command_available,
+    _env_assignment,
     _hash_tree,
     _install_system_tools,
     _install_tts_models,
@@ -220,6 +221,32 @@ def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatc
     assert "BOOKS_TO_AUDIO_OLLAMA_ENDPOINT=http://127.0.0.1:11435" in env_text
     assert "BOOKS_TO_AUDIO_TESSERACT_CMD=" in env_text
     assert "BOOKS_TO_AUDIO_FFMPEG_BIN=" in env_text
+
+
+def test_runtime_env_file_quotes_custom_paths_with_spaces(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    paths = InstallPaths(
+        install_root=tmp_path / "Install Root",
+        venv_dir=tmp_path / "Windows Venv",
+        models_dir=tmp_path / "Audio Models",
+        hf_cache_dir=tmp_path / "HF Cache",
+        ollama_models_dir=tmp_path / "Ollama Models",
+        ollama_endpoint="http://127.0.0.1:11434",
+        ollama_bin="ollama",
+        tesseract_cmd="C:/Program Files/Tesseract-OCR/tesseract.exe",
+        ffmpeg_bin="D:/Media Tools/ffmpeg/bin/ffmpeg.exe",
+    )
+
+    _write_runtime_config(paths, tmp_path)
+
+    env_text = (tmp_path / RUNTIME_CONFIG_PATH).with_suffix(".env").read_text(encoding="utf-8")
+    assert _env_assignment("BOOKS_TO_AUDIO_MODELS_DIR", paths.models_dir) in env_text
+    assert f"BOOKS_TO_AUDIO_MODELS_DIR='{paths.models_dir}'" in env_text
+    assert "COMFYUI_MODELS_DIR='" in env_text
+    assert "HF_HOME='" in env_text
+    assert "OLLAMA_MODELS='" in env_text
+    assert "BOOKS_TO_AUDIO_TESSERACT_CMD='C:/Program Files/Tesseract-OCR/tesseract.exe'" in env_text
+    assert "BOOKS_TO_AUDIO_FFMPEG_BIN='D:/Media Tools/ffmpeg/bin/ffmpeg.exe'" in env_text
 
 
 def test_interactive_installer_prompts_for_all_runtime_paths(

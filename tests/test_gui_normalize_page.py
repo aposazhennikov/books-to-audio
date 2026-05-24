@@ -299,6 +299,11 @@ def test_normalize_page_pdf_layout_stays_sane_at_small_size(qapp) -> None:
     render_widget(page, 760, 520, scale=1.0)
     assert_layout_sane(page)
     assert not page.findChildren(QtWidgets.QSplitter)
+    for editor in (page._raw_text, page._norm_text):
+        assert editor.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert not editor.horizontalScrollBar().isVisible()
+        assert not editor.verticalScrollBar().isVisible()
 
     page.deleteLater()
 

@@ -211,6 +211,7 @@ class NormalizePage(QWidget):
         self._raw_text.setReadOnly(True)
         self._raw_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._raw_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._raw_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         raw_layout.addWidget(self._raw_text)
         text_row.addWidget(raw_container, stretch=1)
 
@@ -237,6 +238,7 @@ class NormalizePage(QWidget):
         self._norm_text.setReadOnly(False)
         self._norm_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._norm_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._norm_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         norm_layout.addWidget(self._norm_text)
         text_row.addWidget(norm_container, stretch=1)
 

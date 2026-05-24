@@ -283,6 +283,34 @@ def test_zoomed_chunk_markup_controls_do_not_overlap() -> None:
     window.deleteLater()
 
 
+def test_zoomed_chunk_actions_keep_breathing_room() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    render_widget(window, 760, 520, scale=1.45)
+
+    page = window._voices_page
+    field_bottom = max(
+        _rect_in_window(window, page._speaker_mode).bottom(),
+        _rect_in_window(window, page._chunk_size).bottom(),
+    )
+    action_top = min(
+        _rect_in_window(window, button).top()
+        for button in (
+            page._btn_detect,
+            page._btn_load,
+            page._btn_save,
+            page._btn_build,
+        )
+    )
+
+    assert action_top - field_bottom >= 12
+
+    window.close()
+    window.deleteLater()
+
+
 @pytest.mark.gui_snapshot
 def test_main_window_snapshot_matches_baseline() -> None:
     app = qapp()
@@ -346,4 +374,12 @@ def _assert_no_visual_overlap(root: QtWidgets.QWidget, widgets: list[QtWidgets.Q
                 left_rect.getRect(),
                 right_rect.getRect(),
             )
+
+
+def _rect_in_window(
+    root: QtWidgets.QWidget,
+    widget: QtWidgets.QWidget,
+) -> QtCore.QRect:
+    top_left = widget.mapTo(root, widget.rect().topLeft())
+    return QtCore.QRect(top_left, widget.size()).adjusted(0, 0, -1, -1)
 

@@ -152,7 +152,9 @@ class VoicesPage(QWidget):
         left_layout.addWidget(self._llm_panel)
 
         # Action buttons.
-        action_row = QHBoxLayout()
+        self._action_panel = QWidget()
+        action_row = QHBoxLayout(self._action_panel)
+        action_row.setContentsMargins(0, 0, 0, 0)
         action_row.setSpacing(8)
 
         self._btn_detect = QPushButton()
@@ -194,7 +196,7 @@ class VoicesPage(QWidget):
             "}",
         )
         action_row.addWidget(self._btn_build)
-        left_layout.addLayout(action_row)
+        left_layout.addWidget(self._action_panel)
 
         self._progress = ProgressWidget()
         left_layout.addWidget(self._progress)
@@ -328,12 +330,12 @@ class VoicesPage(QWidget):
         """Balance the scrollable settings area against the assignment table."""
         tight_viewport = self.width() < 960 or self.height() < 560
         target = max(
-            154 if tight_viewport else 230,
+            164 if tight_viewport else 230,
             round((105 if tight_viewport else 230) * self._ui_scale),
         )
         if self.height() > 0:
             table_reserve = 185 if tight_viewport else max(260, round(260 * self._ui_scale))
-            target = min(target, max(154 if tight_viewport else 210, self.height() - table_reserve))
+            target = min(target, max(164 if tight_viewport else 210, self.height() - table_reserve))
         self._top_tabs.setMinimumHeight(target)
         self._top_tabs.setMaximumHeight(target)
 
@@ -343,6 +345,7 @@ class VoicesPage(QWidget):
         self._compact_mode = compact
         self._voice_table.set_compact_mode(compact)
         self._settings_layout.setVerticalSpacing(12 if compact else 6)
+        self._action_panel.layout().setContentsMargins(0, 4 if compact else 0, 0, 0)
         self._chunk_size.setFixedHeight(42 if compact else 38)
         self._chunk_size.setFixedWidth(118 if compact else 128)
         self._progress.setVisible(not compact)

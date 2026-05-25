@@ -264,6 +264,7 @@ markup с тем же language/model profile. Если 8B не проходит 
 ```bash
 python scripts/quality_benchmark.py
 RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama
+RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama --ollama-lightweight --languages en --max-chars 300
 RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama --languages ru --book-glob "*.fb2" --limit-books 1 --max-chars 350
 python scripts/quality_benchmark.py --skip-synthetic --book-glob "*.pdf" --limit-books 1
 ```

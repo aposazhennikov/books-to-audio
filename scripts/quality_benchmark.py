@@ -35,7 +35,11 @@ from book_normalizer.languages import (  # noqa: E402
     normalize_book_language,
     tesseract_language,
 )
-from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL, model_plan_for_language  # noqa: E402
+from book_normalizer.llm.model_router import (  # noqa: E402
+    FALLBACK_QWEN3_MODEL,
+    PRIMARY_QWEN3_MODEL,
+    model_plan_for_language,
+)
 from book_normalizer.loaders.factory import LoaderFactory  # noqa: E402
 from book_normalizer.loaders.pdf_loader import (  # noqa: E402
     PdfLoader,
@@ -64,6 +68,11 @@ def main() -> None:
     parser.add_argument("--books-dir", default="books", help="Optional local books directory.")
     parser.add_argument("--out-dir", default="output/quality_reports", help="Report output directory.")
     parser.add_argument("--run-ollama", action="store_true", help="Call local Ollama for each benchmark case.")
+    parser.add_argument(
+        "--ollama-lightweight",
+        action="store_true",
+        help="Use the 4B fallback model first for low-VRAM smoke checks.",
+    )
     parser.add_argument(
         "--languages",
         default=",".join(SUPPORTED_LANGUAGE_CODES),
@@ -113,6 +122,7 @@ def main() -> None:
     report = run_benchmark(
         books_dir=Path(args.books_dir),
         run_ollama=run_ollama,
+        ollama_lightweight=args.ollama_lightweight,
         languages=languages,
         include_synthetic=not args.skip_synthetic,
         book_globs=args.book_glob,
@@ -136,6 +146,7 @@ def run_benchmark(
     *,
     books_dir: Path,
     run_ollama: bool,
+    ollama_lightweight: bool = False,
     languages: Iterable[str] | None = None,
     include_synthetic: bool = True,
     book_globs: Iterable[str] | None = None,
@@ -158,6 +169,7 @@ def run_benchmark(
                     _synthetic_book(language),
                     source=source,
                     run_ollama=run_ollama,
+                    ollama_lightweight=ollama_lightweight,
                     review_report_paths=_case_review_paths(review_dir, source, language),
                 )
             )
@@ -185,6 +197,7 @@ def run_benchmark(
                         excerpt,
                         source=str(path),
                         run_ollama=run_ollama,
+                        ollama_lightweight=ollama_lightweight,
                         review_report_paths=_case_review_paths(
                             review_dir,
                             str(path),
@@ -198,13 +211,15 @@ def run_benchmark(
     return {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "run_ollama": run_ollama,
+        "ollama_lightweight": ollama_lightweight,
         "languages": list(language_codes),
         "include_synthetic": include_synthetic,
         "book_globs": list(glob_patterns),
         "book_language": book_language_code,
         "book_language_map": language_map,
         "max_chars": max_chars,
-        "primary_model": PRIMARY_QWEN3_MODEL,
+        "primary_model": FALLBACK_QWEN3_MODEL if ollama_lightweight else PRIMARY_QWEN3_MODEL,
+        "production_primary_model": PRIMARY_QWEN3_MODEL,
         "cases": cases,
     }
 
@@ -217,6 +232,8 @@ def format_markdown_report(report: dict[str, Any]) -> str:
         f"- Created: {report.get('created_at', '')}",
         f"- Ollama enabled: {bool(report.get('run_ollama'))}",
         f"- Primary model: {report.get('primary_model', '')}",
+        f"- Production primary model: {report.get('production_primary_model', report.get('primary_model', ''))}",
+        f"- Lightweight smoke: {_yes_no(bool(report.get('ollama_lightweight')))}",
         f"- Cases: {len(report.get('cases', []))}",
         "",
         "| # | Status | Lang | Source | Chars | Segments | Chunks | Text OK | Notes |",
@@ -247,6 +264,7 @@ def _run_case(
     *,
     source: str,
     run_ollama: bool,
+    ollama_lightweight: bool,
     review_report_paths: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
     language = book.metadata.language
@@ -258,7 +276,9 @@ def _run_case(
         "chapters": len(book.chapters),
         "paragraphs": sum(len(ch.paragraphs) for ch in book.chapters),
         "chars_before": len(before),
-        "model_candidates": list(model_plan_for_language(language).candidates),
+        "model_candidates": list(
+            model_plan_for_language(language, lightweight=ollama_lightweight).candidates
+        ),
     }
     if book.metadata.extra:
         record["metadata_extra"] = book.metadata.extra
@@ -273,11 +293,13 @@ def _run_case(
         try:
             normalizer = LlmNormalizer(
                 language=language,
+                lightweight=ollama_lightweight,
                 review_report_path=normalization_review_path,
             )
             accepted, rejected = normalizer.normalize_book(book)
             segmenter = LlmVoiceSegmenter(
                 language=language,
+                lightweight=ollama_lightweight,
                 review_report_path=segmentation_review_path,
             )
             segments = segmenter.segment_book(book)

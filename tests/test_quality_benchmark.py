@@ -45,6 +45,25 @@ def test_quality_benchmark_filters_synthetic_languages(tmp_path: Path) -> None:
     assert [case["language"] for case in report["cases"]] == ["zh", "en"]
 
 
+def test_quality_benchmark_lightweight_mode_routes_to_4b_first(tmp_path: Path) -> None:
+    module = _load_benchmark_module()
+
+    report = module.run_benchmark(
+        books_dir=tmp_path / "missing",
+        run_ollama=False,
+        ollama_lightweight=True,
+        languages=["en"],
+    )
+
+    case = report["cases"][0]
+    assert report["ollama_lightweight"] is True
+    assert report["primary_model"] == "hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M"
+    assert report["production_primary_model"] == "hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M"
+    assert case["model_candidates"] == ["hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M"]
+    markdown = module.format_markdown_report(report)
+    assert "Lightweight smoke: yes" in markdown
+
+
 def test_quality_benchmark_can_skip_synthetic_cases(tmp_path: Path) -> None:
     module = _load_benchmark_module()
 
@@ -337,9 +356,10 @@ def test_quality_benchmark_records_llm_review_reports(tmp_path: Path, monkeypatc
     seen: dict[str, Path | str] = {}
 
     class FakeNormalizer:
-        def __init__(self, *, language, review_report_path, **kwargs):  # noqa: ANN001
+        def __init__(self, *, language, review_report_path, lightweight, **kwargs):  # noqa: ANN001
             seen["normalizer_language"] = language
             seen["normalizer_path"] = review_report_path
+            seen["normalizer_lightweight"] = lightweight
 
         def normalize_book(self, book):  # noqa: ANN001
             path = seen["normalizer_path"]
@@ -352,9 +372,10 @@ def test_quality_benchmark_records_llm_review_reports(tmp_path: Path, monkeypatc
             return 1, 0
 
     class FakeSegmenter:
-        def __init__(self, *, language, review_report_path, **kwargs):  # noqa: ANN001
+        def __init__(self, *, language, review_report_path, lightweight, **kwargs):  # noqa: ANN001
             seen["segmenter_language"] = language
             seen["segmenter_path"] = review_report_path
+            seen["segmenter_lightweight"] = lightweight
 
         def segment_book(self, book):  # noqa: ANN001
             path = seen["segmenter_path"]
@@ -383,6 +404,7 @@ def test_quality_benchmark_records_llm_review_reports(tmp_path: Path, monkeypatc
     report = module.run_benchmark(
         books_dir=tmp_path / "missing",
         run_ollama=True,
+        ollama_lightweight=True,
         languages=["en"],
         review_dir=review_dir,
     )
@@ -392,6 +414,8 @@ def test_quality_benchmark_records_llm_review_reports(tmp_path: Path, monkeypatc
     segmenter_path = seen["segmenter_path"]
     assert seen["normalizer_language"] == "en"
     assert seen["segmenter_language"] == "en"
+    assert seen["normalizer_lightweight"] is True
+    assert seen["segmenter_lightweight"] is True
     assert isinstance(normalizer_path, Path)
     assert isinstance(segmenter_path, Path)
     assert normalizer_path.parent == review_dir

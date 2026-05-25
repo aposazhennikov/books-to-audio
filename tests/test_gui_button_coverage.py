@@ -10,6 +10,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 from tests.gui.helpers import qapp as make_qapp
 from tests.gui.helpers import render_widget
 
@@ -17,12 +18,16 @@ QtCore = pytest.importorskip("PyQt6.QtCore")
 QtGui = pytest.importorskip("PyQt6.QtGui")
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 
+cli = pytest.importorskip("book_normalizer.cli")
+main_window = pytest.importorskip("book_normalizer.gui.main_window")
 assembly_page = pytest.importorskip("book_normalizer.gui.pages.assembly_page")
 normalize_page = pytest.importorskip("book_normalizer.gui.pages.normalize_page")
+roles_page = pytest.importorskip("book_normalizer.gui.pages.roles_page")
 synthesis_page = pytest.importorskip("book_normalizer.gui.pages.synthesis_page")
 voice_preview = pytest.importorskip("book_normalizer.gui.widgets.voice_preview")
 
 AssemblyPage = assembly_page.AssemblyPage
+MainWindow = main_window.MainWindow
 NormalizePage = normalize_page.NormalizePage
 SynthesisPage = synthesis_page.SynthesisPage
 VoicePreviewPanel = voice_preview.VoicePreviewPanel
@@ -80,6 +85,121 @@ def _write_manifest(path: Path) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def test_main_window_llm_workflow_clicks_normalize_roles_and_loads_chunks(
+    qapp,
+    qtbot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    book_path = tmp_path / "workflow.txt"
+    book_path.write_text("Маргарита сказала: «Здравствуйте!»", encoding="utf-8")
+    output_dir = tmp_path / "audio_out"
+    captured_normalize: dict = {}
+    captured_segments: dict = {}
+
+    class _FakeNormalizeWorker:
+        def __init__(self, **kwargs):
+            captured_normalize.update(kwargs)
+            self.progress = _Signal()
+            self.progress_pct = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            book = Book(
+                metadata=Metadata(
+                    language=captured_normalize["book_language"],
+                    extra={
+                        "llm_processing_enabled": captured_normalize["llm_normalize"],
+                        "llm_model_candidates": [captured_normalize["llm_model"]],
+                    },
+                ),
+                chapters=[
+                    Chapter(
+                        title="Глава 1",
+                        index=0,
+                        paragraphs=[
+                            Paragraph(
+                                raw_text="Маргарита сказала: «Здравствуйте!»",
+                                normalized_text="Маргарита сказала: «Здравствуйте!»",
+                            ),
+                        ],
+                    ),
+                ],
+            )
+            self.finished.emit(book)
+
+    class _FakeExportSegmentsWorker:
+        def __init__(self, **kwargs):
+            captured_segments.update(kwargs)
+            self.progress = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            manifest_path = captured_segments["output_dir"] / "segments_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            manifest_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "segment_index": 0,
+                            "chapter_index": 0,
+                            "language": "ru",
+                            "role": "margarita",
+                            "speaker": "Маргарита",
+                            "character_description": "Смелая, теплая, прямая.",
+                            "is_dialogue": True,
+                            "emotion": "warm",
+                            "intonation": "warm",
+                            "voice_id": "female_warm",
+                            "text": "Здравствуйте!",
+                            "pause_after_ms": 260,
+                            "boundary_after": "sentence",
+                        }
+                    ],
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            self.finished.emit(str(manifest_path))
+
+    monkeypatch.setattr(
+        normalize_page.QFileDialog,
+        "getOpenFileName",
+        lambda *_args, **_kwargs: (str(book_path), "TXT"),
+    )
+    monkeypatch.setattr(normalize_page, "NormalizeWorker", _FakeNormalizeWorker)
+    monkeypatch.setattr(roles_page, "ExportSegmentsWorker", _FakeExportSegmentsWorker)
+    monkeypatch.setattr(cli, "_build_output_dir", lambda *_args, **_kwargs: output_dir)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    render_widget(window, 1180, 760, scale=1.0)
+
+    qtbot.mouseClick(window._normalize_page._btn_browse, QtCore.Qt.MouseButton.LeftButton)
+    window._normalize_page._llm_normalize.setChecked(True)
+    qtbot.mouseClick(window._normalize_page._btn_run, QtCore.Qt.MouseButton.LeftButton)
+
+    assert window._tabs.currentIndex() == 1
+    assert captured_normalize["llm_normalize"] is True
+    assert captured_normalize["book_language"] == "ru"
+    assert "wsl" not in captured_normalize["llm_endpoint"].lower()
+    assert window._roles_page._btn_extract.isEnabled()
+    assert window._roles_page._llm_model.text() == captured_normalize["llm_model"]
+
+    qtbot.mouseClick(window._roles_page._btn_extract, QtCore.Qt.MouseButton.LeftButton)
+
+    assert captured_segments["speaker_mode"] == "llm"
+    assert captured_segments["output_dir"] == output_dir
+    assert "wsl" not in captured_segments["llm_endpoint"].lower()
+    assert window._tabs.currentIndex() == 2
+    assert window._roles_page._table.rowCount() == 1
+    assert window._voices_page._voice_table.get_segments()[0]["speaker"] == "Маргарита"
+    assert (output_dir / "roles_manifest.json").exists()
 
 
 def test_normalize_browse_button_selects_file_and_enables_run(

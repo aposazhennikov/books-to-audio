@@ -78,7 +78,10 @@ def main() -> None:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out_path = out_dir / f"quality_report_{stamp}.json"
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    md_path = out_path.with_suffix(".md")
+    md_path.write_text(format_markdown_report(report), encoding="utf-8")
     print(f"Quality report written: {out_path}")
+    print(f"Quality summary written: {md_path}")
 
 
 def run_benchmark(
@@ -132,6 +135,39 @@ def run_benchmark(
         "primary_model": PRIMARY_QWEN3_MODEL,
         "cases": cases,
     }
+
+
+def format_markdown_report(report: dict[str, Any]) -> str:
+    """Return a compact human-review summary for benchmark output."""
+    lines = [
+        "# Books to Audio Quality Benchmark",
+        "",
+        f"- Created: {report.get('created_at', '')}",
+        f"- Ollama enabled: {bool(report.get('run_ollama'))}",
+        f"- Primary model: {report.get('primary_model', '')}",
+        f"- Cases: {len(report.get('cases', []))}",
+        "",
+        "| # | Status | Lang | Source | Chars | Segments | Chunks | Text OK | Notes |",
+        "|---:|---|---|---|---:|---:|---:|---|---|",
+    ]
+    for index, case in enumerate(report.get("cases", []), start=1):
+        status = str(case.get("status", "unknown"))
+        lang = str(case.get("language", ""))
+        source = _short_source(str(case.get("source", "")))
+        chars = case.get("chars_before", "")
+        segments = case.get("segments", "")
+        chunks = case.get("chunks", "")
+        text_ok = _yes_no(
+            bool(case.get("text_preserved", False))
+            and bool(case.get("segments_preserve_text", case.get("text_preserved", False)))
+            and bool(case.get("chunk_text_preserved", case.get("text_preserved", False)))
+        )
+        notes = _case_notes(case)
+        lines.append(
+            f"| {index} | {status} | {lang} | {source} | {chars} | "
+            f"{segments} | {chunks} | {text_ok} | {notes} |"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def _run_case(
@@ -372,6 +408,28 @@ def _is_dialogue_segment(segment: dict[str, Any]) -> bool:
         return True
     role = str(segment.get("role") or "").strip().lower()
     return role in {"male", "female"}
+
+
+def _case_notes(case: dict[str, Any]) -> str:
+    notes: list[str] = []
+    if case.get("llm_rejected"):
+        notes.append(f"LLM rejected {case['llm_rejected']}")
+    if case.get("error"):
+        notes.append(str(case["error"]).replace("|", "/"))
+    if case.get("llm_normalization_review_report"):
+        notes.append(f"review: {case['llm_normalization_review_report']}")
+    return "; ".join(notes)
+
+
+def _short_source(source: str, max_len: int = 48) -> str:
+    source = source.replace("|", "/")
+    if len(source) <= max_len:
+        return source
+    return "..." + source[-(max_len - 3):]
+
+
+def _yes_no(value: bool) -> str:
+    return "yes" if value else "no"
 
 
 def _canonical_exact(text: str) -> str:

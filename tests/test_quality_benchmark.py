@@ -152,3 +152,47 @@ def test_quality_benchmark_excerpt_does_not_keep_tiny_partial_tail() -> None:
 
     assert "Эта кни" not in excerpt.raw_text
     assert len(excerpt.raw_text) <= 350
+
+
+def test_quality_benchmark_formats_human_review_summary() -> None:
+    module = _load_benchmark_module()
+    report = {
+        "created_at": "2026-05-25T00:00:00+00:00",
+        "run_ollama": True,
+        "primary_model": "qwen",
+        "cases": [
+            {
+                "source": "synthetic",
+                "language": "ru",
+                "status": "ok",
+                "chars_before": 42,
+                "segments": 2,
+                "chunks": 2,
+                "text_preserved": True,
+                "segments_preserve_text": True,
+                "chunk_text_preserved": True,
+            },
+            {
+                "source": "books/example.pdf",
+                "language": "ru",
+                "status": "review_required",
+                "chars_before": 300,
+                "segments": 4,
+                "chunks": 1,
+                "text_preserved": True,
+                "segments_preserve_text": False,
+                "chunk_text_preserved": True,
+                "llm_rejected": 1,
+                "error": "segment/chunk mismatch",
+            },
+        ],
+    }
+
+    markdown = module.format_markdown_report(report)
+
+    assert "# Books to Audio Quality Benchmark" in markdown
+    assert "| 1 | ok | ru | synthetic | 42 | 2 | 2 | yes |  |" in markdown
+    assert (
+        "| 2 | review_required | ru | books/example.pdf | 300 | 4 | 1 | no | "
+        "LLM rejected 1; segment/chunk mismatch |"
+    ) in markdown

@@ -99,12 +99,35 @@ def test_normalize_page_hides_native_ocr_install_when_tesseract_available(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(normalize_page, "tesseract_available", lambda: True)
+    monkeypatch.setattr(normalize_page, "tesseract_language_available", lambda _lang: True)
     page = NormalizePage()
 
     page._selected_path = "book.pdf"
     page._update_ocr_visibility()
 
     assert page._ocr_install_panel.isHidden()
+    page.deleteLater()
+
+
+def test_normalize_page_prompts_when_tesseract_language_pack_missing(
+    qapp,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(normalize_page, "tesseract_available", lambda: True)
+    monkeypatch.setattr(normalize_page, "tesseract_language_available", lambda _lang: False)
+    monkeypatch.setattr(normalize_page.platform, "system", lambda: "Windows")
+    set_language("ru")
+    page = NormalizePage()
+
+    page._selected_path = "book.pdf"
+    page._update_ocr_visibility()
+
+    assert not page._ocr_install_panel.isHidden()
+    assert "rus" in page._ocr_install_label.text()
+    assert "языкового пакета" in page._ocr_install_label.text()
+    assert "install.bat --interactive --install-system-tools" in page._ocr_install_label.text()
+    assert "wsl" not in page._ocr_install_label.text().lower()
+
     page.deleteLater()
 
 

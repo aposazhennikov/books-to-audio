@@ -138,3 +138,66 @@ def test_tesseract_cli_receives_configured_tessdata_prefix(monkeypatch, tmp_path
     assert text == "Recognized text"
     assert captured["args"][:3] == [str(configured), captured["args"][1], "stdout"]
     assert captured["env"]["TESSDATA_PREFIX"] == str(tessdata)
+
+
+def test_available_tesseract_languages_uses_native_cli_and_tessdata_prefix(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _isolate_runtime_config(monkeypatch, tmp_path)
+    configured = tmp_path / "Tesseract-OCR" / "tesseract.exe"
+    tessdata = tmp_path / "Tesseract-OCR" / "tessdata"
+    configured.parent.mkdir()
+    tessdata.mkdir()
+    configured.write_text("", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run(args, **kwargs):  # noqa: ANN001
+        captured["args"] = args
+        captured["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout="List of available languages in tessdata (5):\neng\nrus\nchi_sim\nkaz\nuzb\n",
+            stderr="",
+        )
+
+    monkeypatch.setenv("BOOKS_TO_AUDIO_TESSERACT_CMD", str(configured))
+    monkeypatch.setenv("BOOKS_TO_AUDIO_TESSDATA_DIR", str(tessdata))
+    monkeypatch.setattr(pdf_ocr_engine.subprocess, "run", fake_run)
+
+    languages = pdf_ocr_engine.available_tesseract_languages()
+
+    assert languages == {"eng", "rus", "chi_sim", "kaz", "uzb"}
+    assert captured["args"] == [str(configured), "--list-langs"]
+    assert captured["env"]["TESSDATA_PREFIX"] == str(tessdata)
+
+
+def test_available_tesseract_languages_does_not_probe_wsl_when_native_missing(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _isolate_runtime_config(monkeypatch, tmp_path)
+
+    def fake_run(*_args, **_kwargs):  # noqa: ANN001
+        raise AssertionError("language scan must not run without a native binary")
+
+    monkeypatch.setattr(pdf_ocr_engine.shutil, "which", lambda name: None)
+    monkeypatch.setattr(pdf_ocr_engine.subprocess, "run", fake_run)
+
+    assert pdf_ocr_engine.available_tesseract_languages() == set()
+
+
+def test_tesseract_language_available_requires_every_requested_pack(monkeypatch) -> None:
+    monkeypatch.setattr(
+        pdf_ocr_engine,
+        "available_tesseract_languages",
+        lambda: {"eng", "rus", "chi_sim"},
+    )
+
+    assert pdf_ocr_engine.tesseract_language_available("rus") is True
+    assert pdf_ocr_engine.tesseract_language_available("rus+eng") is True
+    assert pdf_ocr_engine.tesseract_language_available("kaz") is False
+    assert pdf_ocr_engine.tesseract_language_available("rus+kaz") is False
+    assert pdf_ocr_engine.tesseract_language_available("") is False
+    assert pdf_ocr_engine.tesseract_book_language_available("zh") is True

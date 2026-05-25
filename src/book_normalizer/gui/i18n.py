@@ -279,6 +279,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "kk": "Бұл ОС-та Tesseract табылмады. OCR құралдарын жергілікті орнатқышпен орнатыңыз: {cmd}",
         "uz": "Bu OSda Tesseract topilmadi. OCR vositalarini mahalliy o‘rnatuvchi bilan o‘rnating: {cmd}",
     },
+    "norm.ocr_install_language_hint": {
+        "en": "Tesseract is installed, but language data '{lang}' is missing. Install OCR language packs: {cmd}",
+        "ru": "Tesseract установлен, но нет языкового пакета '{lang}'. Установите OCR-языки: {cmd}",
+        "zh": "已安装 Tesseract，但缺少语言数据 '{lang}'。请安装 OCR 语言包：{cmd}",
+        "kk": "Tesseract орнатылған, бірақ '{lang}' тіл деректері жоқ. OCR тіл пакеттерін орнатыңыз: {cmd}",
+        "uz": "Tesseract o‘rnatilgan, lekin '{lang}' til maʼlumoti yo‘q. OCR til paketlarini o‘rnating: {cmd}",
+    },
     "norm.ocr_install_button": {
         "en": "Install OCR",
         "ru": "Установить OCR",

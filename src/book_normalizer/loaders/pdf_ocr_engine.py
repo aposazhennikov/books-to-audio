@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from book_normalizer.languages import tesseract_language
 from book_normalizer.runtime_paths import configured_tessdata_dir, configured_tesseract_cmd
 
 
@@ -43,6 +44,49 @@ def tesseract_cli_available() -> bool:
         return result.returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
+
+
+def available_tesseract_languages() -> set[str]:
+    """Return installed Tesseract language data codes for the native binary."""
+    command = _tesseract_command()
+    if not command:
+        return set()
+    try:
+        result = subprocess.run(
+            [str(command), "--list-langs"],
+            capture_output=True,
+            timeout=10,
+            env=_tesseract_env(),
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    if result.returncode != 0:
+        return set()
+
+    languages: set[str] = set()
+    for line in (result.stdout or "").splitlines():
+        value = line.strip()
+        if not value or value.lower().startswith("list of available languages"):
+            continue
+        languages.add(value)
+    return languages
+
+
+def tesseract_language_available(lang: str) -> bool:
+    """Return true when every requested Tesseract language pack is installed."""
+    requested = {part.strip() for part in lang.split("+") if part.strip()}
+    if not requested:
+        return False
+    available = available_tesseract_languages()
+    return requested.issubset(available)
+
+
+def tesseract_book_language_available(language: str | None) -> bool:
+    """Return true when the configured book language can be OCRed locally."""
+    return tesseract_language_available(tesseract_language(language))
 
 
 def _tesseract_command() -> Path | str | None:

@@ -244,14 +244,22 @@ class LlmVoiceSegmenter:
                         max_chunk_chars=self._max_segment_chars,
                     ) or [raw["text"]]:
                         role = _normalize_role(raw.get("role", "narrator"))
+                        speaker = _clean_optional(raw.get("speaker"))
+                        section_kind = _clean_section_kind(raw.get("section_kind"), role)
+                        is_dialogue = _is_dialogue_segment(
+                            role=role,
+                            section_kind=section_kind,
+                            speaker=speaker,
+                            text=text_part,
+                        )
                         rows.append(
                             {
                                 "segment_index": segment_index,
                                 "chapter_index": chapter_index,
                                 "language": self._language,
-                                "is_dialogue": role in {"male", "female"},
+                                "is_dialogue": is_dialogue,
                                 "role": role,
-                                "speaker": _clean_optional(raw.get("speaker")),
+                                "speaker": speaker,
                                 "character_description": _clean_optional(
                                     raw.get("character_description")
                                     or raw.get("role_description")
@@ -260,7 +268,7 @@ class LlmVoiceSegmenter:
                                 "emotion": _clean_intonation(
                                     raw.get("emotion") or raw.get("intonation", "calm")
                                 ),
-                                "section_kind": _clean_section_kind(raw.get("section_kind"), role),
+                                "section_kind": section_kind,
                                 "voice_id": ROLE_TO_VOICE_ID[role],
                                 "intonation": _clean_intonation(raw.get("intonation", "calm")),
                                 "text": text_part,
@@ -538,6 +546,20 @@ def _clean_section_kind(value: Any, role: str) -> str:
     if text in allowed:
         return text
     return "dialogue" if role in {"male", "female"} else "narration"
+
+
+def _is_dialogue_segment(
+    *,
+    role: str,
+    section_kind: str,
+    speaker: str,
+    text: str,
+) -> bool:
+    """Detect direct speech even when the LLM cannot prove speaker gender."""
+    if role in {"male", "female"} or section_kind == "dialogue" or speaker:
+        return True
+    stripped = text.lstrip()
+    return bool(stripped and (stripped[0] in _QUOTE_CHARS or stripped[0] in _DASH_CHARS))
 
 
 def _safe_int(value: Any, default: int = 0) -> int:

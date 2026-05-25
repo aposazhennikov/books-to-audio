@@ -175,7 +175,7 @@ def _run_case(
                 "llm_accepted": accepted,
                 "llm_rejected": rejected,
                 "segments": len(segments),
-                "dialogue_segments": sum(1 for segment in segments if segment.get("role") in {"male", "female"}),
+                "dialogue_segments": sum(1 for segment in segments if _is_dialogue_segment(segment)),
                 "chunks": len(chunks),
                 "text_preserved": _canonical_content(before) == _canonical_content(after),
                 "segments_preserve_text": segments_preserve_text,
@@ -365,6 +365,13 @@ def _case_review_path(review_dir: Path | None, source: str, language: str) -> Pa
         return None
     safe = "".join(char if char.isalnum() else "_" for char in source)[:80].strip("_")
     return review_dir / f"{language}_{safe or 'case'}_normalization_review.json"
+
+
+def _is_dialogue_segment(segment: dict[str, Any]) -> bool:
+    if segment.get("is_dialogue"):
+        return True
+    role = str(segment.get("role") or "").strip().lower()
+    return role in {"male", "female"}
 
 
 def _canonical_exact(text: str) -> str:

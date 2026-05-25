@@ -189,6 +189,32 @@ def test_llm_voice_segmenter_keeps_character_metadata_for_roles() -> None:
     assert rows[1]["section_kind"] == "dialogue"
 
 
+def test_llm_voice_segmenter_marks_dialogue_when_gender_is_unknown() -> None:
+    text = "谢尔盖打开了门。\n\n“谁在那里？”他问。"
+    segmenter = LlmVoiceSegmenter(language="zh")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "text": "谢尔盖打开了门。", "intonation": "calm"},
+                {
+                    "role": "narrator",
+                    "section_kind": "dialogue",
+                    "text": "“谁在那里？”他问。",
+                    "intonation": "tense",
+                },
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="zh"))
+
+    assert rows[0]["is_dialogue"] is False
+    assert rows[1]["role"] == "narrator"
+    assert rows[1]["section_kind"] == "dialogue"
+    assert rows[1]["is_dialogue"] is True
+
+
 def test_llm_voice_segmenter_restores_source_punctuation_from_model_boundaries() -> None:
     text = "Посланца..И сделать было нельзя.\n\nСерг"
     segmenter = LlmVoiceSegmenter(language="ru")

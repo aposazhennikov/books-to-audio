@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -62,10 +63,38 @@ def test_installer_wrappers_pause_without_requiring_enter() -> None:
 
     assert "Press any key to exit terminal" in shell_text
     assert "Нажмите любую кнопку" in shell_text
+    assert "say info \\" in shell_text
     assert "BOOKS_TO_AUDIO_FROM_RUN_GUI" in shell_text
     assert "stty raw -echo" in shell_text
     assert "dd bs=1 count=1" in shell_text
+    assert "color %c_info%" in batch_text
     assert "pause >nul" in batch_text
+
+
+def test_install_wrappers_use_native_line_endings() -> None:
+    batch_bytes = Path("install.bat").read_bytes()
+    shell_bytes = Path("install.sh").read_bytes()
+
+    assert batch_bytes.count(b"\n") == batch_bytes.count(b"\r\n")
+    assert shell_bytes.count(b"\r\n") == 0
+
+
+def test_installer_wrappers_use_colored_bilingual_status_helpers() -> None:
+    shell_text = Path("install.sh").read_text(encoding="utf-8")
+    batch_text = Path("install.bat").read_text(encoding="utf-8")
+
+    assert "C_INFO=$(printf '\\033[36m')" in shell_text
+    assert "say()" in shell_text
+    assert "say info \\" in shell_text
+    assert "say err \\" in shell_text
+    assert "Trying to install Python 3 with the native system package manager" in shell_text
+    assert "Пробую установить Python 3 нативным менеджером пакетов системы" in shell_text
+
+    assert "set \"C_INFO=0B\"" in batch_text
+    assert "color %C_INFO%" in batch_text
+    assert "color %C_ERR%" in batch_text
+    assert "Installing Python 3.12 with native Windows winget" in batch_text
+    assert "Устанавливаю Python 3.12 через нативный Windows winget" in batch_text
 
 
 def test_installer_wrappers_bootstrap_python_with_native_package_managers() -> None:
@@ -188,6 +217,55 @@ def test_installer_dry_run_overwrites_bilingual_log(tmp_path: Path) -> None:
         assert runtime_config["ollama_models_dir"] == str(ollama_models_dir)
         assert runtime_config["tesseract_cmd"] == str(tmp_path / "tools" / "tesseract.exe")
         assert "BOOKS_TO_AUDIO_RUNTIME_CONFIG" in env_path.read_text(encoding="utf-8")
+    finally:
+        if previous_config is None:
+            config_path.unlink(missing_ok=True)
+        else:
+            config_path.write_text(previous_config, encoding="utf-8")
+        if previous_env is None:
+            env_path.unlink(missing_ok=True)
+        else:
+            env_path.write_text(previous_env, encoding="utf-8")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows batch wrapper smoke")
+def test_windows_install_wrapper_dry_run_has_no_argument_fallthrough(tmp_path: Path) -> None:
+    config_path = Path(RUNTIME_CONFIG_PATH)
+    env_path = RUNTIME_CONFIG_PATH.with_suffix(".env")
+    previous_config = config_path.read_text(encoding="utf-8") if config_path.exists() else None
+    previous_env = env_path.read_text(encoding="utf-8") if env_path.exists() else None
+    env = os.environ.copy()
+    env["BOOKS_TO_AUDIO_FROM_RUN_GUI"] = "1"
+
+    try:
+        result = subprocess.run(
+            [
+                "cmd",
+                "/c",
+                "install.bat",
+                "--dry-run",
+                "--yes",
+                "--no-system-check",
+                "--log-path",
+                str(tmp_path / "wrapper.log"),
+                "--install-root",
+                str(tmp_path / "install-root"),
+                "--venv",
+                str(tmp_path / "wrapper-venv"),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            check=True,
+        )
+
+        combined = f"{result.stdout}\n{result.stderr}"
+        assert "Books to Audio installer" in combined
+        assert "Would run:" in combined
+        assert "not recognized as an internal or external command" not in combined
+        assert "The AT command has been deprecated" not in combined
     finally:
         if previous_config is None:
             config_path.unlink(missing_ok=True)

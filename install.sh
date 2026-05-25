@@ -5,12 +5,43 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$SCRIPT_DIR"
 export PYTHONUTF8=1
 
+if [ -t 1 ]; then
+    C_INFO=$(printf '\033[36m')
+    C_WARN=$(printf '\033[33m')
+    C_ERR=$(printf '\033[31m')
+    C_OK=$(printf '\033[32m')
+    C_RESET=$(printf '\033[0m')
+else
+    C_INFO=
+    C_WARN=
+    C_ERR=
+    C_OK=
+    C_RESET=
+fi
+
+say() {
+    level=$1
+    en=$2
+    ru=${3:-}
+    color=$C_INFO
+    case "$level" in
+        ok) color=$C_OK ;;
+        warn) color=$C_WARN ;;
+        err) color=$C_ERR ;;
+    esac
+    printf '%s%s%s\n' "$color" "$en" "$C_RESET"
+    if [ -n "$ru" ]; then
+        printf '%s   %s%s\n' "$color" "$ru" "$C_RESET"
+    fi
+}
+
 pause_for_key() {
     if [ ! -t 0 ] || [ -n "${BOOKS_TO_AUDIO_FROM_RUN_GUI:-}" ]; then
         return
     fi
 
-    printf '\n%s\n%s\n' \
+    printf '\n'
+    say info \
         "Press any key to exit terminal..." \
         "Нажмите любую кнопку для выхода из терминала..."
 
@@ -29,7 +60,7 @@ pause_for_key() {
 }
 
 bootstrap_python() {
-    printf '%s\n%s\n' \
+    say info \
         "Trying to install Python 3 with the native system package manager..." \
         "Пробую установить Python 3 нативным менеджером пакетов системы..."
 
@@ -107,7 +138,7 @@ if [ -z "$goto_done" ]; then
 fi
 
 if [ -z "$goto_done" ]; then
-    printf '%s\n%s\n' \
+    say err \
         "Python 3.10 or newer with venv was not found. Install python3 and try again." \
         "Python 3.10+ с модулем venv не найден. Установите python3 и повторите запуск." >&2
     EXIT_CODE=1

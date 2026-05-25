@@ -169,7 +169,7 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     assert table._table.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     assert table._segment_editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     assert table._full_text_editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    for column in (0, 1, 2, 5, 6, 7):
+    for column in (0, 1, 2, 6, 7, 8):
         assert table._table.isColumnHidden(column)
 
     table.set_segments(
@@ -192,7 +192,43 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     assert table._quick_apply_panel.isVisible()
     assert not table._table.isColumnHidden(3)
     assert not table._table.isColumnHidden(4)
+    assert not table._table.isColumnHidden(5)
 
+    page.deleteLater()
+
+
+def test_voice_table_exposes_editable_character_roles(qapp, qtbot) -> None:
+    page = VoicesPage()
+    qtbot.addWidget(page)
+    page._voice_table.set_segments(
+        [
+            {
+                "segment_index": 0,
+                "chapter_index": 0,
+                "role": "female",
+                "speaker": "Маргарита",
+                "character_description": "Решительная.",
+                "emotion": "sad",
+                "voice_id": "female_warm",
+                "intonation": "sad",
+                "text": "Я вернусь.",
+            },
+        ]
+    )
+
+    role_combo = page._voice_table._table.cellWidget(0, 4)
+    assert isinstance(role_combo, QtWidgets.QComboBox)
+    assert role_combo.isEditable()
+    assert role_combo.currentText() == "Маргарита"
+
+    role_combo.setCurrentText("Маргарита-Грустная")
+    role_combo.lineEdit().editingFinished.emit()
+
+    segment = page._voice_table.get_segments()[0]
+    assert segment["role"] == "female"
+    assert segment["speaker"] == "Маргарита-Грустная"
+    assert segment["character"] == "Маргарита-Грустная"
+    assert segment["role_display_name"] == "Маргарита-Грустная"
     page.deleteLater()
 
 
@@ -269,6 +305,7 @@ def test_voices_page_builds_chunks_without_deleted_segments(qapp, qtbot, tmp_pat
                 "chapter_index": 0,
                 "language": "en",
                 "role": "narrator",
+                "speaker": "Author",
                 "voice_id": "narrator_calm",
                 "intonation": "calm",
                 "text": "Useful text.",
@@ -290,5 +327,7 @@ def test_voices_page_builds_chunks_without_deleted_segments(qapp, qtbot, tmp_pat
     page._build_tts_chunks()
 
     manifest = json.loads((tmp_path / "chunks_manifest_v2.json").read_text(encoding="utf-8"))
-    chunk_text = manifest["chapters"][0]["chunks"][0]["text"]
+    chunk = manifest["chapters"][0]["chunks"][0]
+    chunk_text = chunk["text"]
     assert chunk_text == "Useful text."
+    assert chunk["speaker"] == "Author"

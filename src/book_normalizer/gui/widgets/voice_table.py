@@ -40,6 +40,20 @@ INTONATION_KEYS = [
 
 _DIALOGUE_BG = QColor(14, 165, 233, 28)
 
+_CANONICAL_ROLE_KEYS = {
+    "narrator": "voice.role_narrator",
+    "male": "voice.role_male",
+    "female": "voice.role_female",
+    "unknown": "voice.role_unknown",
+}
+
+_SECTION_ROLE_KEYS = {
+    "annotation": "voice.role_annotation",
+    "preface": "voice.role_preface",
+    "epilogue": "voice.role_epilogue",
+    "chapter_title": "voice.role_chapter_title",
+}
+
 
 def _editor_style() -> str:
     return (
@@ -64,6 +78,27 @@ def _role_from_voice_id(voice_id: str, fallback: str = "narrator") -> str:
     if normalized == "narrator" or normalized.startswith("narrator_"):
         return "narrator"
     return fallback if fallback in {"narrator", "male", "female", "unknown"} else "narrator"
+
+
+def _segment_speaker(segment: dict[str, Any]) -> str:
+    """Return the character/system display name stored by the LLM manifest."""
+    for key in ("speaker", "character", "role_display_name"):
+        value = str(segment.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _segment_role_display(segment: dict[str, Any]) -> str:
+    """Return the human-facing role label for one segment."""
+    speaker = _segment_speaker(segment)
+    if speaker:
+        return speaker
+    section = str(segment.get("section_kind") or "").strip().lower()
+    if section in _SECTION_ROLE_KEYS:
+        return t(_SECTION_ROLE_KEYS[section])
+    role = str(segment.get("role") or "narrator").strip().lower()
+    return t(_CANONICAL_ROLE_KEYS.get(role, "voice.role_narrator"))
 
 
 def _make_voice_combo(current: str = "narrator_calm") -> QComboBox:
@@ -219,17 +254,18 @@ class VoiceTableWidget(QWidget):
 
         # Table.
         self._table = QTableWidget()
-        self._table.setColumnCount(8)
+        self._table.setColumnCount(9)
         self._table.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeMode.Stretch,
         )
         self._table.setColumnWidth(0, 36)
         self._table.setColumnWidth(1, 60)
         self._table.setColumnWidth(2, 36)
-        self._table.setColumnWidth(4, 220)
-        self._table.setColumnWidth(5, 145)
-        self._table.setColumnWidth(6, 80)
+        self._table.setColumnWidth(4, 170)
+        self._table.setColumnWidth(5, 220)
+        self._table.setColumnWidth(6, 145)
         self._table.setColumnWidth(7, 80)
+        self._table.setColumnWidth(8, 80)
         self._table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows,
         )
@@ -389,6 +425,7 @@ class VoiceTableWidget(QWidget):
             t("voice.col_type"),
             t("voice.col_chapter"),
             t("voice.col_text"),
+            t("voice.col_role"),
             t("voice.col_voice"),
             t("voice.col_intonation"),
             t("voice.col_audio"),
@@ -418,7 +455,14 @@ class VoiceTableWidget(QWidget):
         quick_current = self._quick_combo.currentData() or "narrator_calm"
         _populate_voice_combo(self._quick_combo, str(quick_current))
         for row in range(self._table.rowCount()):
-            combo = self._table.cellWidget(row, 4)
+            role_combo = self._table.cellWidget(row, 4)
+            if isinstance(role_combo, QComboBox):
+                segment_index = self._segment_index_for_table_row(row)
+                if 0 <= segment_index < len(self._segments):
+                    current = _segment_role_display(self._segments[segment_index])
+                    self._populate_role_combo(role_combo, current)
+
+            combo = self._table.cellWidget(row, 5)
             if isinstance(combo, QComboBox):
                 current = combo.currentData() or "narrator_calm"
                 _populate_voice_combo(combo, str(current))
@@ -482,7 +526,7 @@ class VoiceTableWidget(QWidget):
 
     def _apply_table_layout(self) -> None:
         """Apply column visibility and widget widths for the current mode."""
-        hidden_cols = {0, 1, 2, 5, 6, 7} if self._compact_mode else set()
+        hidden_cols = {0, 1, 2, 6, 7, 8} if self._compact_mode else set()
         for col in range(self._table.columnCount()):
             self._table.setColumnHidden(col, col in hidden_cols)
 
@@ -490,9 +534,10 @@ class VoiceTableWidget(QWidget):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         if self._compact_mode:
             self._quick_combo.setMinimumWidth(150)
-            self._table.setColumnWidth(4, 170)
-            self._table.setColumnWidth(6, 68)
-            self._table.setColumnWidth(7, 72)
+            self._table.setColumnWidth(4, 150)
+            self._table.setColumnWidth(5, 170)
+            self._table.setColumnWidth(7, 68)
+            self._table.setColumnWidth(8, 72)
             self._table.verticalHeader().setDefaultSectionSize(
                 self._scaled_table_row_height(38),
             )
@@ -501,20 +546,25 @@ class VoiceTableWidget(QWidget):
             self._table.setColumnWidth(0, 36)
             self._table.setColumnWidth(1, 60)
             self._table.setColumnWidth(2, 36)
-            self._table.setColumnWidth(4, 220)
-            self._table.setColumnWidth(5, 145)
-            self._table.setColumnWidth(6, 80)
+            self._table.setColumnWidth(4, 170)
+            self._table.setColumnWidth(5, 220)
+            self._table.setColumnWidth(6, 145)
             self._table.setColumnWidth(7, 80)
+            self._table.setColumnWidth(8, 80)
             self._table.verticalHeader().setDefaultSectionSize(
                 self._scaled_table_row_height(34),
             )
 
         for row in range(self._table.rowCount()):
-            voice_combo = self._table.cellWidget(row, 4)
+            role_combo = self._table.cellWidget(row, 4)
+            if isinstance(role_combo, QComboBox):
+                role_combo.setMinimumWidth(126 if self._compact_mode else 150)
+                role_combo.view().setMinimumWidth(190 if self._compact_mode else 230)
+            voice_combo = self._table.cellWidget(row, 5)
             if isinstance(voice_combo, QComboBox):
                 voice_combo.setMinimumWidth(132 if self._compact_mode else 160)
                 voice_combo.view().setMinimumWidth(210 if self._compact_mode else 230)
-            intonation_combo = self._table.cellWidget(row, 5)
+            intonation_combo = self._table.cellWidget(row, 6)
             if isinstance(intonation_combo, QComboBox):
                 intonation_combo.setMinimumWidth(96 if self._compact_mode else 118)
 
@@ -672,7 +722,30 @@ class VoiceTableWidget(QWidget):
                 text_item.setBackground(_DIALOGUE_BG)
             self._table.setItem(row, 3, text_item)
 
-            # Column 4: voice combo.
+            # Column 4: editable character/system role.
+            role_combo = QComboBox()
+            role_combo.setEditable(True)
+            role_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+            role_combo.setToolTip(t("voice.col_role_tip"))
+            self._populate_role_combo(role_combo, _segment_role_display(seg))
+            role_combo.currentIndexChanged.connect(
+                lambda _i, r=segment_index, c=role_combo: self._on_role_changed(
+                    r,
+                    c.currentData(),
+                    c.currentText(),
+                ),
+            )
+            if role_combo.lineEdit() is not None:
+                role_combo.lineEdit().editingFinished.connect(
+                    lambda r=segment_index, c=role_combo: self._on_role_changed(
+                        r,
+                        c.currentData(),
+                        c.currentText(),
+                    ),
+                )
+            self._table.setCellWidget(row, 4, role_combo)
+
+            # Column 5: voice combo.
             current_voice = seg.get("voice_id", "narrator_calm")
             voice_combo = _make_voice_combo(current_voice)
             voice_combo.currentIndexChanged.connect(
@@ -680,9 +753,9 @@ class VoiceTableWidget(QWidget):
                     self._on_voice_changed(r, c.currentData())
                 ),
             )
-            self._table.setCellWidget(row, 4, voice_combo)
+            self._table.setCellWidget(row, 5, voice_combo)
 
-            # Column 5: intonation combo.
+            # Column 6: intonation combo.
             current_inton = seg.get("intonation", "neutral")
             inton_combo = _make_intonation_combo(current_inton)
             inton_combo.currentIndexChanged.connect(
@@ -690,20 +763,20 @@ class VoiceTableWidget(QWidget):
                     self._on_intonation_changed(r, c.currentData())
                 ),
             )
-            self._table.setCellWidget(row, 5, inton_combo)
+            self._table.setCellWidget(row, 6, inton_combo)
 
-            # Column 6: play synthesized chunk audio when available.
+            # Column 7: play synthesized chunk audio when available.
             play_btn = QPushButton(t("voice.play_audio"))
             audio_path = str(seg.get("audio_file") or "")
             play_btn.setEnabled(bool(audio_path and Path(audio_path).exists() and self._player is not None))
             play_btn.clicked.connect(lambda _checked=False, p=audio_path: self._play_audio(p))
-            self._table.setCellWidget(row, 6, play_btn)
+            self._table.setCellWidget(row, 7, play_btn)
 
-            # Column 7: mark a synthesized chunk for retry in ComfyUI failed-only mode.
+            # Column 8: mark a synthesized chunk for retry in ComfyUI failed-only mode.
             retry_btn = QPushButton(t("voice.mark_retry"))
             retry_btn.setEnabled(self._manifest_is_v2)
             retry_btn.clicked.connect(lambda _checked=False, r=segment_index: self._mark_retry(r))
-            self._table.setCellWidget(row, 7, retry_btn)
+            self._table.setCellWidget(row, 8, retry_btn)
 
         self._populating = False
         self._apply_table_layout()
@@ -766,7 +839,7 @@ class VoiceTableWidget(QWidget):
             return
         text = self._segment_editor.toPlainText()
         self._segments[row]["text"] = text
-        item = self._table.item(row, 3)
+        item = self._table.item(self._table.currentRow(), 3)
         if item is not None:
             self._table.blockSignals(True)
             item.setText(text)
@@ -774,6 +847,75 @@ class VoiceTableWidget(QWidget):
             self._table.blockSignals(False)
         self._update_segment_char_count()
         self._sync_full_text_from_segments()
+        self.data_changed.emit()
+
+    def _role_options(self) -> list[tuple[str, str]]:
+        """Return visible role choices from canonical roles and LLM speakers."""
+        options: list[tuple[str, str]] = []
+        seen: set[str] = set()
+
+        def add(label: str, data: str) -> None:
+            key = f"{data}\0{label}".casefold()
+            if label and key not in seen:
+                seen.add(key)
+                options.append((label, data))
+
+        add(t("voice.role_narrator"), "role:narrator")
+        add(t("voice.role_male"), "role:male")
+        add(t("voice.role_female"), "role:female")
+        for seg in self._segments:
+            section = str(seg.get("section_kind") or "").strip().lower()
+            key = _SECTION_ROLE_KEYS.get(section)
+            if key:
+                add(t(key), f"section:{section}")
+            speaker = _segment_speaker(seg)
+            if speaker:
+                add(speaker, f"speaker:{speaker}")
+        return options
+
+    def _populate_role_combo(self, combo: QComboBox, current: str) -> None:
+        """Refresh one role selector while preserving custom typed names."""
+        combo.blockSignals(True)
+        combo.clear()
+        for label, data in self._role_options():
+            combo.addItem(label, data)
+        if current and combo.findText(current) < 0:
+            combo.addItem(current, f"speaker:{current}")
+        idx = combo.findText(current) if current else -1
+        combo.setCurrentIndex(idx if idx >= 0 else 0)
+        combo.blockSignals(False)
+
+    def _on_role_changed(self, row: int, data: object, text: str) -> None:
+        """Update role/speaker metadata from the editable role selector."""
+        if self._populating or row >= len(self._segments):
+            return
+        display = (text or "").strip()
+        if not display:
+            return
+        encoded = str(data or "")
+        segment = self._segments[row]
+        if encoded.startswith("role:"):
+            role = encoded.split(":", 1)[1] or "narrator"
+            segment["role"] = role
+            segment["is_dialogue"] = role in {"male", "female"}
+            segment["speaker"] = ""
+            segment.pop("character", None)
+            segment.pop("role_display_name", None)
+        elif encoded.startswith("section:"):
+            section = encoded.split(":", 1)[1]
+            segment["role"] = "narrator"
+            segment["is_dialogue"] = False
+            segment["section_kind"] = section
+            segment["speaker"] = ""
+            segment.pop("character", None)
+            segment.pop("role_display_name", None)
+        else:
+            segment["speaker"] = display
+            segment["character"] = display
+            segment["role_display_name"] = display
+            if str(segment.get("role") or "narrator").lower() not in {"male", "female"}:
+                segment["role"] = "male"
+            segment["is_dialogue"] = True
         self.data_changed.emit()
 
     def _on_voice_changed(self, row: int, voice_id: str) -> None:
@@ -958,7 +1100,7 @@ class VoiceTableWidget(QWidget):
     def _set_all_voice(self, voice_id: str) -> None:
         """Set all rows to a specific voice preset."""
         for row in range(self._table.rowCount()):
-            combo = self._table.cellWidget(row, 4)
+            combo = self._table.cellWidget(row, 5)
             if isinstance(combo, QComboBox):
                 for i in range(combo.count()):
                     if combo.itemData(i) == voice_id:
@@ -976,12 +1118,12 @@ class VoiceTableWidget(QWidget):
         vid = self._quick_combo.currentData()
         if not vid:
             return
-        for row, seg in enumerate(self._segments):
+        for table_row, (_segment_index, seg) in enumerate(self._visible_segment_pairs()):
             is_speech = seg.get("is_dialogue", False) or seg.get(
                 "role", "narrator",
             ) in ("male", "female")
             if is_speech:
-                combo = self._table.cellWidget(row, 4)
+                combo = self._table.cellWidget(table_row, 5)
                 if isinstance(combo, QComboBox):
                     for i in range(combo.count()):
                         if combo.itemData(i) == vid:
@@ -993,12 +1135,12 @@ class VoiceTableWidget(QWidget):
         vid = self._quick_combo.currentData()
         if not vid:
             return
-        for row, seg in enumerate(self._segments):
+        for table_row, (_segment_index, seg) in enumerate(self._visible_segment_pairs()):
             is_speech = seg.get("is_dialogue", False) or seg.get(
                 "role", "narrator",
             ) in ("male", "female")
             if not is_speech:
-                combo = self._table.cellWidget(row, 4)
+                combo = self._table.cellWidget(table_row, 5)
                 if isinstance(combo, QComboBox):
                     for i in range(combo.count()):
                         if combo.itemData(i) == vid:
@@ -1008,10 +1150,10 @@ class VoiceTableWidget(QWidget):
     def _auto_detect(self) -> None:
         """Re-run heuristic voice mapping based on detected roles."""
         from book_normalizer.gui.voice_presets import LEGACY_VOICE_MAP
-        for row, seg in enumerate(self._segments):
+        for table_row, (_segment_index, seg) in enumerate(self._visible_segment_pairs()):
             role = seg.get("role", "narrator")
             target = LEGACY_VOICE_MAP.get(role, "narrator_calm")
-            combo = self._table.cellWidget(row, 4)
+            combo = self._table.cellWidget(table_row, 5)
             if isinstance(combo, QComboBox):
                 for i in range(combo.count()):
                     if combo.itemData(i) == target:

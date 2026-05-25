@@ -283,7 +283,7 @@ def test_voice_table_bulk_editor_and_retry_buttons_click_through(
 
     manifest_path = _write_manifest(tmp_path / "chunks_manifest_v2.json")
     table.load_manifest(manifest_path)
-    retry_button = table._table.cellWidget(0, 7)
+    retry_button = table._table.cellWidget(0, 8)
     assert retry_button is not None and retry_button.isEnabled()
     qtbot.mouseClick(retry_button, QtCore.Qt.MouseButton.LeftButton)
     assert table.get_segments()[0]["failed"] is True

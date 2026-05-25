@@ -145,7 +145,7 @@ def run_benchmark(
                     _synthetic_book(language),
                     source=source,
                     run_ollama=run_ollama,
-                    review_report_path=_case_review_path(review_dir, source, language),
+                    review_report_paths=_case_review_paths(review_dir, source, language),
                 )
             )
 
@@ -162,7 +162,7 @@ def run_benchmark(
                         excerpt,
                         source=str(path),
                         run_ollama=run_ollama,
-                        review_report_path=_case_review_path(
+                        review_report_paths=_case_review_paths(
                             review_dir,
                             str(path),
                             excerpt.metadata.language,
@@ -223,7 +223,7 @@ def _run_case(
     *,
     source: str,
     run_ollama: bool,
-    review_report_path: Path | None = None,
+    review_report_paths: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
     language = book.metadata.language
     before = book.normalized_text or book.raw_text
@@ -240,10 +240,22 @@ def _run_case(
         record["metadata_extra"] = book.metadata.extra
 
     if run_ollama:
+        normalization_review_path = (
+            review_report_paths.get("normalization") if review_report_paths else None
+        )
+        segmentation_review_path = (
+            review_report_paths.get("segmentation") if review_report_paths else None
+        )
         try:
-            normalizer = LlmNormalizer(language=language, review_report_path=review_report_path)
+            normalizer = LlmNormalizer(
+                language=language,
+                review_report_path=normalization_review_path,
+            )
             accepted, rejected = normalizer.normalize_book(book)
-            segmenter = LlmVoiceSegmenter(language=language)
+            segmenter = LlmVoiceSegmenter(
+                language=language,
+                review_report_path=segmentation_review_path,
+            )
             segments = segmenter.segment_book(book)
             after = book.normalized_text or book.raw_text
             chunks = build_chunks_from_segments(segments, max_chunk_chars=600)
@@ -265,8 +277,10 @@ def _run_case(
                 "segments_preserve_text": segments_preserve_text,
                 "chunk_text_preserved": chunk_text_preserved,
             })
-            if review_report_path and review_report_path.exists():
-                record["llm_normalization_review_report"] = str(review_report_path)
+            if normalization_review_path and normalization_review_path.exists():
+                record["llm_normalization_review_report"] = str(normalization_review_path)
+            if segmentation_review_path and segmentation_review_path.exists():
+                record["llm_segmentation_review_report"] = str(segmentation_review_path)
             if not structure_ok:
                 record["error"] = "segment/chunk manifest does not preserve normalized text"
         except (LlmSegmentationError, Exception) as exc:  # noqa: BLE001
@@ -485,11 +499,15 @@ def _parse_single_language(language: str, *, option: str) -> str:
     return code
 
 
-def _case_review_path(review_dir: Path | None, source: str, language: str) -> Path | None:
+def _case_review_paths(review_dir: Path | None, source: str, language: str) -> dict[str, Path] | None:
     if review_dir is None:
         return None
     safe = "".join(char if char.isalnum() else "_" for char in source)[:80].strip("_")
-    return review_dir / f"{language}_{safe or 'case'}_normalization_review.json"
+    stem = f"{language}_{safe or 'case'}"
+    return {
+        "normalization": review_dir / f"{stem}_normalization_review.json",
+        "segmentation": review_dir / f"{stem}_segmentation_review.json",
+    }
 
 
 def _is_dialogue_segment(segment: dict[str, Any]) -> bool:
@@ -508,7 +526,9 @@ def _case_notes(case: dict[str, Any]) -> str:
     if case.get("install_hint"):
         notes.append(str(case["install_hint"]).replace("|", "/"))
     if case.get("llm_normalization_review_report"):
-        notes.append(f"review: {case['llm_normalization_review_report']}")
+        notes.append(f"normalization review: {case['llm_normalization_review_report']}")
+    if case.get("llm_segmentation_review_report"):
+        notes.append(f"segmentation review: {case['llm_segmentation_review_report']}")
     return "; ".join(notes)
 
 

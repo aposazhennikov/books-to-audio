@@ -282,6 +282,81 @@ def test_quality_benchmark_formats_human_review_summary() -> None:
     ) in markdown
 
 
+def test_quality_benchmark_records_llm_review_reports(tmp_path: Path, monkeypatch) -> None:
+    module = _load_benchmark_module()
+    review_dir = tmp_path / "llm_reviews"
+    seen: dict[str, Path | str] = {}
+
+    class FakeNormalizer:
+        def __init__(self, *, language, review_report_path, **kwargs):  # noqa: ANN001
+            seen["normalizer_language"] = language
+            seen["normalizer_path"] = review_report_path
+
+        def normalize_book(self, book):  # noqa: ANN001
+            path = seen["normalizer_path"]
+            assert isinstance(path, Path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('{"requires_human_review": false}', encoding="utf-8")
+            for chapter in book.chapters:
+                for paragraph in chapter.paragraphs:
+                    paragraph.normalized_text = paragraph.raw_text
+            return 1, 0
+
+    class FakeSegmenter:
+        def __init__(self, *, language, review_report_path, **kwargs):  # noqa: ANN001
+            seen["segmenter_language"] = language
+            seen["segmenter_path"] = review_report_path
+
+        def segment_book(self, book):  # noqa: ANN001
+            path = seen["segmenter_path"]
+            assert isinstance(path, Path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('{"requires_human_review": false}', encoding="utf-8")
+            text = book.normalized_text or book.raw_text
+            return [
+                {
+                    "segment_index": 0,
+                    "chapter_index": 0,
+                    "language": book.metadata.language,
+                    "is_dialogue": False,
+                    "role": "narrator",
+                    "voice_id": "narrator_calm",
+                    "intonation": "calm",
+                    "text": text,
+                    "pause_after_ms": 0,
+                    "boundary_after": "chapter",
+                }
+            ]
+
+    monkeypatch.setattr(module, "LlmNormalizer", FakeNormalizer)
+    monkeypatch.setattr(module, "LlmVoiceSegmenter", FakeSegmenter)
+
+    report = module.run_benchmark(
+        books_dir=tmp_path / "missing",
+        run_ollama=True,
+        languages=["en"],
+        review_dir=review_dir,
+    )
+
+    case = report["cases"][0]
+    normalizer_path = seen["normalizer_path"]
+    segmenter_path = seen["segmenter_path"]
+    assert seen["normalizer_language"] == "en"
+    assert seen["segmenter_language"] == "en"
+    assert isinstance(normalizer_path, Path)
+    assert isinstance(segmenter_path, Path)
+    assert normalizer_path.parent == review_dir
+    assert segmenter_path.parent == review_dir
+    assert normalizer_path != segmenter_path
+    assert normalizer_path.exists()
+    assert segmenter_path.exists()
+    assert case["status"] == "ok"
+    assert case["llm_normalization_review_report"] == str(normalizer_path)
+    assert case["llm_segmentation_review_report"] == str(segmenter_path)
+    assert "normalization review:" in module.format_markdown_report(report)
+    assert "segmentation review:" in module.format_markdown_report(report)
+
+
 def test_quality_benchmark_pdf_ocr_error_points_to_native_installer(tmp_path: Path) -> None:
     module = _load_benchmark_module()
     pdf_path = tmp_path / "scan.pdf"

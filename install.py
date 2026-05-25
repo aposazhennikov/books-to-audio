@@ -693,12 +693,30 @@ def _pull_ollama_models(paths: InstallPaths, verify_hashes: bool) -> None:
             )
             continue
         _run([paths.ollama_bin, "pull", model], paths)
+        if not _ollama_model_file_is_present(paths, model):
+            _say(
+                (
+                    f"Ollama reported pull complete, but {model} was not found under "
+                    f"{paths.ollama_models_dir}. If Ollama Desktop was already running, "
+                    "restart it with OLLAMA_MODELS pointing to this folder."
+                ),
+                (
+                    f"Ollama завершил pull, но {model} не найден в {paths.ollama_models_dir}. "
+                    "Если Ollama Desktop уже был запущен, перезапустите его с OLLAMA_MODELS, "
+                    "указывающим на эту папку."
+                ),
+                "warn",
+            )
     if verify_hashes:
         _verify_or_write_hash(OLLAMA_HASH_LABEL, paths.ollama_models_dir, metadata=hash_metadata)
 
 
 def _ollama_model_is_present(paths: InstallPaths, model: str) -> bool:
     """Return True when Ollama already has the requested model locally."""
+    if _ollama_model_file_is_present(paths, model):
+        return True
+    if not _same_path(paths.ollama_models_dir, _native_ollama_default_models_dir()):
+        return False
     result = subprocess.run(
         [paths.ollama_bin, "show", model],
         capture_output=True,
@@ -709,6 +727,41 @@ def _ollama_model_is_present(paths: InstallPaths, model: str) -> bool:
         env=_installer_env(paths),
     )
     return result.returncode == 0
+
+
+def _ollama_model_file_is_present(paths: InstallPaths, model: str) -> bool:
+    """Return True when the configured Ollama storage folder has a model manifest."""
+    manifest_path = _ollama_manifest_path(paths.ollama_models_dir, model)
+    if manifest_path.exists():
+        return True
+    manifests_root = paths.ollama_models_dir / "models" / "manifests"
+    if not manifests_root.exists():
+        return False
+    safe_tail = model.replace("/", "_").replace(":", "_")
+    return any(path.is_file() and safe_tail in path.name for path in manifests_root.rglob("*"))
+
+
+def _ollama_manifest_path(models_dir: Path, model: str) -> Path:
+    """Return the native Ollama manifest path for a model reference."""
+    name, tag = _split_ollama_model_tag(model)
+    parts = name.split("/")
+    if len(parts) == 1:
+        parts = ["registry.ollama.ai", "library", parts[0]]
+    return models_dir / "models" / "manifests" / Path(*parts) / tag
+
+
+def _split_ollama_model_tag(model: str) -> tuple[str, str]:
+    """Split an Ollama model reference into name and tag."""
+    last_slash = model.rfind("/")
+    last_colon = model.rfind(":")
+    if last_colon > last_slash:
+        return model[:last_colon], model[last_colon + 1 :]
+    return model, "latest"
+
+
+def _native_ollama_default_models_dir() -> Path:
+    """Return Ollama's native default model directory for the host user."""
+    return Path.home() / ".ollama" / "models"
 
 
 def _install_tts_models(venv_python: Path, paths: InstallPaths, verify_hashes: bool) -> None:

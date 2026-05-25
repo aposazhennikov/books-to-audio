@@ -25,6 +25,7 @@ from install import (
     _hash_tree,
     _install_system_tools,
     _install_tts_models,
+    _ollama_manifest_path,
     _paint,
     _print_install_summary,
     _print_next_steps,
@@ -639,20 +640,62 @@ def test_pull_ollama_models_skips_already_present_model(tmp_path: Path, monkeypa
         ffmpeg_bin="ffmpeg",
     )
     pulled: list[list[str]] = []
+    first_manifest = _ollama_manifest_path(paths.ollama_models_dir, DEFAULT_OLLAMA_MODELS[0])
+    first_manifest.parent.mkdir(parents=True)
+    first_manifest.write_text("{}", encoding="utf-8")
 
     def fake_subprocess_run(cmd, **kwargs):  # noqa: ANN001
         assert kwargs["env"]["OLLAMA_MODELS"] == str(paths.ollama_models_dir)
         assert kwargs["env"]["BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR"] == str(paths.ollama_models_dir)
-        if cmd[:2] == ["ollama", "show"]:
-            return SimpleNamespace(returncode=0 if cmd[2] == DEFAULT_OLLAMA_MODELS[0] else 1)
         return SimpleNamespace(returncode=0, stdout="")
 
     monkeypatch.setattr("install.subprocess.run", fake_subprocess_run)
-    monkeypatch.setattr("install._run", lambda cmd, _paths: pulled.append(cmd))
+
+    def fake_run(cmd, _paths):  # noqa: ANN001
+        pulled.append(cmd)
+        manifest = _ollama_manifest_path(paths.ollama_models_dir, cmd[-1])
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr("install._run", fake_run)
 
     _pull_ollama_models(paths, verify_hashes=False)
 
     assert pulled == [["ollama", "pull", DEFAULT_OLLAMA_MODELS[1]]]
+
+
+def test_pull_ollama_models_does_not_trust_global_server_for_custom_folder(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    paths = InstallPaths(
+        install_root=tmp_path,
+        venv_dir=tmp_path / ".venv",
+        models_dir=tmp_path / "models",
+        hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "custom-ollama-models",
+        ollama_endpoint="http://127.0.0.1:11434",
+        ollama_bin="ollama",
+        tesseract_cmd="tesseract",
+        ffmpeg_bin="ffmpeg",
+    )
+    pulled: list[list[str]] = []
+
+    def fake_subprocess_run(*_args, **_kwargs):  # noqa: ANN002
+        raise AssertionError("Custom model folders must be checked by files, not global ollama show")
+
+    def fake_run(cmd, _paths):  # noqa: ANN001
+        pulled.append(cmd)
+        manifest = _ollama_manifest_path(paths.ollama_models_dir, cmd[-1])
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr("install.subprocess.run", fake_subprocess_run)
+    monkeypatch.setattr("install._run", fake_run)
+
+    _pull_ollama_models(paths, verify_hashes=False)
+
+    assert pulled == [["ollama", "pull", model] for model in DEFAULT_OLLAMA_MODELS]
 
 
 def test_pull_ollama_models_skips_when_file_hash_matches(

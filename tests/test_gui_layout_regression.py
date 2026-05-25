@@ -194,11 +194,11 @@ def test_zoomed_roles_model_field_stays_readable_in_compact_layout() -> None:
 @pytest.mark.parametrize(
     ("language", "expected_text"),
     [
-        ("ru", "Открыть"),
+        ("ru", "Откр."),
         ("en", "Open"),
         ("zh", "打开"),
         ("kk", "Ашу"),
-        ("uz", "Ochish"),
+        ("uz", "Och"),
     ],
 )
 def test_zoomed_synthesis_manifest_action_does_not_clip(

@@ -1432,6 +1432,7 @@ class SynthesisPage(QWidget):
         if not self._manifest_path:
             self._manifest_label.setText(t("synth.no_manifest"))
         self._btn_load.setText(t("synth.load_manifest"))
+        self._btn_load.setToolTip(t("synth.load_manifest_tip"))
         self._mode_tabs.setTabText(0, t("synth.mode_custom_voice"))
         self._mode_tabs.setTabText(1, t("synth.mode_preset_speakers"))
         self._mode_tabs.setTabText(2, t("synth.mode_advanced"))
@@ -1512,6 +1513,7 @@ class SynthesisPage(QWidget):
         )
         self._btn_save_chunk_text.setText(t("synth.chunk_editor_save"))
         self._btn_split_chunk.setText(t("synth.chunk_editor_split"))
+        self._btn_split_chunk.setToolTip(t("synth.chunk_editor_split_tip"))
         self._btn_merge_chunk.setText(t("synth.chunk_editor_merge"))
         for row in self._clone_rows:
             row.retranslate()

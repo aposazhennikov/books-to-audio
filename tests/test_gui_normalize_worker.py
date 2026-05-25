@@ -96,7 +96,9 @@ def test_gui_pdf_rejects_broken_native_without_tesseract() -> None:
             {"native_unreadable": True, "ocr_unreadable": True},
             tesseract_available=False,
         )
-    assert "./install.sh --interactive --install-system-tools" in str(exc_info.value)
+    message = str(exc_info.value)
+    assert _native_ocr_install_hint() in message
+    assert "wsl" not in message.lower()
 
 
 def test_gui_pdf_rejects_unreadable_ocr_when_native_is_broken() -> None:

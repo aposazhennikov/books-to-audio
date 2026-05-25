@@ -882,15 +882,25 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u041c\u0430\u043d\u0438\u0444\u0435\u0441\u0442 \u043d\u0435 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d",
     },
     "synth.load_manifest": {
-        "en": "Load Manifest",
-        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
+        "en": "Load",
+        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c",
+        "zh": "\u52a0\u8f7d",
+        "kk": "\u0416\u04af\u043a\u0442\u0435\u0443",
+        "uz": "Yuklash",
+    },
+    "synth.load_manifest_tip": {
+        "en": "Load a chunk manifest for synthesis.",
+        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c manifest \u0447\u0430\u043d\u043a\u043e\u0432 \u0434\u043b\u044f \u0441\u0438\u043d\u0442\u0435\u0437\u0430.",
+        "zh": "\u52a0\u8f7d\u7528\u4e8e\u5408\u6210\u7684\u5206\u5757\u6e05\u5355\u3002",
+        "kk": "\u0421\u0438\u043d\u0442\u0435\u0437\u0433\u0435 \u0430\u0440\u043d\u0430\u043b\u0493\u0430\u043d \u0447\u0430\u043d\u043a manifest \u0444\u0430\u0439\u043b\u044b\u043d \u0436\u04af\u043a\u0442\u0435\u0443.",
+        "uz": "Sintez uchun chunk manifestini yuklash.",
     },
     "synth.compact_load_manifest": {
         "en": "Open",
-        "ru": "Открыть",
+        "ru": "\u041e\u0442\u043a\u0440.",
         "zh": "打开",
         "kk": "Ашу",
-        "uz": "Ochish",
+        "uz": "Och",
     },
     "synth.mode_custom_voice": {
         "en": "Custom Voice",
@@ -1491,8 +1501,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0447\u0430\u043d\u043a",
     },
     "synth.chunk_editor_split": {
-        "en": "Split at cursor",
-        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u043f\u043e \u043a\u0443\u0440\u0441\u043e\u0440\u0443",
+        "en": "Split",
+        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c",
+        "zh": "\u5206\u5272",
+        "kk": "\u0411\u04e9\u043b\u0443",
+        "uz": "Bo'lish",
+    },
+    "synth.chunk_editor_split_tip": {
+        "en": "Split the selected chunk at the cursor.",
+        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0447\u0430\u043d\u043a \u0432 \u043c\u0435\u0441\u0442\u0435 \u043a\u0443\u0440\u0441\u043e\u0440\u0430.",
+        "zh": "\u5728\u5149\u6807\u5904\u5206\u5272\u9009\u4e2d\u7684\u5206\u5757\u3002",
+        "kk": "\u0422\u0430\u04a3\u0434\u0430\u043b\u0493\u0430\u043d \u0447\u0430\u043d\u043a\u0442\u044b \u043a\u0443\u0440\u0441\u043e\u0440 \u0442\u04b1\u0440\u0493\u0430\u043d \u0436\u0435\u0440\u0434\u0435\u043d \u0431\u04e9\u043b\u0443.",
+        "uz": "Tanlangan bo'lakni kursor turgan joydan bo'lish.",
     },
     "synth.chunk_editor_merge": {
         "en": "Merge next",
@@ -2267,6 +2287,16 @@ def _install_extra_translations() -> None:
             "zh": "在光标位置分割选中的分段。",
             "kk": "Таңдалған сегментті курсор тұрған жерден бөлу.",
             "uz": "Tanlangan segmentni kursor turgan joydan bo'lish.",
+        },
+        "synth.chunk_editor_split": {
+            "zh": "\u5206\u5272",
+            "kk": "\u0411\u04e9\u043b\u0443",
+            "uz": "Bo'lish",
+        },
+        "synth.load_manifest": {
+            "zh": "\u52a0\u8f7d",
+            "kk": "\u0416\u04af\u043a\u0442\u0435\u0443",
+            "uz": "Yuklash",
         },
         "synth.sample_enable": {
             "ru": "Использовать образец голоса для этой книги",

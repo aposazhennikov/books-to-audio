@@ -605,7 +605,7 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
 def _env_assignment(key: str, value: object) -> str:
     """Return a shell/dotenv-safe assignment, preserving paths with spaces."""
     text = str(value)
-    if re.fullmatch(r"[A-Za-z0-9_./:@%+=,-]+", text):
+    if re.fullmatch(r"[A-Za-z0-9_./:@%+=,\\-]+", text):
         return f"{key}={text}"
     escaped = text.replace("'", "'\\''")
     return f"{key}='{escaped}'"

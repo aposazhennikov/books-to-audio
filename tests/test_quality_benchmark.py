@@ -482,6 +482,18 @@ def test_quality_benchmark_requires_dialogue_segments_for_dialogue_sources(
     assert "no dialogue segments" in case["error"]
 
 
+def test_quality_benchmark_dialogue_detector_ignores_quoted_titles() -> None:
+    module = _load_benchmark_module()
+
+    assert module._source_has_dialogue(
+        'Эта книга является заключительной в цикле "Школа магов".'
+    ) is False
+    assert module._source_has_dialogue("Идея последовательной цепи\n---") is False
+    assert module._source_has_dialogue('"Who is there?" he asked.') is True
+    assert module._source_has_dialogue("Он сказал: «Пора идти».") is True
+    assert module._source_has_dialogue("— Кто там? — спросил он.") is True
+
+
 def test_quality_benchmark_pdf_ocr_error_points_to_native_installer(tmp_path: Path) -> None:
     module = _load_benchmark_module()
     pdf_path = tmp_path / "scan.pdf"

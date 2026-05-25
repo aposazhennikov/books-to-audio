@@ -641,11 +641,43 @@ def _is_dialogue_segment(segment: dict[str, Any]) -> bool:
 
 
 def _source_has_dialogue(text: str) -> bool:
+    speech_verbs = (
+        "said",
+        "asked",
+        "replied",
+        "answered",
+        "whispered",
+        "cried",
+        "сказал",
+        "сказала",
+        "спросил",
+        "спросила",
+        "ответил",
+        "ответила",
+        "произнес",
+        "произнесла",
+        "деді",
+        "сұрады",
+        "javob berdi",
+        "so'radi",
+        "dedi",
+        "deb",
+    )
+    verb_pattern = "|".join(re.escape(verb) for verb in speech_verbs)
     for paragraph in (text or "").splitlines():
         stripped = paragraph.lstrip()
-        if stripped.startswith(("—", "–", "-", '"', "“", "«", "「", "『")):
+        if stripped.startswith(("—", "–")) or (
+            stripped.startswith("-") and not stripped.startswith("---")
+        ):
             return True
-    return bool(re.search(r'["“«「『][^"”»」』]{2,}["”»」』]', text or ""))
+        if stripped.startswith(('"', "“", "«", "「", "『")):
+            return True
+        lower = stripped.casefold()
+        if re.search(rf"\b(?:{verb_pattern})\b[^\"“«「『]{{0,36}}[\"“«「『]", lower):
+            return True
+        if re.search(rf"[\"”»」』][^\"“«「『]{{0,48}}\b(?:{verb_pattern})\b", lower):
+            return True
+    return False
 
 
 def _case_notes(case: dict[str, Any]) -> str:

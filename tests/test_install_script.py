@@ -860,6 +860,19 @@ def test_linux_install_includes_all_supported_tesseract_languages(
     assert expected.issubset(flattened)
 
 
+def test_readme_documents_multilingual_ocr_and_benchmark_language_map() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "tesseract-ocr-chi-sim" in readme
+    assert "tesseract-ocr-kaz" in readme
+    assert "tesseract-ocr-uzb" in readme
+    assert "tesseract-langpack-chi_sim" in readme
+    assert "tesseract-data-chi_sim" in readme
+    assert "--book-language-map" in readme
+    assert '"english/*.txt": "en"' in readme
+    assert "RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py" in readme
+
+
 def test_install_system_tools_runs_native_commands_without_shell(monkeypatch) -> None:
     monkeypatch.setattr("install.platform.system", lambda: "Windows")
     calls: list[tuple[list[str], dict[str, object]]] = []

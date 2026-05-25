@@ -91,22 +91,27 @@ winget install Gyan.FFmpeg
 ```bash
 sudo apt-get update
 sudo apt-get install -y python3 python3-venv python3-pip \
-  tesseract-ocr tesseract-ocr-rus ffmpeg \
-  libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0
+  tesseract-ocr tesseract-ocr-eng tesseract-ocr-rus \
+  tesseract-ocr-chi-sim tesseract-ocr-kaz tesseract-ocr-uzb \
+  ffmpeg libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0 fonts-noto-cjk
 ```
 
 ### Fedora
 
 ```bash
-sudo dnf install python3 python3-pip tesseract tesseract-langpack-rus ffmpeg \
-  libglvnd-glx libxkbcommon-x11 xcb-util-cursor
+sudo dnf install python3 python3-pip tesseract \
+  tesseract-langpack-eng tesseract-langpack-rus tesseract-langpack-chi_sim \
+  tesseract-langpack-kaz tesseract-langpack-uzb ffmpeg \
+  libglvnd-glx libxkbcommon-x11 xcb-util-cursor google-noto-sans-cjk-fonts
 ```
 
 ### Arch Linux
 
 ```bash
-sudo pacman -S python python-pip tesseract tesseract-data-rus ffmpeg \
-  libgl libxkbcommon-x11 xcb-util-cursor
+sudo pacman -S python python-pip tesseract \
+  tesseract-data-eng tesseract-data-rus tesseract-data-chi_sim \
+  tesseract-data-kaz tesseract-data-uzb ffmpeg \
+  libgl libxkbcommon-x11 xcb-util-cursor noto-fonts-cjk
 ```
 
 ### macOS
@@ -190,7 +195,16 @@ tesseract --version
 tesseract --list-langs
 ```
 
-Для русских книг должен быть язык `rus`. Если его нет, установите `tesseract-ocr-rus`, `tesseract-langpack-rus` или `tesseract-lang` в зависимости от OS.
+Для книг на поддерживаемых языках должны быть доступны коды `eng`, `rus`,
+`chi_sim`, `kaz`, `uzb`. Если их нет, запустите native installer:
+
+```bash
+# Windows
+install.bat --interactive --install-system-tools
+
+# Linux/macOS
+./install.sh --interactive --install-system-tools
+```
 
 ## Настройка LLM через нативную Ollama
 
@@ -251,6 +265,37 @@ python scripts/quality_benchmark.py
 RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama
 RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama --languages ru --book-glob "*.fb2" --limit-books 1 --max-chars 350
 python scripts/quality_benchmark.py --skip-synthetic --book-glob "*.pdf" --limit-books 1
+```
+
+Для реального многоязычного корпуса задавайте язык на файл через JSON-карту,
+иначе TXT/DOCX/PDF без метаданных будут проверяться с общим `--book-language`.
+Пример `books/languages.json`:
+
+```json
+{
+  "english/*.txt": "en",
+  "china/*.epub": "zh",
+  "kazakh/*.fb2": "kk",
+  "uzbek/*.pdf": "uz"
+}
+```
+
+Запуск:
+
+```bash
+python scripts/quality_benchmark.py \
+  --skip-synthetic \
+  --books-dir books \
+  --languages en,zh,kk,uz \
+  --book-language-map books/languages.json
+
+RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py \
+  --run-ollama \
+  --books-dir books \
+  --languages en,zh,kk,uz \
+  --book-language-map books/languages.json \
+  --limit-books 4 \
+  --max-chars 600
 ```
 
 Отчеты пишутся в `output/quality_reports`. Локальные книги из `books/` используются только для проверки и не коммитятся.

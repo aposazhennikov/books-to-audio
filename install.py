@@ -77,6 +77,7 @@ class InstallPaths:
     tesseract_cmd: str
     ffmpeg_bin: str
     ollama_models_dir: Path = Path("ollama-models")
+    tessdata_dir: Path | None = None
 
 
 class _TeeStream:
@@ -215,6 +216,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--ollama-endpoint", default="", help="Local Ollama endpoint. Default: http://localhost:11434")
     parser.add_argument("--ollama-bin", default="", help="Path or command name for Ollama. Default: ollama")
     parser.add_argument("--tesseract-bin", default="", help="Path or command name for Tesseract OCR.")
+    parser.add_argument("--tessdata-dir", default="", help="Optional Tesseract tessdata language-pack folder.")
     parser.add_argument("--ffmpeg-bin", default="", help="Path or command name for FFmpeg.")
     parser.add_argument(
         "--install-system-tools",
@@ -328,6 +330,7 @@ def _print_install_summary(
         ("Ollama models folder", "Папка моделей Ollama", str(paths.ollama_models_dir)),
         ("Ollama endpoint/bin", "Ollama адрес/команда", f"{paths.ollama_endpoint} ({paths.ollama_bin})"),
         ("Tesseract OCR", "Tesseract OCR", paths.tesseract_cmd),
+        ("Tesseract tessdata", "Языковые данные Tesseract", str(paths.tessdata_dir or "auto / авто")),
         ("FFmpeg", "FFmpeg", paths.ffmpeg_bin),
         ("Log file", "Лог", str((log_path or project_root / LOG_PATH).resolve())),
         ("Install extras", "Опции установки", ", ".join(sorted(extras)) if extras else "core only / только ядро"),
@@ -399,6 +402,12 @@ def _resolve_install_paths(args: argparse.Namespace, project_root: Path) -> Inst
         _default_command("tesseract"),
         interactive,
     )
+    tessdata_dir = _prompt_optional_path(
+        "Tesseract tessdata folder",
+        "Папка языковых данных Tesseract",
+        args.tessdata_dir,
+        interactive,
+    )
     ffmpeg_bin = _prompt_text(
         "FFmpeg command/path",
         "Команда/путь FFmpeg",
@@ -414,6 +423,7 @@ def _resolve_install_paths(args: argparse.Namespace, project_root: Path) -> Inst
         ollama_endpoint=ollama_endpoint,
         ollama_bin=ollama_bin,
         tesseract_cmd=tesseract_cmd,
+        tessdata_dir=tessdata_dir,
         ffmpeg_bin=ffmpeg_bin,
         ollama_models_dir=ollama_models_dir,
     )
@@ -438,6 +448,21 @@ def _prompt_path(
         return default.expanduser().resolve()
     answer = input(f"{en} / {ru}\n[{default}]: ").strip()
     return Path(answer or default).expanduser().resolve()
+
+
+def _prompt_optional_path(
+    en: str,
+    ru: str,
+    provided: str,
+    interactive: bool,
+) -> Path | None:
+    """Return an optional user-provided path, leaving blank values automatic."""
+    if provided:
+        return Path(provided).expanduser().resolve()
+    if not interactive:
+        return None
+    answer = input(f"{en} / {ru}\n[auto / авто]: ").strip()
+    return Path(answer).expanduser().resolve() if answer else None
 
 
 def _prompt_text(
@@ -590,6 +615,7 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
         "ollama_endpoint": paths.ollama_endpoint,
         "ollama_bin": paths.ollama_bin,
         "tesseract_cmd": paths.tesseract_cmd,
+        "tessdata_dir": str(paths.tessdata_dir) if paths.tessdata_dir else "",
         "ffmpeg_bin": paths.ffmpeg_bin,
     }
     config_path.write_text(
@@ -609,6 +635,14 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
                 _env_assignment("BOOKS_TO_AUDIO_OLLAMA_ENDPOINT", paths.ollama_endpoint),
                 _env_assignment("BOOKS_TO_AUDIO_OLLAMA_BIN", paths.ollama_bin),
                 _env_assignment("BOOKS_TO_AUDIO_TESSERACT_CMD", paths.tesseract_cmd),
+                *(
+                    [
+                        _env_assignment("BOOKS_TO_AUDIO_TESSDATA_DIR", paths.tessdata_dir),
+                        _env_assignment("TESSDATA_PREFIX", paths.tessdata_dir),
+                    ]
+                    if paths.tessdata_dir
+                    else []
+                ),
                 _env_assignment("BOOKS_TO_AUDIO_FFMPEG_BIN", paths.ffmpeg_bin),
                 "",
             ]
@@ -864,6 +898,9 @@ def _installer_env(paths: InstallPaths) -> dict[str, str]:
     env["BOOKS_TO_AUDIO_OLLAMA_ENDPOINT"] = paths.ollama_endpoint
     env["BOOKS_TO_AUDIO_OLLAMA_BIN"] = paths.ollama_bin
     env["BOOKS_TO_AUDIO_TESSERACT_CMD"] = paths.tesseract_cmd
+    if paths.tessdata_dir:
+        env["BOOKS_TO_AUDIO_TESSDATA_DIR"] = str(paths.tessdata_dir)
+        env["TESSDATA_PREFIX"] = str(paths.tessdata_dir)
     env["BOOKS_TO_AUDIO_FFMPEG_BIN"] = paths.ffmpeg_bin
     return env
 

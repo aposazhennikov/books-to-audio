@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
-from book_normalizer.runtime_paths import configured_tesseract_cmd
+from book_normalizer.runtime_paths import configured_tessdata_dir, configured_tesseract_cmd
 
 
 def tesseract_available() -> bool:
@@ -18,6 +19,9 @@ def tesseract_available() -> bool:
         cmd = _tesseract_command()
         if cmd:
             pytesseract.pytesseract.tesseract_cmd = str(cmd)
+        tessdata_dir = configured_tessdata_dir()
+        if tessdata_dir:
+            os.environ["TESSDATA_PREFIX"] = str(tessdata_dir)
         pytesseract.get_tesseract_version()
         return True
     except Exception:
@@ -34,6 +38,7 @@ def tesseract_cli_available() -> bool:
             [str(command), "--version"],
             capture_output=True,
             timeout=10,
+            env=_tesseract_env(),
         )
         return result.returncode == 0
     except (OSError, subprocess.SubprocessError):
@@ -69,7 +74,19 @@ def ocr_image_via_tesseract_cli(img_bytes: bytes, lang: str, psm: int = 6) -> st
             ],
             capture_output=True,
             timeout=120,
+            env=_tesseract_env(),
         )
         return result.stdout.decode("utf-8", errors="replace")
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+
+def _tesseract_env() -> dict[str, str] | None:
+    """Return an environment with TESSDATA_PREFIX when installer configured it."""
+    tessdata_dir = configured_tessdata_dir()
+    if not tessdata_dir:
+        return None
+
+    env = os.environ.copy()
+    env["TESSDATA_PREFIX"] = str(tessdata_dir)
+    return env

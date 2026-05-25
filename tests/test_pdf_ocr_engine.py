@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 from book_normalizer.loaders import pdf_ocr_engine
 from book_normalizer.loaders.pdf_ocr_engine import tesseract_available
@@ -14,6 +15,8 @@ def _isolate_runtime_config(monkeypatch, tmp_path: Path) -> None:
     """Keep OCR runtime tests independent from a developer's local install."""
     monkeypatch.setenv("BOOKS_TO_AUDIO_RUNTIME_CONFIG", str(tmp_path / "missing-runtime.json"))
     monkeypatch.delenv("BOOKS_TO_AUDIO_TESSERACT_CMD", raising=False)
+    monkeypatch.delenv("BOOKS_TO_AUDIO_TESSDATA_DIR", raising=False)
+    monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
     reset_runtime_path_cache()
 
 
@@ -83,3 +86,55 @@ def test_tesseract_available_uses_configured_native_binary(monkeypatch, tmp_path
 
     assert tesseract_available() is True
     assert calls == [[str(configured), "--version"]]
+
+
+def test_tesseract_available_sets_configured_pytesseract_paths(monkeypatch, tmp_path) -> None:
+    _isolate_runtime_config(monkeypatch, tmp_path)
+    configured = tmp_path / "Tesseract-OCR" / "tesseract.exe"
+    tessdata = tmp_path / "Tesseract-OCR" / "tessdata"
+    configured.parent.mkdir()
+    tessdata.mkdir()
+    configured.write_text("", encoding="utf-8")
+    fake_pytesseract = SimpleNamespace(
+        pytesseract=SimpleNamespace(tesseract_cmd=""),
+        get_tesseract_version=lambda: "5.3.0",
+    )
+
+    def fake_import(name, *args, **kwargs):  # noqa: ANN001
+        if name == "pytesseract":
+            return fake_pytesseract
+        return real_import(name, *args, **kwargs)
+
+    real_import = __import__
+    monkeypatch.setenv("BOOKS_TO_AUDIO_TESSERACT_CMD", str(configured))
+    monkeypatch.setenv("BOOKS_TO_AUDIO_TESSDATA_DIR", str(tessdata))
+    monkeypatch.setattr("builtins.__import__", fake_import)
+
+    assert tesseract_available() is True
+    assert fake_pytesseract.pytesseract.tesseract_cmd == str(configured)
+    assert pdf_ocr_engine.os.environ["TESSDATA_PREFIX"] == str(tessdata)
+
+
+def test_tesseract_cli_receives_configured_tessdata_prefix(monkeypatch, tmp_path) -> None:
+    _isolate_runtime_config(monkeypatch, tmp_path)
+    configured = tmp_path / "Tesseract-OCR" / "tesseract.exe"
+    tessdata = tmp_path / "Tesseract-OCR" / "tessdata"
+    configured.parent.mkdir()
+    tessdata.mkdir()
+    configured.write_text("", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run(args, **kwargs):  # noqa: ANN001
+        captured["args"] = args
+        captured["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(args, 0, stdout=b"Recognized text", stderr=b"")
+
+    monkeypatch.setenv("BOOKS_TO_AUDIO_TESSERACT_CMD", str(configured))
+    monkeypatch.setenv("BOOKS_TO_AUDIO_TESSDATA_DIR", str(tessdata))
+    monkeypatch.setattr(pdf_ocr_engine.subprocess, "run", fake_run)
+
+    text = pdf_ocr_engine.ocr_image_via_tesseract_cli(b"png", "rus+eng", psm=6)
+
+    assert text == "Recognized text"
+    assert captured["args"][:3] == [str(configured), captured["args"][1], "stdout"]
+    assert captured["env"]["TESSDATA_PREFIX"] == str(tessdata)

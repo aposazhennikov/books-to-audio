@@ -135,6 +135,7 @@ def test_installer_summary_and_next_steps_are_bilingual(
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
         tesseract_cmd="tesseract",
+        tessdata_dir=tmp_path / "tessdata",
         ffmpeg_bin="ffmpeg",
     )
 
@@ -147,6 +148,7 @@ def test_installer_summary_and_next_steps_are_bilingual(
     assert "Models folder" in out and "/ Папка моделей:" in out
     assert "Ollama models folder" in out and "/ Папка моделей Ollama:" in out
     assert "Ollama endpoint/bin" in out and "/ Ollama адрес/команда:" in out
+    assert "Tesseract tessdata" in out and "/ Языковые данные Tesseract:" in out
     assert "Install extras" in out and "/ Опции установки: gui, ocr" in out
     assert "Next steps / Следующие шаги:" in out
     assert "Activate venv / Активировать venv:" in out
@@ -193,6 +195,8 @@ def test_installer_dry_run_overwrites_bilingual_log(tmp_path: Path) -> None:
                 str(ollama_models_dir),
                 "--tesseract-bin",
                 str(tmp_path / "tools" / "tesseract.exe"),
+                "--tessdata-dir",
+                str(tmp_path / "tools" / "tessdata"),
                 "--ffmpeg-bin",
                 str(tmp_path / "tools" / "ffmpeg.exe"),
             ],
@@ -212,10 +216,12 @@ def test_installer_dry_run_overwrites_bilingual_log(tmp_path: Path) -> None:
         assert str(models_dir) in log_text
         assert str(hf_cache_dir) in log_text
         assert str(ollama_models_dir) in log_text
+        assert str(tmp_path / "tools" / "tessdata") in log_text
         assert runtime_config["models_dir"] == str(models_dir)
         assert runtime_config["hf_cache_dir"] == str(hf_cache_dir)
         assert runtime_config["ollama_models_dir"] == str(ollama_models_dir)
         assert runtime_config["tesseract_cmd"] == str(tmp_path / "tools" / "tesseract.exe")
+        assert runtime_config["tessdata_dir"] == str(tmp_path / "tools" / "tessdata")
         assert "BOOKS_TO_AUDIO_RUNTIME_CONFIG" in env_path.read_text(encoding="utf-8")
     finally:
         if previous_config is None:
@@ -288,6 +294,7 @@ def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatc
         ollama_endpoint="http://127.0.0.1:11435",
         ollama_bin="ollama",
         tesseract_cmd=str(tmp_path / "tools" / "tesseract.exe"),
+        tessdata_dir=tmp_path / "tools" / "tessdata",
         ffmpeg_bin=str(tmp_path / "tools" / "ffmpeg.exe"),
     )
 
@@ -299,6 +306,7 @@ def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatc
     assert payload["ollama_models_dir"] == str(paths.ollama_models_dir)
     assert payload["ollama_endpoint"] == "http://127.0.0.1:11435"
     assert payload["tesseract_cmd"] == str(paths.tesseract_cmd)
+    assert payload["tessdata_dir"] == str(paths.tessdata_dir)
     assert payload["ffmpeg_bin"] == str(paths.ffmpeg_bin)
     env_text = (tmp_path / RUNTIME_CONFIG_PATH).with_suffix(".env").read_text(encoding="utf-8")
     assert "BOOKS_TO_AUDIO_MODELS_DIR=" in env_text
@@ -306,6 +314,8 @@ def test_write_runtime_config_persists_selected_paths(tmp_path: Path, monkeypatc
     assert f"OLLAMA_MODELS={paths.ollama_models_dir}" in env_text
     assert "BOOKS_TO_AUDIO_OLLAMA_ENDPOINT=http://127.0.0.1:11435" in env_text
     assert "BOOKS_TO_AUDIO_TESSERACT_CMD=" in env_text
+    assert f"BOOKS_TO_AUDIO_TESSDATA_DIR={paths.tessdata_dir}" in env_text
+    assert f"TESSDATA_PREFIX={paths.tessdata_dir}" in env_text
     assert "BOOKS_TO_AUDIO_FFMPEG_BIN=" in env_text
 
 
@@ -320,6 +330,7 @@ def test_runtime_env_file_quotes_custom_paths_with_spaces(tmp_path: Path, monkey
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
         tesseract_cmd="C:/Program Files/Tesseract-OCR/tesseract.exe",
+        tessdata_dir=tmp_path / "Tesseract Data",
         ffmpeg_bin="D:/Media Tools/ffmpeg/bin/ffmpeg.exe",
     )
 
@@ -333,6 +344,8 @@ def test_runtime_env_file_quotes_custom_paths_with_spaces(tmp_path: Path, monkey
     assert "OLLAMA_MODELS='" in env_text
     assert "BOOKS_TO_AUDIO_OLLAMA_BIN=ollama" in env_text
     assert "BOOKS_TO_AUDIO_TESSERACT_CMD='C:/Program Files/Tesseract-OCR/tesseract.exe'" in env_text
+    assert f"BOOKS_TO_AUDIO_TESSDATA_DIR='{tmp_path / 'Tesseract Data'}'" in env_text
+    assert f"TESSDATA_PREFIX='{tmp_path / 'Tesseract Data'}'" in env_text
     assert "BOOKS_TO_AUDIO_FFMPEG_BIN='D:/Media Tools/ffmpeg/bin/ffmpeg.exe'" in env_text
 
 
@@ -410,6 +423,7 @@ def test_interactive_dry_run_prompts_paths_and_writes_runtime_config(tmp_path: P
             "http://127.0.0.1:11436",
             str(tmp_path / "tools" / "ollama.exe"),
             str(tmp_path / "tools" / "tesseract.exe"),
+            str(tmp_path / "tools" / "tessdata"),
             str(tmp_path / "tools" / "ffmpeg.exe"),
             "n",
             "n",
@@ -441,6 +455,7 @@ def test_interactive_dry_run_prompts_paths_and_writes_runtime_config(tmp_path: P
         runtime_config = json.loads(config_path.read_text(encoding="utf-8"))
         assert "Install/data root / Папка установки/данных" in stdout
         assert "Ollama models folder / Папка моделей Ollama" in stdout
+        assert "Tesseract tessdata folder / Папка языковых данных Tesseract" in stdout
         assert "Pull Qwen3 Ollama 8B/4B models now?" in stdout
         assert "Would run:" in stdout
         assert "wsl.exe" not in stdout.lower()
@@ -454,6 +469,7 @@ def test_interactive_dry_run_prompts_paths_and_writes_runtime_config(tmp_path: P
         assert runtime_config["ollama_endpoint"] == "http://127.0.0.1:11436"
         assert runtime_config["ollama_bin"] == str(tmp_path / "tools" / "ollama.exe")
         assert runtime_config["tesseract_cmd"] == str(tmp_path / "tools" / "tesseract.exe")
+        assert runtime_config["tessdata_dir"] == str(tmp_path / "tools" / "tessdata")
         assert runtime_config["ffmpeg_bin"] == str(tmp_path / "tools" / "ffmpeg.exe")
     finally:
         if previous_config is None:
@@ -479,6 +495,7 @@ def test_interactive_installer_prompts_for_all_runtime_paths(
         "http://127.0.0.1:11435",
         str(tmp_path / "ollama.exe"),
         str(tmp_path / "tesseract.exe"),
+        str(tmp_path / "tessdata"),
         str(tmp_path / "ffmpeg.exe"),
     ])
     args = SimpleNamespace(
@@ -493,6 +510,7 @@ def test_interactive_installer_prompts_for_all_runtime_paths(
         ollama_endpoint="",
         ollama_bin="",
         tesseract_bin="",
+        tessdata_dir="",
         ffmpeg_bin="",
     )
     monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
@@ -507,6 +525,7 @@ def test_interactive_installer_prompts_for_all_runtime_paths(
     assert paths.ollama_endpoint == "http://127.0.0.1:11435"
     assert paths.ollama_bin == str(tmp_path / "ollama.exe")
     assert paths.tesseract_cmd == str(tmp_path / "tesseract.exe")
+    assert paths.tessdata_dir == tmp_path / "tessdata"
     assert paths.ffmpeg_bin == str(tmp_path / "ffmpeg.exe")
 
 
@@ -868,6 +887,7 @@ def test_readme_documents_multilingual_ocr_and_benchmark_language_map() -> None:
     assert "tesseract-ocr-uzb" in readme
     assert "tesseract-langpack-chi_sim" in readme
     assert "tesseract-data-chi_sim" in readme
+    assert "--tessdata-dir" in readme
     assert "python scripts/fetch_quality_corpus.py" in readme
     assert "--book-language-map" in readme
     assert '"english/*.txt": "en"' in readme

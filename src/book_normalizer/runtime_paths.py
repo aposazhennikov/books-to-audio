@@ -17,6 +17,8 @@ OLLAMA_MODELS_ENV = "OLLAMA_MODELS"
 MODELS_DIR_ENV = "BOOKS_TO_AUDIO_MODELS_DIR"
 HF_HOME_ENV = "HF_HOME"
 TESSERACT_CMD_ENV = "BOOKS_TO_AUDIO_TESSERACT_CMD"
+TESSDATA_DIR_ENV = "BOOKS_TO_AUDIO_TESSDATA_DIR"
+TESSDATA_PREFIX_ENV = "TESSDATA_PREFIX"
 FFMPEG_BIN_ENV = "BOOKS_TO_AUDIO_FFMPEG_BIN"
 
 
@@ -84,6 +86,14 @@ def configured_ollama_models_dir() -> Path | None:
 def configured_tesseract_cmd() -> Path | None:
     """Return configured Tesseract executable path if set."""
     return configured_path("tesseract_cmd", TESSERACT_CMD_ENV)
+
+
+def configured_tessdata_dir() -> Path | None:
+    """Return configured Tesseract language data directory if set."""
+    value = os.environ.get(TESSDATA_DIR_ENV) or os.environ.get(TESSDATA_PREFIX_ENV)
+    if value:
+        return Path(value).expanduser()
+    return configured_path("tessdata_dir")
 
 
 def configured_ffmpeg_bin() -> Path | None:

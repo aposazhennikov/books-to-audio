@@ -130,6 +130,40 @@ def test_native_ocr_installer_command_uses_host_os_without_wsl(tmp_path, monkeyp
     assert _native_ocr_install_display_command() == "./install.sh --interactive --install-system-tools"
 
 
+def test_normalize_page_install_ocr_button_launches_native_installer(
+    qapp,
+    qtbot,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        @staticmethod
+        def startDetached(command, args, cwd) -> bool:  # noqa: ANN001, N802
+            captured["command"] = command
+            captured["args"] = list(args)
+            captured["cwd"] = cwd
+            return True
+
+    monkeypatch.setattr(normalize_page.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(normalize_page, "_project_root", lambda: tmp_path)
+    monkeypatch.setattr(normalize_page, "QProcess", FakeProcess)
+    set_language("ru")
+    page = NormalizePage()
+    qtbot.addWidget(page)
+
+    qtbot.mouseClick(page._btn_install_ocr_tools, QtCore.Qt.MouseButton.LeftButton)
+
+    flattened = " ".join([captured["command"], *captured["args"]])
+    assert captured["command"] == "cmd.exe"
+    assert str(tmp_path / "install.bat") in captured["args"]
+    assert captured["cwd"] == str(tmp_path.resolve())
+    assert "wsl" not in flattened.lower()
+    assert "нативный установщик OCR" in page._progress._status.text()
+    assert "install.bat --interactive --install-system-tools" in page._progress._status.text()
+
+
 def test_normalize_page_defaults_book_language_to_russian(qapp) -> None:
     page = NormalizePage()
 

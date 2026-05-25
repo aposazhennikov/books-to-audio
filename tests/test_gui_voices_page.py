@@ -161,9 +161,15 @@ def test_voices_page_uses_compact_centered_chunk_size_field(qapp) -> None:
 def test_chunk_page_internal_tabs_are_chunk_focused(qapp) -> None:
     set_language("ru")
     page = VoicesPage()
+    render_widget(page, 1180, 760, scale=1.0)
 
     assert page._top_tabs.tabText(0) == "Ревью чанков"
     assert page._top_tabs.tabText(1) == "Пресеты голосов"
+    assert page._speaker_mode_label.text() == "Источник сегментов:"
+    assert page._speaker_mode.currentText() == "Правила: быстрое разбиение"
+    assert page._btn_detect.text() == "Пересобрать сегменты"
+    assert "локальный черновик" in page._speaker_mode_hint.text()
+    assert "реплик" not in page._speaker_mode_hint.text()
     assert "Библиотека голосов" not in {
         page._top_tabs.tabText(0),
         page._top_tabs.tabText(1),

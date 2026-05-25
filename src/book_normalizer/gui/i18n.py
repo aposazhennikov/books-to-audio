@@ -588,36 +588,37 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
     # ── Voices page ──
     "voice.speaker_mode": {
-        "en": "Dialogue Attribution:",
-        "ru": "\u0420\u0430\u0437\u043c\u0435\u0442\u043a\u0430 \u0440\u0435\u043f\u043b\u0438\u043a:",
+        "en": "Segment source:",
+        "ru": "\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u043e\u0432:",
     },
     "voice.speaker_mode_heuristic": {
-        "en": "Rules (fast)",
-        "ru": "\u041f\u0440\u0430\u0432\u0438\u043b\u0430 (\u0431\u044b\u0441\u0442\u0440\u043e)",
+        "en": "Rules: quick split",
+        "ru": "\u041f\u0440\u0430\u0432\u0438\u043b\u0430: \u0431\u044b\u0441\u0442\u0440\u043e\u0435 \u0440\u0430\u0437\u0431\u0438\u0435\u043d\u0438\u0435",
     },
     "voice.speaker_mode_llm": {
-        "en": "LLM (smarter)",
-        "ru": "LLM (\u0443\u043c\u043d\u0435\u0435)",
+        "en": "LLM: roles and scenes",
+        "ru": "LLM: \u0440\u043e\u043b\u0438 \u0438 \u0441\u0446\u0435\u043d\u044b",
     },
     "voice.speaker_mode_manual": {
-        "en": "Manual",
-        "ru": "\u0412\u0440\u0443\u0447\u043d\u0443\u044e",
+        "en": "Manual manifest",
+        "ru": "\u0420\u0443\u0447\u043d\u043e\u0439 \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
     },
     "voice.speaker_mode_hint": {
         "en": (
-            "Rules (fast) - finds narrator/speech and guesses male/female "
-            "dialogue by verb endings. No network.\n"
-            "LLM (smarter) - asks a model to assign narrator, male, and "
-            "female roles. Needs a local LLM server or OpenAI API key.\n"
-            "Manual - creates segments, then lets you choose voices in the "
-            "table."
+            "Rules: quick split - builds a local draft from punctuation and "
+            "dialogue marks. No network.\n"
+            "LLM: roles and scenes - asks the local model to preserve text, "
+            "split scenes, and label roles.\n"
+            "Manual manifest - load or create segments, then edit text, roles, "
+            "and voices in the table."
         ),
         "ru": (
-            "\u041f\u0440\u0430\u0432\u0438\u043b\u0430 (\u0431\u044b\u0441\u0442\u0440\u043e) - \u0438\u0449\u0435\u0442 \u0430\u0432\u0442\u043e\u0440\u0441\u043a\u0438\u0439 \u0442\u0435\u043a\u0441\u0442/\u0440\u0435\u0447\u044c \u0438 \u0443\u0433\u0430\u0434\u044b\u0432\u0430\u0435\u0442 \u043c\u0443\u0436./\u0436\u0435\u043d. "
-            "\u0440\u0435\u043f\u043b\u0438\u043a\u0438 \u043f\u043e \u043e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u044f\u043c. \u0411\u0435\u0437 \u0441\u0435\u0442\u0438.\n"
-            "LLM (\u0443\u043c\u043d\u0435\u0435) - \u043f\u0440\u043e\u0441\u0438\u0442 \u043c\u043e\u0434\u0435\u043b\u044c \u0440\u0430\u0437\u043c\u0435\u0442\u0438\u0442\u044c \u0440\u043e\u043b\u0438: \u0430\u0432\u0442\u043e\u0440, "
-            "\u043c\u0443\u0436\u0441\u043a\u043e\u0439, \u0436\u0435\u043d\u0441\u043a\u0438\u0439. \u041d\u0443\u0436\u0435\u043d \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 LLM \u0438\u043b\u0438 OpenAI API \u043a\u043b\u044e\u0447.\n"
-            "\u0412\u0440\u0443\u0447\u043d\u0443\u044e - \u0441\u043e\u0437\u0434\u0430\u0435\u0442 \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u044b, \u0430 \u0433\u043e\u043b\u043e\u0441\u0430 \u0432\u044b\u0431\u0438\u0440\u0430\u044e\u0442\u0441\u044f \u0440\u0443\u043a\u0430\u043c\u0438 \u0432 \u0442\u0430\u0431\u043b\u0438\u0446\u0435."
+            "\u041f\u0440\u0430\u0432\u0438\u043b\u0430: \u0431\u044b\u0441\u0442\u0440\u043e\u0435 \u0440\u0430\u0437\u0431\u0438\u0435\u043d\u0438\u0435 - \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0447\u0435\u0440\u043d\u043e\u0432\u0438\u043a \u043f\u043e \u043f\u0443\u043d\u043a\u0442\u0443\u0430\u0446\u0438\u0438 "
+            "\u0438 \u043a\u0430\u0432\u044b\u0447\u043a\u0430\u043c. \u0411\u0435\u0437 \u0441\u0435\u0442\u0438.\n"
+            "LLM: \u0440\u043e\u043b\u0438 \u0438 \u0441\u0446\u0435\u043d\u044b - \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u0430\u044f \u043c\u043e\u0434\u0435\u043b\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u044f\u0435\u0442 \u0442\u0435\u043a\u0441\u0442, "
+            "\u0434\u0435\u043b\u0438\u0442 \u043d\u0430 \u0441\u0446\u0435\u043d\u044b \u0438 \u0440\u0430\u0437\u043c\u0435\u0447\u0430\u0435\u0442 \u0440\u043e\u043b\u0438.\n"
+            "\u0420\u0443\u0447\u043d\u043e\u0439 \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442 - \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0438\u043b\u0438 \u0441\u043e\u0437\u0434\u0430\u0439\u0442\u0435 \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u044b, "
+            "\u0437\u0430\u0442\u0435\u043c \u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0442\u0435\u043a\u0441\u0442, \u0440\u043e\u043b\u0438 \u0438 \u0433\u043e\u043b\u043e\u0441\u0430 \u0432 \u0442\u0430\u0431\u043b\u0438\u0446\u0435."
         ),
     },
     "voice.max_chunk": {
@@ -663,8 +664,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         ),
     },
     "voice.detect": {
-        "en": "Detect Segments",
-        "ru": "Определить сегменты",
+        "en": "Rebuild segments",
+        "ru": "Пересобрать сегменты",
     },
     "voice.build_chunks": {
         "en": "Build TTS Chunks",
@@ -913,16 +914,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
               "| Муж.: {male} | Жен.: {female}",
     },
     "voice.detecting": {
-        "en": "Detecting dialogue segments\u2026",
-        "ru": "Определяем сегменты диалогов\u2026",
+        "en": "Building smart segments\u2026",
+        "ru": "Собираем умные сегменты\u2026",
     },
     "voice.detecting_dialogue": {
-        "en": "Detecting dialogue\u2026",
-        "ru": "Определение диалогов\u2026",
+        "en": "Reading dialogue boundaries\u2026",
+        "ru": "Читаем границы диалогов\u2026",
     },
     "voice.attributing": {
-        "en": "Speaker attribution ({mode})\u2026",
-        "ru": "Атрибуция дикторов ({mode})\u2026",
+        "en": "Assigning roles ({mode})\u2026",
+        "ru": "Размечаем роли ({mode})\u2026",
     },
     "voice.extracting_segments": {
         "en": "Extracting segments\u2026",
@@ -945,9 +946,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Собираем TTS-чанки из {n} сегментов\u2026",
     },
     "voice.segments_ready": {
-        "en": "\u2714 {n} segments detected. Assign voices, then click "
+        "en": "\u2714 {n} segments ready. Review roles and text, then click "
               "'Build TTS Chunks'.",
-        "ru": "\u2714 {n} сегментов найдено. Назначьте голоса, "
+        "ru": "\u2714 {n} сегментов готово. Проверьте роли и текст, "
               "затем нажмите \u00abСобрать чанки для TTS\u00bb.",
     },
     "voice.chunks_done": {
@@ -2552,6 +2553,68 @@ def _install_extra_translations() -> None:
             "zh": "样本音频中实际说出的准确文本。越接近，声音提示越好。",
             "kk": "Үлгі аудиода айтылған нақты мәтін. Сәйкестік неғұрлым дәл болса, дауыс промпты соғұрлым жақсы.",
             "uz": "Namuna audiosida aytilgan aniq matn. Qanchalik mos bo'lsa, ovoz prompti shunchalik yaxshi bo'ladi.",
+        },
+        "voice.speaker_mode": {
+            "zh": "分段来源：",
+            "kk": "Сегмент көзі:",
+            "uz": "Segment manbasi:",
+        },
+        "voice.speaker_mode_heuristic": {
+            "zh": "规则：快速分段",
+            "kk": "Ереже: жылдам бөлу",
+            "uz": "Qoidalar: tez bo'lish",
+        },
+        "voice.speaker_mode_llm": {
+            "zh": "LLM：角色与场景",
+            "kk": "LLM: рөлдер мен көріністер",
+            "uz": "LLM: rollar va sahnalar",
+        },
+        "voice.speaker_mode_manual": {
+            "zh": "手动清单",
+            "kk": "Қолмен манифест",
+            "uz": "Qo'lda manifest",
+        },
+        "voice.speaker_mode_hint": {
+            "zh": (
+                "规则：快速分段 - 根据标点和引号在本机生成草稿。无需网络。\n"
+                "LLM：角色与场景 - 本地模型保留文本、划分场景并标注角色。\n"
+                "手动清单 - 加载或创建分段，然后在表格中编辑文本、角色和声音。"
+            ),
+            "kk": (
+                "Ереже: жылдам бөлу - тыныс белгілері мен тырнақша бойынша жергілікті жоба жасайды. Желі қажет емес.\n"
+                "LLM: рөлдер мен көріністер - жергілікті модель мәтінді сақтап, көріністерге бөліп, рөлдерді белгілейді.\n"
+                "Қолмен манифест - сегменттерді жүктеп не жасаңыз, кейін мәтінді, рөлдерді және дауыстарды кестеде түзетіңіз."
+            ),
+            "uz": (
+                "Qoidalar: tez bo'lish - tinish belgilari va qo'shtirnoqlar asosida lokal qoralama yaratadi. Tarmoq kerak emas.\n"
+                "LLM: rollar va sahnalar - lokal model matnni saqlab, sahnalarga bo'ladi va rollarni belgilaydi.\n"
+                "Qo'lda manifest - segmentlarni yuklang yoki yarating, keyin jadvalda matn, rollar va ovozlarni tahrirlang."
+            ),
+        },
+        "voice.detect": {
+            "zh": "重新生成分段",
+            "kk": "Сегменттерді қайта құру",
+            "uz": "Segmentlarni qayta qurish",
+        },
+        "voice.detecting": {
+            "zh": "正在生成智能分段…",
+            "kk": "Ақылды сегменттер жиналуда…",
+            "uz": "Aqlli segmentlar yig'ilmoqda…",
+        },
+        "voice.detecting_dialogue": {
+            "zh": "正在读取对话边界…",
+            "kk": "Диалог шекаралары оқылуда…",
+            "uz": "Dialog chegaralari o'qilmoqda…",
+        },
+        "voice.attributing": {
+            "zh": "正在标注角色 ({mode})…",
+            "kk": "Рөлдер белгіленуде ({mode})…",
+            "uz": "Rollar belgilanmoqda ({mode})…",
+        },
+        "voice.segments_ready": {
+            "zh": "✔ {n} 个分段已就绪。请检查角色和文本，然后点击“构建 TTS 分块”。",
+            "kk": "✔ {n} сегмент дайын. Рөлдер мен мәтінді тексеріп, «TTS чанктарын құру» түймесін басыңыз.",
+            "uz": "✔ {n} segment tayyor. Rollar va matnni tekshirib, “TTS bo‘laklarini qurish” tugmasini bosing.",
         },
         "voice.mark_retry": {"zh": "重试", "kk": "Қайталау", "uz": "Qayta"},
         "voice.type_narrator": {"zh": "旁白", "kk": "Автор", "uz": "Hikoya"},

@@ -279,6 +279,95 @@ def test_voice_chunk_table_labels_are_polished_for_supported_languages() -> None
     set_language("ru")
 
 
+def test_chunk_segment_source_copy_replaces_old_dialogue_attribution_terms() -> None:
+    expected = {
+        "ru": {
+            "voice.speaker_mode": "Источник сегментов:",
+            "voice.speaker_mode_heuristic": "Правила: быстрое разбиение",
+            "voice.speaker_mode_llm": "LLM: роли и сцены",
+            "voice.speaker_mode_manual": "Ручной манифест",
+            "voice.detect": "Пересобрать сегменты",
+            "voice.detecting": "Собираем умные сегменты…",
+            "voice.attributing": "Размечаем роли (LLM)…",
+            "voice.segments_ready": "сегментов готово",
+        },
+        "en": {
+            "voice.speaker_mode": "Segment source:",
+            "voice.speaker_mode_heuristic": "Rules: quick split",
+            "voice.speaker_mode_llm": "LLM: roles and scenes",
+            "voice.speaker_mode_manual": "Manual manifest",
+            "voice.detect": "Rebuild segments",
+            "voice.detecting": "Building smart segments…",
+            "voice.attributing": "Assigning roles (LLM)…",
+            "voice.segments_ready": "segments ready",
+        },
+        "zh": {
+            "voice.speaker_mode": "分段来源：",
+            "voice.speaker_mode_heuristic": "规则：快速分段",
+            "voice.speaker_mode_llm": "LLM：角色与场景",
+            "voice.speaker_mode_manual": "手动清单",
+            "voice.detect": "重新生成分段",
+            "voice.detecting": "正在生成智能分段…",
+            "voice.attributing": "正在标注角色 (LLM)…",
+            "voice.segments_ready": "分段已就绪",
+        },
+        "kk": {
+            "voice.speaker_mode": "Сегмент көзі:",
+            "voice.speaker_mode_heuristic": "Ереже: жылдам бөлу",
+            "voice.speaker_mode_llm": "LLM: рөлдер мен көріністер",
+            "voice.speaker_mode_manual": "Қолмен манифест",
+            "voice.detect": "Сегменттерді қайта құру",
+            "voice.detecting": "Ақылды сегменттер жиналуда…",
+            "voice.attributing": "Рөлдер белгіленуде (LLM)…",
+            "voice.segments_ready": "сегмент дайын",
+        },
+        "uz": {
+            "voice.speaker_mode": "Segment manbasi:",
+            "voice.speaker_mode_heuristic": "Qoidalar: tez bo'lish",
+            "voice.speaker_mode_llm": "LLM: rollar va sahnalar",
+            "voice.speaker_mode_manual": "Qo'lda manifest",
+            "voice.detect": "Segmentlarni qayta qurish",
+            "voice.detecting": "Aqlli segmentlar yig'ilmoqda…",
+            "voice.attributing": "Rollar belgilanmoqda (LLM)…",
+            "voice.segments_ready": "segment tayyor",
+        },
+    }
+    stale_fragments = (
+        "Dialogue Attribution",
+        "Разметка реплик",
+        "Speaker attribution",
+        "Атрибуция дикторов",
+        "male/female",
+        "муж./жен.",
+        "对话归属",
+        "男性/女性",
+        "Диалог атрибуты",
+        "Dialog atributi",
+    )
+
+    for code, labels in expected.items():
+        set_language(code)
+        for key, value in labels.items():
+            text = t(key, n=3, mode="LLM")
+            assert value in text, f"{key}:{code}:{text}"
+        combined = "\n".join(
+            t(key, n=3, mode="LLM")
+            for key in (
+                "voice.speaker_mode",
+                "voice.speaker_mode_hint",
+                "voice.detecting",
+                "voice.attributing",
+                "voice.segments_ready",
+            )
+        )
+        assert not any(fragment in combined for fragment in stale_fragments), (
+            code,
+            combined,
+        )
+
+    set_language("ru")
+
+
 def test_synthesis_mode_tabs_are_localized_for_supported_languages(qtbot) -> None:
     expected = {
         "ru": ["Свой голос", "Готовые голоса", "Дополнительно"],

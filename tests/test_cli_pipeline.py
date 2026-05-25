@@ -71,6 +71,59 @@ def test_pipeline_command_runs_in_process_without_subprocess(
     ]
 
 
+def test_pipeline_command_accepts_book_option_alias(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    book_path = tmp_path / "book.txt"
+    book_path.write_text("Hello.", encoding="utf-8")
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_pipeline(argv: list[str]) -> None:
+        captured["argv"] = argv
+
+    monkeypatch.setattr(cli, "_run_pipeline_in_process", fake_run_pipeline)
+
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "pipeline",
+            "--book",
+            str(book_path),
+            "--out",
+            str(tmp_path / "out"),
+            "--chunk-mode",
+            "heuristic",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["argv"][:4] == ["--book", str(book_path), "--out", str(tmp_path / "out")]
+    assert "--chunk-mode" in captured["argv"]
+    assert captured["argv"][captured["argv"].index("--chunk-mode") + 1] == "heuristic"
+
+
+def test_pipeline_command_rejects_missing_book() -> None:
+    result = CliRunner().invoke(cli.main, ["pipeline"])
+
+    assert result.exit_code != 0
+    assert "INPUT_PATH or with --book" in result.output
+
+
+def test_pipeline_command_rejects_conflicting_book_paths(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first.write_text("One.", encoding="utf-8")
+    second.write_text("Two.", encoding="utf-8")
+
+    result = CliRunner().invoke(cli.main, ["pipeline", str(first), "--book", str(second)])
+
+    assert result.exit_code != 0
+    assert "INPUT_PATH and --book differ" in result.output
+
+
 def test_pipeline_command_source_does_not_shell_out_to_child_python() -> None:
     source = Path("src/book_normalizer/cli.py").read_text(encoding="utf-8")
     pipeline_source = source.split("def pipeline_command", maxsplit=1)[1].split(

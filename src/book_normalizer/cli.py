@@ -153,7 +153,14 @@ def main() -> None:
 
 
 @main.command(name="pipeline")
-@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
+@click.argument("input_path", required=False, type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--book",
+    "book_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Book file path. Alias for positional INPUT_PATH.",
+)
 @click.option("--out", "-o", type=click.Path(path_type=Path), default=Path("output"), help="Output root directory.")
 @click.option("--llm-model", default=PRIMARY_QWEN3_MODEL, show_default=True, help="Ollama model for chunking.")
 @click.option(
@@ -185,7 +192,8 @@ def main() -> None:
     help="PDF OCR mode.",
 )
 def pipeline_command(
-    input_path: Path,
+    input_path: Path | None,
+    book_path: Path | None,
     out: Path,
     llm_model: str,
     llm_endpoint: str,
@@ -201,9 +209,10 @@ def pipeline_command(
     ocr_mode: str,
 ) -> None:
     """Run the recommended normalize -> v2 chunks -> ComfyUI -> manifest assembly pipeline."""
+    selected_book = _resolve_pipeline_input(input_path, book_path)
     argv = [
         "--book",
-        str(input_path),
+        str(selected_book),
         "--out",
         str(out),
         "--llm-model",
@@ -232,6 +241,17 @@ def pipeline_command(
         argv.append("--skip-stage1")
 
     _run_pipeline_in_process(argv)
+
+
+def _resolve_pipeline_input(input_path: Path | None, book_path: Path | None) -> Path:
+    """Return the pipeline book path from either supported CLI style."""
+    if input_path is None and book_path is None:
+        raise click.UsageError("Pass a book file as INPUT_PATH or with --book.")
+    if input_path is not None and book_path is not None and input_path.resolve() != book_path.resolve():
+        raise click.UsageError("Pass only one book file: INPUT_PATH and --book differ.")
+    selected = input_path or book_path
+    assert selected is not None
+    return selected
 
 
 def _run_pipeline_in_process(argv: list[str]) -> None:

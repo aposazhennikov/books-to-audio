@@ -8,6 +8,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from book_normalizer.gui.i18n import set_language
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 from tests.gui.helpers import render_widget
@@ -153,6 +154,21 @@ def test_voices_page_uses_compact_centered_chunk_size_field(qapp) -> None:
     assert page._chunk_size.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
     assert 38 <= page._chunk_size.height() <= 42
     assert page._chunk_size.width() <= 160
+
+    page.deleteLater()
+
+
+def test_chunk_page_internal_tabs_are_chunk_focused(qapp) -> None:
+    set_language("ru")
+    page = VoicesPage()
+
+    assert page._top_tabs.tabText(0) == "Ревью чанков"
+    assert page._top_tabs.tabText(1) == "Пресеты голосов"
+    assert "Библиотека голосов" not in {
+        page._top_tabs.tabText(0),
+        page._top_tabs.tabText(1),
+        page._preview_title.text(),
+    }
 
     page.deleteLater()
 

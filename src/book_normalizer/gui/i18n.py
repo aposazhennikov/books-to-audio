@@ -924,9 +924,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "voice.chunks_done": {
         "en": "\u2714 Built {n} TTS chunks! "
-              "Go to the Synthesize tab to start synthesis.",
+              "Go to the Voices tab to choose or train voices.",
         "ru": "\u2714 Собрано {n} TTS-чанков! "
-              "Перейдите на вкладку \u00abСинтез\u00bb для запуска.",
+              "Перейдите на вкладку \u00abГолоса\u00bb, чтобы выбрать или обучить голоса.",
     },
     "voice.saved": {
         "en": "\u2714 Saved: {path}",
@@ -987,6 +987,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "voice.settings_panel": {
         "en": "Voice Markup",
         "ru": "\u0420\u0430\u0437\u043c\u0435\u0442\u043a\u0430",
+    },
+    "chunks.settings_panel": {
+        "en": "Chunk Review",
+        "ru": "\u0420\u0435\u0432\u044c\u044e \u0447\u0430\u043d\u043a\u043e\u0432",
+        "zh": "\u5206\u5757\u5ba1\u6838",
+        "kk": "\u0427\u0430\u043d\u043a\u0442\u0430\u0440\u0434\u044b \u0442\u0435\u043a\u0441\u0435\u0440\u0443",
+        "uz": "Bo\u02bbaklarni ko\u02bbrib chiqish",
+    },
+    "chunks.preset_panel": {
+        "en": "Voice Presets",
+        "ru": "\u041f\u0440\u0435\u0441\u0435\u0442\u044b \u0433\u043e\u043b\u043e\u0441\u043e\u0432",
+        "zh": "\u58f0\u97f3\u9884\u8bbe",
+        "kk": "\u0414\u0430\u0443\u044b\u0441 \u043f\u0440\u0435\u0441\u0435\u0442\u0442\u0435\u0440\u0456",
+        "uz": "Ovoz presetlari",
     },
     "voice.output_dir": {
         "en": "Output folder:",
@@ -2513,6 +2527,13 @@ def _install_extra_translations() -> None:
         },
         "voice.mark_retry": {"zh": "重试", "kk": "Қайталау", "uz": "Qayta"},
         "voice.type_narrator": {"zh": "旁白", "kk": "Автор", "uz": "Hikoya"},
+        "voice.chunks_done": {
+            "en": "✔ Built {n} TTS chunks! Go to the Voices tab to choose or train voices.",
+            "ru": "✔ Собрано {n} TTS-чанков! Перейдите на вкладку «Голоса», чтобы выбрать или обучить голоса.",
+            "zh": "✔ 已生成 {n} 个 TTS 分块。下一步进入“声音”页选择或训练声音。",
+            "kk": "✔ {n} TTS чанкі дайын. Енді «Дауыстар» қойындысында дауыстарды таңдаңыз не үйретіңіз.",
+            "uz": "✔ {n} TTS bo‘lagi tayyor. Endi “Ovozlar” sahifasida ovoz tanlang yoki o‘rgating.",
+        },
         "voice.manifest_path": {
             "zh": "清单：{path}",
             "kk": "Манифест: {path}",
@@ -2527,6 +2548,27 @@ def _install_extra_translations() -> None:
             "zh": "{total} 段 | 对话: {speech} | 旁白: {narr}",
             "kk": "{total} сегмент | Сөз: {speech} | Автор: {narr}",
             "uz": "{total} segment | Nutq: {speech} | Hikoya: {narr}",
+        },
+        "status.norm_done": {
+            "en": "Normalization complete. {n} chapters. Extract roles next.",
+            "ru": "Нормализация завершена. {n} глав. Дальше извлеките роли.",
+            "zh": "规范化完成：{n} 章。下一步提取角色。",
+            "kk": "Нормалдау аяқталды: {n} тарау. Енді рөлдерді алыңыз.",
+            "uz": "Normallashtirish tugadi: {n} bob. Keyin rollarni ajrating.",
+        },
+        "status.roles_done": {
+            "en": "Roles and smart segments are ready. Review chunks next.",
+            "ru": "Роли и умные сегменты готовы. Дальше проверьте чанки.",
+            "zh": "角色和智能片段已就绪。下一步检查分块。",
+            "kk": "Рөлдер мен ақылды сегменттер дайын. Енді чанктарды тексеріңіз.",
+            "uz": "Rollar va aqlli segmentlar tayyor. Keyin bo‘laklarni tekshiring.",
+        },
+        "status.voices_done": {
+            "en": "Chunks are ready. Go to Voices tab.",
+            "ru": "Чанки готовы. Перейдите на вкладку «Голоса».",
+            "zh": "分块已就绪。进入“声音”页。",
+            "kk": "Чанктар дайын. «Дауыстар» қойындысына өтіңіз.",
+            "uz": "Bo‘laklar tayyor. “Ovozlar” sahifasiga o‘ting.",
         },
         "synth.chunks_word": {"zh": "分块"},
     }

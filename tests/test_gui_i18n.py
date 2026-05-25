@@ -166,6 +166,60 @@ def test_tesseract_psm_help_is_readable_in_every_supported_language() -> None:
     set_language("ru")
 
 
+def test_workflow_status_copy_matches_five_step_product_flow() -> None:
+    expected_fragments = {
+        "ru": {
+            "status.norm_done": "извлеките роли",
+            "status.roles_done": "проверьте чанки",
+            "status.voices_done": "вкладку «Голоса»",
+            "voice.chunks_done": "вкладку «Голоса»",
+        },
+        "en": {
+            "status.norm_done": "Extract roles next",
+            "status.roles_done": "Review chunks next",
+            "status.voices_done": "Go to Voices tab",
+            "voice.chunks_done": "Go to the Voices tab",
+        },
+        "zh": {
+            "status.norm_done": "提取角色",
+            "status.roles_done": "检查分块",
+            "status.voices_done": "声音",
+            "voice.chunks_done": "声音",
+        },
+        "kk": {
+            "status.norm_done": "рөлдерді",
+            "status.roles_done": "чанктарды",
+            "status.voices_done": "Дауыстар",
+            "voice.chunks_done": "Дауыстар",
+        },
+        "uz": {
+            "status.norm_done": "rollarni",
+            "status.roles_done": "bo‘laklarni",
+            "status.voices_done": "Ovozlar",
+            "voice.chunks_done": "Ovozlar",
+        },
+    }
+    stale_fragments = (
+        "Synthesize tab",
+        "синтез",
+        "综合",
+        "Синтездеу",
+        "Sintezlash",
+        "Voice assignment ready",
+        "Дауыстық тапсырма дайын",
+        "Ovozli topshiriq tayyor",
+    )
+
+    for code, fragments in expected_fragments.items():
+        set_language(code)
+        for key, fragment in fragments.items():
+            text = t(key, n=3)
+            assert fragment in text, f"{key}:{code}"
+            assert not any(stale in text for stale in stale_fragments), f"{key}:{code}:{text}"
+
+    set_language("ru")
+
+
 def test_voice_chunk_table_labels_are_polished_for_supported_languages() -> None:
     expected = {
         "ru": {

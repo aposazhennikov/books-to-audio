@@ -1,4 +1,4 @@
-"""Voices page — dialogue detection, voice preview, and interactive assignment."""
+"""Chunk editing page — segment review, role assignment, and TTS chunk export."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ from book_normalizer.runtime_paths import configured_ollama_endpoint
 
 
 class VoicesPage(QWidget):
-    """Page for dialogue detection, voice preview, and voice assignment."""
+    """Page for smart segment review, role assignment, and TTS chunk export."""
 
     chunks_built = pyqtSignal(str)
 
@@ -300,9 +300,9 @@ class VoicesPage(QWidget):
         self._btn_save.setText(t("voice.save_manifest"))
         self._btn_save.setToolTip(t("voice.save_manifest_tip"))
         self._btn_build.setText(t("voice.build_chunks"))
-        self._preview_title.setText(t("voice.preview_panel"))
-        self._top_tabs.setTabText(0, t("voice.settings_panel"))
-        self._top_tabs.setTabText(1, t("voice.preview_panel"))
+        self._preview_title.setText(t("chunks.preset_panel"))
+        self._top_tabs.setTabText(0, t("chunks.settings_panel"))
+        self._top_tabs.setTabText(1, t("chunks.preset_panel"))
 
         self._llm_provider_label.setText(t("voice.llm_provider"))
         self._llm_provider.clear()

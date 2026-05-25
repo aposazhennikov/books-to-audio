@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import subprocess
@@ -656,51 +655,42 @@ def test_pull_ollama_models_skips_already_present_model(tmp_path: Path, monkeypa
     assert pulled == [["ollama", "pull", DEFAULT_OLLAMA_MODELS[1]]]
 
 
-def test_pull_ollama_models_skips_when_command_hash_matches(
+def test_pull_ollama_models_skips_when_file_hash_matches(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    ollama_models_dir = tmp_path / "ollama-models"
+    ollama_models_dir.mkdir()
+    (ollama_models_dir / "models" / "manifests").mkdir(parents=True)
+    (ollama_models_dir / "models" / "manifests" / "qwen3-8b.json").write_text(
+        "{}",
+        encoding="utf-8",
+    )
     paths = InstallPaths(
         install_root=tmp_path,
         venv_dir=tmp_path / ".venv",
         models_dir=tmp_path / "models",
         hf_cache_dir=tmp_path / "hf-cache",
-        ollama_models_dir=tmp_path / "ollama-models",
+        ollama_models_dir=ollama_models_dir,
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
         tesseract_cmd="tesseract",
         ffmpeg_bin="ffmpeg",
     )
-    list_output = "\n".join(DEFAULT_OLLAMA_MODELS)
     metadata = {
         "models": list(DEFAULT_OLLAMA_MODELS),
         "ollama_models_dir": str(paths.ollama_models_dir),
     }
-    _write_hash_manifest_entry(
-        OLLAMA_HASH_LABEL,
-        {
-            "sha256": hashlib.sha256(list_output.encode("utf-8")).hexdigest(),
-            "source": "ollama list",
-            "metadata": metadata,
-        },
-    )
-    calls: list[list[str]] = []
-
-    def fake_subprocess_run(cmd, **_kwargs):  # noqa: ANN001
-        calls.append(cmd)
-        assert cmd == ["ollama", "list"]
-        return SimpleNamespace(returncode=0, stdout=list_output, stderr="")
+    _verify_or_write_hash(OLLAMA_HASH_LABEL, paths.ollama_models_dir, metadata=metadata)
 
     def fail_run(*_args, **_kwargs):  # noqa: ANN002
-        raise AssertionError("pull step should be skipped when Ollama hash matches")
+        raise AssertionError("Ollama should not be called when file hash matches")
 
-    monkeypatch.setattr("install.subprocess.run", fake_subprocess_run)
+    monkeypatch.setattr("install.subprocess.run", fail_run)
     monkeypatch.setattr("install._run", fail_run)
 
     _pull_ollama_models(paths, verify_hashes=True)
-
-    assert calls == [["ollama", "list"]]
 
 
 def test_pull_ollama_models_records_hash_metadata_after_pull(
@@ -719,18 +709,24 @@ def test_pull_ollama_models_records_hash_metadata_after_pull(
         tesseract_cmd="tesseract",
         ffmpeg_bin="ffmpeg",
     )
-    list_output = "\n".join(DEFAULT_OLLAMA_MODELS)
     pulled: list[list[str]] = []
 
     def fake_subprocess_run(cmd, **_kwargs):  # noqa: ANN001
         if cmd[:2] == ["ollama", "show"]:
             return SimpleNamespace(returncode=1, stdout="", stderr="")
-        if cmd == ["ollama", "list"]:
-            return SimpleNamespace(returncode=0, stdout=list_output, stderr="")
         raise AssertionError(cmd)
 
+    def fake_run(cmd, _paths):  # noqa: ANN001
+        pulled.append(cmd)
+        model_dir = paths.ollama_models_dir / "models" / "manifests"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        (model_dir / f"{cmd[-1].replace('/', '_').replace(':', '_')}.json").write_text(
+            cmd[-1],
+            encoding="utf-8",
+        )
+
     monkeypatch.setattr("install.subprocess.run", fake_subprocess_run)
-    monkeypatch.setattr("install._run", lambda cmd, _paths: pulled.append(cmd))
+    monkeypatch.setattr("install._run", fake_run)
 
     _pull_ollama_models(paths, verify_hashes=True)
 
@@ -740,7 +736,8 @@ def test_pull_ollama_models_records_hash_metadata_after_pull(
         "models": list(DEFAULT_OLLAMA_MODELS),
         "ollama_models_dir": str(paths.ollama_models_dir),
     }
-    assert manifest[OLLAMA_HASH_LABEL]["source"] == "ollama list"
+    assert manifest[OLLAMA_HASH_LABEL]["path"] == str(paths.ollama_models_dir)
+    assert manifest[OLLAMA_HASH_LABEL]["files"] == len(DEFAULT_OLLAMA_MODELS)
 
 
 def test_pull_ollama_models_rejects_hash_mismatch_before_pull(
@@ -748,37 +745,32 @@ def test_pull_ollama_models_rejects_hash_mismatch_before_pull(
     monkeypatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    ollama_models_dir = tmp_path / "ollama-models"
+    ollama_models_dir.mkdir()
+    model_file = ollama_models_dir / "model.blob"
+    model_file.write_text("ok", encoding="utf-8")
     paths = InstallPaths(
         install_root=tmp_path,
         venv_dir=tmp_path / ".venv",
         models_dir=tmp_path / "models",
         hf_cache_dir=tmp_path / "hf-cache",
-        ollama_models_dir=tmp_path / "ollama-models",
+        ollama_models_dir=ollama_models_dir,
         ollama_endpoint="http://127.0.0.1:11434",
         ollama_bin="ollama",
         tesseract_cmd="tesseract",
         ffmpeg_bin="ffmpeg",
     )
-    _write_hash_manifest_entry(
-        OLLAMA_HASH_LABEL,
-        {
-            "sha256": "not-current",
-            "source": "ollama list",
-            "metadata": {
-                "models": list(DEFAULT_OLLAMA_MODELS),
-                "ollama_models_dir": str(paths.ollama_models_dir),
-            },
-        },
-    )
-
-    def fake_subprocess_run(cmd, **_kwargs):  # noqa: ANN001
-        assert cmd == ["ollama", "list"]
-        return SimpleNamespace(returncode=0, stdout="\n".join(DEFAULT_OLLAMA_MODELS), stderr="")
+    metadata = {
+        "models": list(DEFAULT_OLLAMA_MODELS),
+        "ollama_models_dir": str(paths.ollama_models_dir),
+    }
+    _verify_or_write_hash(OLLAMA_HASH_LABEL, paths.ollama_models_dir, metadata=metadata)
+    model_file.write_text("corrupt", encoding="utf-8")
 
     def fail_run(*_args, **_kwargs):  # noqa: ANN002
         raise AssertionError("pull step should not run after hash mismatch")
 
-    monkeypatch.setattr("install.subprocess.run", fake_subprocess_run)
+    monkeypatch.setattr("install.subprocess.run", fail_run)
     monkeypatch.setattr("install._run", fail_run)
 
     with pytest.raises(SystemExit, match="Hash mismatch"):

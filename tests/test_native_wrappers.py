@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_PATHS = (
@@ -31,6 +36,67 @@ def test_gui_wrappers_prefer_current_source_tree() -> None:
 
     assert 'set "PYTHONPATH=%CD%\\src;%PYTHONPATH%"' in batch_text
     assert 'export PYTHONPATH="$SCRIPT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"' in shell_text
+    assert "--check" in batch_text
+    assert "--check" in shell_text
+
+
+def test_run_gui_batch_keeps_windows_line_endings() -> None:
+    batch_bytes = (ROOT / "run_gui.bat").read_bytes()
+
+    assert batch_bytes.count(b"\n") == batch_bytes.count(b"\r\n")
+
+
+def test_posix_gui_wrapper_check_smoke_uses_native_venv() -> None:
+    """The POSIX GUI wrapper must be callable without starting the window."""
+    if sys.platform == "win32" or not (ROOT / ".venv" / "bin" / "python").exists():
+        pytest.skip("POSIX native venv is not available in this checkout")
+    env = os.environ.copy()
+    env.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    result = subprocess.run(
+        ["sh", "run_gui.sh", "--check"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+        check=False,
+    )
+
+    combined = f"{result.stdout}\n{result.stderr}"
+    assert result.returncode == 0, combined
+    assert "Native POSIX GUI environment OK." in combined
+    assert "wsl" not in combined.lower()
+
+
+def test_windows_gui_wrapper_check_smoke_uses_native_venv() -> None:
+    """The Windows GUI wrapper must be callable without starting the window."""
+    if sys.platform != "win32" or not (ROOT / ".venv-windows" / "Scripts" / "python.exe").exists():
+        pytest.skip("Windows native venv is not available in this checkout")
+    env = os.environ.copy()
+    env.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    result = subprocess.run(
+        ["cmd", "/c", "run_gui.bat", "--check"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+        check=False,
+    )
+
+    combined = f"{result.stdout}\n{result.stderr}"
+    assert result.returncode == 0, combined
+    assert "Native Windows GUI environment OK." in combined
+    assert "Нативная Windows-среда GUI готова." in combined
+    assert "Рќ" not in combined
+    assert "Р " not in combined
+    assert "wsl" not in combined.lower()
 
 
 def test_posix_wrappers_use_native_python_and_do_not_delegate_to_wsl() -> None:

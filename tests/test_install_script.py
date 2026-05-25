@@ -394,6 +394,77 @@ def test_installer_dry_run_can_write_custom_log_path(tmp_path: Path) -> None:
             env_path.write_text(previous_env, encoding="utf-8")
 
 
+def test_interactive_dry_run_prompts_paths_and_writes_runtime_config(tmp_path: Path) -> None:
+    log_path = tmp_path / "interactive-install.log"
+    config_path = Path(RUNTIME_CONFIG_PATH)
+    env_path = RUNTIME_CONFIG_PATH.with_suffix(".env")
+    previous_config = config_path.read_text(encoding="utf-8") if config_path.exists() else None
+    previous_env = env_path.read_text(encoding="utf-8") if env_path.exists() else None
+    answers = "\n".join(
+        [
+            str(tmp_path / "install-root"),
+            str(tmp_path / "venv"),
+            str(tmp_path / "models"),
+            str(tmp_path / "hf-cache"),
+            str(tmp_path / "ollama-models"),
+            "http://127.0.0.1:11436",
+            str(tmp_path / "tools" / "ollama.exe"),
+            str(tmp_path / "tools" / "tesseract.exe"),
+            str(tmp_path / "tools" / "ffmpeg.exe"),
+            "n",
+            "n",
+            "n",
+        ]
+    ) + "\n"
+
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "install.py",
+                "--interactive",
+                "--dry-run",
+                "--no-system-check",
+                "--log-path",
+                str(log_path),
+            ],
+            input=answers,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+
+        stdout = result.stdout
+        log_text = log_path.read_text(encoding="utf-8")
+        runtime_config = json.loads(config_path.read_text(encoding="utf-8"))
+        assert "Install/data root / Папка установки/данных" in stdout
+        assert "Ollama models folder / Папка моделей Ollama" in stdout
+        assert "Pull Qwen3 Ollama 8B/4B models now?" in stdout
+        assert "Would run:" in stdout
+        assert "wsl" not in stdout.lower()
+        assert "Пробный запуск" in log_text
+        assert runtime_config["install_root"] == str(tmp_path / "install-root")
+        assert runtime_config["venv_dir"] == str(tmp_path / "venv")
+        assert runtime_config["models_dir"] == str(tmp_path / "models")
+        assert runtime_config["hf_cache_dir"] == str(tmp_path / "hf-cache")
+        assert runtime_config["ollama_models_dir"] == str(tmp_path / "ollama-models")
+        assert runtime_config["ollama_endpoint"] == "http://127.0.0.1:11436"
+        assert runtime_config["ollama_bin"] == str(tmp_path / "tools" / "ollama.exe")
+        assert runtime_config["tesseract_cmd"] == str(tmp_path / "tools" / "tesseract.exe")
+        assert runtime_config["ffmpeg_bin"] == str(tmp_path / "tools" / "ffmpeg.exe")
+    finally:
+        if previous_config is None:
+            config_path.unlink(missing_ok=True)
+        else:
+            config_path.write_text(previous_config, encoding="utf-8")
+        if previous_env is None:
+            env_path.unlink(missing_ok=True)
+        else:
+            env_path.write_text(previous_env, encoding="utf-8")
+
+
 def test_interactive_installer_prompts_for_all_runtime_paths(
     tmp_path: Path,
     monkeypatch,

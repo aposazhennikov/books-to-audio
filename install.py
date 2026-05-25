@@ -420,7 +420,7 @@ def _resolve_install_paths(args: argparse.Namespace, project_root: Path) -> Inst
 
 
 def _should_prompt(args: argparse.Namespace) -> bool:
-    if args.dry_run or args.yes:
+    if args.yes:
         return False
     return bool(args.interactive or (sys.stdin.isatty() and sys.stdout.isatty()))
 

@@ -25,7 +25,7 @@ from book_normalizer.llm.ollama_client import OllamaChatClient
 logger = logging.getLogger(__name__)
 
 DEFAULT_WINDOW_CHARS = 900
-_CACHE_VERSION = "llm-segmenter-v2-dialogue-repair"
+_CACHE_VERSION = "llm-segmenter-v3-multilingual-dialogue-repair"
 
 ROLE_TO_VOICE_ID = {
     "narrator": "narrator_calm",
@@ -185,6 +185,37 @@ _EN_SPEAKER_RE = re.compile(
     r"(?P<after>[A-Z][A-Za-z'-]{1,40})|"
     r"(?P<before>[A-Z][A-Za-z'-]{1,40})\s+"
     r"(?:said|asked|replied|shouted|whispered|cried|muttered))\b"
+)
+_EN_MALE_ATTRIBUTION_RE = re.compile(
+    r"\b(?:(?:he|him)\s+(?:said|asked|replied|shouted|whispered|cried|muttered)|"
+    r"(?:said|asked|replied|shouted|whispered|cried|muttered)\s+(?:he|him))\b",
+    re.IGNORECASE,
+)
+_EN_FEMALE_ATTRIBUTION_RE = re.compile(
+    r"\b(?:(?:she|her)\s+(?:said|asked|replied|shouted|whispered|cried|muttered)|"
+    r"(?:said|asked|replied|shouted|whispered|cried|muttered)\s+(?:she|her))\b",
+    re.IGNORECASE,
+)
+
+_ZH_SPEAKER_RE = re.compile(
+    r"[”」』》〉\"，,、。！？!?]\s*"
+    r"(?P<speaker>[\u3400-\u9fff]{1,12})(?:低声说|说道|问道|说|問|问|喊|回答)"
+)
+_ZH_MALE_ATTRIBUTION_RE = re.compile(r"(?:他(?:低声说|说道|问道|说|問|问|喊|回答))")
+_ZH_FEMALE_ATTRIBUTION_RE = re.compile(r"(?:她(?:低声说|说道|问道|说|問|问|喊|回答))")
+_ZH_BAD_SPEAKER_TOKENS = frozenset({"他", "她", "它", "他们", "她们", "它们"})
+
+_KK_SPEAKER_TOKEN = r"[А-ЯӘҒҚҢӨҰҮҺІ][А-Яа-яӘәҒғҚқҢңӨөҰұҮүҺһІі-]{1,40}"
+_KK_ATTRIBUTION_RE = re.compile(
+    rf"\b(?:деді|сұрады|жауап\s+берді|айқайлады|сыбырлады)\s+(?P<speaker>{_KK_SPEAKER_TOKEN})",
+    re.IGNORECASE,
+)
+
+_UZ_SPEAKER_TOKEN = r"[A-ZÀ-Žʻʼ][A-Za-zÀ-žʻʼ'-]{1,40}"
+_UZ_ATTRIBUTION_RE = re.compile(
+    rf"\b(?:dedi|so['ʻʼ]?radi|soradi|javob\s+berdi|qichqirdi|pichirladi)\s+"
+    rf"(?P<speaker>{_UZ_SPEAKER_TOKEN})",
+    re.IGNORECASE,
 )
 
 _SEGMENT_SCHEMA = {
@@ -737,6 +768,12 @@ def _infer_dialogue_speaker(text: str, language: str) -> tuple[str, str]:
         return _infer_ru_dialogue_speaker(text)
     if language == "en":
         return _infer_en_dialogue_speaker(text)
+    if language == "zh":
+        return _infer_zh_dialogue_speaker(text)
+    if language == "kk":
+        return _infer_regex_dialogue_speaker(text, _KK_ATTRIBUTION_RE, _clean_cyrillic_speaker)
+    if language == "uz":
+        return _infer_regex_dialogue_speaker(text, _UZ_ATTRIBUTION_RE, _clean_latin_speaker)
     return "", ""
 
 
@@ -757,11 +794,41 @@ def _infer_ru_dialogue_speaker(text: str) -> tuple[str, str]:
 
 
 def _infer_en_dialogue_speaker(text: str) -> tuple[str, str]:
+    role = ""
+    if _EN_MALE_ATTRIBUTION_RE.search(text or ""):
+        role = "male"
+    elif _EN_FEMALE_ATTRIBUTION_RE.search(text or ""):
+        role = "female"
     match = _EN_SPEAKER_RE.search(text or "")
     if not match:
-        return "", ""
+        return "", role
     speaker = _clean_optional(match.group("after") or match.group("before"))
-    return speaker, "unknown" if speaker else ""
+    return speaker, role or ("unknown" if speaker else "")
+
+
+def _infer_zh_dialogue_speaker(text: str) -> tuple[str, str]:
+    role = ""
+    if _ZH_MALE_ATTRIBUTION_RE.search(text or ""):
+        role = "male"
+    elif _ZH_FEMALE_ATTRIBUTION_RE.search(text or ""):
+        role = "female"
+    for match in _ZH_SPEAKER_RE.finditer(text or ""):
+        speaker = _clean_zh_speaker(match.group("speaker"))
+        if speaker:
+            return speaker, role or "unknown"
+    return "", role
+
+
+def _infer_regex_dialogue_speaker(
+    text: str,
+    regex: re.Pattern[str],
+    cleaner: Callable[[str], str],
+) -> tuple[str, str]:
+    for match in regex.finditer(text or ""):
+        speaker = cleaner(match.group("speaker"))
+        if speaker:
+            return speaker, "unknown"
+    return "", ""
 
 
 def _clean_ru_speaker(value: str) -> str:
@@ -774,6 +841,33 @@ def _clean_ru_speaker(value: str) -> str:
         return ""
     if speaker[0].islower():
         speaker = speaker[0].upper() + speaker[1:]
+    return _clean_optional(speaker)
+
+
+def _clean_cyrillic_speaker(value: str) -> str:
+    speaker = re.sub(r"^[\s,.;:!?—–-]+|[\s,.;:!?—–-]+$", "", value or "")
+    if not re.fullmatch(_KK_SPEAKER_TOKEN, speaker or ""):
+        return ""
+    return _clean_optional(speaker)
+
+
+def _clean_latin_speaker(value: str) -> str:
+    speaker = re.sub(r"^[\s,.;:!?—–-]+|[\s,.;:!?—–-]+$", "", value or "")
+    if not re.fullmatch(_UZ_SPEAKER_TOKEN, speaker or ""):
+        return ""
+    return _clean_optional(speaker)
+
+
+def _clean_zh_speaker(value: str) -> str:
+    speaker = re.sub(
+        r"^[\s，。！？、；：“”‘’「」『』《》〈〉]+|[\s，。！？、；：“”‘’「」『』《》〈〉]+$",
+        "",
+        value or "",
+    )
+    if not speaker or speaker in _ZH_BAD_SPEAKER_TOKENS:
+        return ""
+    if not re.fullmatch(r"[\u3400-\u9fff]{1,12}", speaker):
+        return ""
     return _clean_optional(speaker)
 
 

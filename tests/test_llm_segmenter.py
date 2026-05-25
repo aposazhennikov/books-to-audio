@@ -222,19 +222,105 @@ def test_llm_voice_segmenter_repairs_narrator_dialogue_from_bad_llm_output() -> 
     assert all(row["is_dialogue"] is True for row in rows)
 
 
+@pytest.mark.parametrize(
+    ("language", "parts", "expected_speakers"),
+    [
+        (
+            "en",
+            ['"Come in," Alice said.', '"Now?" Bob asked.'],
+            ["Alice", "Bob"],
+        ),
+        (
+            "zh",
+            ["“你好，”李雷说。", "“请坐，”王芳回答。"],
+            ["李雷", "王芳"],
+        ),
+        (
+            "kk",
+            ["— Сәлем, — деді Айгүл.", "— Кел, — деді Ержан."],
+            ["Айгүл", "Ержан"],
+        ),
+        (
+            "uz",
+            ["— Salom, — dedi Aziz.", "— Kut, — dedi Dilnoza."],
+            ["Aziz", "Dilnoza"],
+        ),
+    ],
+)
+def test_llm_voice_segmenter_repairs_named_dialogue_for_all_product_languages(
+    language: str,
+    parts: list[str],
+    expected_speakers: list[str],
+) -> None:
+    text = "\n\n".join(parts)
+    segmenter = LlmVoiceSegmenter(language=language)
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "section_kind": "narration", "text": part, "intonation": "calm"}
+                for part in parts
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language=language))
+
+    assert [row["text"] for row in rows] == parts
+    assert [row["speaker"] for row in rows] == expected_speakers
+    assert all(row["role"] == "unknown" for row in rows)
+    assert all(row["voice_id"] == "narrator_calm" for row in rows)
+    assert all(row["section_kind"] == "dialogue" for row in rows)
+    assert all(row["is_dialogue"] is True for row in rows)
+
+
+@pytest.mark.parametrize(
+    ("language", "text", "expected_role", "expected_voice"),
+    [
+        ("en", '"Go now," he said.', "male", "male_young"),
+        ("en", '"Stay here," she whispered.', "female", "female_warm"),
+        ("zh", "“走吧，”他说。", "male", "male_young"),
+        ("zh", "“别怕，”她说。", "female", "female_warm"),
+    ],
+)
+def test_llm_voice_segmenter_repairs_gendered_pronoun_dialogue(
+    language: str,
+    text: str,
+    expected_role: str,
+    expected_voice: str,
+) -> None:
+    segmenter = LlmVoiceSegmenter(language=language)
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "section_kind": "narration", "text": text, "intonation": "calm"},
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language=language))
+
+    assert rows[0]["text"] == text
+    assert rows[0]["role"] == expected_role
+    assert rows[0]["voice_id"] == expected_voice
+    assert rows[0]["section_kind"] == "dialogue"
+    assert rows[0]["is_dialogue"] is True
+
+
 def test_llm_voice_segmenter_marks_dialogue_when_gender_is_unknown() -> None:
-    text = "谢尔盖打开了门。\n\n“谁在那里？”他问。"
+    text = "谢尔盖打开了门。\n\n“谁在那里？”问道。"
     segmenter = LlmVoiceSegmenter(language="zh")
     fake = _FakeClient({
         PRIMARY_QWEN3_MODEL: {
             "segments": [
                 {"role": "narrator", "text": "谢尔盖打开了门。", "intonation": "calm"},
-                {
-                    "role": "narrator",
-                    "section_kind": "dialogue",
-                    "text": "“谁在那里？”他问。",
-                    "intonation": "tense",
-                },
+                    {
+                        "role": "narrator",
+                        "section_kind": "dialogue",
+                        "text": "“谁在那里？”问道。",
+                        "intonation": "tense",
+                    },
             ],
         },
     })

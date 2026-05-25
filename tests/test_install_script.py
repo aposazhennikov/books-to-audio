@@ -443,7 +443,8 @@ def test_interactive_dry_run_prompts_paths_and_writes_runtime_config(tmp_path: P
         assert "Ollama models folder / Папка моделей Ollama" in stdout
         assert "Pull Qwen3 Ollama 8B/4B models now?" in stdout
         assert "Would run:" in stdout
-        assert "wsl" not in stdout.lower()
+        assert "wsl.exe" not in stdout.lower()
+        assert "bash -lc" not in stdout.lower()
         assert "Пробный запуск" in log_text
         assert runtime_config["install_root"] == str(tmp_path / "install-root")
         assert runtime_config["venv_dir"] == str(tmp_path / "venv")

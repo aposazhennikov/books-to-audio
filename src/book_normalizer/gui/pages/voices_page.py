@@ -426,9 +426,9 @@ class VoicesPage(QWidget):
         """Show inline hint for currently selected speaker mode."""
         mode = self._current_speaker_mode()
         hints = {
-            "heuristic": t("voice.speaker_mode_hint").split("\n")[0],
-            "llm": t("voice.speaker_mode_hint").split("\n")[1],
-            "manual": t("voice.speaker_mode_hint").split("\n")[2],
+            "heuristic": t("voice.speaker_mode_hint_inline_heuristic"),
+            "llm": t("voice.speaker_mode_hint_inline_llm"),
+            "manual": t("voice.speaker_mode_hint_inline_manual"),
         }
         self._speaker_mode_hint.setText(hints.get(mode, ""))
 

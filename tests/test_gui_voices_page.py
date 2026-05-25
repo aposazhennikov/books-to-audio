@@ -169,6 +169,8 @@ def test_chunk_page_internal_tabs_are_chunk_focused(qapp) -> None:
     assert page._speaker_mode.currentText() == "Правила: быстрое разбиение"
     assert page._btn_detect.text() == "Пересобрать сегменты"
     assert "локальный черновик" in page._speaker_mode_hint.text()
+    assert "\n" not in page._speaker_mode_hint.text()
+    assert page._speaker_mode_hint.text().endswith("кавычкам.")
     assert "реплик" not in page._speaker_mode_hint.text()
     assert "Библиотека голосов" not in {
         page._top_tabs.tabText(0),
@@ -177,6 +179,25 @@ def test_chunk_page_internal_tabs_are_chunk_focused(qapp) -> None:
     }
 
     page.deleteLater()
+
+
+def test_chunk_page_inline_mode_hints_are_short_and_translated(qapp) -> None:
+    page = VoicesPage()
+
+    for code in ("ru", "en", "zh", "kk", "uz"):
+        set_language(code)
+        page.retranslate()
+        for mode in ("heuristic", "llm", "manual"):
+            page._speaker_mode.setCurrentIndex(page._speaker_mode.findData(mode))
+            hint = page._speaker_mode_hint.text()
+            assert hint.strip()
+            assert "\n" not in hint
+            assert len(hint) <= 90
+            assert "??" not in hint
+            assert "wsl" not in hint.lower()
+
+    page.deleteLater()
+    set_language("ru")
 
 
 def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:

@@ -60,6 +60,39 @@ def test_main_window_tabs_survive_basic_navigation() -> None:
     window.deleteLater()
 
 
+def test_main_window_renders_light_non_purple_theme() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    image = render_widget(window, 1180, 760, scale=1.0)
+
+    samples = [
+        gui_helpers.QColor(image.pixel(x, y))
+        for y in range(0, image.height(), max(1, image.height() // 50))
+        for x in range(0, image.width(), max(1, image.width() // 70))
+    ]
+    luminance = [
+        0.2126 * color.red() + 0.7152 * color.green() + 0.0722 * color.blue()
+        for color in samples
+    ]
+    average_luminance = sum(luminance) / len(luminance)
+    dark_ratio = sum(1 for value in luminance if value < 96) / len(luminance)
+    purple_ratio = sum(
+        1
+        for color in samples
+        if color.blue() > color.red() + 20
+        and color.red() > color.green() + 10
+        and color.blue() > 130
+    ) / len(samples)
+
+    assert average_luminance >= 210
+    assert dark_ratio <= 0.08
+    assert purple_ratio <= 0.02
+
+    window.close()
+    window.deleteLater()
+
+
 @pytest.mark.parametrize(
     ("size", "scale"),
     [
@@ -509,4 +542,3 @@ def _rect_in_window(
 ) -> QtCore.QRect:
     top_left = widget.mapTo(root, widget.rect().topLeft())
     return QtCore.QRect(top_left, widget.size()).adjusted(0, 0, -1, -1)
-

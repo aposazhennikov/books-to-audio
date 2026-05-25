@@ -224,6 +224,23 @@ def test_zoomed_roles_model_field_stays_readable_in_compact_layout() -> None:
     window.deleteLater()
 
 
+def test_roles_endpoint_field_has_room_for_native_ollama_url() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(1)
+    render_widget(window, 1180, 760, scale=1.0)
+
+    field = window._roles_page._llm_endpoint
+    required = field.fontMetrics().horizontalAdvance("http://localhost:11434") + 32
+
+    assert field.width() >= required
+    assert field.text() == "http://localhost:11434"
+
+    window.close()
+    window.deleteLater()
+
+
 @pytest.mark.parametrize(
     ("language", "expected_text"),
     [

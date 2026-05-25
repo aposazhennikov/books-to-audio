@@ -11,6 +11,7 @@ from typing import Any
 DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434"
 RUNTIME_CONFIG_ENV = "BOOKS_TO_AUDIO_RUNTIME_CONFIG"
 OLLAMA_ENDPOINT_ENV = "BOOKS_TO_AUDIO_OLLAMA_ENDPOINT"
+OLLAMA_BIN_ENV = "BOOKS_TO_AUDIO_OLLAMA_BIN"
 OLLAMA_MODELS_DIR_ENV = "BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR"
 OLLAMA_MODELS_ENV = "OLLAMA_MODELS"
 MODELS_DIR_ENV = "BOOKS_TO_AUDIO_MODELS_DIR"
@@ -93,4 +94,10 @@ def configured_ffmpeg_bin() -> Path | None:
 def configured_ollama_endpoint(default: str = DEFAULT_OLLAMA_ENDPOINT) -> str:
     """Return configured Ollama endpoint from env, config, or default."""
     value = os.environ.get(OLLAMA_ENDPOINT_ENV) or load_runtime_paths().get("ollama_endpoint")
+    return str(value or default).strip() or default
+
+
+def configured_ollama_bin(default: str = "ollama") -> str:
+    """Return configured native Ollama CLI command/path from env, config, or default."""
+    value = os.environ.get(OLLAMA_BIN_ENV) or load_runtime_paths().get("ollama_bin")
     return str(value or default).strip() or default

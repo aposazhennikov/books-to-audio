@@ -30,6 +30,7 @@ DEFAULT_TTS_HASH_MODEL_IDS = (
 )
 INSTALL_TOOL_PACKAGES = ("pip", "setuptools", "wheel", "build")
 LOG_PATH = Path("install.log")
+LOG_PATH_ENV = "BOOKS_TO_AUDIO_INSTALL_LOG"
 RUNTIME_CONFIG_PATH = Path("data/local_runtime_paths.json")
 HASH_MANIFEST_PATH = Path("data/install_hashes.json")
 TTS_HASH_LABEL = "tts_models"
@@ -103,7 +104,8 @@ def main() -> int:
     args = _parse_args()
     project_root = Path(__file__).resolve().parent
     os.chdir(project_root)
-    _configure_console(project_root / LOG_PATH)
+    log_path = _resolve_log_path(args.log_path, project_root)
+    _configure_console(log_path)
 
     _ensure_python_version()
     extras = _resolve_extras(args)
@@ -112,7 +114,7 @@ def main() -> int:
     venv_python = _venv_python(paths.venv_dir)
 
     _say("Books to Audio installer", "Установщик Books to Audio", "title")
-    _print_install_summary(project_root, paths, extras)
+    _print_install_summary(project_root, paths, extras, log_path=log_path)
 
     if args.system_check:
         _print_system_dependency_notes(extras, paths)
@@ -191,6 +193,11 @@ def _parse_args() -> argparse.Namespace:
         description="Create .venv and install Books to Audio dependencies for Windows, Linux, and macOS.",
     )
     parser.add_argument("--venv", default=".venv", help="Virtual environment directory. Default: .venv")
+    parser.add_argument(
+        "--log-path",
+        default=os.environ.get(LOG_PATH_ENV, ""),
+        help=f"Installer log path. Default: {LOG_PATH} or {LOG_PATH_ENV}.",
+    )
     parser.add_argument("--interactive", action="store_true", help="Ask for install locations and optional downloads.")
     parser.add_argument("--yes", action="store_true", help="Use defaults/non-interactive answers for prompts.")
     parser.add_argument(
@@ -275,6 +282,16 @@ def _configure_console(log_path: Path) -> None:
     sys.stderr = _TeeStream(sys.stderr, log_file)  # type: ignore[assignment]
 
 
+def _resolve_log_path(provided: str, project_root: Path) -> Path:
+    value = (provided or "").strip()
+    if not value:
+        return project_root / LOG_PATH
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = project_root / path
+    return path.resolve()
+
+
 def _supports_color() -> bool:
     return bool(getattr(sys.stdout, "isatty", lambda: False)())
 
@@ -297,6 +314,8 @@ def _print_install_summary(
     project_root: Path,
     paths: InstallPaths,
     extras: set[str],
+    *,
+    log_path: Path | None = None,
 ) -> None:
     """Print a bilingual, log-friendly installation summary."""
     rows = [
@@ -310,7 +329,7 @@ def _print_install_summary(
         ("Ollama endpoint/bin", "Ollama адрес/команда", f"{paths.ollama_endpoint} ({paths.ollama_bin})"),
         ("Tesseract OCR", "Tesseract OCR", paths.tesseract_cmd),
         ("FFmpeg", "FFmpeg", paths.ffmpeg_bin),
-        ("Log file", "Лог", str((project_root / LOG_PATH).resolve())),
+        ("Log file", "Лог", str((log_path or project_root / LOG_PATH).resolve())),
         ("Install extras", "Опции установки", ", ".join(sorted(extras)) if extras else "core only / только ядро"),
     ]
     width = max(len(en) for en, _ru, _value in rows)
@@ -588,6 +607,7 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
                 _env_assignment("BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR", paths.ollama_models_dir),
                 _env_assignment("OLLAMA_MODELS", paths.ollama_models_dir),
                 _env_assignment("BOOKS_TO_AUDIO_OLLAMA_ENDPOINT", paths.ollama_endpoint),
+                _env_assignment("BOOKS_TO_AUDIO_OLLAMA_BIN", paths.ollama_bin),
                 _env_assignment("BOOKS_TO_AUDIO_TESSERACT_CMD", paths.tesseract_cmd),
                 _env_assignment("BOOKS_TO_AUDIO_FFMPEG_BIN", paths.ffmpeg_bin),
                 "",
@@ -842,6 +862,7 @@ def _installer_env(paths: InstallPaths) -> dict[str, str]:
     env["BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR"] = str(paths.ollama_models_dir)
     env["OLLAMA_MODELS"] = str(paths.ollama_models_dir)
     env["BOOKS_TO_AUDIO_OLLAMA_ENDPOINT"] = paths.ollama_endpoint
+    env["BOOKS_TO_AUDIO_OLLAMA_BIN"] = paths.ollama_bin
     env["BOOKS_TO_AUDIO_TESSERACT_CMD"] = paths.tesseract_cmd
     env["BOOKS_TO_AUDIO_FFMPEG_BIN"] = paths.ffmpeg_bin
     return env

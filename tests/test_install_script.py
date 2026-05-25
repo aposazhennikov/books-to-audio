@@ -30,6 +30,7 @@ from install import (
     _print_next_steps,
     _pull_ollama_models,
     _resolve_install_paths,
+    _resolve_log_path,
     _system_package_commands,
     _system_package_hint,
     _verified_hash_matches,
@@ -252,8 +253,67 @@ def test_runtime_env_file_quotes_custom_paths_with_spaces(tmp_path: Path, monkey
     assert "COMFYUI_MODELS_DIR='" in env_text
     assert "HF_HOME='" in env_text
     assert "OLLAMA_MODELS='" in env_text
+    assert "BOOKS_TO_AUDIO_OLLAMA_BIN=ollama" in env_text
     assert "BOOKS_TO_AUDIO_TESSERACT_CMD='C:/Program Files/Tesseract-OCR/tesseract.exe'" in env_text
     assert "BOOKS_TO_AUDIO_FFMPEG_BIN='D:/Media Tools/ffmpeg/bin/ffmpeg.exe'" in env_text
+
+
+def test_resolve_log_path_accepts_custom_absolute_and_relative_paths(tmp_path: Path) -> None:
+    absolute = tmp_path / "logs" / "install.log"
+
+    assert _resolve_log_path("", tmp_path) == tmp_path / "install.log"
+    assert _resolve_log_path("logs/custom.log", tmp_path) == (tmp_path / "logs" / "custom.log").resolve()
+    assert _resolve_log_path(str(absolute), tmp_path) == absolute.resolve()
+
+
+def test_installer_dry_run_can_write_custom_log_path(tmp_path: Path) -> None:
+    custom_log = tmp_path / "logs" / "custom-install.log"
+    custom_log.parent.mkdir()
+    custom_log.write_text("OLD CUSTOM LOG", encoding="utf-8")
+    config_path = Path(RUNTIME_CONFIG_PATH)
+    env_path = RUNTIME_CONFIG_PATH.with_suffix(".env")
+    previous_config = config_path.read_text(encoding="utf-8") if config_path.exists() else None
+    previous_env = env_path.read_text(encoding="utf-8") if env_path.exists() else None
+
+    try:
+        subprocess.run(
+            [
+                sys.executable,
+                "install.py",
+                "--dry-run",
+                "--yes",
+                "--no-system-check",
+                "--log-path",
+                str(custom_log),
+                "--venv",
+                str(tmp_path / ".venv"),
+                "--install-root",
+                str(tmp_path / "install-root"),
+                "--ollama-bin",
+                str(tmp_path / "tools" / "ollama.exe"),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+
+        log_text = custom_log.read_text(encoding="utf-8")
+        env_text = env_path.read_text(encoding="utf-8")
+        assert "OLD CUSTOM LOG" not in log_text
+        assert "Books to Audio installer" in log_text
+        assert str(custom_log) in log_text
+        assert f"BOOKS_TO_AUDIO_OLLAMA_BIN={tmp_path / 'tools' / 'ollama.exe'}" in env_text
+    finally:
+        if previous_config is None:
+            config_path.unlink(missing_ok=True)
+        else:
+            config_path.write_text(previous_config, encoding="utf-8")
+        if previous_env is None:
+            env_path.unlink(missing_ok=True)
+        else:
+            env_path.write_text(previous_env, encoding="utf-8")
 
 
 def test_interactive_installer_prompts_for_all_runtime_paths(

@@ -246,6 +246,7 @@ class VoiceTableWidget(QWidget):
 
         # Table.
         self._table = QTableWidget()
+        self._table.setMinimumHeight(108)
         self._table.setColumnCount(9)
         self._table.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeMode.Stretch,
@@ -263,6 +264,7 @@ class VoiceTableWidget(QWidget):
         )
         self._table.setAlternatingRowColors(True)
         self._table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._table.verticalHeader().setVisible(False)
         self._table.itemChanged.connect(self._on_table_item_changed)
         self._table.itemSelectionChanged.connect(
@@ -272,7 +274,7 @@ class VoiceTableWidget(QWidget):
 
         self._editor_tabs = QTabWidget()
         self._editor_tabs.setObjectName("voiceTextEditorTabs")
-        self._editor_tabs.setMinimumHeight(170)
+        self._editor_tabs.setMinimumHeight(132)
         self._editor_tabs.setStyleSheet(
         "QTabWidget::pane {"
             "  border: 1px solid rgba(91,115,142,0.16);"
@@ -293,8 +295,8 @@ class VoiceTableWidget(QWidget):
         self._editor_tabs.addTab(self._build_segment_editor(), "")
         self._editor_tabs.addTab(self._build_full_text_editor(), "")
         splitter.addWidget(self._editor_tabs)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
         layout.addWidget(splitter)
 
         self.retranslate()
@@ -324,7 +326,7 @@ class VoiceTableWidget(QWidget):
         outer.addLayout(header)
 
         self._segment_editor = QPlainTextEdit()
-        self._segment_editor.setMinimumHeight(64)
+        self._segment_editor.setMinimumHeight(44)
         self._segment_editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._segment_editor.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
@@ -356,6 +358,15 @@ class VoiceTableWidget(QWidget):
         self._btn_segment_restore = QPushButton()
         self._btn_segment_restore.clicked.connect(self._restore_selected_segment)
         actions.addWidget(self._btn_segment_restore)
+        for button in (
+            self._btn_segment_split,
+            self._btn_segment_merge,
+            self._btn_segment_delete_empty,
+            self._btn_segment_delete,
+            self._btn_segment_restore,
+        ):
+            button.setProperty("compactActionButton", True)
+            button.setFixedHeight(28)
         actions.addStretch()
         outer.addLayout(actions)
         return panel
@@ -383,7 +394,7 @@ class VoiceTableWidget(QWidget):
         outer.addLayout(header)
 
         self._full_text_editor = QPlainTextEdit()
-        self._full_text_editor.setMinimumHeight(88)
+        self._full_text_editor.setMinimumHeight(64)
         self._full_text_editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._full_text_editor.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
@@ -404,6 +415,9 @@ class VoiceTableWidget(QWidget):
         self._btn_full_apply.setObjectName("primaryBtn")
         self._btn_full_apply.clicked.connect(self._apply_full_text_to_segments)
         actions.addWidget(self._btn_full_apply)
+        for button in (self._btn_full_refresh, self._btn_full_apply):
+            button.setProperty("compactActionButton", True)
+            button.setFixedHeight(28)
         actions.addStretch()
         outer.addLayout(actions)
         return panel
@@ -468,13 +482,13 @@ class VoiceTableWidget(QWidget):
         """Keep table row and editor heights in step with global UI zoom."""
         self._ui_scale = max(0.8, min(1.45, scale))
         self._segment_editor.setMinimumHeight(
-            max(58, min(96, round(64 * self._ui_scale))),
+            max(44, min(76, round(52 * self._ui_scale))),
         )
         self._full_text_editor.setMinimumHeight(
-            max(72, min(118, round(88 * self._ui_scale))),
+            max(58, min(92, round(68 * self._ui_scale))),
         )
         self._editor_tabs.setMinimumHeight(
-            max(164, min(230, round(170 * self._ui_scale))),
+            max(132, min(190, round(140 * self._ui_scale))),
         )
         self._apply_table_layout()
 
@@ -525,15 +539,17 @@ class VoiceTableWidget(QWidget):
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         if self._compact_mode:
+            self._table.setMinimumHeight(96)
             self._quick_combo.setMinimumWidth(150)
             self._table.setColumnWidth(4, 150)
             self._table.setColumnWidth(5, 170)
             self._table.setColumnWidth(7, 68)
             self._table.setColumnWidth(8, 72)
             self._table.verticalHeader().setDefaultSectionSize(
-                self._scaled_table_row_height(38),
+                self._scaled_table_row_height(32),
             )
         else:
+            self._table.setMinimumHeight(132)
             self._quick_combo.setMinimumWidth(190)
             self._table.setColumnWidth(0, 36)
             self._table.setColumnWidth(1, 60)
@@ -912,13 +928,17 @@ class VoiceTableWidget(QWidget):
 
     def _on_voice_changed(self, row: int, voice_id: str) -> None:
         if voice_id and row < len(self._segments):
-            self._segments[row]["voice_id"] = voice_id
-            role = _role_from_voice_id(
-                voice_id,
-                str(self._segments[row].get("role") or "narrator"),
-            )
-            self._segments[row]["role"] = role
-            self._segments[row]["is_dialogue"] = role in ("male", "female")
+            segment = self._segments[row]
+            segment["voice_id"] = voice_id
+            if segment_speaker(segment):
+                segment["is_dialogue"] = True
+            else:
+                role = _role_from_voice_id(
+                    voice_id,
+                    str(segment.get("role") or "narrator"),
+                )
+                segment["role"] = role
+                segment["is_dialogue"] = role in ("male", "female")
             self.data_changed.emit()
 
     def _on_intonation_changed(self, row: int, intonation: str) -> None:

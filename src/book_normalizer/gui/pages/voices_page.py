@@ -333,12 +333,12 @@ class VoicesPage(QWidget):
         """Balance the scrollable settings area against the assignment table."""
         tight_viewport = self.width() < 960 or self.height() < 560
         target = max(
-            164 if tight_viewport else 230,
-            round((105 if tight_viewport else 230) * self._ui_scale),
+            164 if tight_viewport else 188,
+            round((105 if tight_viewport else 188) * self._ui_scale),
         )
         if self.height() > 0:
             table_reserve = 185 if tight_viewport else max(260, round(260 * self._ui_scale))
-            target = min(target, max(164 if tight_viewport else 210, self.height() - table_reserve))
+            target = min(target, max(164 if tight_viewport else 188, self.height() - table_reserve))
         self._top_tabs.setMinimumHeight(target)
         self._top_tabs.setMaximumHeight(target)
 

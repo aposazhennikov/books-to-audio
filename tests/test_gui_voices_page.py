@@ -189,6 +189,7 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     assert table._preset_toolbar_panel.isHidden()
     assert table._quick_apply_panel.isHidden()
     assert table._table.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert table._table.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     assert table._segment_editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     assert table._full_text_editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
     for column in (0, 1, 2, 6, 7, 8):
@@ -197,13 +198,14 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     table.set_segments(
         [
             {
-                "segment_index": 0,
-                "chapter_index": 0,
+                "segment_index": index,
+                "chapter_index": index // 6,
                 "role": "narrator",
                 "voice_id": "narrator_calm",
                 "intonation": "calm",
-                "text": "Editable segment.",
-            },
+                "text": f"Editable segment {index}.",
+            }
+            for index in range(18)
         ]
     )
     render_widget(page, 760, 520, scale=1.45)
@@ -212,6 +214,14 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     assert table._chapter_nav_panel.isVisible()
     assert table._preset_toolbar_panel.isVisible()
     assert table._quick_apply_panel.isVisible()
+    assert not table._table.verticalScrollBar().isVisible()
+    assert table._table.viewport().height() >= table._table.verticalHeader().defaultSectionSize()
+    role_combo = table._table.cellWidget(0, 4)
+    voice_combo = table._table.cellWidget(0, 5)
+    assert role_combo is not None
+    assert voice_combo is not None
+    assert role_combo.geometry().bottom() <= table._table.viewport().rect().bottom()
+    assert voice_combo.geometry().bottom() <= table._table.viewport().rect().bottom()
     assert not table._table.isColumnHidden(3)
     assert not table._table.isColumnHidden(4)
     assert not table._table.isColumnHidden(5)
@@ -251,6 +261,40 @@ def test_voice_table_exposes_editable_character_roles(qapp, qtbot) -> None:
     assert segment["speaker"] == "Маргарита-Грустная"
     assert segment["character"] == "Маргарита-Грустная"
     assert segment["role_display_name"] == "Маргарита-Грустная"
+    page.deleteLater()
+
+
+def test_voice_table_voice_changes_keep_llm_character_role(qapp, qtbot) -> None:
+    page = VoicesPage()
+    qtbot.addWidget(page)
+    page._voice_table.set_segments(
+        [
+            {
+                "segment_index": 0,
+                "chapter_index": 0,
+                "role": "female",
+                "speaker": "Маргарита",
+                "character": "Маргарита",
+                "role_display_name": "Маргарита",
+                "is_dialogue": True,
+                "voice_id": "female_warm",
+                "intonation": "sad",
+                "text": "Я вернусь.",
+            },
+        ]
+    )
+
+    voice_combo = page._voice_table._table.cellWidget(0, 5)
+    assert isinstance(voice_combo, QtWidgets.QComboBox)
+    voice_combo.setCurrentIndex(voice_combo.findData("narrator_calm"))
+
+    segment = page._voice_table.get_segments()[0]
+    assert segment["voice_id"] == "narrator_calm"
+    assert segment["role"] == "female"
+    assert segment["speaker"] == "Маргарита"
+    assert segment["character"] == "Маргарита"
+    assert segment["role_display_name"] == "Маргарита"
+    assert segment["is_dialogue"] is True
     page.deleteLater()
 
 

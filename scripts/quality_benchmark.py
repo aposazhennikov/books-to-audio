@@ -10,9 +10,11 @@ stack and write reviewable reports under ``output/quality_reports``.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import sys
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -56,6 +58,27 @@ def main() -> None:
     parser.add_argument("--books-dir", default="books", help="Optional local books directory.")
     parser.add_argument("--out-dir", default="output/quality_reports", help="Report output directory.")
     parser.add_argument("--run-ollama", action="store_true", help="Call local Ollama for each benchmark case.")
+    parser.add_argument(
+        "--languages",
+        default=",".join(SUPPORTED_LANGUAGE_CODES),
+        help="Comma-separated languages to benchmark, e.g. ru,en or zh. Defaults to every supported language.",
+    )
+    parser.add_argument(
+        "--skip-synthetic",
+        action="store_true",
+        help="Skip synthetic multilingual samples and benchmark only local books.",
+    )
+    parser.add_argument(
+        "--book-glob",
+        action="append",
+        default=None,
+        help="Limit local books by glob relative to --books-dir, e.g. '*.fb2'. Can be passed more than once.",
+    )
+    parser.add_argument(
+        "--book-language",
+        default="ru",
+        help="Language hint for PDF OCR/local books with unknown language. Defaults to ru.",
+    )
     parser.add_argument("--limit-books", type=int, default=5, help="Maximum local books to inspect.")
     parser.add_argument(
         "--max-chars",
@@ -66,10 +89,19 @@ def main() -> None:
     args = parser.parse_args()
 
     run_ollama = args.run_ollama or os.environ.get("RUN_OLLAMA_TESTS") == "1"
+    try:
+        languages = _parse_language_filter(args.languages)
+        book_language = _parse_single_language(args.book_language, option="--book-language")
+    except ValueError as exc:
+        parser.error(str(exc))
     out_dir = Path(args.out_dir)
     report = run_benchmark(
         books_dir=Path(args.books_dir),
         run_ollama=run_ollama,
+        languages=languages,
+        include_synthetic=not args.skip_synthetic,
+        book_globs=args.book_glob,
+        book_language=book_language,
         limit_books=args.limit_books,
         max_chars=args.max_chars,
         review_dir=out_dir / "llm_reviews" if run_ollama else None,
@@ -88,26 +120,37 @@ def run_benchmark(
     *,
     books_dir: Path,
     run_ollama: bool,
+    languages: Iterable[str] | None = None,
+    include_synthetic: bool = True,
+    book_globs: Iterable[str] | None = None,
+    book_language: str = "ru",
     limit_books: int = 5,
     max_chars: int = 1200,
     review_dir: Path | None = None,
 ) -> dict[str, Any]:
+    language_codes = _normalize_language_filter(languages)
+    book_language_code = _parse_single_language(book_language, option="book_language")
+    glob_patterns = tuple(pattern for pattern in (book_globs or ()) if pattern)
     cases: list[dict[str, Any]] = []
-    for language in SUPPORTED_LANGUAGE_CODES:
-        source = "synthetic"
-        cases.append(
-            _run_case(
-                _synthetic_book(language),
-                source=source,
-                run_ollama=run_ollama,
-                review_report_path=_case_review_path(review_dir, source, language),
+    if include_synthetic:
+        for language in language_codes:
+            source = "synthetic"
+            cases.append(
+                _run_case(
+                    _synthetic_book(language),
+                    source=source,
+                    run_ollama=run_ollama,
+                    review_report_path=_case_review_path(review_dir, source, language),
+                )
             )
-        )
 
     if books_dir.exists():
-        for path in _iter_book_paths(books_dir)[:limit_books]:
+        for path in _iter_book_paths(books_dir, globs=glob_patterns)[:limit_books]:
             try:
-                book = _load_book_for_benchmark(path)
+                book = _load_book_for_benchmark(path, language=book_language_code)
+                book.metadata.language = normalize_book_language(book.metadata.language or book_language_code)
+                if book.metadata.language not in language_codes:
+                    continue
                 excerpt = _excerpt_book(book, max_chars=max_chars)
                 cases.append(
                     _run_case(
@@ -131,6 +174,10 @@ def run_benchmark(
     return {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "run_ollama": run_ollama,
+        "languages": list(language_codes),
+        "include_synthetic": include_synthetic,
+        "book_globs": list(glob_patterns),
+        "book_language": book_language_code,
         "max_chars": max_chars,
         "primary_model": PRIMARY_QWEN3_MODEL,
         "cases": cases,
@@ -391,9 +438,50 @@ def _synthetic_book(language: str) -> Book:
     )
 
 
-def _iter_book_paths(books_dir: Path) -> list[Path]:
+def _iter_book_paths(books_dir: Path, *, globs: Iterable[str] = ()) -> list[Path]:
     suffixes = {".txt", ".fb2", ".epub", ".docx", ".pdf"}
-    return sorted(path for path in books_dir.rglob("*") if path.suffix.lower() in suffixes)
+    patterns = tuple(pattern for pattern in globs if pattern)
+    paths = sorted(path for path in books_dir.rglob("*") if path.suffix.lower() in suffixes)
+    if not patterns:
+        return paths
+    return [
+        path
+        for path in paths
+        if any(
+            fnmatch.fnmatch(path.name, pattern) or fnmatch.fnmatch(path.as_posix(), pattern)
+            for pattern in patterns
+        )
+    ]
+
+
+def _parse_language_filter(value: str | None) -> tuple[str, ...]:
+    if value is None:
+        return tuple(SUPPORTED_LANGUAGE_CODES)
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    if not parts:
+        raise ValueError("--languages must contain at least one language code")
+    return _normalize_language_filter(parts)
+
+
+def _normalize_language_filter(languages: Iterable[str] | None) -> tuple[str, ...]:
+    if languages is None:
+        return tuple(SUPPORTED_LANGUAGE_CODES)
+    normalized: list[str] = []
+    for language in languages:
+        code = _parse_single_language(language, option="languages")
+        if code not in normalized:
+            normalized.append(code)
+    if not normalized:
+        raise ValueError("languages must contain at least one language code")
+    return tuple(normalized)
+
+
+def _parse_single_language(language: str, *, option: str) -> str:
+    code = normalize_book_language(language)
+    if code not in SUPPORTED_LANGUAGE_CODES:
+        supported = ", ".join(SUPPORTED_LANGUAGE_CODES)
+        raise ValueError(f"{option} has unsupported language '{language}'. Supported: {supported}")
+    return code
 
 
 def _case_review_path(review_dir: Path | None, source: str, language: str) -> Path | None:

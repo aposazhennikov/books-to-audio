@@ -249,6 +249,8 @@ markup с тем же language/model profile. Если 8B не проходит 
 ```bash
 python scripts/quality_benchmark.py
 RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama
+RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama --languages ru --book-glob "*.fb2" --limit-books 1 --max-chars 350
+python scripts/quality_benchmark.py --skip-synthetic --book-glob "*.pdf" --limit-books 1
 ```
 
 Отчеты пишутся в `output/quality_reports`. Локальные книги из `books/` используются только для проверки и не коммитятся.

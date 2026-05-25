@@ -29,6 +29,32 @@ def test_offline_quality_benchmark_covers_supported_languages(tmp_path: Path) ->
     assert all(case["chunks"] >= 1 for case in report["cases"])
 
 
+def test_quality_benchmark_filters_synthetic_languages(tmp_path: Path) -> None:
+    module = _load_benchmark_module()
+
+    report = module.run_benchmark(
+        books_dir=tmp_path / "missing",
+        run_ollama=False,
+        languages=["zh", "zh", "en"],
+    )
+
+    assert report["languages"] == ["zh", "en"]
+    assert [case["language"] for case in report["cases"]] == ["zh", "en"]
+
+
+def test_quality_benchmark_can_skip_synthetic_cases(tmp_path: Path) -> None:
+    module = _load_benchmark_module()
+
+    report = module.run_benchmark(
+        books_dir=tmp_path / "missing",
+        run_ollama=False,
+        include_synthetic=False,
+    )
+
+    assert report["include_synthetic"] is False
+    assert report["cases"] == []
+
+
 def test_quality_benchmark_reads_local_txt_books(tmp_path: Path) -> None:
     module = _load_benchmark_module()
     books_dir = tmp_path / "books"
@@ -39,6 +65,26 @@ def test_quality_benchmark_reads_local_txt_books(tmp_path: Path) -> None:
 
     sources = {case["source"] for case in report["cases"]}
     assert str(books_dir / "sample.txt") in sources
+
+
+def test_quality_benchmark_filters_local_books_by_glob(tmp_path: Path) -> None:
+    module = _load_benchmark_module()
+    books_dir = tmp_path / "books"
+    books_dir.mkdir()
+    keep = books_dir / "keep.txt"
+    drop = books_dir / "drop.txt"
+    keep.write_text("Keep this local benchmark book.", encoding="utf-8")
+    drop.write_text("Drop this local benchmark book.", encoding="utf-8")
+
+    report = module.run_benchmark(
+        books_dir=books_dir,
+        run_ollama=False,
+        include_synthetic=False,
+        book_globs=["keep*"],
+    )
+
+    assert report["book_globs"] == ["keep*"]
+    assert [case["source"] for case in report["cases"]] == [str(keep)]
 
 
 def test_quality_benchmark_uses_ocr_aware_pdf_loader(tmp_path: Path, monkeypatch) -> None:

@@ -251,9 +251,9 @@ class VoiceTableWidget(QWidget):
         self._table.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeMode.Stretch,
         )
-        self._table.setColumnWidth(0, 36)
+        self._table.setColumnWidth(0, 42)
         self._table.setColumnWidth(1, 60)
-        self._table.setColumnWidth(2, 36)
+        self._table.setColumnWidth(2, 48)
         self._table.setColumnWidth(4, 170)
         self._table.setColumnWidth(5, 220)
         self._table.setColumnWidth(6, 145)
@@ -551,9 +551,9 @@ class VoiceTableWidget(QWidget):
         else:
             self._table.setMinimumHeight(132)
             self._quick_combo.setMinimumWidth(190)
-            self._table.setColumnWidth(0, 36)
+            self._table.setColumnWidth(0, 42)
             self._table.setColumnWidth(1, 60)
-            self._table.setColumnWidth(2, 36)
+            self._table.setColumnWidth(2, 48)
             self._table.setColumnWidth(4, 170)
             self._table.setColumnWidth(5, 220)
             self._table.setColumnWidth(6, 145)

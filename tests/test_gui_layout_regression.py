@@ -322,6 +322,28 @@ def test_chunk_editor_action_buttons_are_not_clipped() -> None:
     window.deleteLater()
 
 
+def test_chunk_table_fixed_headers_have_readable_width() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    render_widget(window, 1180, 760, scale=1.0)
+
+    table = window._voices_page._voice_table._table
+    header = table.horizontalHeader()
+    metrics = header.fontMetrics()
+    for column in (0, 1, 2, 7, 8):
+        label = table.horizontalHeaderItem(column).text()
+        assert metrics.horizontalAdvance(label) + 28 <= header.sectionSize(column), (
+            column,
+            label,
+            header.sectionSize(column),
+        )
+
+    window.close()
+    window.deleteLater()
+
+
 def test_synthesis_page_actions_are_visible_without_settings_scrollbar() -> None:
     app = qapp()
     _ = app

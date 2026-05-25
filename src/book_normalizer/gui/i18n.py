@@ -180,6 +180,76 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "13 - Title or one line: short strip, not a page",
         "ru": "13 - Заголовок или одна строка: не целая страница",
     },
+    "norm.ocr_psm_compact_3": {
+        "en": "3 - Auto",
+        "ru": "3 - Авто",
+        "zh": "3 - 自动",
+        "kk": "3 - Авто",
+        "uz": "3 - Avto",
+    },
+    "norm.ocr_psm_compact_4": {
+        "en": "4 - Book page",
+        "ru": "4 - Страница книги",
+        "zh": "4 - 书页",
+        "kk": "4 - Кітап беті",
+        "uz": "4 - Kitob sahifasi",
+    },
+    "norm.ocr_psm_compact_6": {
+        "en": "6 - Cropped text",
+        "ru": "6 - Обрезанный текст",
+        "zh": "6 - 裁剪正文",
+        "kk": "6 - Қиылған мәтін",
+        "uz": "6 - Kesilgan matn",
+    },
+    "norm.ocr_psm_compact_11": {
+        "en": "11 - Fragments",
+        "ru": "11 - Фрагменты",
+        "zh": "11 - 片段",
+        "kk": "11 - Фрагменттер",
+        "uz": "11 - Bo'laklar",
+    },
+    "norm.ocr_psm_compact_13": {
+        "en": "13 - One line",
+        "ru": "13 - Одна строка",
+        "zh": "13 - 单行",
+        "kk": "13 - Бір жол",
+        "uz": "13 - Bir qator",
+    },
+    "norm.ocr_psm_summary_3": {
+        "en": "Use when page layout is uncertain; review reading order after OCR.",
+        "ru": "Для сложной страницы: Tesseract сам ищет порядок, но результат надо проверить.",
+        "zh": "页面结构不确定时使用；OCR 后请复核阅读顺序。",
+        "kk": "Бет құрылымы белгісіз болса; OCR-дан кейін оқу ретін тексеріңіз.",
+        "uz": "Sahifa tuzilmasi noaniq bo'lsa ishlating; OCRdan keyin o'qish tartibini tekshiring.",
+    },
+    "norm.ocr_psm_summary_4": {
+        "en": "Best first choice for a normal full-page book scan.",
+        "ru": "Лучший первый выбор для обычного полного скана книжной страницы.",
+        "zh": "普通整页书籍扫描的首选。",
+        "kk": "Кітаптың қалыпты толық скан беті үшін бірінші таңдау.",
+        "uz": "Oddiy to'liq skan qilingan kitob sahifasi uchun birinchi tanlov.",
+    },
+    "norm.ocr_psm_summary_6": {
+        "en": "Use only for a cropped rectangle with one main text block.",
+        "ru": "Только для обрезанного прямоугольника с одним основным блоком текста.",
+        "zh": "仅用于已裁剪的单个正文矩形区域。",
+        "kk": "Бір негізгі мәтін блогы бар қиылған тікбұрыш үшін ғана.",
+        "uz": "Faqat bitta asosiy matn bloki bor kesilgan to'rtburchak uchun.",
+    },
+    "norm.ocr_psm_summary_11": {
+        "en": "For notes, stamps, captions, or scattered pieces; not for normal pages.",
+        "ru": "Для заметок, штампов, подписей и разбросанных кусков; не для обычной страницы.",
+        "zh": "用于笔记、印章、图注或分散片段；不适合普通书页。",
+        "kk": "Жазба, мөр, түсіндірме не шашыраған бөліктер үшін; қалыпты бетке емес.",
+        "uz": "Izoh, muhr, sarlavha yoki tarqoq bo'laklar uchun; oddiy sahifa uchun emas.",
+    },
+    "norm.ocr_psm_summary_13": {
+        "en": "For a single title/header line; do not use for full pages.",
+        "ru": "Для одной строки или заголовка; не используйте для полной страницы.",
+        "zh": "用于单行标题或页眉；不要用于整页。",
+        "kk": "Бір жол не тақырып үшін; толық бетке қолданбаңыз.",
+        "uz": "Bitta sarlavha yoki qator uchun; to'liq sahifaga ishlatmang.",
+    },
     "norm.ocr_psm_tip": {
         "en": (
             "Tesseract Page Segmentation Mode (PSM):\n"
@@ -209,6 +279,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "norm.llm_normalize_check": {
         "en": "Use local model after rules",
         "ru": "\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u044c \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u0443\u044e \u043c\u043e\u0434\u0435\u043b\u044c \u043f\u043e\u0441\u043b\u0435 \u043f\u0440\u0430\u0432\u0438\u043b",
+    },
+    "norm.llm_normalize_check_compact": {
+        "en": "Local LLM",
+        "ru": "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u0430\u044f LLM",
+        "zh": "\u672c\u5730 LLM",
+        "kk": "\u0416\u0435\u0440\u0433\u0456\u043b\u0456\u043a\u0442\u0456 LLM",
+        "uz": "Lokal LLM",
     },
     "norm.llm_endpoint": {
         "en": "LLM endpoint:",

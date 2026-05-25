@@ -142,13 +142,25 @@ class NormalizePage(QWidget):
         self._ocr_widgets.extend([self._ocr_dpi_label_wrap, self._ocr_dpi])
 
         self._ocr_psm = QComboBox()
+        self._ocr_psm.currentIndexChanged.connect(self._update_psm_summary)
         self._populate_psm_combo()
+        self._ocr_psm_summary = QLabel()
+        self._ocr_psm_summary.setWordWrap(True)
+        self._ocr_psm_summary.setStyleSheet(
+            "color: rgba(51,65,85,0.68); font-size: 11px; padding: 2px 2px 0 2px;"
+        )
+        self._ocr_psm_field = QWidget()
+        psm_field_layout = QVBoxLayout(self._ocr_psm_field)
+        psm_field_layout.setContentsMargins(0, 0, 0, 0)
+        psm_field_layout.setSpacing(3)
+        psm_field_layout.addWidget(self._ocr_psm)
+        psm_field_layout.addWidget(self._ocr_psm_summary)
         self._ocr_psm_label = QLabel()
         self._ocr_psm_label_wrap = self._label_with_help(
             self._ocr_psm_label, "norm.ocr_psm_tip"
         )
-        self._add_setting(settings, 1, 1, self._ocr_psm_label_wrap, self._ocr_psm)
-        self._ocr_widgets.extend([self._ocr_psm_label_wrap, self._ocr_psm])
+        self._add_setting(settings, 1, 1, self._ocr_psm_label_wrap, self._ocr_psm_field)
+        self._ocr_widgets.extend([self._ocr_psm_label_wrap, self._ocr_psm_field])
 
         self._ocr_not_applicable_label = QLabel()
         self._ocr_not_applicable_label.setStyleSheet(
@@ -263,6 +275,7 @@ class NormalizePage(QWidget):
         self._ocr_not_applicable_label.setVisible(
             bool(self._selected_path) and not is_pdf
         )
+        self._ocr_psm_summary.setVisible(is_pdf and not self._compact_mode)
         self._book_language_label_wrap.setVisible(not self._compact_mode)
 
     def _update_llm_visibility(self) -> None:
@@ -288,6 +301,7 @@ class NormalizePage(QWidget):
         if self._compact_mode == compact:
             return
         self._compact_mode = compact
+        self._populate_psm_combo()
         self._update_ocr_visibility()
         self._update_llm_visibility()
         self._apply_action_labels()
@@ -323,13 +337,13 @@ class NormalizePage(QWidget):
         self._populate_psm_combo()
         self._ocr_psm.setToolTip(t("norm.ocr_psm_tip"))
         self._ocr_psm_label.setToolTip(t("norm.ocr_psm_tip"))
+        self._update_psm_summary()
         self._ocr_not_applicable_label.setText(t("norm.ocr_not_applicable"))
         self._book_language_label.setText(t("norm.book_language"))
         self._book_language.setToolTip(t("norm.book_language_tip"))
         self._book_language_label.setToolTip(t("norm.book_language_tip"))
         self._populate_book_language_combo()
         self._llm_normalize_label.setText(t("norm.llm_normalize"))
-        self._llm_normalize.setText(t("norm.llm_normalize_check"))
         self._llm_normalize.setToolTip(t("norm.llm_tip"))
         self._llm_normalize_label.setToolTip(t("norm.llm_tip"))
         self._llm_endpoint_label.setText(t("norm.llm_endpoint"))
@@ -348,6 +362,11 @@ class NormalizePage(QWidget):
         self._norm_label.setText(t("norm.norm_placeholder"))
 
     def _apply_action_labels(self) -> None:
+        self._llm_normalize.setText(
+            t("norm.llm_normalize_check_compact")
+            if self._compact_mode
+            else t("norm.llm_normalize_check")
+        )
         self._btn_apply_norm_edits.setText(
             t("norm.apply_manual_edits_compact")
             if self._compact_mode
@@ -370,15 +389,24 @@ class NormalizePage(QWidget):
     def _populate_psm_combo(self) -> None:
         """Populate human-readable Tesseract PSM options."""
         current = self._ocr_psm.currentData() if hasattr(self, "_ocr_psm") else 6
+        key_prefix = "norm.ocr_psm_compact" if self._compact_mode else "norm.ocr_psm"
         self._ocr_psm.blockSignals(True)
         self._ocr_psm.clear()
         for value in _PSM_VALUES:
-            self._ocr_psm.addItem(t(f"norm.ocr_psm_{value}"), value)
+            self._ocr_psm.addItem(t(f"{key_prefix}_{value}"), value)
         idx = self._ocr_psm.findData(current if current is not None else 6)
         if idx < 0:
             idx = self._ocr_psm.findData(6)
         self._ocr_psm.setCurrentIndex(idx if idx >= 0 else 0)
         self._ocr_psm.blockSignals(False)
+        self._update_psm_summary()
+
+    def _update_psm_summary(self) -> None:
+        """Show a visible one-line explanation for the selected PSM mode."""
+        if not hasattr(self, "_ocr_psm_summary"):
+            return
+        value = int(self._ocr_psm.currentData() or 6)
+        self._ocr_psm_summary.setText(t(f"norm.ocr_psm_summary_{value}"))
 
     def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
         """Create a form label with a reusable help button."""

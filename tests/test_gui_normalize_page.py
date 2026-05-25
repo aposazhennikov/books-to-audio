@@ -8,7 +8,7 @@ from tests.gui.helpers import assert_layout_sane, render_widget
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, set_language
+from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, set_language, t
 from book_normalizer.models.book import Book, Chapter, Paragraph
 
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
@@ -49,6 +49,7 @@ def test_normalize_page_hides_ocr_help_until_pdf_selected(qapp) -> None:
     assert page._ocr_mode_label_wrap.isHidden()
     assert page._ocr_dpi_label_wrap.isHidden()
     assert page._ocr_psm_label_wrap.isHidden()
+    assert page._ocr_psm_field.isHidden()
 
     page._selected_path = "book.fb2"
     page._update_ocr_visibility()
@@ -56,6 +57,7 @@ def test_normalize_page_hides_ocr_help_until_pdf_selected(qapp) -> None:
     assert page._ocr_mode_label_wrap.isHidden()
     assert page._ocr_dpi_label_wrap.isHidden()
     assert page._ocr_psm_label_wrap.isHidden()
+    assert page._ocr_psm_field.isHidden()
     assert not page._ocr_not_applicable_label.isHidden()
 
     page._selected_path = "book.pdf"
@@ -64,6 +66,7 @@ def test_normalize_page_hides_ocr_help_until_pdf_selected(qapp) -> None:
     assert not page._ocr_mode_label_wrap.isHidden()
     assert not page._ocr_dpi_label_wrap.isHidden()
     assert not page._ocr_psm_label_wrap.isHidden()
+    assert not page._ocr_psm_field.isHidden()
     assert page._ocr_not_applicable_label.isHidden()
 
     page.deleteLater()
@@ -222,6 +225,9 @@ def test_normalize_page_uses_readable_psm_options_and_centered_dpi(qapp) -> None
     assert "normal book page" in psm_help
     assert "reading order may need review" in psm_help
     assert "do not use for full pages" in psm_help
+    assert page._ocr_psm_summary.text() == t("norm.ocr_psm_summary_6")
+    page._ocr_psm.setCurrentIndex(page._ocr_psm.findData(4))
+    assert page._ocr_psm_summary.text() == t("norm.ocr_psm_summary_4")
     assert page._raw_label.text() == "Original text"
     assert page._norm_label.text() == "After normalization"
 
@@ -237,7 +243,25 @@ def test_normalize_page_uses_readable_psm_options_and_centered_dpi(qapp) -> None
     assert any("Разбросанные фрагменты" in text for text in ru_texts)
     assert "порядок чтения надо проверить" in ru_page._ocr_psm.toolTip()
     assert "не использовать для полной страницы" in ru_page._ocr_psm.toolTip()
+    assert "обрезанного прямоугольника" in ru_page._ocr_psm_summary.text()
     ru_page.deleteLater()
+
+
+def test_normalize_page_hides_psm_summary_in_compact_pdf_layout(qapp) -> None:
+    set_language("ru")
+    page = NormalizePage()
+    page._selected_path = "book.pdf"
+    page._path_label.setText("book.pdf")
+    page._compact_mode = True
+    page._populate_psm_combo()
+    page._apply_action_labels()
+    page._update_ocr_visibility()
+
+    assert page._compact_mode is True
+    assert page._ocr_psm_summary.isHidden()
+    assert page._llm_normalize.text() == "Локальная LLM"
+    assert page._ocr_psm.itemText(page._ocr_psm.findData(6)) == "6 - Обрезанный текст"
+    page.deleteLater()
 
 
 def test_normalize_page_retranslates_psm_options_for_all_languages(qapp) -> None:
@@ -258,7 +282,16 @@ def test_normalize_page_retranslates_psm_options_for_all_languages(qapp) -> None
         page.retranslate()
 
         texts = [page._ocr_psm.itemText(index) for index in range(page._ocr_psm.count())]
-        all_help = "\n".join(texts + [page._ocr_psm.toolTip()]).lower()
+        page._compact_mode = True
+        page._populate_psm_combo()
+        compact_texts = [page._ocr_psm.itemText(index) for index in range(page._ocr_psm.count())]
+        page._compact_mode = False
+        page._populate_psm_combo()
+        summaries = []
+        for value in (3, 4, 6, 11, 13):
+            page._ocr_psm.setCurrentIndex(page._ocr_psm.findData(value))
+            summaries.append(page._ocr_psm_summary.text())
+        all_help = "\n".join(texts + compact_texts + summaries + [page._ocr_psm.toolTip()]).lower()
         assert [page._ocr_psm.itemData(index) for index in range(page._ocr_psm.count())] == [
             3,
             4,
@@ -267,11 +300,17 @@ def test_normalize_page_retranslates_psm_options_for_all_languages(qapp) -> None
             13,
         ]
         assert all(text.strip() for text in texts)
+        assert all(text.strip() for text in compact_texts)
+        assert all(summary.strip() for summary in summaries)
         assert all("??" not in text for text in texts)
+        assert all("??" not in text for text in compact_texts)
+        assert all("??" not in summary for summary in summaries)
         assert "??" not in page._ocr_psm.toolTip()
         assert "\ufffd" not in page._ocr_psm.toolTip()
         assert not any(fragment.lower() in all_help for fragment in vague_fragments)
+        page._ocr_psm.setCurrentIndex(page._ocr_psm.findData(6))
         assert page._ocr_psm.currentData() == 6
+        assert page._ocr_psm_summary.text() == t("norm.ocr_psm_summary_6")
         page.deleteLater()
 
     set_language("ru")

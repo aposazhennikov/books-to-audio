@@ -413,6 +413,12 @@ Linux/macOS:
 python -m book_normalizer.gui.app
 ```
 
+Визуальный аудит GUI с PNG-скриншотами и JSON-summary:
+
+```bash
+python scripts/gui_visual_audit.py --out-dir output/gui_visual_audit
+```
+
 ## CLI workflow
 
 Нормализовать книгу:

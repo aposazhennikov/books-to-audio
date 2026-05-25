@@ -16,6 +16,8 @@ QtCore = pytest.importorskip("PyQt6.QtCore")
 QApplication = QtWidgets.QApplication
 normalize_page = pytest.importorskip("book_normalizer.gui.pages.normalize_page")
 _book_preview_lines = normalize_page._book_preview_lines
+_native_ocr_install_display_command = normalize_page._native_ocr_install_display_command
+_native_ocr_installer_command = normalize_page._native_ocr_installer_command
 NormalizePage = normalize_page.NormalizePage
 
 
@@ -70,6 +72,62 @@ def test_normalize_page_hides_ocr_help_until_pdf_selected(qapp) -> None:
     assert page._ocr_not_applicable_label.isHidden()
 
     page.deleteLater()
+
+
+def test_normalize_page_prompts_native_ocr_install_when_tesseract_missing(
+    qapp,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(normalize_page, "tesseract_available", lambda: False)
+    monkeypatch.setattr(normalize_page.platform, "system", lambda: "Windows")
+    set_language("ru")
+    page = NormalizePage()
+
+    page._selected_path = "book.pdf"
+    page._update_ocr_visibility()
+
+    assert not page._ocr_install_panel.isHidden()
+    assert "install.bat --interactive --install-system-tools" in page._ocr_install_label.text()
+    assert page._btn_install_ocr_tools.text() == "Установить OCR"
+    assert "wsl" not in page._ocr_install_label.text().lower()
+
+    page.deleteLater()
+
+
+def test_normalize_page_hides_native_ocr_install_when_tesseract_available(
+    qapp,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(normalize_page, "tesseract_available", lambda: True)
+    page = NormalizePage()
+
+    page._selected_path = "book.pdf"
+    page._update_ocr_visibility()
+
+    assert page._ocr_install_panel.isHidden()
+    page.deleteLater()
+
+
+def test_native_ocr_installer_command_uses_host_os_without_wsl(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(normalize_page.platform, "system", lambda: "Windows")
+    command, args, cwd = _native_ocr_installer_command(tmp_path)
+    flattened = " ".join([command, *args])
+
+    assert command == "cmd.exe"
+    assert str(tmp_path / "install.bat") in args
+    assert cwd == tmp_path.resolve()
+    assert "wsl" not in flattened.lower()
+    assert _native_ocr_install_display_command() == "install.bat --interactive --install-system-tools"
+
+    monkeypatch.setattr(normalize_page.platform, "system", lambda: "Linux")
+    command, args, cwd = _native_ocr_installer_command(tmp_path)
+    flattened = " ".join([command, *args])
+
+    assert command == str((tmp_path / "install.sh").resolve())
+    assert args == ["--interactive", "--install-system-tools"]
+    assert cwd == tmp_path.resolve()
+    assert "wsl" not in flattened.lower()
+    assert _native_ocr_install_display_command() == "./install.sh --interactive --install-system-tools"
 
 
 def test_normalize_page_defaults_book_language_to_russian(qapp) -> None:

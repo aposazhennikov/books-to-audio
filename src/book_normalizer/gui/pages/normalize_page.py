@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import platform
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QProcess, Qt
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QCheckBox,
@@ -28,10 +29,37 @@ from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.normalize_worker import NormalizeWorker
 from book_normalizer.languages import DEFAULT_BOOK_LANGUAGE, SUPPORTED_LANGUAGE_CODES
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
+from book_normalizer.loaders.pdf_ocr_engine import tesseract_available
 from book_normalizer.runtime_paths import configured_ollama_endpoint
 
 _PDF_EXTENSIONS = {".pdf"}
 _PSM_VALUES = (3, 4, 6, 11, 13)
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def _native_ocr_install_display_command() -> str:
+    """Return the user-facing native OCR installer command."""
+    script = "install.bat" if platform.system() == "Windows" else "./install.sh"
+    return f"{script} --interactive --install-system-tools"
+
+
+def _native_ocr_installer_command(
+    project_root: Path | None = None,
+) -> tuple[str, list[str], Path]:
+    """Return a native command that launches the OCR installer helper."""
+    root = (project_root or _project_root()).resolve()
+    if platform.system() == "Windows":
+        script = root / "install.bat"
+        return (
+            "cmd.exe",
+            ["/c", "start", "", str(script), "--interactive", "--install-system-tools"],
+            root,
+        )
+    script = root / "install.sh"
+    return (str(script), ["--interactive", "--install-system-tools"], root)
 
 
 def _book_preview_lines(book: object, limit: int | None = None) -> tuple[list[str], list[str]]:
@@ -75,6 +103,7 @@ class NormalizePage(QWidget):
         self._selected_path: str = ""
         self._help_buttons: dict[str, object] = {}
         self._compact_mode = False
+        self._tesseract_available: bool | None = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -169,6 +198,28 @@ class NormalizePage(QWidget):
         )
         settings.addWidget(self._ocr_not_applicable_label, 4, 0, 1, 3)
 
+        self._ocr_install_panel = QWidget()
+        self._ocr_install_panel.setObjectName("ocrInstallPanel")
+        ocr_install_row = QHBoxLayout(self._ocr_install_panel)
+        ocr_install_row.setContentsMargins(10, 8, 10, 8)
+        ocr_install_row.setSpacing(10)
+        self._ocr_install_panel.setStyleSheet(
+            "QWidget#ocrInstallPanel {"
+            "  background: rgba(255,247,237,0.92);"
+            "  border: 1px solid rgba(251,146,60,0.34);"
+            "  border-radius: 8px;"
+            "}"
+        )
+        self._ocr_install_label = QLabel()
+        self._ocr_install_label.setWordWrap(True)
+        self._ocr_install_label.setStyleSheet(
+            "color: rgba(124,45,18,0.92); font-size: 12px; font-weight: 600;"
+        )
+        ocr_install_row.addWidget(self._ocr_install_label, stretch=1)
+        self._btn_install_ocr_tools = QPushButton()
+        self._btn_install_ocr_tools.clicked.connect(self._launch_ocr_installer)
+        ocr_install_row.addWidget(self._btn_install_ocr_tools)
+
         self._llm_normalize = QCheckBox()
         self._llm_normalize.stateChanged.connect(self._update_llm_visibility)
         self._llm_normalize_label = QLabel()
@@ -192,6 +243,7 @@ class NormalizePage(QWidget):
         self._add_setting(settings, 2, 1, self._llm_model_label_wrap, self._llm_model)
 
         layout.addLayout(settings)
+        layout.addWidget(self._ocr_install_panel)
 
         # ── Run button ──
         self._btn_run = QPushButton()
@@ -277,6 +329,7 @@ class NormalizePage(QWidget):
         )
         self._ocr_psm_summary.setVisible(is_pdf and not self._compact_mode)
         self._book_language_label_wrap.setVisible(not self._compact_mode)
+        self._ocr_install_panel.setVisible(is_pdf and not self._is_tesseract_available())
 
     def _update_llm_visibility(self) -> None:
         """Show local LLM settings only when LLM normalization is enabled."""
@@ -339,6 +392,13 @@ class NormalizePage(QWidget):
         self._ocr_psm_label.setToolTip(t("norm.ocr_psm_tip"))
         self._update_psm_summary()
         self._ocr_not_applicable_label.setText(t("norm.ocr_not_applicable"))
+        self._ocr_install_label.setText(
+            t("norm.ocr_install_hint", cmd=_native_ocr_install_display_command())
+        )
+        self._btn_install_ocr_tools.setText(t("norm.ocr_install_button"))
+        self._btn_install_ocr_tools.setToolTip(
+            t("norm.ocr_install_hint", cmd=_native_ocr_install_display_command())
+        )
         self._book_language_label.setText(t("norm.book_language"))
         self._book_language.setToolTip(t("norm.book_language_tip"))
         self._book_language_label.setToolTip(t("norm.book_language_tip"))
@@ -407,6 +467,23 @@ class NormalizePage(QWidget):
             return
         value = int(self._ocr_psm.currentData() or 6)
         self._ocr_psm_summary.setText(t(f"norm.ocr_psm_summary_{value}"))
+
+    def _is_tesseract_available(self) -> bool:
+        """Return cached native Tesseract availability for OCR UI hints."""
+        if self._tesseract_available is None:
+            self._tesseract_available = tesseract_available()
+        return self._tesseract_available
+
+    def _launch_ocr_installer(self) -> None:
+        """Start the native installer helper for OCR system tools."""
+        command, args, cwd = _native_ocr_installer_command()
+        started = QProcess.startDetached(command, args, str(cwd))
+        display = _native_ocr_install_display_command()
+        self._progress.set_status(
+            t("norm.ocr_install_started", cmd=display)
+            if started
+            else t("norm.ocr_install_failed", cmd=display)
+        )
 
     def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
         """Create a form label with a reusable help button."""

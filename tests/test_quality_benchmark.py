@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import ModuleType
 
@@ -123,6 +124,54 @@ def test_quality_benchmark_filters_local_books_by_glob(tmp_path: Path) -> None:
 
     assert report["book_globs"] == ["keep*"]
     assert [case["source"] for case in report["cases"]] == [str(keep)]
+
+
+def test_quality_benchmark_maps_local_book_languages_by_glob(tmp_path: Path) -> None:
+    module = _load_benchmark_module()
+    books_dir = tmp_path / "books"
+    (books_dir / "english").mkdir(parents=True)
+    (books_dir / "china").mkdir()
+    english = books_dir / "english" / "dialogue.txt"
+    chinese = books_dir / "china" / "dialogue.txt"
+    english.write_text('Alice opened the door.\n\n"Come in," she said.', encoding="utf-8")
+    chinese.write_text("李雷打开了门。\n\n“请进，”韩梅梅说。", encoding="utf-8")
+
+    report = module.run_benchmark(
+        books_dir=books_dir,
+        run_ollama=False,
+        include_synthetic=False,
+        languages=["en", "zh"],
+        book_language="ru",
+        book_language_map={
+            "english/*.txt": "en",
+            "china/*.txt": "zh",
+        },
+        limit_books=10,
+    )
+
+    by_source = {case["source"]: case for case in report["cases"]}
+    assert report["book_language"] == "ru"
+    assert report["book_language_map"] == {
+        "english/*.txt": "en",
+        "china/*.txt": "zh",
+    }
+    assert by_source[str(english)]["language"] == "en"
+    assert by_source[str(chinese)]["language"] == "zh"
+    assert all(case["status"] == "offline_checked" for case in by_source.values())
+
+
+def test_quality_benchmark_loads_language_map_from_json(tmp_path: Path) -> None:
+    module = _load_benchmark_module()
+    mapping_path = tmp_path / "languages.json"
+    mapping_path.write_text(
+        json.dumps({"english/*.txt": "en", "kazakh/*.txt": "kk"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    assert module._load_book_language_map(str(mapping_path)) == {
+        "english/*.txt": "en",
+        "kazakh/*.txt": "kk",
+    }
 
 
 def test_quality_benchmark_uses_ocr_aware_pdf_loader(tmp_path: Path, monkeypatch) -> None:

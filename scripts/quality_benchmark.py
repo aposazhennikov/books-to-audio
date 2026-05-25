@@ -85,6 +85,14 @@ def main() -> None:
         default="ru",
         help="Language hint for PDF OCR/local books with unknown language. Defaults to ru.",
     )
+    parser.add_argument(
+        "--book-language-map",
+        default="",
+        help=(
+            "Optional JSON file mapping book globs to language codes, e.g. "
+            '{"english/*.txt": "en", "china/*": "zh"}. Patterns are relative to --books-dir.'
+        ),
+    )
     parser.add_argument("--limit-books", type=int, default=5, help="Maximum local books to inspect.")
     parser.add_argument(
         "--max-chars",
@@ -98,6 +106,7 @@ def main() -> None:
     try:
         languages = _parse_language_filter(args.languages)
         book_language = _parse_single_language(args.book_language, option="--book-language")
+        book_language_map = _load_book_language_map(args.book_language_map)
     except ValueError as exc:
         parser.error(str(exc))
     out_dir = Path(args.out_dir)
@@ -108,6 +117,7 @@ def main() -> None:
         include_synthetic=not args.skip_synthetic,
         book_globs=args.book_glob,
         book_language=book_language,
+        book_language_map=book_language_map,
         limit_books=args.limit_books,
         max_chars=args.max_chars,
         review_dir=out_dir / "llm_reviews" if run_ollama else None,
@@ -130,12 +140,14 @@ def run_benchmark(
     include_synthetic: bool = True,
     book_globs: Iterable[str] | None = None,
     book_language: str = "ru",
+    book_language_map: dict[str, str] | None = None,
     limit_books: int = 5,
     max_chars: int = 1200,
     review_dir: Path | None = None,
 ) -> dict[str, Any]:
     language_codes = _normalize_language_filter(languages)
     book_language_code = _parse_single_language(book_language, option="book_language")
+    language_map = _normalize_book_language_map(book_language_map or {})
     glob_patterns = tuple(pattern for pattern in (book_globs or ()) if pattern)
     cases: list[dict[str, Any]] = []
     if include_synthetic:
@@ -153,7 +165,17 @@ def run_benchmark(
     if books_dir.exists():
         for path in _iter_book_paths(books_dir, globs=glob_patterns)[:limit_books]:
             try:
-                book = _load_book_for_benchmark(path, language=book_language_code)
+                path_language, mapped_language = _book_language_for_path(
+                    path,
+                    books_dir=books_dir,
+                    default_language=book_language_code,
+                    language_map=language_map,
+                )
+                book = _load_book_for_benchmark(
+                    path,
+                    language=path_language,
+                    force_language=mapped_language,
+                )
                 book.metadata.language = normalize_book_language(book.metadata.language or book_language_code)
                 if book.metadata.language not in language_codes:
                     continue
@@ -180,6 +202,7 @@ def run_benchmark(
         "include_synthetic": include_synthetic,
         "book_globs": list(glob_patterns),
         "book_language": book_language_code,
+        "book_language_map": language_map,
         "max_chars": max_chars,
         "primary_model": PRIMARY_QWEN3_MODEL,
         "cases": cases,
@@ -316,14 +339,22 @@ def _run_case(
     return record
 
 
-def _load_book_for_benchmark(path: Path, language: str = "ru") -> Book:
+def _load_book_for_benchmark(
+    path: Path,
+    language: str = "ru",
+    *,
+    force_language: bool = False,
+) -> Book:
     """Load local benchmark books with OCR-aware PDF selection."""
+    language_code = normalize_book_language(language)
     if path.suffix.lower() != ".pdf":
         book = LoaderFactory.default().load(path)
-        book.metadata.language = normalize_book_language(book.metadata.language)
+        if force_language or path.suffix.lower() in {".txt", ".doc", ".docx"}:
+            book.metadata.language = language_code
+        else:
+            book.metadata.language = normalize_book_language(book.metadata.language or language_code)
         return book
 
-    language_code = normalize_book_language(language)
     native_compare = extract_pdf_with_ocr_mode(
         path,
         OcrMode.OFF,
@@ -513,6 +544,60 @@ def _parse_single_language(language: str, *, option: str) -> str:
         supported = ", ".join(SUPPORTED_LANGUAGE_CODES)
         raise ValueError(f"{option} has unsupported language '{language}'. Supported: {supported}")
     return code
+
+
+def _load_book_language_map(path_text: str) -> dict[str, str]:
+    value = (path_text or "").strip()
+    if not value:
+        return {}
+    path = Path(value).expanduser()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ValueError(f"--book-language-map cannot be read: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"--book-language-map must be a JSON object: {path}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("--book-language-map must be a JSON object")
+    return _normalize_book_language_map({str(key): str(value) for key, value in data.items()})
+
+
+def _normalize_book_language_map(language_map: dict[str, str]) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    for pattern, language in language_map.items():
+        clean_pattern = str(pattern).strip()
+        if not clean_pattern:
+            raise ValueError("book language map contains an empty glob pattern")
+        normalized[clean_pattern] = _parse_single_language(
+            str(language),
+            option=f"book_language_map[{clean_pattern}]",
+        )
+    return normalized
+
+
+def _book_language_for_path(
+    path: Path,
+    *,
+    books_dir: Path,
+    default_language: str,
+    language_map: dict[str, str],
+) -> tuple[str, bool]:
+    rel_path = _relative_book_path(path, books_dir)
+    candidates = (rel_path, path.name, path.as_posix())
+    for pattern, language in language_map.items():
+        if any(fnmatch.fnmatch(candidate, pattern) for candidate in candidates):
+            return language, True
+    return default_language, False
+
+
+def _relative_book_path(path: Path, books_dir: Path) -> str:
+    try:
+        return path.relative_to(books_dir).as_posix()
+    except ValueError:
+        try:
+            return path.resolve().relative_to(books_dir.resolve()).as_posix()
+        except ValueError:
+            return path.as_posix()
 
 
 def _case_review_paths(review_dir: Path | None, source: str, language: str) -> dict[str, Path] | None:

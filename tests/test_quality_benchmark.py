@@ -318,8 +318,8 @@ def test_quality_benchmark_records_llm_review_reports(tmp_path: Path, monkeypatc
                     "segment_index": 0,
                     "chapter_index": 0,
                     "language": book.metadata.language,
-                    "is_dialogue": False,
-                    "role": "narrator",
+                    "is_dialogue": True,
+                    "role": "unknown",
                     "voice_id": "narrator_calm",
                     "intonation": "calm",
                     "text": text,
@@ -355,6 +355,58 @@ def test_quality_benchmark_records_llm_review_reports(tmp_path: Path, monkeypatc
     assert case["llm_segmentation_review_report"] == str(segmenter_path)
     assert "normalization review:" in module.format_markdown_report(report)
     assert "segmentation review:" in module.format_markdown_report(report)
+
+
+def test_quality_benchmark_requires_dialogue_segments_for_dialogue_sources(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = _load_benchmark_module()
+
+    class FakeNormalizer:
+        def __init__(self, **_kwargs):  # noqa: ANN003
+            pass
+
+        def normalize_book(self, book):  # noqa: ANN001
+            for chapter in book.chapters:
+                for paragraph in chapter.paragraphs:
+                    paragraph.normalized_text = paragraph.raw_text
+            return 1, 0
+
+    class BadSegmenter:
+        def __init__(self, **_kwargs):  # noqa: ANN003
+            pass
+
+        def segment_book(self, book):  # noqa: ANN001
+            return [
+                {
+                    "segment_index": 0,
+                    "chapter_index": 0,
+                    "language": book.metadata.language,
+                    "is_dialogue": False,
+                    "role": "narrator",
+                    "voice_id": "narrator_calm",
+                    "intonation": "calm",
+                    "text": book.normalized_text or book.raw_text,
+                    "pause_after_ms": 0,
+                    "boundary_after": "chapter",
+                }
+            ]
+
+    monkeypatch.setattr(module, "LlmNormalizer", FakeNormalizer)
+    monkeypatch.setattr(module, "LlmVoiceSegmenter", BadSegmenter)
+
+    report = module.run_benchmark(
+        books_dir=tmp_path / "missing",
+        run_ollama=True,
+        languages=["en"],
+    )
+
+    case = report["cases"][0]
+    assert case["expected_dialogue"] is True
+    assert case["dialogue_segments"] == 0
+    assert case["status"] == "review_required"
+    assert "no dialogue segments" in case["error"]
 
 
 def test_quality_benchmark_pdf_ocr_error_points_to_native_installer(tmp_path: Path) -> None:

@@ -13,6 +13,7 @@ import argparse
 import fnmatch
 import json
 import os
+import re
 import sys
 from collections.abc import Iterable
 from datetime import datetime, timezone
@@ -259,19 +260,29 @@ def _run_case(
             segments = segmenter.segment_book(book)
             after = book.normalized_text or book.raw_text
             chunks = build_chunks_from_segments(segments, max_chunk_chars=600)
+            expected_dialogue = _source_has_dialogue(after)
+            dialogue_segments = sum(1 for segment in segments if _is_dialogue_segment(segment))
             segments_preserve_text = _canonical_exact(after) == _canonical_exact(
                 " ".join(str(segment.get("text") or "") for segment in segments)
             )
             chunk_text_preserved = _canonical_exact(after) == _canonical_exact(
                 " ".join(str(chunk.get("text") or "") for chunk in chunks)
             )
-            structure_ok = bool(segments) and bool(chunks) and segments_preserve_text and chunk_text_preserved
+            dialogue_ok = (not expected_dialogue) or dialogue_segments > 0
+            structure_ok = (
+                bool(segments)
+                and bool(chunks)
+                and segments_preserve_text
+                and chunk_text_preserved
+                and dialogue_ok
+            )
             record.update({
                 "status": "ok" if structure_ok else "review_required",
                 "llm_accepted": accepted,
                 "llm_rejected": rejected,
                 "segments": len(segments),
-                "dialogue_segments": sum(1 for segment in segments if _is_dialogue_segment(segment)),
+                "expected_dialogue": expected_dialogue,
+                "dialogue_segments": dialogue_segments,
                 "chunks": len(chunks),
                 "text_preserved": _canonical_content(before) == _canonical_content(after),
                 "segments_preserve_text": segments_preserve_text,
@@ -282,7 +293,12 @@ def _run_case(
             if segmentation_review_path and segmentation_review_path.exists():
                 record["llm_segmentation_review_report"] = str(segmentation_review_path)
             if not structure_ok:
-                record["error"] = "segment/chunk manifest does not preserve normalized text"
+                reasons = []
+                if not segments_preserve_text or not chunk_text_preserved:
+                    reasons.append("segment/chunk manifest does not preserve normalized text")
+                if not dialogue_ok:
+                    reasons.append("source has dialogue markers but no dialogue segments")
+                record["error"] = "; ".join(reasons) or "segment/chunk structure failed validation"
         except (LlmSegmentationError, Exception) as exc:  # noqa: BLE001
             record.update({
                 "status": "review_required",
@@ -514,7 +530,15 @@ def _is_dialogue_segment(segment: dict[str, Any]) -> bool:
     if segment.get("is_dialogue"):
         return True
     role = str(segment.get("role") or "").strip().lower()
-    return role in {"male", "female"}
+    return role in {"male", "female", "unknown"}
+
+
+def _source_has_dialogue(text: str) -> bool:
+    for paragraph in (text or "").splitlines():
+        stripped = paragraph.lstrip()
+        if stripped.startswith(("—", "–", "-", '"', "“", "«", "「", "『")):
+            return True
+    return bool(re.search(r'["“«「『][^"”»」』]{2,}["”»」』]', text or ""))
 
 
 def _case_notes(case: dict[str, Any]) -> str:

@@ -218,6 +218,31 @@ class TestLlmNormalizerMocked:
 
         assert call_count["n"] == 1  # LLM called only once; second time uses cache.
 
+    def test_invalid_cache_is_discarded_and_requeried(self, tmp_path: Path) -> None:
+        """Stale cache that loses text must not block a fresh model attempt."""
+        normalizer = self._make_normalizer(tmp_path)
+        original = "Alpha beta gamma."
+        stale = "Alpha beta."
+        cache_path = normalizer._cache_path(0, 0, original)
+        assert cache_path is not None
+        cache_path.parent.mkdir(parents=True)
+        cache_path.write_text(stale, encoding="utf-8")
+        calls: list[str] = []
+
+        def mock_query(text: str, **_: object) -> str:
+            calls.append(text)
+            return original
+
+        with patch.object(normalizer, "_query_llm", side_effect=mock_query):
+            result = normalizer.normalize_paragraph(original, 0, 0)
+
+        assert result.is_valid
+        assert result.accepted_text == original
+        assert calls == [original]
+        assert cache_path.read_text(encoding="utf-8") == original
+        assert normalizer._failures[0].model == "cache"
+        assert "failed text preservation" in normalizer._failures[0].reason
+
     def test_empty_paragraph_skipped(self, tmp_path: Path) -> None:
         """Empty paragraph is returned as-is without LLM call."""
         normalizer = self._make_normalizer(tmp_path)
@@ -341,6 +366,38 @@ class TestLlmNormalizerMocked:
         payload = json.loads(user_content.split("INPUT_JSON:\n", 1)[1])
         assert payload["language"] == "Uzbek"
         assert payload["text"] == text
+
+    def test_retry_query_tells_model_why_text_preservation_failed(self, tmp_path: Path) -> None:
+        from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
+        from book_normalizer.llm.ollama_client import OllamaChatAttempt
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        text = "Alpha beta gamma."
+        captured: dict = {}
+
+        class _FakeClient:
+            def chat_json_with_fallback(self, **kwargs):
+                captured.update(kwargs)
+                return OllamaChatAttempt(
+                    model=PRIMARY_QWEN3_MODEL,
+                    content=json.dumps({"text": text}),
+                    data={"text": text},
+                )
+
+        normalizer = LlmNormalizer(cache_dir=tmp_path / "cache", language="en")
+        normalizer._client = _FakeClient()
+
+        result = normalizer._query_llm(
+            text,
+            model=PRIMARY_QWEN3_MODEL,
+            previous_issues=["Too many words removed: ratio 0.667 < 0.880"],
+        )
+
+        user_content = captured["messages"][1]["content"]
+        assert result == text
+        assert "PREVIOUS_OUTPUT_FAILED_VALIDATION" in user_content
+        assert "Too many words removed" in user_content
+        assert "Return the original input.text unchanged" in user_content
 
     def test_normalize_book_updates_paragraphs_and_reports_progress(self, tmp_path: Path) -> None:
         from book_normalizer.models.book import Book, Chapter, Paragraph

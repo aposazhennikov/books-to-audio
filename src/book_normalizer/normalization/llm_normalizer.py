@@ -261,7 +261,21 @@ class LlmNormalizer:
         # Check cache first.
         cached = self._load_cache(chapter_index, paragraph_index, text)
         if cached is not None:
-            return self._validator.validate(text, cached)
+            cached_result = self._validator.validate(text, cached)
+            if cached_result.is_valid:
+                return cached_result
+            self._discard_cache(chapter_index, paragraph_index, text)
+            self._failures.append(
+                NormalizationFailure(
+                    chapter_index=chapter_index,
+                    paragraph_index=paragraph_index,
+                    model="cache",
+                    reason="Cached LLM output failed text preservation: "
+                    + "; ".join(cached_result.issues),
+                    source_preview=text[:500],
+                    output_preview=cached[:500],
+                )
+            )
 
         corrected: str | None = None
         last_error: Exception | None = None
@@ -270,7 +284,14 @@ class LlmNormalizer:
         for attempt in range(1, self._max_retries + 1):
             for model in self._model_candidates:
                 try:
-                    raw = self._query_llm(text, model=model)
+                    if attempt > 1 and last_issues:
+                        raw = self._query_llm(
+                            text,
+                            model=model,
+                            previous_issues=last_issues,
+                        )
+                    else:
+                        raw = self._query_llm(text, model=model)
                 except Exception as exc:  # noqa: BLE001
                     last_error = exc
                     logger.warning(
@@ -429,8 +450,23 @@ class LlmNormalizer:
 
     # ── LLM query ─────────────────────────────────────────────────────────────
 
-    def _query_llm(self, text: str, *, model: str | None = None) -> str:
+    def _query_llm(
+        self,
+        text: str,
+        *,
+        model: str | None = None,
+        previous_issues: list[str] | None = None,
+    ) -> str:
         """Send one paragraph to a local Ollama model and return corrected text."""
+
+        retry_guard = ""
+        if previous_issues:
+            retry_guard = (
+                "\nPREVIOUS_OUTPUT_FAILED_VALIDATION:\n"
+                + json.dumps({"issues": previous_issues[:6]}, ensure_ascii=False)
+                + "\nReturn the original input.text unchanged if you cannot make a safe "
+                "minimal correction while preserving every word and sentence."
+            )
 
         attempt = self._client.chat_json_with_fallback(
             models=[model or self._model],
@@ -449,6 +485,7 @@ class LlmNormalizer:
                             },
                             ensure_ascii=False,
                         )
+                        + retry_guard
                     ),
                 },
             ],
@@ -493,6 +530,21 @@ class LlmNormalizer:
             except OSError:
                 return None
         return None
+
+    def _discard_cache(
+        self,
+        chapter_index: int,
+        paragraph_index: int,
+        source_text: str,
+    ) -> None:
+        """Remove a cached paragraph result that no longer passes validation."""
+        path = self._cache_path(chapter_index, paragraph_index, source_text)
+        if path is None:
+            return
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.debug("Could not discard invalid LLM cache: %s", path)
 
     def _save_cache(
         self,

@@ -25,6 +25,7 @@ from book_normalizer.llm.ollama_client import OllamaChatClient
 logger = logging.getLogger(__name__)
 
 DEFAULT_WINDOW_CHARS = 900
+_CACHE_VERSION = "llm-segmenter-v2-dialogue-repair"
 
 ROLE_TO_VOICE_ID = {
     "narrator": "narrator_calm",
@@ -42,7 +43,149 @@ VOICE_LABEL_TO_ROLE = {
     "male": "male",
     "women": "female",
     "female": "female",
+    "unknown": "unknown",
 }
+
+_SYSTEM_SECTION_KINDS = frozenset({
+    "annotation",
+    "preface",
+    "epilogue",
+    "chapter_title",
+})
+
+_RU_BAD_SPEAKER_TOKENS = frozenset({
+    "а",
+    "будешь",
+    "в",
+    "же",
+    "здесь",
+    "и",
+    "или",
+    "как",
+    "мне",
+    "на",
+    "не",
+    "но",
+    "он",
+    "она",
+    "они",
+    "оно",
+    "от",
+    "с",
+    "сам",
+    "сама",
+    "самым",
+    "себе",
+    "сразу",
+    "так",
+    "тем",
+    "то",
+    "ты",
+    "у",
+    "я",
+})
+
+_RU_MALE_ATTRIBUTION = (
+    "сказал",
+    "ответил",
+    "спросил",
+    "крикнул",
+    "прошептал",
+    "произнёс",
+    "произнес",
+    "проговорил",
+    "воскликнул",
+    "пробормотал",
+    "буркнул",
+    "проронил",
+    "добавил",
+    "продолжил",
+    "заметил",
+    "подтвердил",
+    "возразил",
+    "закричал",
+    "промолвил",
+    "выдохнул",
+    "простонал",
+    "процедил",
+    "прокричал",
+    "пояснил",
+    "напомнил",
+    "согласился",
+    "попросил",
+    "приказал",
+    "велел",
+    "потребовал",
+    "предложил",
+    "переспросил",
+    "усмехнулся",
+    "рассмеялся",
+    "вздохнул",
+    "поинтересовался",
+    "обратился",
+    "задал",
+    "начал",
+)
+
+_RU_FEMALE_ATTRIBUTION = (
+    "сказала",
+    "ответила",
+    "спросила",
+    "крикнула",
+    "прошептала",
+    "произнесла",
+    "проговорила",
+    "воскликнула",
+    "пробормотала",
+    "буркнула",
+    "проронила",
+    "добавила",
+    "продолжила",
+    "заметила",
+    "подтвердила",
+    "возразила",
+    "закричала",
+    "промолвила",
+    "выдохнула",
+    "простонала",
+    "процедила",
+    "прокричала",
+    "пояснила",
+    "напомнила",
+    "согласилась",
+    "попросила",
+    "приказала",
+    "велела",
+    "потребовала",
+    "предложила",
+    "переспросила",
+    "усмехнулась",
+    "рассмеялась",
+    "вздохнула",
+    "поинтересовалась",
+    "обратилась",
+    "зашипела",
+    "начала",
+)
+
+_RU_SPEAKER_TOKEN = r"[А-ЯЁ][А-ЯЁа-яё-]{1,40}|[а-яё]{3,40}"
+_RU_ATTRIBUTION_MIDWORDS = r"(?:вопрос|запираться)"
+_RU_MALE_ATTRIBUTION_RE = re.compile(
+    rf"\b(?:{'|'.join(_RU_MALE_ATTRIBUTION)})\b"
+    rf"(?:\s+{_RU_ATTRIBUTION_MIDWORDS}){{0,2}}\s+(?P<speaker>{_RU_SPEAKER_TOKEN})",
+    re.IGNORECASE,
+)
+_RU_FEMALE_ATTRIBUTION_RE = re.compile(
+    rf"\b(?:{'|'.join(_RU_FEMALE_ATTRIBUTION)})\b"
+    rf"(?:\s+{_RU_ATTRIBUTION_MIDWORDS}){{0,2}}\s+(?P<speaker>{_RU_SPEAKER_TOKEN})",
+    re.IGNORECASE,
+)
+_EN_SPEAKER_RE = re.compile(
+    r"\b(?:(?:said|asked|replied|shouted|whispered|cried|muttered)\s+"
+    r"(?P<after>[A-Z][A-Za-z'-]{1,40})|"
+    r"(?P<before>[A-Z][A-Za-z'-]{1,40})\s+"
+    r"(?:said|asked|replied|shouted|whispered|cried|muttered))\b"
+)
 
 _SEGMENT_SCHEMA = {
     "type": "object",
@@ -233,6 +376,7 @@ class LlmVoiceSegmenter:
         segment_index = 0
 
         for chapter in chapters:
+            recent_dialogue_speakers: list[tuple[str, str]] = []
             chapter_index = int(getattr(chapter, "index", len(rows)))
             chapter_text = _chapter_text(chapter)
             windows = _build_windows(chapter_text, self._window_chars)
@@ -246,12 +390,37 @@ class LlmVoiceSegmenter:
                         role = _normalize_role(raw.get("role", "narrator"))
                         speaker = _clean_optional(raw.get("speaker"))
                         section_kind = _clean_section_kind(raw.get("section_kind"), role)
+                        character_description = _clean_optional(
+                            raw.get("character_description")
+                            or raw.get("role_description")
+                            or raw.get("description")
+                        )
+                        (
+                            role,
+                            speaker,
+                            section_kind,
+                            character_description,
+                        ) = _repair_dialogue_metadata(
+                            role=role,
+                            speaker=speaker,
+                            section_kind=section_kind,
+                            character_description=character_description,
+                            text=text_part,
+                            language=self._language,
+                            recent_dialogue_speakers=recent_dialogue_speakers,
+                        )
                         is_dialogue = _is_dialogue_segment(
                             role=role,
                             section_kind=section_kind,
                             speaker=speaker,
                             text=text_part,
                         )
+                        if is_dialogue:
+                            _remember_dialogue_speaker(
+                                recent_dialogue_speakers,
+                                speaker=speaker,
+                                role=role,
+                            )
                         rows.append(
                             {
                                 "segment_index": segment_index,
@@ -260,11 +429,7 @@ class LlmVoiceSegmenter:
                                 "is_dialogue": is_dialogue,
                                 "role": role,
                                 "speaker": speaker,
-                                "character_description": _clean_optional(
-                                    raw.get("character_description")
-                                    or raw.get("role_description")
-                                    or raw.get("description")
-                                ),
+                                "character_description": character_description,
                                 "emotion": _clean_intonation(
                                     raw.get("emotion") or raw.get("intonation", "calm")
                                 ),
@@ -376,6 +541,7 @@ class LlmVoiceSegmenter:
             return None
         fingerprint = sha1(
             "\n\0".join((
+                _CACHE_VERSION,
                 self._language,
                 ",".join(self._model_plan.candidates),
                 _system_prompt_for_language(self._language),
@@ -524,6 +690,128 @@ def _normalize_role(value: Any) -> str:
     return VOICE_LABEL_TO_ROLE.get(role, "narrator")
 
 
+def _repair_dialogue_metadata(
+    *,
+    role: str,
+    speaker: str,
+    section_kind: str,
+    character_description: str,
+    text: str,
+    language: str,
+    recent_dialogue_speakers: list[tuple[str, str]],
+) -> tuple[str, str, str, str]:
+    if section_kind in _SYSTEM_SECTION_KINDS:
+        return role, speaker, section_kind, character_description
+    if not _has_direct_speech_marker(text):
+        return role, speaker, section_kind, character_description
+
+    inferred_speaker, inferred_role = _infer_dialogue_speaker(text, language)
+    if inferred_speaker:
+        speaker = speaker or inferred_speaker
+    if inferred_role in {"male", "female"}:
+        role = inferred_role
+
+    if not speaker:
+        speaker, known_role = _alternate_dialogue_speaker(recent_dialogue_speakers, role)
+        if known_role in {"male", "female"} and role == "narrator":
+            role = known_role
+
+    if role == "narrator":
+        role = "unknown"
+
+    if not section_kind or section_kind == "narration":
+        section_kind = "dialogue"
+    if speaker and not character_description:
+        character_description = "Direct-speech character inferred from local dialogue context."
+    return role, speaker, section_kind, character_description
+
+
+def _has_direct_speech_marker(text: str) -> bool:
+    stripped = text.lstrip()
+    return bool(stripped and (stripped[0] in _QUOTE_CHARS or stripped[0] in _DASH_CHARS))
+
+
+def _infer_dialogue_speaker(text: str, language: str) -> tuple[str, str]:
+    language = normalize_book_language(language)
+    if language == "ru":
+        return _infer_ru_dialogue_speaker(text)
+    if language == "en":
+        return _infer_en_dialogue_speaker(text)
+    return "", ""
+
+
+def _infer_ru_dialogue_speaker(text: str) -> tuple[str, str]:
+    for regex, role in (
+        (_RU_MALE_ATTRIBUTION_RE, "male"),
+        (_RU_FEMALE_ATTRIBUTION_RE, "female"),
+    ):
+        for match in regex.finditer(text):
+            speaker = _clean_ru_speaker(match.group("speaker"))
+            if speaker:
+                return speaker, role
+    if _text_has_ru_gendered_attribution(text, _RU_MALE_ATTRIBUTION):
+        return "", "male"
+    if _text_has_ru_gendered_attribution(text, _RU_FEMALE_ATTRIBUTION):
+        return "", "female"
+    return "", ""
+
+
+def _infer_en_dialogue_speaker(text: str) -> tuple[str, str]:
+    match = _EN_SPEAKER_RE.search(text or "")
+    if not match:
+        return "", ""
+    speaker = _clean_optional(match.group("after") or match.group("before"))
+    return speaker, "unknown" if speaker else ""
+
+
+def _clean_ru_speaker(value: str) -> str:
+    speaker = re.sub(r"^[\s,.;:!?—–-]+|[\s,.;:!?—–-]+$", "", value or "")
+    if not speaker:
+        return ""
+    if speaker.casefold() in _RU_BAD_SPEAKER_TOKENS:
+        return ""
+    if not re.fullmatch(_RU_SPEAKER_TOKEN, speaker):
+        return ""
+    if speaker[0].islower():
+        speaker = speaker[0].upper() + speaker[1:]
+    return _clean_optional(speaker)
+
+
+def _text_has_ru_gendered_attribution(text: str, verbs: tuple[str, ...]) -> bool:
+    return bool(re.search(rf"\b(?:{'|'.join(verbs)})\b", text or "", re.IGNORECASE))
+
+
+def _alternate_dialogue_speaker(
+    recent_dialogue_speakers: list[tuple[str, str]],
+    role: str,
+) -> tuple[str, str]:
+    if not recent_dialogue_speakers:
+        return "", ""
+    previous_speaker, _previous_role = recent_dialogue_speakers[-1]
+    for speaker, speaker_role in reversed(recent_dialogue_speakers[:-1]):
+        if speaker and speaker != previous_speaker:
+            if role in {"male", "female"} and speaker_role not in {role, "unknown"}:
+                continue
+            return speaker, speaker_role
+    return "", ""
+
+
+def _remember_dialogue_speaker(
+    recent_dialogue_speakers: list[tuple[str, str]],
+    *,
+    speaker: str,
+    role: str,
+) -> None:
+    if not speaker:
+        return
+    normalized_role = role if role in {"male", "female"} else "unknown"
+    record = (speaker, normalized_role)
+    if recent_dialogue_speakers and recent_dialogue_speakers[-1] == record:
+        return
+    recent_dialogue_speakers.append(record)
+    del recent_dialogue_speakers[:-8]
+
+
 def _clean_intonation(value: Any) -> str:
     text = re.sub(r"\s+", " ", str(value or "calm")).strip().lower()
     return text[:80] or "calm"
@@ -545,7 +833,7 @@ def _clean_section_kind(value: Any, role: str) -> str:
     }
     if text in allowed:
         return text
-    return "dialogue" if role in {"male", "female"} else "narration"
+    return "dialogue" if role in {"male", "female", "unknown"} else "narration"
 
 
 def _is_dialogue_segment(
@@ -556,7 +844,7 @@ def _is_dialogue_segment(
     text: str,
 ) -> bool:
     """Detect direct speech even when the LLM cannot prove speaker gender."""
-    if role in {"male", "female"} or section_kind == "dialogue" or speaker:
+    if role in {"male", "female", "unknown"} or section_kind == "dialogue" or speaker:
         return True
     stripped = text.lstrip()
     return bool(stripped and (stripped[0] in _QUOTE_CHARS or stripped[0] in _DASH_CHARS))

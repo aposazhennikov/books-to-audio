@@ -189,6 +189,39 @@ def test_llm_voice_segmenter_keeps_character_metadata_for_roles() -> None:
     assert rows[1]["section_kind"] == "dialogue"
 
 
+def test_llm_voice_segmenter_repairs_narrator_dialogue_from_bad_llm_output() -> None:
+    text = "\n\n".join([
+        "— Да, — сквозь зубы процедила цыганка.",
+        "— Ты зачем пришла? — спросил Сергей у совершенно каменной статуи.",
+        "— Меня к тебе по делу прислали.",
+        "— Кто прислал? — спросил Сергей.",
+    ])
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "section_kind": "narration", "text": part, "intonation": "calm"}
+                for part in text.split("\n\n")
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="ru"))
+
+    assert " ".join(row["text"] for row in rows).replace(" \n", "\n") == text.replace("\n\n", " ")
+    assert [row["speaker"] for row in rows] == ["Цыганка", "Сергей", "Цыганка", "Сергей"]
+    assert [row["role"] for row in rows] == ["female", "male", "female", "male"]
+    assert [row["voice_id"] for row in rows] == [
+        "female_warm",
+        "male_young",
+        "female_warm",
+        "male_young",
+    ]
+    assert all(row["section_kind"] == "dialogue" for row in rows)
+    assert all(row["is_dialogue"] is True for row in rows)
+
+
 def test_llm_voice_segmenter_marks_dialogue_when_gender_is_unknown() -> None:
     text = "谢尔盖打开了门。\n\n“谁在那里？”他问。"
     segmenter = LlmVoiceSegmenter(language="zh")
@@ -210,7 +243,8 @@ def test_llm_voice_segmenter_marks_dialogue_when_gender_is_unknown() -> None:
     rows = segmenter.segment_book(_book(text, language="zh"))
 
     assert rows[0]["is_dialogue"] is False
-    assert rows[1]["role"] == "narrator"
+    assert rows[1]["role"] == "unknown"
+    assert rows[1]["voice_id"] == "narrator_calm"
     assert rows[1]["section_kind"] == "dialogue"
     assert rows[1]["is_dialogue"] is True
 

@@ -52,6 +52,11 @@ SYNTHETIC_SAMPLES = {
     "uz": "Sergey eshikni ochdi.\n\n\"U yerda kim bor?\" deb so'radi u.",
 }
 
+OCR_INSTALL_HINT = (
+    "Install native OCR tools with: Windows: install.bat --interactive --install-system-tools; "
+    "Linux/macOS: ./install.sh --interactive --install-system-tools"
+)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Multilingual extraction and LLM quality benchmark.")
@@ -165,11 +170,7 @@ def run_benchmark(
                     )
                 )
             except Exception as exc:  # noqa: BLE001
-                cases.append({
-                    "source": str(path),
-                    "status": "error",
-                    "error": f"{type(exc).__name__}: {exc}",
-                })
+                cases.append(_error_case(path, exc))
 
     return {
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -504,9 +505,27 @@ def _case_notes(case: dict[str, Any]) -> str:
         notes.append(f"LLM rejected {case['llm_rejected']}")
     if case.get("error"):
         notes.append(str(case["error"]).replace("|", "/"))
+    if case.get("install_hint"):
+        notes.append(str(case["install_hint"]).replace("|", "/"))
     if case.get("llm_normalization_review_report"):
         notes.append(f"review: {case['llm_normalization_review_report']}")
     return "; ".join(notes)
+
+
+def _error_case(path: Path, exc: Exception) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "source": str(path),
+        "status": "error",
+        "error": f"{type(exc).__name__}: {exc}",
+    }
+    detail = str(exc).lower()
+    if path.suffix.lower() == ".pdf" and (
+        "tesseract" in detail
+        or "ocr unavailable" in detail
+        or "ocr_unavailable" in detail
+    ):
+        record["install_hint"] = OCR_INSTALL_HINT
+    return record
 
 
 def _short_source(source: str, max_len: int = 48) -> str:

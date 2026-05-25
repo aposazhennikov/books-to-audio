@@ -4,6 +4,8 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 from book_normalizer.loaders.pdf_loader import PdfOcrCompareResult, PdfTextVariant
 
 
@@ -65,6 +67,42 @@ def test_quality_benchmark_reads_local_txt_books(tmp_path: Path) -> None:
 
     sources = {case["source"] for case in report["cases"]}
     assert str(books_dir / "sample.txt") in sources
+
+
+def test_quality_benchmark_loads_real_offline_book_formats(tmp_path: Path) -> None:
+    """Exercise real loader paths for the formats a user can drop into books/."""
+    module = _load_benchmark_module()
+    books_dir = tmp_path / "books"
+    books_dir.mkdir()
+    _write_txt_book(books_dir / "sample.txt")
+    _write_fb2_book(books_dir / "sample.fb2")
+    _write_docx_book(books_dir / "sample.docx")
+    _write_epub_book(books_dir / "sample.epub")
+    _write_native_pdf_book(books_dir / "sample.pdf")
+
+    report = module.run_benchmark(
+        books_dir=books_dir,
+        run_ollama=False,
+        include_synthetic=False,
+        languages=["ru", "en"],
+        book_language="en",
+        limit_books=10,
+    )
+
+    by_format = {
+        case["source_format"]: case
+        for case in report["cases"]
+        if case.get("status") != "error"
+    }
+    assert {"txt", "fb2", "docx", "epub", "pdf"}.issubset(by_format)
+    for source_format in ("txt", "fb2", "docx", "epub", "pdf"):
+        case = by_format[source_format]
+        assert case["status"] == "offline_checked"
+        assert case["paragraphs"] >= 1
+        assert case["chars_before"] > 20
+        assert case["text_preserved"] is True
+        assert case["chunks"] >= 1
+    assert by_format["pdf"]["metadata_extra"]["pdf_text_variant"] == "native"
 
 
 def test_quality_benchmark_filters_local_books_by_glob(tmp_path: Path) -> None:
@@ -242,3 +280,92 @@ def test_quality_benchmark_formats_human_review_summary() -> None:
         "| 2 | review_required | ru | books/example.pdf | 300 | 4 | 1 | no | "
         "LLM rejected 1; segment/chunk mismatch |"
     ) in markdown
+
+
+def test_quality_benchmark_pdf_ocr_error_points_to_native_installer(tmp_path: Path) -> None:
+    module = _load_benchmark_module()
+    pdf_path = tmp_path / "scan.pdf"
+
+    case = module._error_case(
+        pdf_path,
+        RuntimeError("PDF text unreadable and OCR unavailable/unusable: ocr_unavailable_native_unreadable"),
+    )
+    markdown = module.format_markdown_report({"cases": [case]})
+
+    assert case["install_hint"] == module.OCR_INSTALL_HINT
+    assert "install.bat --interactive --install-system-tools" in markdown
+    assert "./install.sh --interactive --install-system-tools" in markdown
+    assert "wsl" not in markdown.lower()
+
+
+def _write_txt_book(path: Path) -> None:
+    path.write_text(
+        "TXT Chapter\n\nAlpha opened the door.\n\n\"Who is there?\" he asked.",
+        encoding="utf-8",
+    )
+
+
+def _write_fb2_book(path: Path) -> None:
+    path.write_text(
+        """\
+<?xml version="1.0" encoding="utf-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0">
+  <description>
+    <title-info>
+      <book-title>FB2 Sample</book-title>
+      <author><first-name>Ivan</first-name><last-name>Petrov</last-name></author>
+      <lang>ru</lang>
+    </title-info>
+  </description>
+  <body>
+    <section>
+      <title><p>Глава первая</p></title>
+      <p>Сергей открыл дверь.</p>
+      <p>— Кто там? — спросил он.</p>
+    </section>
+  </body>
+</FictionBook>
+""",
+        encoding="utf-8",
+    )
+
+
+def _write_docx_book(path: Path) -> None:
+    docx = pytest.importorskip("docx")
+    doc = docx.Document()
+    doc.core_properties.title = "DOCX Sample"
+    doc.add_heading("Chapter One", level=1)
+    doc.add_paragraph("Maya checked the old map.")
+    doc.add_paragraph("\"The road bends here,\" she said.")
+    doc.save(str(path))
+
+
+def _write_epub_book(path: Path) -> None:
+    epub = pytest.importorskip("ebooklib.epub")
+    book = epub.EpubBook()
+    book.set_identifier("sample-epub")
+    book.set_title("EPUB Sample")
+    book.set_language("en")
+    chapter = epub.EpubHtml(title="Chapter One", file_name="chapter.xhtml", lang="en")
+    chapter.content = (
+        "<html><body><h1>Chapter One</h1>"
+        "<p>Li Wei lit the lantern.</p>"
+        "<p>\"We leave at dawn,\" he said.</p>"
+        "</body></html>"
+    )
+    book.add_item(chapter)
+    book.spine = ["nav", chapter]
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    epub.write_epub(str(path), book)
+
+
+def _write_native_pdf_book(path: Path) -> None:
+    fitz = pytest.importorskip("fitz")
+    doc = fitz.open()
+    page = doc.new_page(width=420, height=595)
+    page.insert_text((48, 72), "Chapter One", fontsize=16)
+    page.insert_text((48, 110), "The native PDF text layer is readable.", fontsize=12)
+    page.insert_text((48, 132), '"No OCR should be needed," Nora said.', fontsize=12)
+    doc.save(path)
+    doc.close()

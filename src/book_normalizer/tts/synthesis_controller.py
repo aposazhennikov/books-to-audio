@@ -8,7 +8,11 @@ from pathlib import Path
 
 from book_normalizer.chunking.manifest_v2 import flatten_manifest, load_manifest
 from book_normalizer.comfyui.client import ComfyUIClient
-from book_normalizer.comfyui.synthesis import count_done_chunks, synthesize_manifest
+from book_normalizer.comfyui.synthesis import (
+    count_done_chunks,
+    load_speaker_overrides,
+    synthesize_manifest,
+)
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
 
 ProgressCallback = Callable[[int, int, str, int, int, float, int, int, int], None]
@@ -28,6 +32,7 @@ class SynthesisRequest:
     chunk_timeout: float = 300.0
     failed_only: bool = False
     merge_chapters: bool = True
+    clone_config_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +82,9 @@ class SynthesisController:
 
         builder = WorkflowBuilder(workflow_path)
         self._emit_log(f"Workflow template: {workflow_path}")
+        speaker_overrides = load_speaker_overrides(request.clone_config_path)
+        if speaker_overrides:
+            self._emit_log(f"CustomVoice overrides: {len(speaker_overrides)} role mapping(s)")
         self._emit_status("__model_ready__")
 
         done_start = count_done_chunks(manifest, request.chapter)
@@ -117,6 +125,7 @@ class SynthesisController:
             chapter_filter=request.chapter,
             chunk_timeout=request.chunk_timeout,
             failed_only=request.failed_only,
+            speaker_overrides=speaker_overrides,
             progress=on_line,
         )
         self._emit_progress(total, total, "0s", 0, 0, 0.0, 0, 0, 0)

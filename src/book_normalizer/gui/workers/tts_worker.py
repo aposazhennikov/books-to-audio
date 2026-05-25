@@ -156,15 +156,16 @@ class TTSSynthesisWorker(QThread):
         self._failed_only = failed_only
         self._merge_chapters = merge_chapters
         self._cancelled = False
+        self._clone_config_path = Path(clone_config) if clone_config else None
 
         # Accepted for source compatibility with older GUI/tests. V2 synthesis
         # is driven by the manifest and ComfyUI workflow, not runner flags.
+        # clone_config is intentionally not here: it is active v2 input.
         self._unused_runner_options = {
             "model": model,
             "batch_size": batch_size,
             "resume": resume,
             "use_compile": use_compile,
-            "clone_config": clone_config,
             "use_sage_attention": use_sage_attention,
             "models_dir": models_dir,
             "voice_library_dir": voice_library_dir,
@@ -200,6 +201,7 @@ class TTSSynthesisWorker(QThread):
                 chunk_timeout=float(self._chunk_timeout),
                 failed_only=self._failed_only,
                 merge_chapters=self._merge_chapters,
+                clone_config_path=self._clone_config_path,
             )
             controller = SynthesisController(
                 request,

@@ -65,6 +65,7 @@ from book_normalizer.tts.voice_library import (
     list_saved_voices,
     normalize_voice_library_dir,
 )
+from book_normalizer.tts.voice_mapping import primary_voice_mapping_key
 
 MODELS = [
     "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
@@ -424,6 +425,8 @@ class SynthesisPage(QWidget):
         self._save_voice_worker: VoicePromptSaveWorker | None = None
         self._chapter_map: dict[int, int] = {}
         self._manifest_chunks: list[dict] = []
+        self._manifest_role_counts: dict[str, int] = {}
+        self._manifest_role_entries: list[tuple[str, str]] = []
         self._phase = "idle"
         self._phase_start = 0.0
         self._tick_timer = QTimer(self)
@@ -788,18 +791,9 @@ class SynthesisPage(QWidget):
         role_form.setVerticalSpacing(6)
         role_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         role_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        self._role_mapping_layout = role_form
         self._role_voice_combos: dict[str, QComboBox] = {}
         self._role_voice_labels: dict[str, QLabel] = {}
-        for role in ("narrator", "male", "female"):
-            combo = QComboBox()
-            _make_combo_compact(combo, min_chars=22)
-            combo.currentIndexChanged.connect(
-                lambda _index, self=self: self._refresh_test_chunk_combo(),
-            )
-            self._role_voice_combos[role] = combo
-            label = QLabel()
-            self._role_voice_labels[role] = label
-            role_form.addRow(label, combo)
         outer.addWidget(self._role_mapping_widget)
 
         self._sample_fields = QWidget()
@@ -1272,6 +1266,11 @@ class SynthesisPage(QWidget):
 
     def _effective_test_voice_label(self, source_voice_id: str) -> str:
         """Return the voice that will actually be used for test synthesis."""
+        return self._effective_test_voice_label_for_chunk({"voice_id": source_voice_id})
+
+    def _effective_test_voice_label_for_chunk(self, chunk: dict) -> str:
+        """Return the voice that will actually be used for a manifest chunk."""
+        source_voice_id = str(chunk.get("voice_id") or "narrator_calm")
         if not self._is_custom_voice_mode():
             return source_voice_id
 
@@ -1287,8 +1286,10 @@ class SynthesisPage(QWidget):
                 )
             return t("synth.no_saved_voices")
 
-        role = _role_for_voice_id(source_voice_id)
-        combo = self._role_voice_combos.get(role)
+        role_key = primary_voice_mapping_key(chunk)
+        combo = self._role_voice_combos.get(role_key)
+        if combo is None:
+            combo = self._role_voice_combos.get(_role_for_voice_id(source_voice_id))
         saved_voice = str(combo.currentData() or "") if combo else ""
         if saved_voice:
             return t(
@@ -1472,9 +1473,11 @@ class SynthesisPage(QWidget):
         self._custom_strategy_label.setText(t("synth.custom_strategy"))
         self._saved_voice_label.setText(t("synth.saved_voice"))
         self._btn_refresh_saved_voices.setText(t("synth.refresh_saved_voices"))
-        self._role_voice_labels["narrator"].setText(t("synth.role_narrator"))
-        self._role_voice_labels["male"].setText(t("synth.role_male"))
-        self._role_voice_labels["female"].setText(t("synth.role_female"))
+        self._manifest_role_entries = [
+            (key, self._role_mapping_label(key, self._manifest_role_counts.get(key, 0)))
+            for key, _label in self._manifest_role_entries
+        ]
+        self._refresh_role_mapping_controls()
         self._sample_audio_label.setText(t("synth.sample_audio"))
         self._btn_sample_audio.setText(t("synth.browse_audio"))
         self._sample_preview_label.setText(t("synth.sample_preview"))
@@ -1653,6 +1656,93 @@ class SynthesisPage(QWidget):
             self._voice_library_dir_edit.setText(path)
             self._refresh_saved_voices()
 
+    def _refresh_manifest_role_entries(self) -> None:
+        """Build role/persona mapping rows from loaded manifest chunks."""
+        counts: dict[str, int] = {}
+        order: list[str] = []
+        for chunk in self._manifest_chunks:
+            key = primary_voice_mapping_key(chunk)
+            if key not in counts:
+                order.append(key)
+                counts[key] = 0
+            counts[key] += 1
+
+        if not order:
+            order = ["narrator", "male", "female"]
+            counts = {key: 0 for key in order}
+
+        self._manifest_role_counts = counts
+        self._manifest_role_entries = [
+            (key, self._role_mapping_label(key, counts.get(key, 0)))
+            for key in order
+        ]
+        self._refresh_role_mapping_controls()
+
+    def _role_mapping_label(self, key: str, count: int = 0) -> str:
+        """Return a compact UI label for a role/persona mapping key."""
+        if key.startswith("speaker:"):
+            value = key.removeprefix("speaker:")
+            speaker, sep, emotion = value.partition("|emotion:")
+            label = f"{speaker} - {emotion}" if sep else speaker
+        elif key.startswith("section:"):
+            section = key.removeprefix("section:")
+            label = {
+                "annotation": t("voice.role_annotation"),
+                "preface": t("voice.role_preface"),
+                "epilogue": t("voice.role_epilogue"),
+                "chapter_title": t("voice.role_chapter_title"),
+            }.get(section, section.replace("_", " ").title())
+        else:
+            label = {
+                "narrator": t("voice.role_narrator"),
+                "male": t("voice.role_male"),
+                "female": t("voice.role_female"),
+                "unknown": t("voice.role_unknown"),
+                "men": t("voice.role_male"),
+                "women": t("voice.role_female"),
+            }.get(key, key.replace("_", " ").title())
+
+        return f"{label} ({count})" if count else label
+
+    def _refresh_role_mapping_controls(
+        self,
+        current_roles: dict[str, str] | None = None,
+    ) -> None:
+        """Rebuild saved-voice selectors for the manifest's actual roles."""
+        if not hasattr(self, "_role_mapping_layout"):
+            return
+        current_roles = current_roles or {
+            role: combo.currentData() or ""
+            for role, combo in getattr(self, "_role_voice_combos", {}).items()
+        }
+        while self._role_mapping_layout.rowCount():
+            self._role_mapping_layout.removeRow(0)
+        self._role_voice_combos = {}
+        self._role_voice_labels = {}
+
+        entries = self._manifest_role_entries or [
+            ("narrator", self._role_mapping_label("narrator")),
+            ("male", self._role_mapping_label("male")),
+            ("female", self._role_mapping_label("female")),
+        ]
+        for role_key, label_text in entries:
+            combo = QComboBox()
+            _make_combo_compact(combo, min_chars=22)
+            combo.currentIndexChanged.connect(
+                lambda _index, self=self: self._refresh_test_chunk_combo(),
+            )
+            self._populate_saved_voice_combo(
+                combo,
+                str(current_roles.get(role_key) or ""),
+                include_builtin=True,
+            )
+            label = QLabel(label_text)
+            label.setToolTip(role_key)
+            combo.setToolTip(role_key)
+            self._role_voice_combos[role_key] = combo
+            self._role_voice_labels[role_key] = label
+            self._role_mapping_layout.addRow(label, combo)
+
     def _refresh_saved_voices(self) -> None:
         """Reload saved voice metadata from disk and refresh all selectors."""
         current_global = self._saved_voice_combo.currentData() or ""
@@ -1662,12 +1752,7 @@ class SynthesisPage(QWidget):
         }
         self._saved_voices = list_saved_voices(self._voice_library_dir())
         self._populate_saved_voice_combo(self._saved_voice_combo, current_global)
-        for role, combo in self._role_voice_combos.items():
-            self._populate_saved_voice_combo(
-                combo,
-                current_roles.get(role, ""),
-                include_builtin=True,
-            )
+        self._refresh_role_mapping_controls(current_roles)
         self._update_custom_voice_controls()
 
     def _populate_saved_voice_combo(
@@ -1988,10 +2073,12 @@ class SynthesisPage(QWidget):
                 chapter_chunks[ch] = chapter_chunks.get(ch, 0) + 1
             self._chapter_map = chapter_chunks
             self._manifest_chunks = chunks
+            self._refresh_manifest_role_entries()
             self._refresh_chapter_combo()
             self._refresh_test_chapter_combo()
         except (json.JSONDecodeError, OSError, TypeError, AttributeError, ValueError):
             self._manifest_chunks = []
+            self._refresh_manifest_role_entries()
             pass
 
     def _refresh_chapter_combo(self) -> None:
@@ -2102,8 +2189,7 @@ class SynthesisPage(QWidget):
             for chunk in chunks:
                 chunk_index = int(chunk.get("chunk_index", 0))
                 text = str(chunk.get("text") or "")
-                voice_id = str(chunk.get("voice_id") or "narrator_calm")
-                effective_voice = self._effective_test_voice_label(voice_id)
+                effective_voice = self._effective_test_voice_label_for_chunk(chunk)
                 self._test_chunk_combo.addItem(
                     t(
                         "synth.test_chunk_item",

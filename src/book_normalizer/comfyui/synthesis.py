@@ -12,6 +12,7 @@ from typing import Any
 from book_normalizer.chunking.manifest_v2 import DEFAULT_MANIFEST_NAME, ensure_v2_manifest
 from book_normalizer.comfyui.client import ComfyUIClient, ComfyUIError
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
+from book_normalizer.tts.voice_mapping import voice_mapping_candidates
 
 ProgressCallback = Callable[[str], None]
 
@@ -105,6 +106,52 @@ def build_output_path(
     return chapter_dir / f"chunk_{chunk_index + 1:03d}_{safe_voice}.wav"
 
 
+def load_speaker_overrides(path: Path | str | None) -> dict[str, str]:
+    """Load saved CustomVoice speaker overrides from a GUI clone config."""
+    if not path:
+        return {}
+    config_path = Path(path)
+    if not config_path.exists():
+        return {}
+    data = json.loads(config_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return {}
+
+    overrides: dict[str, str] = {}
+    for raw_key, raw_value in data.items():
+        key = str(raw_key).strip()
+        speaker = ""
+        if isinstance(raw_value, str):
+            speaker = raw_value.strip()
+        elif isinstance(raw_value, dict):
+            speaker = str(
+                raw_value.get("speaker")
+                or raw_value.get("saved_voice")
+                or raw_value.get("voice_id")
+                or "",
+            ).strip()
+        if key and speaker:
+            overrides[key] = speaker
+    return overrides
+
+
+def resolve_speaker_override(
+    chunk: dict[str, Any],
+    voice_label: str,
+    speaker_overrides: dict[str, str] | None,
+) -> str:
+    """Resolve a concrete CustomVoice speaker for one chunk if configured."""
+    if not speaker_overrides:
+        return ""
+    enriched = dict(chunk)
+    enriched.setdefault("voice_label", voice_label)
+    for key in voice_mapping_candidates(enriched):
+        speaker = speaker_overrides.get(key)
+        if speaker:
+            return speaker
+    return ""
+
+
 def synthesize_manifest(
     *,
     manifest: dict[str, Any],
@@ -115,6 +162,7 @@ def synthesize_manifest(
     chapter_filter: int | None = None,
     chunk_timeout: float = 300.0,
     failed_only: bool = False,
+    speaker_overrides: dict[str, str] | None = None,
     progress: ProgressCallback | None = None,
 ) -> SynthesisSummary:
     """Synthesize all pending chunks and update the manifest after each chunk."""
@@ -175,6 +223,11 @@ def synthesize_manifest(
                 voice_tone=voice_tone,
                 output_filename=output_filename,
                 language=language,
+                speaker_override=resolve_speaker_override(
+                    chunk,
+                    voice_label,
+                    speaker_overrides,
+                ),
             )
             client.synthesize_chunk(workflow, output_path, timeout=chunk_timeout)
         except ComfyUIError as exc:

@@ -145,6 +145,7 @@ class WorkflowBuilder:
         voice_tone: str,
         output_filename: str,
         language: str = "ru",
+        speaker_override: str = "",
     ) -> dict[str, Any]:
         """Return a workflow dict with all placeholders substituted.
 
@@ -158,7 +159,7 @@ class WorkflowBuilder:
         Returns:
             A deep copy of the template with all placeholders replaced.
         """
-        speaker = voice_label_to_speaker(voice_label)
+        speaker = speaker_override.strip() or voice_label_to_speaker(voice_label)
         instruct = voice_tone_to_instruct(voice_label, voice_tone)
         tts_language = qwen_tts_language(language)
         replacements = {

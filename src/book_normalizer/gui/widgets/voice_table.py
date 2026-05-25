@@ -33,6 +33,7 @@ except ImportError:  # pragma: no cover - depends on local PyQt6 multimedia buil
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest, flatten_v2_manifest
 from book_normalizer.gui.i18n import t, voice_category_label, voice_preset_label
 from book_normalizer.gui.voice_presets import VOICE_PRESETS
+from book_normalizer.tts.voice_mapping import segment_speaker
 
 INTONATION_KEYS = [
     "neutral", "calm", "excited", "joyful", "sad", "angry", "whisper",
@@ -80,18 +81,9 @@ def _role_from_voice_id(voice_id: str, fallback: str = "narrator") -> str:
     return fallback if fallback in {"narrator", "male", "female", "unknown"} else "narrator"
 
 
-def _segment_speaker(segment: dict[str, Any]) -> str:
-    """Return the character/system display name stored by the LLM manifest."""
-    for key in ("speaker", "character", "role_display_name"):
-        value = str(segment.get(key) or "").strip()
-        if value:
-            return value
-    return ""
-
-
 def _segment_role_display(segment: dict[str, Any]) -> str:
     """Return the human-facing role label for one segment."""
-    speaker = _segment_speaker(segment)
+    speaker = segment_speaker(segment)
     if speaker:
         return speaker
     section = str(segment.get("section_kind") or "").strip().lower()
@@ -868,7 +860,7 @@ class VoiceTableWidget(QWidget):
             key = _SECTION_ROLE_KEYS.get(section)
             if key:
                 add(t(key), f"section:{section}")
-            speaker = _segment_speaker(seg)
+            speaker = segment_speaker(seg)
             if speaker:
                 add(speaker, f"speaker:{speaker}")
         return options

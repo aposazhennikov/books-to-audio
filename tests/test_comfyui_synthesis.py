@@ -95,6 +95,34 @@ def test_synthesize_manifest_passes_manifest_language_to_workflow(tmp_path: Path
     assert builder.calls[0]["language"] == "uz"
 
 
+def test_synthesize_manifest_passes_character_voice_override(tmp_path: Path) -> None:
+    manifest = _manifest()
+    chunk = manifest["chapters"][0]["chunks"][0]
+    chunk.update(
+        {
+            "voice_label": "women",
+            "voice_id": "female_warm",
+            "role": "female",
+            "speaker": "Маргарита",
+            "emotion": "sad",
+        }
+    )
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    builder = _Builder()
+
+    synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=_Client(),  # type: ignore[arg-type]
+        builder=builder,  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+        speaker_overrides={"speaker:Маргарита|emotion:sad": "margarita_sad"},
+    )
+
+    assert builder.calls[0]["speaker_override"] == "margarita_sad"
+
+
 def test_synthesize_manifest_marks_failed_chunk(tmp_path: Path) -> None:
     manifest = _manifest()
     manifest_path = tmp_path / "chunks_manifest_v2.json"

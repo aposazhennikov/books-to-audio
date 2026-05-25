@@ -68,6 +68,23 @@ def test_workflow_builder_replaces_language_placeholder(tmp_path: Path) -> None:
     assert workflow["1"]["inputs"]["language"] == "Chinese"
 
 
+def test_workflow_builder_uses_custom_speaker_override(tmp_path: Path) -> None:
+    template = _write_template(
+        tmp_path / "workflow.json",
+        {"1": {"inputs": {"speaker": "{{SPEAKER}}", "text": "{{TEXT}}"}}},
+    )
+
+    workflow = WorkflowBuilder(template).build(
+        text="Hello.",
+        voice_label="women",
+        voice_tone="calm",
+        output_filename="chunk_001",
+        speaker_override="margarita_sad",
+    )
+
+    assert workflow["1"]["inputs"]["speaker"] == "margarita_sad"
+
+
 def test_workflow_builder_reports_missing_placeholders(tmp_path: Path) -> None:
     template = _write_template(tmp_path / "workflow.json", {"1": {"inputs": {"text": "{{TEXT}}"}}})
 

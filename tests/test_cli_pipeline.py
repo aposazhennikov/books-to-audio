@@ -52,6 +52,8 @@ def test_pipeline_command_runs_in_process_without_subprocess(
         "hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M",
         "--llm-endpoint",
         "http://localhost:11434",
+        "--chunk-mode",
+        "llm",
         "--max-chunk-chars",
         "400",
         "--ocr-mode",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full end-to-end pipeline: book file → normalized chapters → LLM chunks → audio.
+"""Full end-to-end pipeline: book file → normalized chapters → chunks → audio.
 
 This script orchestrates all stages in order:
 
@@ -14,8 +14,9 @@ This script orchestrates all stages in order:
       changes the text substantially (anti-hallucination guard).
       Overwrites the chapter files with the LLM-corrected versions.
 
-  Stage 3 — LLM chunking
-      Sends each chapter to Ollama for voice + tone annotation.
+  Stage 3 — Chunking
+      In the default LLM mode, sends each chapter to Ollama for voice + tone annotation.
+      In heuristic mode, runs the native rule-based chunk exporter with no LLM server.
       Produces ``chunks_manifest_v2.json`` with per-chunk records like::
 
           {"narrator": "Он вошёл в комнату.", "voice_tone": "calm", ...}
@@ -33,6 +34,12 @@ Usage (minimal — normalize + chunk only):
     python scripts/run_pipeline.py \\
         --book books/mybook.pdf \\
         --out output/
+
+Usage (offline smoke — normalize + heuristic chunks, no LLM):
+    python scripts/run_pipeline.py \\
+        --book books/mybook.pdf \\
+        --out output/ \\
+        --chunk-mode heuristic
 
 Usage (full pipeline with ComfyUI):
     python scripts/run_pipeline.py \\
@@ -57,6 +64,7 @@ Options:
     --llm-endpoint      Native Ollama endpoint
                         (default: http://localhost:11434).
     --llm-normalize     Run LLM grammar/punctuation/yofication pass.
+    --chunk-mode        llm (default) or heuristic (offline rule-based chunks).
     --synthesize        Run ComfyUI synthesis after chunking.
     --workflow          Path to ComfyUI workflow JSON template (required with --synthesize).
     --comfyui-url       ComfyUI URL (default: http://localhost:8188).
@@ -334,6 +342,49 @@ def run_stage3_llm_chunking(
     return manifest_path
 
 
+def run_stage3_heuristic_chunking(
+    book_dir: Path,
+    max_chunk_chars: int,
+    chapter_filter: int | None,
+) -> Path:
+    """Create v2 chunks manifest using the native heuristic exporter."""
+    args = [
+        "--book-dir",
+        str(book_dir),
+        "--mode",
+        "heuristic",
+        "--max-chunk-chars",
+        str(max_chunk_chars),
+    ]
+    print(f"Running in-process: export_chunks.py {' '.join(args)}")
+    _run_script_main("export_chunks.py", args)
+
+    manifest_path = book_dir / "chunks_manifest_v2.json"
+    if not manifest_path.exists():
+        print(f"ERROR: Expected manifest not found: {manifest_path}")
+        sys.exit(1)
+
+    if chapter_filter is not None:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        chapters = [
+            chapter
+            for chapter in manifest.get("chapters", [])
+            if int(chapter.get("chapter_index", -1)) + 1 == chapter_filter
+        ]
+        if not chapters:
+            print("ERROR: No matching chapters for heuristic chunking (check --chapter).")
+            sys.exit(1)
+        manifest["chapters"] = chapters
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        total = sum(len(chapter.get("chunks", [])) for chapter in chapters)
+        print(f"Manifest filtered to chapter {chapter_filter}: {total} chunk(s)")
+
+    return manifest_path
+
+
 # ── Stage 4: ComfyUI synthesis ────────────────────────────────────────────────
 
 
@@ -434,6 +485,12 @@ def main(argv: list[str] | None = None) -> None:
         help="Run LLM grammar/punctuation/yofication pass (Stage 2).",
     )
     parser.add_argument(
+        "--chunk-mode",
+        choices=["llm", "heuristic"],
+        default="llm",
+        help="Stage 3 chunking mode: llm for smart local Ollama markup, heuristic for offline rule-based chunks.",
+    )
+    parser.add_argument(
         "--llm-max-retries",
         type=int,
         default=None,
@@ -501,7 +558,8 @@ def main(argv: list[str] | None = None) -> None:
     print("\nBooks-to-Audio Pipeline")
     print(f"Book:   {book_path}")
     print(f"Output: {output_root}")
-    print(f"Model:  {args.llm_model}")
+    print(f"Model:  {args.llm_model if args.chunk_mode == 'llm' or args.llm_normalize else 'not used'}")
+    print(f"Chunk mode: {args.chunk_mode}")
     print(f"Chunks: <= {args.max_chunk_chars} chars")
 
     # ── Stage 1 ───────────────────────────────────────────────────────────────
@@ -526,16 +584,24 @@ def main(argv: list[str] | None = None) -> None:
         stage_banner(2, "LLM normalization — SKIPPED (use --llm-normalize to enable)")
 
     # ── Stage 3 ───────────────────────────────────────────────────────────────
-    stage_banner(3, "LLM chunking (voice + tone annotation)")
-    manifest_path = run_stage3_llm_chunking(
-        book_dir,
-        args.llm_endpoint,
-        args.llm_model,
-        args.language,
-        args.chapter,
-        args.llm_max_retries,
-        args.max_chunk_chars,
-    )
+    if args.chunk_mode == "llm":
+        stage_banner(3, "LLM chunking (voice + tone annotation)")
+        manifest_path = run_stage3_llm_chunking(
+            book_dir,
+            args.llm_endpoint,
+            args.llm_model,
+            args.language,
+            args.chapter,
+            args.llm_max_retries,
+            args.max_chunk_chars,
+        )
+    else:
+        stage_banner(3, "Heuristic chunking (offline rule-based)")
+        manifest_path = run_stage3_heuristic_chunking(
+            book_dir,
+            args.max_chunk_chars,
+            args.chapter,
+        )
 
     # ── Stage 4 ───────────────────────────────────────────────────────────────
     audio_dir = book_dir / "audio_chunks"

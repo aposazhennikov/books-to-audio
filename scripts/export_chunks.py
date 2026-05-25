@@ -255,7 +255,7 @@ def export_llm(
     print(f"Manifest v2 written: {out_path} ({len(all_chunk_specs)} chunks)")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Export voice-annotated chunks for TTS",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -305,7 +305,7 @@ def main() -> None:
         "--out", default=None,
         help="Output JSON path (default: book_dir/chunks_manifest_v2.json).",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.max_chunk_chars is not None and args.max_chunk_chars < 30:
         parser.error("--max-chunk-chars must be at least 30.")
 

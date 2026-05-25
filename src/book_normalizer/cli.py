@@ -163,6 +163,13 @@ def main() -> None:
     help="OpenAI-compatible LLM endpoint.",
 )
 @click.option("--llm-normalize", is_flag=True, default=False, help="Run LLM normalization before chunking.")
+@click.option(
+    "--chunk-mode",
+    type=click.Choice(["llm", "heuristic"]),
+    default="llm",
+    show_default=True,
+    help="Chunking mode: LLM smart markup or offline heuristic chunks.",
+)
 @click.option("--max-chunk-chars", type=int, default=400, show_default=True, help="Soft max chars per LLM chunk.")
 @click.option("--synthesize", is_flag=True, default=False, help="Run ComfyUI synthesis after chunking.")
 @click.option("--workflow", type=click.Path(path_type=Path), default=None, help="ComfyUI workflow template.")
@@ -183,6 +190,7 @@ def pipeline_command(
     llm_model: str,
     llm_endpoint: str,
     llm_normalize: bool,
+    chunk_mode: str,
     max_chunk_chars: int,
     synthesize: bool,
     workflow: Path | None,
@@ -202,6 +210,8 @@ def pipeline_command(
         llm_model,
         "--llm-endpoint",
         llm_endpoint,
+        "--chunk-mode",
+        chunk_mode,
         "--max-chunk-chars",
         str(max_chunk_chars),
         "--ocr-mode",

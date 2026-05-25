@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import ModuleType
 
@@ -105,6 +106,58 @@ def test_stage3_passes_language_and_review_report_to_native_chunker(
     assert manifest_path == book_dir / "chunks_manifest_v2.json"
     assert captured["language"] == "uz"
     assert captured["review_report_path"] == book_dir / "llm_chunking_review_report.json"
+
+
+def test_stage3_heuristic_invokes_native_exporter_and_filters_chapter(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pipeline = _load_run_pipeline()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    captured: list[tuple[str, list[str]]] = []
+
+    def fake_run_script_main(script_name: str, argv: list[str]) -> None:
+        captured.append((script_name, argv))
+        manifest_path = book_dir / "chunks_manifest_v2.json"
+        manifest_path.write_text(
+            """
+{
+  "version": 2,
+  "book_title": "book",
+  "chunker": "heuristic",
+  "chapters": [
+    {"chapter_index": 0, "chunks": [{"chunk_index": 0, "text": "One."}]},
+    {"chapter_index": 1, "chunks": [{"chunk_index": 0, "text": "Two."}]}
+  ]
+}
+""".strip(),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(pipeline, "_run_script_main", fake_run_script_main)
+
+    manifest_path = pipeline.run_stage3_heuristic_chunking(
+        book_dir,
+        max_chunk_chars=120,
+        chapter_filter=2,
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert captured == [
+        (
+            "export_chunks.py",
+            [
+                "--book-dir",
+                str(book_dir),
+                "--mode",
+                "heuristic",
+                "--max-chunk-chars",
+                "120",
+            ],
+        )
+    ]
+    assert [chapter["chapter_index"] for chapter in manifest["chapters"]] == [1]
 
 
 def test_synthesis_and_assembly_stages_invoke_script_mains_in_process(

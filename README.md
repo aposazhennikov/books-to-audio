@@ -267,6 +267,19 @@ RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama --languages 
 python scripts/quality_benchmark.py --skip-synthetic --book-glob "*.pdf" --limit-books 1
 ```
 
+Воспроизводимый public corpus для `en/zh/kk/uz` можно скачать без коммита самих
+текстов:
+
+```bash
+python scripts/fetch_quality_corpus.py --out-dir output/public_quality_corpus
+python scripts/quality_benchmark.py \
+  --skip-synthetic \
+  --books-dir output/public_quality_corpus \
+  --languages en,zh,kk,uz \
+  --book-language-map output/public_quality_corpus/languages.json \
+  --out-dir output/quality_reports_public_corpus
+```
+
 Для реального многоязычного корпуса задавайте язык на файл через JSON-карту,
 иначе TXT/DOCX/PDF без метаданных будут проверяться с общим `--book-language`.
 Пример `books/languages.json`:

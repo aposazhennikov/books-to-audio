@@ -868,6 +868,7 @@ def test_readme_documents_multilingual_ocr_and_benchmark_language_map() -> None:
     assert "tesseract-ocr-uzb" in readme
     assert "tesseract-langpack-chi_sim" in readme
     assert "tesseract-data-chi_sim" in readme
+    assert "python scripts/fetch_quality_corpus.py" in readme
     assert "--book-language-map" in readme
     assert '"english/*.txt": "en"' in readme
     assert "RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py" in readme

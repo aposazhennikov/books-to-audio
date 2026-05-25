@@ -35,9 +35,9 @@ def label_with_help(label: QLabel, text: str = "") -> tuple[QWidget, QToolButton
     row = QHBoxLayout(wrap)
     row.setContentsMargins(0, 0, 0, 0)
     row.setSpacing(6)
-    row.addWidget(label)
+    row.addWidget(label, alignment=Qt.AlignmentFlag.AlignVCenter)
     button = help_button(text)
-    row.addWidget(button)
+    row.addWidget(button, alignment=Qt.AlignmentFlag.AlignVCenter)
     row.addStretch()
     return wrap, button
 

@@ -140,6 +140,8 @@ class NormalizePage(QWidget):
             settings.setColumnStretch(column, 1)
 
         self._book_language = QComboBox()
+        self._book_language.setMaximumWidth(360)
+        self._book_language.setMinimumHeight(36)
         self._book_language_label = QLabel()
         self._book_language_label_wrap = self._label_with_help(
             self._book_language_label, "norm.book_language_tip"
@@ -148,6 +150,8 @@ class NormalizePage(QWidget):
 
         self._ocr_mode = QComboBox()
         self._ocr_mode.addItems(["auto", "off", "force", "compare"])
+        self._ocr_mode.setFixedWidth(180)
+        self._ocr_mode.setMinimumHeight(36)
         self._ocr_mode_label = QLabel()
         self._ocr_mode_label_wrap = self._label_with_help(
             self._ocr_mode_label, "norm.ocr_mode_tip"
@@ -171,6 +175,8 @@ class NormalizePage(QWidget):
         self._ocr_widgets.extend([self._ocr_dpi_label_wrap, self._ocr_dpi])
 
         self._ocr_psm = QComboBox()
+        self._ocr_psm.setMaximumWidth(360)
+        self._ocr_psm.setMinimumHeight(36)
         self._ocr_psm.currentIndexChanged.connect(self._update_psm_summary)
         self._populate_psm_combo()
         self._ocr_psm_summary = QLabel()
@@ -179,6 +185,7 @@ class NormalizePage(QWidget):
             "color: rgba(51,65,85,0.68); font-size: 11px; padding: 2px 2px 0 2px;"
         )
         self._ocr_psm_field = QWidget()
+        self._ocr_psm_field.setMaximumWidth(380)
         psm_field_layout = QVBoxLayout(self._ocr_psm_field)
         psm_field_layout.setContentsMargins(0, 0, 0, 0)
         psm_field_layout.setSpacing(3)
@@ -229,6 +236,7 @@ class NormalizePage(QWidget):
         self._add_setting(settings, 1, 0, self._llm_normalize_label_wrap, self._llm_normalize)
 
         self._llm_endpoint = QLineEdit(configured_ollama_endpoint())
+        self._llm_endpoint.setMinimumWidth(260)
         self._llm_endpoint_label = QLabel()
         self._llm_endpoint_label_wrap = self._label_with_help(
             self._llm_endpoint_label, "norm.llm_tip"
@@ -236,6 +244,7 @@ class NormalizePage(QWidget):
         self._add_setting(settings, 2, 0, self._llm_endpoint_label_wrap, self._llm_endpoint)
 
         self._llm_model = QLineEdit(PRIMARY_QWEN3_MODEL)
+        self._llm_model.setMinimumWidth(320)
         self._llm_model_label = QLabel()
         self._llm_model_label_wrap = self._label_with_help(
             self._llm_model_label, "norm.llm_tip"

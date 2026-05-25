@@ -339,6 +339,29 @@ def test_normalize_page_uses_readable_psm_options_and_centered_dpi(qapp) -> None
     ru_page.deleteLater()
 
 
+def test_normalize_page_pdf_controls_stay_compact_and_help_centered(qapp) -> None:
+    set_language("ru")
+    page = NormalizePage()
+    page._selected_path = "book.pdf"
+    page._update_ocr_visibility()
+
+    render_widget(page, 1180, 760, scale=1.0)
+
+    assert page._book_language.maximumWidth() == 360
+    assert page._ocr_mode.width() == 180
+    assert page._ocr_mode.maximumWidth() == 180
+    assert page._ocr_dpi.width() == 128
+    assert page._ocr_psm.maximumWidth() == 360
+    assert page._ocr_psm_field.maximumWidth() == 380
+
+    dpi_help = page._help_buttons["norm.ocr_dpi_tip"]
+    label_center = page._ocr_dpi_label.mapTo(page, page._ocr_dpi_label.rect().center()).y()
+    help_center = dpi_help.mapTo(page, dpi_help.rect().center()).y()
+    assert abs(label_center - help_center) <= 3
+
+    page.deleteLater()
+
+
 def test_normalize_page_hides_psm_summary_in_compact_pdf_layout(qapp) -> None:
     set_language("ru")
     page = NormalizePage()
@@ -480,6 +503,19 @@ def test_normalize_page_pdf_layout_stays_sane_at_small_size(qapp) -> None:
         assert editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         assert not editor.horizontalScrollBar().isVisible()
         assert not editor.verticalScrollBar().isVisible()
+
+    def page_rect(widget):
+        top_left = widget.mapTo(page, widget.rect().topLeft())
+        return QtCore.QRect(top_left, widget.size()).adjusted(0, 0, -1, -1)
+
+    raw_label = page_rect(page._raw_label)
+    raw_text = page_rect(page._raw_text)
+    norm_label = page_rect(page._norm_label)
+    norm_text = page_rect(page._norm_text)
+
+    assert raw_label.bottom() < raw_text.top()
+    assert norm_label.bottom() < norm_text.top()
+    assert raw_text.right() < norm_text.left()
 
     page.deleteLater()
 

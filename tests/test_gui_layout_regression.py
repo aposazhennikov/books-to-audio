@@ -361,6 +361,26 @@ def test_chunk_table_fixed_headers_have_readable_width() -> None:
     window.deleteLater()
 
 
+def test_chunk_primary_action_is_not_stretched_across_toolbar() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    render_widget(window, 1180, 760, scale=1.0)
+
+    page = window._voices_page
+    detect_rect = _rect_in_window(window, page._btn_detect)
+    load_rect = _rect_in_window(window, page._btn_load)
+
+    assert page._btn_detect.width() <= 380
+    assert load_rect.left() - detect_rect.right() >= 40
+    assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
+    assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+
+    window.close()
+    window.deleteLater()
+
+
 def test_synthesis_page_actions_are_visible_without_settings_scrollbar() -> None:
     app = qapp()
     _ = app

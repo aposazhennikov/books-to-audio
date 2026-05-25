@@ -12,6 +12,7 @@ from typing import Any
 
 from book_normalizer.comfyui.client import ComfyUIClient
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder, WorkflowBuilderError
+from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3_MODEL
 from book_normalizer.tts.local_runtime import check_tts_python
 from book_normalizer.tts.model_paths import default_comfyui_models_dir
 
@@ -137,17 +138,66 @@ def _check_workflow(workflow_path: Path) -> DoctorCheck:
 
 
 def _check_llm_endpoint(endpoint: str) -> DoctorCheck:
+    base_url = endpoint.rstrip("/")
     try:
         import httpx
 
-        resp = httpx.get(f"{endpoint.rstrip('/')}/models", timeout=5.0)
-        resp.raise_for_status()
-        data: dict[str, Any] = resp.json()
-        models = data.get("data", [])
-        detail = f"{endpoint}; {len(models)} model(s)" if isinstance(models, list) else endpoint
+        version_resp = httpx.get(f"{base_url}/api/version", timeout=5.0)
+        version_resp.raise_for_status()
+        version_data: dict[str, Any] = version_resp.json()
+        tags_resp = httpx.get(f"{base_url}/api/tags", timeout=5.0)
+        tags_resp.raise_for_status()
+        tags_data: dict[str, Any] = tags_resp.json()
+        models = tags_data.get("models", [])
+        version = str(version_data.get("version") or "unknown")
+        if isinstance(models, list):
+            model_names = _ollama_model_names(models)
+            preview = ", ".join(model_names[:3])
+            suffix = f": {preview}" if preview else ""
+            detail = f"{base_url}; native Ollama {version}; {len(models)} model(s){suffix}"
+            missing = _missing_default_ollama_models(model_names)
+            if missing:
+                return DoctorCheck(
+                    "Ollama / LLM endpoint",
+                    "warn",
+                    (
+                        f"{detail}. Missing default Qwen3 model(s): {', '.join(missing)}. "
+                        "Install natively with `install.bat --interactive --download-ollama-models` "
+                        "on Windows or `./install.sh --interactive --download-ollama-models` "
+                        "on Linux/macOS."
+                    ),
+                )
+        else:
+            detail = f"{base_url}; native Ollama {version}"
         return DoctorCheck("Ollama / LLM endpoint", "ok", detail)
     except Exception as exc:
-        return DoctorCheck("Ollama / LLM endpoint", "warn", f"{endpoint} is not reachable: {exc}")
+        return DoctorCheck(
+            "Ollama / LLM endpoint",
+            "warn",
+            (
+                f"{base_url} native Ollama API is not reachable: {exc}. "
+                "Start Ollama Desktop on Windows, or run `ollama serve` in a native Linux/macOS terminal."
+            ),
+        )
+
+
+def _ollama_model_names(models: list[Any]) -> list[str]:
+    """Return model names from Ollama /api/tags response records."""
+    names: list[str] = []
+    for model in models:
+        if not isinstance(model, dict):
+            continue
+        name = model.get("name") or model.get("model")
+        if name:
+            names.append(str(name))
+    return names
+
+
+def _missing_default_ollama_models(model_names: list[str]) -> list[str]:
+    """Return default Qwen3 models that are not installed in native Ollama."""
+    installed = {name.lower() for name in model_names}
+    required = [PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
+    return [model for model in required if model.lower() not in installed]
 
 
 def _check_comfyui(url: str) -> list[DoctorCheck]:

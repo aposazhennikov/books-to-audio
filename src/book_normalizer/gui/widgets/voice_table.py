@@ -244,7 +244,7 @@ class VoiceTableWidget(QWidget):
 
         self._editor_tabs = QTabWidget()
         self._editor_tabs.setObjectName("voiceTextEditorTabs")
-        self._editor_tabs.setMinimumHeight(158)
+        self._editor_tabs.setMinimumHeight(170)
         self._editor_tabs.setStyleSheet(
         "QTabWidget::pane {"
             "  border: 1px solid rgba(91,115,142,0.16);"
@@ -438,7 +438,7 @@ class VoiceTableWidget(QWidget):
             max(72, min(118, round(88 * self._ui_scale))),
         )
         self._editor_tabs.setMinimumHeight(
-            max(150, min(210, round(158 * self._ui_scale))),
+            max(164, min(230, round(170 * self._ui_scale))),
         )
         self._apply_table_layout()
 

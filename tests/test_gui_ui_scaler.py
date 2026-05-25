@@ -8,6 +8,8 @@ from book_normalizer.gui.ui_scaler import (
     UiScaler,
     apply_widget_scale_metrics,
     clamp_scale,
+    ensure_multilingual_fonts_loaded,
+    loaded_multilingual_font_families,
     make_app_font,
     scale_stylesheet,
 )
@@ -136,6 +138,15 @@ def test_gui_test_harness_uses_runtime_multilingual_font() -> None:
     assert families[: len(MULTILINGUAL_FONT_FAMILIES)] == list(
         MULTILINGUAL_FONT_FAMILIES,
     )
+
+
+def test_runtime_font_database_has_usable_families() -> None:
+    from tests.gui.helpers import qapp
+
+    _ = qapp()
+    ensure_multilingual_fonts_loaded()
+
+    assert loaded_multilingual_font_families()
 
 
 def test_ctrl_wheel_changes_ui_scale() -> None:

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from pathlib import Path
 
 from PyQt6.QtCore import QEvent, QObject, Qt
-from PyQt6.QtGui import QFont, QGuiApplication
+from PyQt6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -34,6 +35,22 @@ MULTILINGUAL_FONT_FAMILIES = (
     "Inter",
     "Helvetica Neue",
 )
+SYSTEM_FONT_FILES = (
+    "C:/Windows/Fonts/segoeui.ttf",
+    "C:/Windows/Fonts/segoeuib.ttf",
+    "C:/Windows/Fonts/msyh.ttc",
+    "C:/Windows/Fonts/msyhbd.ttc",
+    "C:/Windows/Fonts/simsun.ttc",
+    "C:/Windows/Fonts/arial.ttf",
+    "C:/Windows/Fonts/arialbd.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/System/Library/Fonts/Supplemental/PingFang.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+)
 
 _FONT_SIZE_RE = re.compile(r"(font-size\s*:\s*)(\d+(?:\.\d+)?)(px)", re.IGNORECASE)
 _BASE_STYLESHEET_PROPERTY = "_books_to_audio_base_stylesheet"
@@ -42,6 +59,8 @@ _BASE_MIN_WIDTH_PROPERTY = "_books_to_audio_base_minimum_width"
 _BASE_MAX_WIDTH_PROPERTY = "_books_to_audio_base_maximum_width"
 _BASE_MAX_HEIGHT_PROPERTY = "_books_to_audio_base_maximum_height"
 _QT_UNBOUNDED_SIZE = 16_000_000
+_FONT_LOAD_ATTEMPTED = False
+_LOADED_FONT_FAMILIES: list[str] = []
 
 
 def clamp_scale(scale: float) -> float:
@@ -68,6 +87,7 @@ def make_app_font(
     weight: QFont.Weight | None = None,
 ) -> QFont:
     """Create the application font with multilingual fallback families."""
+    ensure_multilingual_fonts_loaded()
     font = QFont()
     if hasattr(font, "setFamilies"):
         font.setFamilies(list(MULTILINGUAL_FONT_FAMILIES))
@@ -77,6 +97,31 @@ def make_app_font(
     if weight is not None:
         font.setWeight(weight)
     return font
+
+
+def ensure_multilingual_fonts_loaded() -> None:
+    """Load known system fonts when PyQt wheels expose an empty font database."""
+    global _FONT_LOAD_ATTEMPTED
+    if _FONT_LOAD_ATTEMPTED and _LOADED_FONT_FAMILIES:
+        return
+    if QGuiApplication.instance() is None:
+        return
+    loaded = False
+    for candidate in SYSTEM_FONT_FILES:
+        path = Path(candidate)
+        if path.exists():
+            font_id = QFontDatabase.addApplicationFont(str(path))
+            if font_id >= 0:
+                loaded = True
+                for family in QFontDatabase.applicationFontFamilies(font_id):
+                    if family not in _LOADED_FONT_FAMILIES:
+                        _LOADED_FONT_FAMILIES.append(family)
+    _FONT_LOAD_ATTEMPTED = loaded or bool(QFontDatabase.families())
+
+
+def loaded_multilingual_font_families() -> tuple[str, ...]:
+    """Return application font families loaded by the GUI fallback."""
+    return tuple(_LOADED_FONT_FAMILIES)
 
 
 def apply_widget_scale_metrics(root: QWidget, scale: float) -> None:

@@ -102,6 +102,10 @@ are intentionally not committed.
     output/final_readiness_report.json`. Result: `automated_gates_ok=true`,
     `complete_without_human_review=false`; remaining items are human
     listen-through and optional full-length acceptance synthesis.
+  - Manual listening checklist can be generated with:
+    `python scripts/create_listening_checklist.py --smoke-dir
+    output/live_tts_real_book_smoke_after_filter --out
+    output/manual_listening_checklist.md`.
   - Post-run resource check: ComfyUI was stopped, `ollama ps` was empty, and
     GPU memory returned to the low idle range.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.

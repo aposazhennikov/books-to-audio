@@ -74,3 +74,15 @@ python scripts\final_readiness_check.py `
 This aggregates the automated gates and keeps the remaining human listening
 step explicit instead of marking the project complete without ears on the
 post-filter audio sample.
+
+Manual listening checklist:
+
+```powershell
+python scripts\create_listening_checklist.py `
+  --smoke-dir output\live_tts_real_book_smoke_after_filter `
+  --out output\manual_listening_checklist.md
+```
+
+Use the generated checklist while listening to the post-filter WAV. It records
+the exact sample, expected manifest text, objective audio checks, and the final
+PASS/REVIEW/FAIL decision.

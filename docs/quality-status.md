@@ -91,9 +91,11 @@ are intentionally not committed.
   - Command: `python -m ruff check .`
   - Result: all checks passed.
   - Command: `python -m pytest -q`
-  - Result: 881 passed, 9 skipped.
+  - Result: 885 passed, 9 skipped.
   - GUI snapshot smoke: `tests/test_gui_layout_regression.py::test_main_window_snapshot_matches_baseline`
     passed locally.
+  - Resource state during this refresh: `ollama ps` was empty and ComfyUI was
+    not running, so verification did not keep any LLM/TTS model resident.
 
 ## Current External Gap
 

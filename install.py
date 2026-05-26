@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,8 @@ DEFAULT_OLLAMA_MODELS = (
     "hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M",
     "hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M",
 )
+DEFAULT_TESSDATA_LANGS = ("eng", "rus", "chi_sim", "kaz", "uzb", "osd")
+TESSDATA_FAST_BASE_URL = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main"
 DEFAULT_TTS_HASH_MODEL_IDS = (
     "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
     "Qwen/Qwen3-TTS-Tokenizer-12Hz",
@@ -33,6 +36,7 @@ LOG_PATH = Path("install.log")
 LOG_PATH_ENV = "BOOKS_TO_AUDIO_INSTALL_LOG"
 RUNTIME_CONFIG_PATH = Path("data/local_runtime_paths.json")
 HASH_MANIFEST_PATH = Path("data/install_hashes.json")
+TESSDATA_HASH_LABEL = "tessdata"
 TTS_HASH_LABEL = "tts_models"
 OLLAMA_HASH_LABEL = "ollama_models"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -112,6 +116,8 @@ def main() -> int:
     extras = _resolve_extras(args)
     paths = _resolve_install_paths(args, project_root)
     _resolve_optional_downloads(args)
+    if args.download_tessdata and paths.tessdata_dir is None:
+        paths.tessdata_dir = paths.install_root / "data" / "tessdata"
     venv_python = _venv_python(paths.venv_dir)
 
     _say("Books to Audio installer", "Установщик Books to Audio", "title")
@@ -177,6 +183,9 @@ def main() -> int:
     _say("Verifying imports...", "Проверяю импорты...", "info")
     _verify_imports(venv_python, extras, paths)
 
+    if args.download_tessdata:
+        _download_tessdata(paths, args.verify_hashes)
+
     if args.download_ollama_models:
         _pull_ollama_models(paths, args.verify_hashes)
 
@@ -227,6 +236,11 @@ def _parse_args() -> argparse.Namespace:
         "--download-ollama-models",
         action="store_true",
         help="Pull recommended local Qwen GGUF models with Ollama.",
+    )
+    parser.add_argument(
+        "--download-tessdata",
+        action="store_true",
+        help="Download Tesseract OCR language packs for ru/en/zh/kk/uz into --tessdata-dir or data/tessdata.",
     )
     parser.add_argument(
         "--download-tts-models",
@@ -483,6 +497,14 @@ def _prompt_text(
 def _resolve_optional_downloads(args: argparse.Namespace) -> None:
     if not _should_prompt(args):
         return
+    args.download_tessdata = args.download_tessdata or _prompt_yes_no(
+        "Download local Tesseract language packs for ru/en/zh/kk/uz? This avoids sudo for OCR languages.",
+        (
+            "Скачать локальные языковые пакеты Tesseract для ru/en/zh/kk/uz? "
+            "Это позволяет обойтись без sudo для OCR-языков."
+        ),
+        default=False,
+    )
     args.download_ollama_models = args.download_ollama_models or _prompt_yes_no(
         "Pull Qwen3 Ollama 8B/4B models now? This is several GB.",
         "Скачать Qwen3 Ollama 8B/4B сейчас? Это несколько ГБ.",
@@ -709,6 +731,55 @@ def _pull_ollama_models(paths: InstallPaths, verify_hashes: bool) -> None:
             )
     if verify_hashes:
         _verify_or_write_hash(OLLAMA_HASH_LABEL, paths.ollama_models_dir, metadata=hash_metadata)
+
+
+def _download_tessdata(paths: InstallPaths, verify_hashes: bool) -> None:
+    """Download supported Tesseract language data into a local tessdata folder."""
+    tessdata_dir = paths.tessdata_dir or (paths.install_root / "data" / "tessdata")
+    paths.tessdata_dir = tessdata_dir
+    tessdata_dir.mkdir(parents=True, exist_ok=True)
+    hash_metadata = {
+        "languages": list(DEFAULT_TESSDATA_LANGS),
+        "source": TESSDATA_FAST_BASE_URL,
+        "tessdata_dir": str(tessdata_dir),
+    }
+    if verify_hashes and _verified_hash_matches(
+        TESSDATA_HASH_LABEL,
+        tessdata_dir,
+        metadata=hash_metadata,
+    ):
+        _say(
+            "Tesseract language data already verified by SHA-256; skipping download.",
+            "Языковые данные Tesseract уже проверены по SHA-256; скачивание пропущено.",
+            "ok",
+        )
+        return
+
+    _say(
+        f"Downloading Tesseract language data to {tessdata_dir}...",
+        f"Скачиваю языковые данные Tesseract в {tessdata_dir}...",
+        "info",
+    )
+    for lang in DEFAULT_TESSDATA_LANGS:
+        target = tessdata_dir / f"{lang}.traineddata"
+        if target.exists() and target.stat().st_size > 0:
+            _say(
+                f"Tesseract language already present: {lang}",
+                f"Язык Tesseract уже есть: {lang}",
+                "ok",
+            )
+            continue
+        url = f"{TESSDATA_FAST_BASE_URL}/{lang}.traineddata"
+        tmp_target = target.with_suffix(".traineddata.tmp")
+        try:
+            urllib.request.urlretrieve(url, str(tmp_target))  # noqa: S310
+            if tmp_target.stat().st_size <= 0:
+                raise RuntimeError(f"Downloaded empty Tesseract language file: {lang}")
+            tmp_target.replace(target)
+        finally:
+            tmp_target.unlink(missing_ok=True)
+    if verify_hashes:
+        _verify_or_write_hash(TESSDATA_HASH_LABEL, tessdata_dir, metadata=hash_metadata)
 
 
 def _ollama_model_is_present(paths: InstallPaths, model: str) -> bool:

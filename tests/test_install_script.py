@@ -13,14 +13,18 @@ import pytest
 
 from install import (
     DEFAULT_OLLAMA_MODELS,
+    DEFAULT_TESSDATA_LANGS,
     DEFAULT_TTS_HASH_MODEL_IDS,
     HASH_MANIFEST_PATH,
     INSTALL_TOOL_PACKAGES,
     OLLAMA_HASH_LABEL,
     RUNTIME_CONFIG_PATH,
+    TESSDATA_FAST_BASE_URL,
+    TESSDATA_HASH_LABEL,
     TTS_HASH_LABEL,
     InstallPaths,
     _command_available,
+    _download_tessdata,
     _env_assignment,
     _hash_tree,
     _install_system_tools,
@@ -428,6 +432,7 @@ def test_interactive_dry_run_prompts_paths_and_writes_runtime_config(tmp_path: P
             "n",
             "n",
             "n",
+            "n",
         ]
     ) + "\n"
 
@@ -818,6 +823,80 @@ def test_pull_ollama_models_rejects_hash_mismatch_before_pull(
 
     with pytest.raises(SystemExit, match="Hash mismatch"):
         _pull_ollama_models(paths, verify_hashes=True)
+
+
+def test_download_tessdata_fetches_supported_languages_to_local_folder(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    paths = InstallPaths(
+        install_root=tmp_path,
+        venv_dir=tmp_path / ".venv",
+        models_dir=tmp_path / "models",
+        hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "ollama-models",
+        ollama_endpoint="http://127.0.0.1:11434",
+        ollama_bin="ollama",
+        tesseract_cmd="tesseract",
+        tessdata_dir=tmp_path / "custom-tessdata",
+        ffmpeg_bin="ffmpeg",
+    )
+    downloads: list[tuple[str, Path]] = []
+
+    def fake_urlretrieve(url: str, filename: str) -> tuple[str, None]:
+        target = Path(filename)
+        downloads.append((url, target))
+        target.write_bytes(b"traineddata")
+        return filename, None
+
+    monkeypatch.setattr("install.urllib.request.urlretrieve", fake_urlretrieve)
+
+    _download_tessdata(paths, verify_hashes=False)
+
+    assert downloads == [
+        (
+            f"{TESSDATA_FAST_BASE_URL}/{lang}.traineddata",
+            tmp_path / "custom-tessdata" / f"{lang}.traineddata.tmp",
+        )
+        for lang in DEFAULT_TESSDATA_LANGS
+    ]
+    assert {
+        path.name for path in (tmp_path / "custom-tessdata").glob("*.traineddata")
+    } == {f"{lang}.traineddata" for lang in DEFAULT_TESSDATA_LANGS}
+
+
+def test_download_tessdata_uses_install_root_default_and_hash_manifest(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    paths = InstallPaths(
+        install_root=tmp_path,
+        venv_dir=tmp_path / ".venv",
+        models_dir=tmp_path / "models",
+        hf_cache_dir=tmp_path / "hf-cache",
+        ollama_models_dir=tmp_path / "ollama-models",
+        ollama_endpoint="http://127.0.0.1:11434",
+        ollama_bin="ollama",
+        tesseract_cmd="tesseract",
+        ffmpeg_bin="ffmpeg",
+    )
+
+    def fake_urlretrieve(_url: str, filename: str) -> tuple[str, None]:
+        Path(filename).write_bytes(b"traineddata")
+        return filename, None
+
+    monkeypatch.setattr("install.urllib.request.urlretrieve", fake_urlretrieve)
+
+    _download_tessdata(paths, verify_hashes=True)
+
+    assert paths.tessdata_dir == tmp_path / "data" / "tessdata"
+    manifest = json.loads(HASH_MANIFEST_PATH.read_text(encoding="utf-8"))
+    assert manifest[TESSDATA_HASH_LABEL]["metadata"] == {
+        "languages": list(DEFAULT_TESSDATA_LANGS),
+        "source": TESSDATA_FAST_BASE_URL,
+        "tessdata_dir": str(paths.tessdata_dir),
+    }
 
 
 def test_command_available_accepts_explicit_tool_path(tmp_path: Path) -> None:

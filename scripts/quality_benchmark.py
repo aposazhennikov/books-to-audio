@@ -58,8 +58,8 @@ SYNTHETIC_SAMPLES = {
 }
 
 OCR_INSTALL_HINT = (
-    "Install native OCR tools with: Windows: install.bat --interactive --install-system-tools; "
-    "Linux/macOS: ./install.sh --interactive --install-system-tools"
+    "Install native OCR tools with: Windows: install.bat --interactive --install-system-tools --download-tessdata; "
+    "Linux/macOS: ./install.sh --interactive --install-system-tools --download-tessdata"
 )
 
 

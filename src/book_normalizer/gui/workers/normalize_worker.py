@@ -43,7 +43,7 @@ def _format_eta(seconds: float) -> str:
 def _native_ocr_install_hint() -> str:
     """Return the native installer command that enables OCR tools."""
     script = "install.bat" if platform.system() == "Windows" else "./install.sh"
-    return f"{script} --interactive --install-system-tools"
+    return f"{script} --interactive --install-system-tools --download-tessdata"
 
 
 def _effective_pdf_extraction_mode(
@@ -173,7 +173,10 @@ class NormalizeWorker(QThread):
                         runtime=ocr_runtime,
                         pytesseract_module=pytesseract_module,
                     )
-                    page_text = _postprocess_ocr_text(page_text)
+                    page_text = _postprocess_ocr_text(
+                        page_text,
+                        language_code=self._book_language,
+                    )
                     if _should_keep_ocr_text(page_text, self._book_language):
                         pages_text.append(page_text)
 

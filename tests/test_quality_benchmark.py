@@ -505,8 +505,8 @@ def test_quality_benchmark_pdf_ocr_error_points_to_native_installer(tmp_path: Pa
     markdown = module.format_markdown_report({"cases": [case]})
 
     assert case["install_hint"] == module.OCR_INSTALL_HINT
-    assert "install.bat --interactive --install-system-tools" in markdown
-    assert "./install.sh --interactive --install-system-tools" in markdown
+    assert "install.bat --interactive --install-system-tools --download-tessdata" in markdown
+    assert "./install.sh --interactive --install-system-tools --download-tessdata" in markdown
     assert "wsl" not in markdown.lower()
 
 

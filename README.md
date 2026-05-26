@@ -141,6 +141,7 @@ python install.py --yes                   # не спрашивать пути, 
 python install.py --interactive           # явно спросить пути и optional downloads
 python install.py --ollama-models-dir D:/OllamaModels
 python install.py --tesseract-bin "C:/Program Files/Tesseract-OCR/tesseract.exe" --tessdata-dir "C:/Program Files/Tesseract-OCR/tessdata"
+python install.py --download-tessdata     # локальные OCR-языки eng/rus/chi_sim/kaz/uzb без sudo
 python install.py --download-ollama-models
 python install.py --download-tts-models --verify-hashes
 ```
@@ -197,14 +198,16 @@ tesseract --list-langs
 ```
 
 Для книг на поддерживаемых языках должны быть доступны коды `eng`, `rus`,
-`chi_sim`, `kaz`, `uzb`. Если их нет, запустите native installer:
+`chi_sim`, `kaz`, `uzb`. Если их нет, запустите native installer. Флаг
+`--download-tessdata` скачивает языковые файлы в локальную ignored-папку
+`data/tessdata` и прописывает ее в runtime config, поэтому не требует `sudo`:
 
 ```bash
 # Windows
-install.bat --interactive --install-system-tools
+install.bat --interactive --install-system-tools --download-tessdata
 
 # Linux/macOS
-./install.sh --interactive --install-system-tools
+./install.sh --interactive --install-system-tools --download-tessdata
 ```
 
 ## Настройка LLM через нативную Ollama

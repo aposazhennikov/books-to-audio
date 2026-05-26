@@ -87,7 +87,7 @@ def test_normalize_page_prompts_native_ocr_install_when_tesseract_missing(
     page._update_ocr_visibility()
 
     assert not page._ocr_install_panel.isHidden()
-    assert "install.bat --interactive --install-system-tools" in page._ocr_install_label.text()
+    assert "install.bat --interactive --install-system-tools --download-tessdata" in page._ocr_install_label.text()
     assert page._btn_install_ocr_tools.text() == "Установить OCR"
     assert "wsl" not in page._ocr_install_label.text().lower()
 
@@ -125,7 +125,7 @@ def test_normalize_page_prompts_when_tesseract_language_pack_missing(
     assert not page._ocr_install_panel.isHidden()
     assert "rus" in page._ocr_install_label.text()
     assert "языкового пакета" in page._ocr_install_label.text()
-    assert "install.bat --interactive --install-system-tools" in page._ocr_install_label.text()
+    assert "install.bat --interactive --install-system-tools --download-tessdata" in page._ocr_install_label.text()
     assert "wsl" not in page._ocr_install_label.text().lower()
 
     page.deleteLater()
@@ -140,17 +140,23 @@ def test_native_ocr_installer_command_uses_host_os_without_wsl(tmp_path, monkeyp
     assert str(tmp_path / "install.bat") in args
     assert cwd == tmp_path.resolve()
     assert "wsl" not in flattened.lower()
-    assert _native_ocr_install_display_command() == "install.bat --interactive --install-system-tools"
+    assert (
+        _native_ocr_install_display_command()
+        == "install.bat --interactive --install-system-tools --download-tessdata"
+    )
 
     monkeypatch.setattr(normalize_page.platform, "system", lambda: "Linux")
     command, args, cwd = _native_ocr_installer_command(tmp_path)
     flattened = " ".join([command, *args])
 
     assert command == str((tmp_path / "install.sh").resolve())
-    assert args == ["--interactive", "--install-system-tools"]
+    assert args == ["--interactive", "--install-system-tools", "--download-tessdata"]
     assert cwd == tmp_path.resolve()
     assert "wsl" not in flattened.lower()
-    assert _native_ocr_install_display_command() == "./install.sh --interactive --install-system-tools"
+    assert (
+        _native_ocr_install_display_command()
+        == "./install.sh --interactive --install-system-tools --download-tessdata"
+    )
 
 
 def test_normalize_page_install_ocr_button_launches_native_installer(
@@ -184,7 +190,7 @@ def test_normalize_page_install_ocr_button_launches_native_installer(
     assert captured["cwd"] == str(tmp_path.resolve())
     assert "wsl" not in flattened.lower()
     assert "нативный установщик OCR" in page._progress._status.text()
-    assert "install.bat --interactive --install-system-tools" in page._progress._status.text()
+    assert "install.bat --interactive --install-system-tools --download-tessdata" in page._progress._status.text()
 
 
 def test_normalize_page_defaults_book_language_to_russian(qapp) -> None:

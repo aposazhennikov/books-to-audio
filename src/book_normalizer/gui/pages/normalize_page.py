@@ -50,7 +50,7 @@ def _project_root() -> Path:
 def _native_ocr_install_display_command() -> str:
     """Return the user-facing native OCR installer command."""
     script = "install.bat" if platform.system() == "Windows" else "./install.sh"
-    return f"{script} --interactive --install-system-tools"
+    return f"{script} --interactive --install-system-tools --download-tessdata"
 
 
 def _native_ocr_installer_command(
@@ -62,11 +62,23 @@ def _native_ocr_installer_command(
         script = root / "install.bat"
         return (
             "cmd.exe",
-            ["/c", "start", "", str(script), "--interactive", "--install-system-tools"],
+            [
+                "/c",
+                "start",
+                "",
+                str(script),
+                "--interactive",
+                "--install-system-tools",
+                "--download-tessdata",
+            ],
             root,
         )
     script = root / "install.sh"
-    return (str(script), ["--interactive", "--install-system-tools"], root)
+    return (
+        str(script),
+        ["--interactive", "--install-system-tools", "--download-tessdata"],
+        root,
+    )
 
 
 def _book_preview_lines(book: object, limit: int | None = None) -> tuple[list[str], list[str]]:

@@ -549,6 +549,7 @@ def _ocr_rendered_image(
     img: Any,
     *,
     lang: str,
+    language_code: str,
     psm: int,
     preprocess: bool,
     runtime: str,
@@ -563,7 +564,7 @@ def _ocr_rendered_image(
         runtime=runtime,
         pytesseract_module=pytesseract_module,
     )
-    return _postprocess_ocr_text(raw_text)
+    return _postprocess_ocr_text(raw_text, language_code=language_code)
 
 
 def _extract_pdf_structured(
@@ -667,6 +668,7 @@ def _extract_pdf_structured(
                             ocr_text = _ocr_rendered_image(
                                 segment,
                                 lang=lang,
+                                language_code=language_code,
                                 psm=psm,
                                 preprocess=preprocess,
                                 runtime=ocr_runtime,
@@ -692,6 +694,7 @@ def _extract_pdf_structured(
                             ocr_text = _ocr_rendered_image(
                                 image,
                                 lang=lang,
+                                language_code=language_code,
                                 psm=psm,
                                 preprocess=preprocess,
                                 runtime=ocr_runtime,
@@ -1013,8 +1016,10 @@ def _repair_ocr_cross_segment_breaks(text: str) -> str:
     return _OCR_CROSS_SEGMENT_PARTICIPLE_RE.sub(r"\1\2", text)
 
 
-def _postprocess_ocr_text(text: str) -> str:
+def _postprocess_ocr_text(text: str, language_code: str = "ru") -> str:
     """Clean OCR text from a single page image before downstream normalization."""
+    language_code = (language_code or "ru").strip().lower()
+    russian_rules = language_code in {"ru", "rus", "russian"}
     text = text.replace("\r", "\n").replace("\f", "\n")
     text = _OCR_HYPHEN_LINEBREAK_RE.sub(r"\1\2", text)
 
@@ -1030,7 +1035,12 @@ def _postprocess_ocr_text(text: str) -> str:
             previous_blank = True
             continue
         previous_blank = False
-        if _is_ocr_noise_line(line):
+        is_noise_line = (
+            _is_ocr_noise_line(line)
+            if russian_rules
+            else _is_multilingual_ocr_noise_line(line, language_code)
+        )
+        if is_noise_line:
             continue
         lines.append(line)
 
@@ -1060,15 +1070,49 @@ def _postprocess_ocr_text(text: str) -> str:
         paragraph = _INLINE_NOISE_BEFORE_DASH_RE.sub("", paragraph)
         if paragraph and re.search(r"[\^#*_~|\\/]", paragraph[-20:]):
             paragraph = _TRAILING_SYMBOL_NOISE_RE.sub("", paragraph)
-        paragraph = _trim_trailing_ocr_garbage(paragraph)
-        paragraph = _normalize_common_ocr_glitches(paragraph)
+        if russian_rules:
+            paragraph = _trim_trailing_ocr_garbage(paragraph)
+            paragraph = _normalize_common_ocr_glitches(paragraph)
         paragraph = re.sub(r"\s{2,}", " ", paragraph).strip()
         if paragraph:
-            for part in _split_inline_chapter_headings(paragraph):
-                if not _is_ocr_noise_paragraph(part):
+            parts = _split_inline_chapter_headings(paragraph) if russian_rules else [paragraph]
+            for part in parts:
+                is_noise = (
+                    _is_ocr_noise_paragraph(part)
+                    if russian_rules
+                    else _is_multilingual_ocr_noise_paragraph(part, language_code)
+                )
+                if not is_noise:
                     cleaned_paragraphs.append(part)
 
     return "\n\n".join(cleaned_paragraphs)
+
+
+def _is_multilingual_ocr_noise_line(line: str, language_code: str) -> bool:
+    """Return true for non-Russian OCR lines that are only scan debris."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    target_chars = target_script_char_count(stripped, language_code)
+    alnum = sum(ch.isalnum() for ch in stripped)
+    if target_chars == 0 and alnum <= 2:
+        return True
+    punctuation = sum(not ch.isalnum() and not ch.isspace() for ch in stripped)
+    return target_chars == 0 and punctuation / max(1, len(stripped)) > 0.45
+
+
+def _is_multilingual_ocr_noise_paragraph(paragraph: str, language_code: str) -> bool:
+    """Return true for non-Russian OCR paragraphs that lack target-language text."""
+    stripped = paragraph.strip()
+    if not stripped:
+        return True
+    target_chars = target_script_char_count(stripped, language_code)
+    if target_chars == 0:
+        alnum = sum(ch.isalnum() for ch in stripped)
+        return alnum <= 2 or _ocr_symbol_noise_ratio(stripped) > 0.35
+    if target_chars < 4 and len(stripped) < 20:
+        return True
+    return target_script_ratio(stripped, language_code) < 0.25 and _ocr_symbol_noise_ratio(stripped) > 0.2
 
 
 def _looks_like_toc(text: str) -> bool:
@@ -1135,7 +1179,7 @@ def _ocr_symbol_noise_ratio(text: str) -> float:
     """Estimate how much non-text scan debris survived OCR post-processing."""
     if not text:
         return 0.0
-    allowed = set(".,:;!?—–-«»\"()[]…")
+    allowed = set(".,:;!?—–-«»\"()[]…，。？！：；、“”‘’《》〈〉")
     noisy = sum(
         1
         for ch in text
@@ -1196,7 +1240,7 @@ def _ocr_pdf_with_tesseract(
                     runtime=ocr_runtime,
                     pytesseract_module=pytesseract if ocr_runtime == "pytesseract" else None,
                 )
-                page_text = _postprocess_ocr_text(page_text)
+                page_text = _postprocess_ocr_text(page_text, language_code=language_code)
 
                 if not _should_keep_ocr_text(page_text, language_code):
                     logger.debug(
@@ -1261,8 +1305,8 @@ def extract_pdf_with_ocr_mode(
     if not _tesseract_available():
         logger.warning(
             "Tesseract OCR is not installed in this OS environment. "
-            "Run install.bat --interactive --install-system-tools on Windows "
-            "or ./install.sh --interactive --install-system-tools on Linux/macOS. "
+            "Run install.bat --interactive --install-system-tools --download-tessdata on Windows "
+            "or ./install.sh --interactive --install-system-tools --download-tessdata on Linux/macOS. "
             "Falling back to native text extraction."
         )
         return PdfOcrCompareResult(

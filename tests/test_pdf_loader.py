@@ -250,8 +250,8 @@ class TestOcrModeSelection:
         assert compare.ocr is None
         warning.assert_called_once()
         warning_text = str(warning.call_args.args[0])
-        assert "install.bat --interactive --install-system-tools" in warning_text
-        assert "./install.sh --interactive --install-system-tools" in warning_text
+        assert "install.bat --interactive --install-system-tools --download-tessdata" in warning_text
+        assert "./install.sh --interactive --install-system-tools --download-tessdata" in warning_text
         assert "wsl" not in warning_text.lower()
 
 
@@ -469,6 +469,41 @@ class TestOcrImagePreparation:
         assert "СОДЕРЖАЩАЯ ГЛУБОКОЕ исследование предмета" in cleaned
         assert "#2" not in cleaned
 
+    @pytest.mark.parametrize(
+        ("language", "raw", "expected"),
+        [
+            (
+                "en",
+                "Chapter One.\nIt was a clear autumn morning.\nMargaret said good morning.",
+                "Chapter One. It was a clear autumn morning. Margaret said good morning.",
+            ),
+            (
+                "zh",
+                "第一章。\n这是一个晴朗的秋日早晨。\n旁白平静地描写房间。",
+                "第一章。 这是一个晴朗的秋日早晨。 旁白平静地描写房间。",
+            ),
+            (
+                "kk",
+                "Бірінші тарау.\nБұл ашық күзгі таң еді.\nБаяндаушы тыныш қаланы суреттеді.",
+                "Бірінші тарау. Бұл ашық күзгі таң еді. Баяндаушы тыныш қаланы суреттеді.",
+            ),
+            (
+                "uz",
+                "Birinchi bob.\nBu yorug kuz tongi edi.\nHikoyachi sokin shaharni tasvirladi.",
+                "Birinchi bob. Bu yorug kuz tongi edi. Hikoyachi sokin shaharni tasvirladi.",
+            ),
+        ],
+    )
+    def test_postprocess_ocr_text_preserves_supported_non_russian_languages(
+        self,
+        language: str,
+        raw: str,
+        expected: str,
+    ) -> None:
+        cleaned = _postprocess_ocr_text(raw, language_code=language)
+
+        assert cleaned == expected
+
     def test_postprocess_ocr_text_removes_inline_pipe_noise_before_dialogue(self) -> None:
         raw = (
             "Он нахватался зайчиков. Го | Фаланга пошла.\n"
@@ -679,6 +714,14 @@ class TestOcrImagePreparation:
 
         assert _should_keep_ocr_text(english, "en") is True
         assert _should_keep_ocr_text(english, "ru") is False
+
+    def test_should_keep_ocr_text_accepts_chinese_punctuation(self) -> None:
+        text = (
+            "第一章。这是一个晴朗的秋日早晨。玛格丽特说：早上好，师傅。"
+            "旁白平静地描写房间和窗外安静的城市。"
+        ) * 2
+
+        assert _should_keep_ocr_text(text, language_code="zh") is True
 
     def test_select_pdf_text_for_mode_uses_selected_language_quality(self) -> None:
         native = PdfTextVariant(kind="native", text="")

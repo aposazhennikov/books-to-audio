@@ -61,13 +61,13 @@ def test_native_ocr_install_hint_uses_host_os(monkeypatch) -> None:
         "book_normalizer.gui.workers.normalize_worker.platform.system",
         lambda: "Windows",
     )
-    assert _native_ocr_install_hint() == "install.bat --interactive --install-system-tools"
+    assert _native_ocr_install_hint() == "install.bat --interactive --install-system-tools --download-tessdata"
 
     monkeypatch.setattr(
         "book_normalizer.gui.workers.normalize_worker.platform.system",
         lambda: "Linux",
     )
-    assert _native_ocr_install_hint() == "./install.sh --interactive --install-system-tools"
+    assert _native_ocr_install_hint() == "./install.sh --interactive --install-system-tools --download-tessdata"
 
 
 def test_gui_pdf_missing_tesseract_error_points_to_native_installer(monkeypatch) -> None:
@@ -84,7 +84,7 @@ def test_gui_pdf_missing_tesseract_error_points_to_native_installer(monkeypatch)
         )
 
     message = str(exc_info.value)
-    assert "install.bat --interactive --install-system-tools" in message
+    assert "install.bat --interactive --install-system-tools --download-tessdata" in message
     assert "wsl" not in message.lower()
 
 
@@ -226,7 +226,11 @@ def test_gui_ocr_progress_uses_native_tesseract_runtime(tmp_path, monkeypatch) -
     monkeypatch.setitem(sys.modules, "fitz", fake_fitz)
     monkeypatch.setattr(pdf_loader, "_load_tesseract_runtime", lambda: ("cli", None))
     monkeypatch.setattr(pdf_loader, "_prepare_ocr_page_images", lambda _img: ["segment"])
-    monkeypatch.setattr(pdf_loader, "_postprocess_ocr_text", lambda text: text)
+    monkeypatch.setattr(
+        pdf_loader,
+        "_postprocess_ocr_text",
+        lambda text, **_kwargs: text,
+    )
     monkeypatch.setattr(pdf_loader, "_should_keep_ocr_text", lambda _text, _language: True)
     monkeypatch.setattr(pdf_loader, "_repair_ocr_cross_segment_breaks", lambda text: text)
     monkeypatch.setattr(pdf_loader, "remove_repeated_headers", lambda text, **_kwargs: text)

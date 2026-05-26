@@ -18,6 +18,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from book_normalizer.chunking.manifest_v2 import (
+    DEFAULT_MANIFEST_NAME,
+    chunk_is_excluded,
+    flatten_manifest,
+    load_manifest,
+)
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, set_language, t
 from book_normalizer.gui.pages.assembly_page import AssemblyPage
 from book_normalizer.gui.pages.normalize_page import NormalizePage
@@ -235,7 +241,7 @@ class MainWindow(QMainWindow):
         normalize = self._normalize_page
         normalize._llm_normalize.setChecked(True)
         normalize._ocr_dpi.setValue(600)
-        ocr_idx = normalize._ocr_mode.findText("compare")
+        ocr_idx = normalize._ocr_mode.findData("compare")
         if ocr_idx >= 0:
             normalize._ocr_mode.setCurrentIndex(ocr_idx)
         psm_idx = normalize._ocr_psm.findData(6)
@@ -306,6 +312,10 @@ class MainWindow(QMainWindow):
         self._statusbar.showMessage(t("status.roles_done"))
         self._tabs.setCurrentIndex(2)
         if self._auto_pipeline_active:
+            cached_chunks = self._cached_chunks_manifest()
+            if cached_chunks is not None:
+                self._on_chunks_built(str(cached_chunks))
+                return
             self._statusbar.showMessage(t("auto.chunks"))
             QTimer.singleShot(0, self._voices_page._build_tts_chunks)
 
@@ -317,6 +327,11 @@ class MainWindow(QMainWindow):
         self._set_assembly_target(mp, out_dir)
         self._statusbar.showMessage(t("status.voices_done"))
         if self._auto_pipeline_active:
+            if self._chunks_manifest_audio_complete(mp):
+                self._tabs.setCurrentIndex(4)
+                self._statusbar.showMessage(t("auto.assembly"))
+                QTimer.singleShot(0, self._assembly_page._run_assembly)
+                return
             self._tabs.setCurrentIndex(3)
             self._apply_auto_quality_settings()
             self._statusbar.showMessage(t("auto.synthesis"))
@@ -372,3 +387,41 @@ class MainWindow(QMainWindow):
             self._assembly_page.set_manifest(mp, out_dir)
         else:
             self._assembly_page.set_audio_dir(audio_dir, out_dir)
+
+    def _cached_chunks_manifest(self) -> Path | None:
+        """Return an existing valid chunks manifest for the current book output."""
+        if self._output_dir is None:
+            return None
+        manifest_path = self._output_dir / DEFAULT_MANIFEST_NAME
+        if not manifest_path.exists():
+            return None
+        try:
+            manifest = load_manifest(manifest_path)
+            chunks = flatten_manifest(manifest)
+        except (OSError, ValueError, TypeError):
+            return None
+        return manifest_path if chunks else None
+
+    def _chunks_manifest_audio_complete(self, manifest_path: Path) -> bool:
+        """Return True when every non-empty active chunk already has audio."""
+        try:
+            chunks = flatten_manifest(load_manifest(manifest_path))
+        except (OSError, ValueError, TypeError):
+            return False
+
+        usable_chunks = 0
+        for chunk in chunks:
+            if chunk_is_excluded(chunk):
+                continue
+            voice_label = str(chunk.get("voice_label") or "")
+            text = str(chunk.get("text") or (chunk.get(voice_label) if voice_label else "") or "")
+            if not text.strip():
+                continue
+            usable_chunks += 1
+            audio_file = str(chunk.get("audio_file") or "")
+            audio_path = Path(audio_file)
+            if audio_path and not audio_path.is_absolute():
+                audio_path = manifest_path.parent / audio_path
+            if not chunk.get("synthesized") or not audio_file or not audio_path.exists():
+                return False
+        return usable_chunks > 0

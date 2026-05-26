@@ -27,14 +27,15 @@ from PyQt6.QtWidgets import (
 
 from book_normalizer.gui.dialog_styles import apply_readable_message_box_style
 from book_normalizer.gui.i18n import t
-from book_normalizer.gui.ui_scaler import apply_combo_content_width
 from book_normalizer.gui.normalization_cache import (
     CachedNormalization,
     NormalizationCacheSettings,
+    find_any_cached_normalization,
     find_cached_normalization,
     load_cached_book,
     save_cached_book,
 )
+from book_normalizer.gui.ui_scaler import apply_combo_content_width
 from book_normalizer.gui.widgets.help_button import label_with_help, set_help_text
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.normalize_worker import NormalizeWorker
@@ -190,7 +191,6 @@ class NormalizePage(QWidget):
         self._ocr_mode = QComboBox()
         self._ocr_mode.setFixedWidth(180)
         self._ocr_mode.setMinimumHeight(36)
-        apply_combo_content_width(self._ocr_mode)
         self._ocr_mode_label = QLabel()
         self._ocr_mode_label_wrap = self._label_with_help(
             self._ocr_mode_label, "norm.ocr_mode_tip"
@@ -618,6 +618,8 @@ class NormalizePage(QWidget):
         cache_choice = cache_choice if cache_choice in {"restore", "fresh", "cancel"} else None
         settings = self._normalization_cache_settings(path)
         cached = self._find_cached_normalization(path, settings)
+        if cached is None and cache_choice == "restore":
+            cached = self._find_any_cached_normalization(path)
         if cached is not None:
             choice = cache_choice or self._ask_cached_normalization(path)
             if choice == "restore":
@@ -684,6 +686,14 @@ class NormalizePage(QWidget):
         """Find a completed normalization cache entry, ignoring unreadable cache state."""
         try:
             return find_cached_normalization(path, settings)
+        except OSError as exc:
+            logger.debug("Could not inspect normalization cache for %s: %s", path, exc)
+            return None
+
+    def _find_any_cached_normalization(self, path: Path) -> CachedNormalization | None:
+        """Find any completed normalization cache for automatic restore."""
+        try:
+            return find_any_cached_normalization(path)
         except OSError as exc:
             logger.debug("Could not inspect normalization cache for %s: %s", path, exc)
             return None

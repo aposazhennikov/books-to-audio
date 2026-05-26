@@ -317,7 +317,9 @@ def _format_legacy_results(result: dict[str, Path], *, audio_dir: Path) -> str:
 def _make_pause_spin_compact(spin: QSpinBox) -> None:
     """Match pause fields to compact centered numeric controls."""
     spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    spin.lineEdit().setAlignment(Qt.AlignmentFlag.AlignCenter)
+    line_edit = spin.lineEdit()
+    line_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    line_edit.setMinimumHeight(0)
     spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
     spin.setFixedWidth(128)
     spin.setFixedHeight(38)

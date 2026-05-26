@@ -71,6 +71,39 @@ def find_cached_roles(
     return _find_compatible_cached_roles(book, settings, cache_root=cache_root)
 
 
+def find_any_cached_roles(
+    book: object,
+    *,
+    cache_root: Path | None = None,
+) -> CachedRoleExtraction | None:
+    """Return the newest completed role cache for this book text."""
+    root = cache_root or CACHE_ROOT
+    if not root.exists():
+        return None
+
+    book_digest = _book_sha1(book)
+    for metadata_path in sorted(
+        root.glob("*/metadata.json"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    ):
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if metadata.get("schema_version") != CACHE_SCHEMA_VERSION:
+            continue
+        if metadata.get("book_sha1") != book_digest:
+            continue
+        entry = CachedRoleExtraction(
+            key=str(metadata.get("cache_key") or metadata_path.parent.name),
+            path=metadata_path.parent,
+        )
+        if entry.segments_path.exists() and entry.roles_path.exists():
+            return entry
+    return None
+
+
 def cached_role_entry_from_output_dir(output_dir: Path) -> CachedRoleExtraction | None:
     """Return an entry for already-written manifests in an output directory."""
     entry = CachedRoleExtraction(key=Path(output_dir).name, path=Path(output_dir))

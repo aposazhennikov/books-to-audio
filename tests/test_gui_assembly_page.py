@@ -158,9 +158,13 @@ def test_assembly_page_uses_light_compact_numeric_controls(qapp) -> None:
         assert spin.alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
         assert spin.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
         assert spin.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+        assert spin.lineEdit().minimumHeight() == 0
         assert spin.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
         assert spin.width() <= 128
         assert spin.height() == 38
+        spin_center = spin.mapTo(page, spin.rect().center()).y()
+        line_center = spin.lineEdit().mapTo(page, spin.lineEdit().rect().center()).y()
+        assert abs(spin_center - line_center) <= 1
 
     page.close()
     page.deleteLater()

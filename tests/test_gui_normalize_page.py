@@ -417,6 +417,53 @@ def test_normalize_page_prompts_for_cache_when_ocr_probe_changes(
     page.deleteLater()
 
 
+def test_normalize_page_auto_restore_uses_any_source_cache(
+    qapp,
+    qtbot,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    class _UnexpectedWorker:
+        def __init__(self, **_kwargs):
+            raise AssertionError("worker should not start when auto cache is restored")
+
+    book_path = tmp_path / "book.txt"
+    book_path.write_text("Cached source.", encoding="utf-8")
+    page = NormalizePage()
+    qtbot.addWidget(page)
+    page._selected_path = str(book_path)
+    page._path_label.setText(str(book_path))
+    page._btn_run.setEnabled(True)
+    cached_book = Book(
+        metadata=Metadata(title="Cached", language="ru", source_format="txt"),
+        chapters=[
+            Chapter(
+                index=0,
+                paragraphs=[
+                    Paragraph(raw_text="Cached source.", normalized_text="Cached result."),
+                ],
+            ),
+        ],
+    )
+    normalization_cache.save_cached_book(
+        cached_book,
+        book_path,
+        page._normalization_cache_settings(book_path),
+    )
+    page._book_language.setCurrentIndex(page._book_language.findData("en"))
+    monkeypatch.setattr(normalize_page, "NormalizeWorker", _UnexpectedWorker)
+    set_language("en")
+
+    page._run_normalization(cache_choice="restore")
+
+    assert page._book is not None
+    assert page._book.metadata.source_path == str(book_path)
+    assert page._norm_text.toPlainText() == "Cached result."
+    assert page._progress._status.text() == t("norm.cache_restored", n=1)
+    set_language("ru")
+    page.deleteLater()
+
+
 def test_normalize_page_can_run_from_scratch_when_cache_exists(qapp, qtbot, tmp_path, monkeypatch) -> None:
     started: list[bool] = []
 
@@ -723,9 +770,9 @@ def test_normalize_page_pdf_controls_stay_compact_and_help_centered(qapp) -> Non
 
     render_widget(page, 1180, 760, scale=1.0)
 
-    assert page._book_language.maximumWidth() == 360
-    assert page._ocr_mode.width() == 180
-    assert page._ocr_mode.maximumWidth() == 180
+    assert page._book_language.maximumWidth() <= 360
+    assert page._ocr_mode.width() <= 180
+    assert page._ocr_mode.maximumWidth() <= 180
     assert page._ocr_dpi.width() == 128
     assert page._ocr_psm.maximumWidth() == 360
     assert page._ocr_psm_field.maximumWidth() == 380

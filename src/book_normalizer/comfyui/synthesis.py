@@ -86,7 +86,7 @@ def collect_pending_chunks(
     for chapter, chunk in iter_manifest_chunks(manifest, chapter_filter):
         if chunk_is_excluded(chunk):
             continue
-        if chunk.get("synthesized", False):
+        if _chunk_is_done(chunk):
             continue
         if failed_only and not chunk.get("failed", False):
             continue
@@ -99,8 +99,23 @@ def count_done_chunks(manifest: dict[str, Any], chapter_filter: int | None = Non
     return sum(
         1
         for _chapter, chunk in iter_manifest_chunks(manifest, chapter_filter)
-        if not chunk_is_excluded(chunk) and chunk.get("synthesized", False)
+        if not chunk_is_excluded(chunk) and _chunk_is_done(chunk)
     )
+
+
+def _chunk_is_done(chunk: dict[str, Any]) -> bool:
+    """Return True when a chunk has no work left for synthesis."""
+    if not chunk.get("synthesized", False):
+        return False
+    if not _chunk_text(chunk).strip():
+        return True
+    audio_file = str(chunk.get("audio_file") or "")
+    return bool(audio_file) and Path(audio_file).exists()
+
+
+def _chunk_text(chunk: dict[str, Any]) -> str:
+    voice_label = str(chunk.get("voice_label") or "")
+    return str(chunk.get("text") or (chunk.get(voice_label) if voice_label else "") or "")
 
 
 def build_output_path(

@@ -399,6 +399,58 @@ def test_chunk_primary_action_is_not_stretched_across_toolbar() -> None:
     assert load_rect.left() - detect_rect.right() >= 40
     assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
     assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+    assert page._chunk_size.lineEdit().minimumHeight() == 0
+    chunk_rect = _rect_in_window(window, page._chunk_size)
+    chunk_line_rect = _rect_in_window(window, page._chunk_size.lineEdit())
+    assert abs(chunk_rect.center().y() - chunk_line_rect.center().y()) <= 1
+
+    window.close()
+    window.deleteLater()
+
+
+def test_assembly_pause_fields_stay_centered_at_high_scale() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(4)
+    render_widget(window, 2048, 715, scale=1.45)
+
+    page = window._assembly_page
+    for spin in (page._pause_same, page._pause_change):
+        assert spin.lineEdit().minimumHeight() == 0
+        spin_rect = _rect_in_window(window, spin)
+        line_rect = _rect_in_window(window, spin.lineEdit())
+        assert abs(spin_rect.center().y() - line_rect.center().y()) <= 1
+
+    window.close()
+    window.deleteLater()
+
+
+def test_synthesis_advanced_numeric_fields_stay_centered_at_high_scale() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(3)
+    window._synthesis_page._mode_tabs.setCurrentIndex(2)
+    render_widget(window, 2048, 715, scale=1.45)
+
+    model_combo = window._synthesis_page._asr_model_combo
+    model_line = model_combo.lineEdit()
+    assert model_line is not None
+    assert model_line.minimumHeight() == 0
+    combo_rect = _rect_in_window(window, model_combo)
+    model_line_rect = _rect_in_window(window, model_line)
+    assert abs(combo_rect.center().y() - model_line_rect.center().y()) <= 1
+
+    for spin in (
+        window._synthesis_page._batch_size,
+        window._synthesis_page._chunk_timeout,
+        window._synthesis_page._asr_timeout_spin,
+    ):
+        assert spin.lineEdit().minimumHeight() == 0
+        spin_rect = _rect_in_window(window, spin)
+        line_rect = _rect_in_window(window, spin.lineEdit())
+        assert abs(spin_rect.center().y() - line_rect.center().y()) <= 1
 
     window.close()
     window.deleteLater()
@@ -648,6 +700,79 @@ def test_loaded_llm_chunk_page_keeps_settings_controls_inside_panel() -> None:
 
     assert page._llm_panel.isVisible()
     assert page._top_tabs.height() > 188
+
+    window.close()
+    window.deleteLater()
+
+
+@pytest.mark.parametrize(
+    ("size", "scale"),
+    [
+        ((2048, 1228), 1.0),
+        ((1984, 1536), 1.0),
+        ((1636, 1536), 1.45),
+        ((2048, 873), 1.0),
+    ],
+)
+def test_loaded_llm_chunk_page_keeps_fields_separated_and_editor_accessible(
+    size: tuple[int, int],
+    scale: float,
+) -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    _populate_loaded_chunk_page(window, speaker_mode="llm")
+    render_widget(window, size[0], size[1], scale=scale)
+
+    page = window._voices_page
+    table = page._voice_table
+    top_tabs_rect = _rect_in_window(window, page._top_tabs)
+    table_panel_rect = _rect_in_window(window, table)
+
+    assert page._llm_panel.isVisible()
+    _assert_no_visual_overlap(
+        window,
+        [page._llm_provider, page._llm_endpoint, page._llm_model],
+    )
+    for field in (page._llm_provider, page._llm_endpoint, page._llm_model):
+        field_rect = _rect_in_window(window, field)
+        assert field_rect.top() >= top_tabs_rect.top()
+        assert field_rect.bottom() <= top_tabs_rect.bottom()
+
+    assert table._editor_tabs.isVisible()
+    assert table._segment_editor.isVisible()
+    assert table._segment_editor.height() >= 44
+    editor_tabs_rect = _rect_in_window(window, table._editor_tabs)
+    segment_editor_rect = _rect_in_window(window, table._segment_editor)
+    assert top_tabs_rect.bottom() <= table_panel_rect.top()
+    assert editor_tabs_rect.bottom() <= table_panel_rect.bottom()
+    assert segment_editor_rect.bottom() <= editor_tabs_rect.bottom()
+
+    window.close()
+    window.deleteLater()
+
+
+def test_loaded_llm_chunk_page_ultra_dense_has_no_overlapping_llm_controls() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    _populate_loaded_chunk_page(window, speaker_mode="llm")
+    render_widget(window, 760, 520, scale=1.45)
+
+    page = window._voices_page
+    assert page._voice_table._ultra_dense_mode is True
+    assert page._llm_panel.isHidden()
+    _assert_no_visual_overlap(
+        window,
+        [
+            page._speaker_mode,
+            page._chunk_size,
+            page._action_panel,
+            page._voice_table,
+        ],
+    )
 
     window.close()
     window.deleteLater()

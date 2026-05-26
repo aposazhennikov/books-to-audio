@@ -258,6 +258,51 @@ def test_roles_page_offers_existing_output_manifests_as_cache(
     page.deleteLater()
 
 
+def test_roles_page_auto_restore_uses_any_book_cache(
+    qapp,
+    qtbot,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    class _UnexpectedWorker:
+        def __init__(self, **_kwargs):
+            raise AssertionError("worker should not start when auto role cache is restored")
+
+    book = _sample_book()
+    output_dir = tmp_path / "output"
+    source_segments, source_roles = _write_cached_role_inputs(tmp_path / "cache_source")
+    page = RolesPage()
+    qtbot.addWidget(page)
+    page.set_book(book, output_dir)
+    role_cache.save_role_cache(
+        book,
+        page._role_cache_settings(),
+        source_segments,
+        source_roles,
+    )
+    page._llm_model.setText("different-model")
+    monkeypatch.setattr(roles_page, "ExportSegmentsWorker", _UnexpectedWorker)
+    set_language("en")
+
+    emitted: list[tuple[str, str]] = []
+    page.segments_ready.connect(lambda segments, roles: emitted.append((segments, roles)))
+    page._run_role_extraction(cache_choice="restore")
+
+    restored_roles = json.loads(
+        (output_dir / "roles_manifest.json").read_text(encoding="utf-8")
+    )
+    assert restored_roles["roles"][0]["display_name"] == "Cached Alice"
+    assert emitted == [
+        (
+            str(output_dir / "segments_manifest.json"),
+            str(output_dir / "roles_manifest.json"),
+        )
+    ]
+    assert page._progress._status.text() == t("roles.cache_restored", n=1)
+    set_language("ru")
+    page.deleteLater()
+
+
 def test_roles_page_can_extract_again_when_role_cache_exists(
     qapp,
     qtbot,

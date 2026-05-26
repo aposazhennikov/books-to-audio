@@ -104,7 +104,7 @@ def test_make_app_font_carries_multilingual_fallbacks() -> None:
 
 def test_apply_widget_scale_metrics_centers_numeric_fields() -> None:
     from PyQt6.QtCore import Qt
-    from PyQt6.QtWidgets import QSpinBox, QVBoxLayout, QWidget
+    from PyQt6.QtWidgets import QComboBox, QSpinBox, QVBoxLayout, QWidget
 
     from tests.gui.helpers import qapp
 
@@ -114,20 +114,24 @@ def test_apply_widget_scale_metrics_centers_numeric_fields() -> None:
     layout = QVBoxLayout(root)
     spin = QSpinBox()
     spin.setValue(600)
+    line_edit = spin.lineEdit()
     layout.addWidget(spin)
+    combo = QComboBox()
+    combo.setEditable(True)
+    combo.addItem("tiny")
+    combo_line_edit = combo.lineEdit()
+    layout.addWidget(combo)
 
     apply_widget_scale_metrics(root, 1.45)
 
     assert spin.alignment() & Qt.AlignmentFlag.AlignHCenter
     assert spin.alignment() & Qt.AlignmentFlag.AlignVCenter
-    try:
-        line_edit = spin.lineEdit()
-    except RuntimeError:
-        line_edit = None
-    if line_edit is None:
-        return
     assert line_edit.alignment() & Qt.AlignmentFlag.AlignHCenter
     assert line_edit.alignment() & Qt.AlignmentFlag.AlignVCenter
+    assert line_edit.minimumHeight() == 0
+    assert combo_line_edit is not None
+    assert combo_line_edit.alignment() & Qt.AlignmentFlag.AlignVCenter
+    assert combo_line_edit.minimumHeight() == 0
 
 
 def test_combo_content_width_uses_longest_item_not_row_width() -> None:

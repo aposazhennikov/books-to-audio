@@ -10,7 +10,6 @@ from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QComboBox,
     QFileDialog,
-    QFormLayout,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -48,6 +47,7 @@ class VoicesPage(QWidget):
         self._worker: ExportSegmentsWorker | None = None
         self._ui_scale = 1.0
         self._compact_mode = False
+        self._llm_layout_compact: bool | None = None
         self._setup_ui()
 
     # ── UI setup ──
@@ -117,38 +117,35 @@ class VoicesPage(QWidget):
 
         # LLM config panel (hidden by default).
         self._llm_panel = QWidget()
-        llm_layout = QFormLayout(self._llm_panel)
+        llm_layout = QGridLayout(self._llm_panel)
+        self._llm_layout = llm_layout
         llm_layout.setContentsMargins(0, 0, 0, 8)
         llm_layout.setHorizontalSpacing(12)
         llm_layout.setVerticalSpacing(6)
-        llm_layout.setFieldGrowthPolicy(
-            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow,
-        )
-        llm_layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        llm_layout.setColumnStretch(0, 0)
+        llm_layout.setColumnStretch(1, 1)
 
         self._llm_provider = QComboBox()
         self._llm_provider_label = QLabel()
         self._llm_provider.currentIndexChanged.connect(
             self._on_llm_provider_changed,
         )
-        llm_layout.addRow(self._llm_provider_label, self._llm_provider)
+        self._llm_provider.setMinimumHeight(28)
 
         self._llm_endpoint_label = QLabel()
         self._llm_endpoint = QLineEdit(configured_ollama_endpoint())
         self._llm_endpoint.setMinimumHeight(28)
-        llm_layout.addRow(self._llm_endpoint_label, self._llm_endpoint)
 
         self._llm_model_label = QLabel()
         self._llm_model = QLineEdit(PRIMARY_QWEN3_MODEL)
         self._llm_model.setMinimumHeight(28)
-        llm_layout.addRow(self._llm_model_label, self._llm_model)
 
         self._llm_api_key_label = QLabel()
         self._llm_api_key = QLineEdit()
         self._llm_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self._llm_api_key.setMinimumHeight(28)
         self._llm_api_key.setPlaceholderText("sk-...")
-        llm_layout.addRow(self._llm_api_key_label, self._llm_api_key)
+        self._apply_llm_layout(compact=False)
 
         self._llm_panel.setVisible(False)
         left_layout.addWidget(self._llm_panel)
@@ -320,6 +317,8 @@ class VoicesPage(QWidget):
         self._llm_endpoint_label.setText(t("voice.llm_endpoint"))
         self._llm_model_label.setText(t("voice.llm_model"))
         self._llm_api_key_label.setText(t("voice.llm_api_key"))
+        self._update_llm_placeholders()
+        self._sync_llm_field_visibility()
 
         self._voice_table.retranslate()
         self._voice_preview.retranslate()
@@ -340,26 +339,34 @@ class VoicesPage(QWidget):
 
     def _sync_settings_panel_height(self) -> None:
         """Balance the scrollable settings area against the assignment table."""
-        width_compact = self.width() < 960
+        width_compact = self.width() < round(960 * self._ui_scale)
         height_compact = self.height() < 760
+        ultra_dense = self.height() < 430
         content_needed = self._settings_panel.sizeHint().height()
         if self._top_tabs.tabBar().isVisible():
             content_needed += self._top_tabs.tabBar().sizeHint().height()
         content_needed += round((8 if height_compact else 18) * self._ui_scale)
-        if width_compact:
-            target = max(164, round(105 * self._ui_scale))
+        if ultra_dense:
+            target = max(164, round(112 * self._ui_scale))
             minimum = 164
+        elif width_compact:
+            target = max(224, round(178 * self._ui_scale), content_needed)
+            minimum = 224
         elif height_compact:
-            target = max(224, round(154 * self._ui_scale))
+            target = max(246, round(184 * self._ui_scale), content_needed)
             minimum = 224
         else:
-            target = max(188, round(188 * self._ui_scale))
+            target = max(188, round(188 * self._ui_scale), content_needed)
             minimum = 188
-        if not width_compact:
-            target = max(target, content_needed)
         if self.height() > 0:
-            if self.height() < 430:
+            has_segments = bool(self._voice_table.get_segments())
+            editor_visible = has_segments and not self._voice_table._dense_mode
+            if ultra_dense:
                 table_reserve = 145
+            elif editor_visible and height_compact:
+                table_reserve = max(330, round(280 * self._ui_scale))
+            elif editor_visible:
+                table_reserve = max(430, round(380 * self._ui_scale))
             elif height_compact:
                 table_reserve = 360
             else:
@@ -370,7 +377,7 @@ class VoicesPage(QWidget):
 
     def _sync_compact_mode(self) -> None:
         """Switch heavy table controls into compact mode on narrow widths."""
-        width_compact = self.width() < 960
+        width_compact = self.width() < round(960 * self._ui_scale)
         height_compact = self.height() < 760
         editor_dense = self.height() < 600
         controls_compact = width_compact or height_compact
@@ -379,6 +386,8 @@ class VoicesPage(QWidget):
         self._compact_mode = controls_compact
         self._voice_table.set_compact_mode(width_compact)
         self._voice_table.set_dense_mode(dense, ultra_dense=ultra_dense)
+        self._apply_llm_layout(compact=controls_compact)
+        self._llm_panel.setVisible(self._current_speaker_mode() == "llm" and not ultra_dense)
         self._settings_layout.setVerticalSpacing(4 if height_compact else 6)
         self._action_panel.layout().setContentsMargins(0, 4 if controls_compact else 0, 0, 0)
         self._chunk_size.setFixedHeight(42 if controls_compact else 38)
@@ -417,6 +426,63 @@ class VoicesPage(QWidget):
             t("voice.compact_save_manifest") if width_compact else t("voice.save_manifest")
         )
         self._btn_build.setText(t("voice.compact_build_chunks") if width_compact else t("voice.build_chunks"))
+        self._sync_llm_field_visibility()
+
+    def _llm_rows(self) -> tuple[tuple[QLabel, QWidget], ...]:
+        """Return LLM config rows in stable visual order."""
+        return (
+            (self._llm_provider_label, self._llm_provider),
+            (self._llm_endpoint_label, self._llm_endpoint),
+            (self._llm_model_label, self._llm_model),
+            (self._llm_api_key_label, self._llm_api_key),
+        )
+
+    def _apply_llm_layout(self, *, compact: bool) -> None:
+        """Use deterministic rows so high DPI wrapping cannot overlap fields."""
+        if self._llm_layout_compact == compact:
+            return
+        self._llm_layout_compact = compact
+        while self._llm_layout.count():
+            self._llm_layout.takeAt(0)
+        self._llm_layout.setColumnStretch(0, 1 if compact else 0)
+        self._llm_layout.setColumnStretch(1, 1)
+        for row, (label, field) in enumerate(self._llm_rows()):
+            if compact:
+                self._llm_layout.addWidget(field, row, 0, 1, 2)
+            else:
+                label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                self._llm_layout.addWidget(label, row, 0)
+                self._llm_layout.addWidget(field, row, 1)
+        self._update_llm_placeholders()
+        self._sync_llm_field_visibility()
+
+    def _sync_llm_field_visibility(self) -> None:
+        """Show provider-specific LLM fields without reviving hidden compact labels."""
+        if not hasattr(self, "_llm_provider"):
+            return
+        provider = self._llm_provider.currentData()
+        is_local = provider == "local"
+        compact = bool(self._llm_layout_compact)
+        visible_by_field = {
+            self._llm_provider: True,
+            self._llm_endpoint: is_local,
+            self._llm_model: True,
+            self._llm_api_key: not is_local,
+        }
+        for label, field in self._llm_rows():
+            visible = visible_by_field.get(field, True)
+            field.setVisible(visible)
+            label.setVisible(visible and not compact)
+
+    def _update_llm_placeholders(self) -> None:
+        """Keep compact LLM rows identifiable when labels are hidden."""
+        if not hasattr(self, "_llm_provider"):
+            return
+        for label, field in self._llm_rows():
+            hint = label.text().rstrip(":")
+            field.setToolTip(hint)
+            if isinstance(field, QLineEdit) and field is not self._llm_api_key:
+                field.setPlaceholderText(hint)
 
     def _current_speaker_mode(self) -> str:
         """Return the internal speaker attribution mode."""
@@ -476,7 +542,8 @@ class VoicesPage(QWidget):
     def _on_speaker_mode_changed(self, _idx: int) -> None:
         """Show/hide LLM config when speaker mode changes."""
         mode = self._current_speaker_mode()
-        self._llm_panel.setVisible(mode == "llm")
+        ultra_dense = self.height() < 430
+        self._llm_panel.setVisible(mode == "llm" and not ultra_dense)
         self._update_speaker_mode_hint()
         self._refresh_loaded_layout()
 
@@ -484,10 +551,7 @@ class VoicesPage(QWidget):
         """Toggle endpoint vs API key fields based on provider."""
         provider = self._llm_provider.currentData()
         is_local = provider == "local"
-        self._llm_endpoint.setVisible(is_local)
-        self._llm_endpoint_label.setVisible(is_local)
-        self._llm_api_key.setVisible(not is_local)
-        self._llm_api_key_label.setVisible(not is_local)
+        self._sync_llm_field_visibility()
         if not is_local:
             self._llm_endpoint.setText("https://api.openai.com/v1")
             self._llm_model.setText("gpt-4o-mini")

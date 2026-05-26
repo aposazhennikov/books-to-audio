@@ -10,6 +10,7 @@ from book_normalizer.gui.role_cache import (
     RoleCacheSettings,
     cache_path_for,
     cached_role_entry_from_output_dir,
+    find_any_cached_roles,
     find_cached_roles,
     restore_role_cache,
     save_role_cache,
@@ -142,6 +143,28 @@ def test_role_cache_key_uses_normalized_book_text_and_settings(tmp_path: Path) -
         _settings(book_language="en"),
         cache_root=cache_root,
     ) is None
+
+
+def test_role_cache_can_find_book_entry_ignoring_settings(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    segments_path, roles_path = _write_manifests(source_dir)
+    cache_root = tmp_path / "cache"
+    book = _book(text="Same normalized text.")
+    entry = save_role_cache(
+        book,
+        _settings(book_language="ru"),
+        segments_path,
+        roles_path,
+        cache_root=cache_root,
+    )
+
+    assert find_cached_roles(
+        book,
+        _settings(book_language="en"),
+        cache_root=cache_root,
+    ) is None
+    assert find_any_cached_roles(book, cache_root=cache_root) == entry
 
 
 def test_role_cache_normalizes_llm_endpoint_suffix(tmp_path: Path) -> None:

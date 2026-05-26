@@ -13,6 +13,7 @@ from PyQt6.QtGui import QBrush, QColor, QDesktopServices
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QAbstractSpinBox,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -120,6 +121,18 @@ def _host_path_from_text(path_text: str | Path) -> Path:
 def _make_combo_compact(combo: QComboBox, min_chars: int = 18) -> None:
     """Keep combo width tied to its own items instead of the parent row."""
     apply_combo_content_width(combo, empty_min_chars=min_chars)
+    if combo.isEditable():
+        line_edit = combo.lineEdit()
+        if line_edit is not None:
+            line_edit.setAlignment(line_edit.alignment() | Qt.AlignmentFlag.AlignVCenter)
+            line_edit.setMinimumHeight(0)
+
+
+def _center_spinbox_text(spin: QAbstractSpinBox) -> None:
+    spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    line_edit = spin.lineEdit()
+    line_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    line_edit.setMinimumHeight(0)
 
 
 def _make_text_edit_compact(edit: QPlainTextEdit) -> None:
@@ -1218,6 +1231,7 @@ class SynthesisPage(QWidget):
         self._batch_size = QSpinBox()
         self._batch_size.setRange(1, 8)
         self._batch_size.setValue(1)
+        _center_spinbox_text(self._batch_size)
         self._batch_size.setMaximumWidth(140)
         self._batch_label = QLabel()
         form.addRow(
@@ -1230,6 +1244,7 @@ class SynthesisPage(QWidget):
         self._chunk_timeout.setValue(300)
         self._chunk_timeout.setSingleStep(30)
         self._chunk_timeout.setSuffix(" s")
+        _center_spinbox_text(self._chunk_timeout)
         self._chunk_timeout.setMaximumWidth(150)
         self._chunk_timeout_label = QLabel()
         form.addRow(
@@ -1386,6 +1401,7 @@ class SynthesisPage(QWidget):
         self._asr_timeout_spin.setValue(180)
         self._asr_timeout_spin.setSingleStep(30)
         self._asr_timeout_spin.setSuffix(" s")
+        _center_spinbox_text(self._asr_timeout_spin)
         self._asr_timeout_spin.setMaximumWidth(150)
         self._asr_timeout_label = QLabel()
         form.addRow(

@@ -71,6 +71,34 @@ def find_cached_normalization(
     return CachedNormalization(key=path.stem, path=path)
 
 
+def find_any_cached_normalization(
+    source_path: Path,
+    *,
+    cache_root: Path | None = None,
+) -> CachedNormalization | None:
+    """Return the newest completed cache entry for the source file."""
+    root = cache_root or CACHE_ROOT
+    if not root.exists():
+        return None
+
+    source_digest = _file_sha1(source_path)
+    for candidate in sorted(root.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if payload.get("schema_version") != CACHE_SCHEMA_VERSION:
+            continue
+        source = payload.get("source")
+        if not isinstance(source, dict) or source.get("sha1") != source_digest:
+            continue
+        cache_key = payload.get("cache_key")
+        if not isinstance(cache_key, str) or not cache_key:
+            continue
+        return CachedNormalization(key=cache_key, path=candidate)
+    return None
+
+
 def cache_path_for(
     source_path: Path,
     settings: NormalizationCacheSettings,

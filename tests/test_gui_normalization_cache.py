@@ -9,6 +9,7 @@ from book_normalizer.gui.normalization_cache import (
     CachedNormalization,
     NormalizationCacheSettings,
     cache_path_for,
+    find_any_cached_normalization,
     find_cached_normalization,
     load_cached_book,
     save_cached_book,
@@ -84,6 +85,21 @@ def test_normalization_cache_misses_when_settings_change(tmp_path: Path) -> None
     save_cached_book(_book(), source, _settings(book_language="ru"), cache_root=cache_root)
 
     assert find_cached_normalization(source, _settings(book_language="en"), cache_root=cache_root) is None
+
+
+def test_normalization_cache_can_find_source_entry_ignoring_settings(tmp_path: Path) -> None:
+    source = tmp_path / "book.txt"
+    source.write_text("source text", encoding="utf-8")
+    cache_root = tmp_path / "cache"
+    entry = save_cached_book(
+        _book(),
+        source,
+        _settings(book_language="ru"),
+        cache_root=cache_root,
+    )
+
+    assert find_cached_normalization(source, _settings(book_language="en"), cache_root=cache_root) is None
+    assert find_any_cached_normalization(source, cache_root=cache_root) == entry
 
 
 def test_normalization_cache_normalizes_llm_endpoint_suffix(tmp_path: Path) -> None:

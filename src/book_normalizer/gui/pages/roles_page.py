@@ -29,6 +29,7 @@ from book_normalizer.gui.role_cache import (
     CachedRoleExtraction,
     RoleCacheSettings,
     cached_role_entry_from_output_dir,
+    find_any_cached_roles,
     find_cached_roles,
     restore_role_cache,
     save_role_cache,
@@ -268,6 +269,8 @@ class RolesPage(QWidget):
         cache_choice = cache_choice if cache_choice in {"restore", "fresh", "cancel"} else None
         settings = self._role_cache_settings()
         cached = self._find_cached_roles(settings)
+        if cached is None and cache_choice == "restore":
+            cached = self._find_any_cached_roles()
         if cached is not None:
             choice = cache_choice or self._ask_cached_roles()
             if choice == "restore":
@@ -339,6 +342,14 @@ class RolesPage(QWidget):
             logger.debug("Could not inspect output role manifests: %s", exc)
             return None
         return None
+
+    def _find_any_cached_roles(self) -> CachedRoleExtraction | None:
+        """Find any completed role cache for the current book."""
+        try:
+            return find_any_cached_roles(self._book)
+        except (OSError, ValueError, TypeError) as exc:
+            logger.debug("Could not inspect role cache: %s", exc)
+            return None
 
     def _ask_cached_roles(self) -> str:
         """Ask whether to restore cached completed roles or extract again."""

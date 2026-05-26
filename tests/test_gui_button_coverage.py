@@ -382,6 +382,121 @@ def test_main_window_auto_pipeline_runs_all_steps_with_quality_settings(
     assert window.statusBar().currentMessage() == t("auto.complete")
 
 
+def test_main_window_auto_pipeline_reuses_cached_chunks_manifest(
+    qapp,
+    qtbot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_dir = tmp_path / "cached_out"
+    output_dir.mkdir()
+    audio_path = output_dir / "audio_chunks" / "chapter_001" / "chunk_001_narrator.wav"
+    audio_path.parent.mkdir(parents=True)
+    audio_path.write_bytes(b"RIFF$\x00\x00\x00WAVEfmt ")
+    segments_path = output_dir / "segments_manifest.json"
+    roles_path = output_dir / "roles_manifest.json"
+    segments_path.write_text(
+        json.dumps(
+            [
+                {
+                    "segment_index": 0,
+                    "chapter_index": 0,
+                    "role": "narrator",
+                    "voice_id": "narrator_calm",
+                    "text": "Cached line.",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    roles_path.write_text('{"roles": []}', encoding="utf-8")
+    chunks_path = output_dir / "chunks_manifest_v2.json"
+    chunks_path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "book_title": "Cached",
+                "language": "en",
+                "chapters": [
+                    {
+                        "chapter_index": 0,
+                        "chunks": [
+                            {
+                                "chapter_index": 0,
+                                "chunk_index": 0,
+                                "voice_label": "narrator",
+                                "voice_id": "narrator_calm",
+                                "text": "Cached line.",
+                                "synthesized": True,
+                                "audio_file": str(audio_path),
+                            }
+                        ],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    captured_assembly: dict = {}
+
+    class _FakeAssemblyWorker:
+        def __init__(
+            self,
+            audio_dir,
+            output_dir,
+            pause_same,
+            pause_change,
+            manifest_path=None,
+            parent=None,
+        ):
+            captured_assembly.update(
+                {
+                    "audio_dir": audio_dir,
+                    "output_dir": output_dir,
+                    "pause_same": pause_same,
+                    "pause_change": pause_change,
+                    "manifest_path": manifest_path,
+                    "parent": parent,
+                }
+            )
+            self.progress = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            self.finished.emit("Chapter 001: 1 chunks -> 1.0s")
+
+    monkeypatch.setattr(assembly_page, "AssemblyWorker", _FakeAssemblyWorker)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._output_dir = output_dir
+    window._auto_pipeline_active = True
+    window._btn_auto_pipeline.setEnabled(False)
+    monkeypatch.setattr(
+        window._voices_page,
+        "_build_tts_chunks",
+        lambda: (_ for _ in ()).throw(AssertionError("chunks should come from cache")),
+    )
+    monkeypatch.setattr(
+        window._synthesis_page,
+        "_start_synthesis",
+        lambda: (_ for _ in ()).throw(AssertionError("complete cached audio should skip synthesis")),
+    )
+
+    window._on_roles_segments_ready(str(segments_path), str(roles_path))
+    qtbot.waitUntil(lambda: not window._auto_pipeline_active, timeout=2000)
+
+    assert captured_assembly["manifest_path"] == chunks_path
+    assert captured_assembly["output_dir"] == output_dir
+    assert window.statusBar().currentMessage() == t("auto.complete")
+    cached_manifest = json.loads(chunks_path.read_text(encoding="utf-8"))
+    assert cached_manifest["chapters"][0]["chunks"][0]["audio_file"] == str(audio_path)
+
+
 def test_main_window_auto_pipeline_requires_selected_book(qapp, qtbot) -> None:
     window = MainWindow()
     qtbot.addWidget(window)

@@ -268,6 +268,7 @@ class VoiceTableWidget(QWidget):
         layout.addWidget(self._quick_apply_panel)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
+        self._splitter = splitter
         splitter.setChildrenCollapsible(False)
 
         # Table.
@@ -325,9 +326,9 @@ class VoiceTableWidget(QWidget):
         self._editor_tabs.addTab(self._build_segment_editor(), "")
         self._editor_tabs.addTab(self._build_full_text_editor(), "")
         splitter.addWidget(self._editor_tabs)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
-        layout.addWidget(splitter)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 2)
+        layout.addWidget(splitter, 1)
 
         self.retranslate()
         self._apply_table_layout()
@@ -535,8 +536,9 @@ class VoiceTableWidget(QWidget):
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Fallback compact switching when the table is used outside VoicesPage."""
         super().resizeEvent(event)
-        self.set_compact_mode(self.width() < 960)
+        self.set_compact_mode(self.width() < round(960 * self._ui_scale))
         self._sync_visible_row_widgets()
+        self._sync_splitter_layout()
 
     def set_ui_scale(self, scale: float) -> None:
         """Keep table row and editor heights in step with global UI zoom."""
@@ -551,6 +553,7 @@ class VoiceTableWidget(QWidget):
             max(148, min(190, round(150 * self._ui_scale))),
         )
         self._apply_table_layout()
+        self._sync_splitter_layout()
 
     def set_compact_mode(self, compact: bool) -> None:
         """Reduce columns and labels for small windows."""
@@ -642,6 +645,7 @@ class VoiceTableWidget(QWidget):
             intonation_combo = self._table.cellWidget(row, 6)
             if isinstance(intonation_combo, QComboBox):
                 apply_combo_content_width(intonation_combo)
+        self._sync_splitter_layout()
 
     def _sync_editor_visibility(self) -> None:
         """Hide the chunk editor until there is something meaningful to edit."""
@@ -653,6 +657,27 @@ class VoiceTableWidget(QWidget):
         self._editor_tabs.setVisible(has_segments and not self._dense_mode)
         self._btn_prev_segment.setEnabled(has_multiple_visible_rows)
         self._btn_next_segment.setEnabled(has_multiple_visible_rows)
+        self._sync_splitter_layout()
+
+    def _sync_splitter_layout(self) -> None:
+        """Reserve a stable editor area while letting the table scroll."""
+        if not hasattr(self, "_splitter"):
+            return
+        if not self._editor_tabs.isVisible():
+            self._table.setMaximumHeight(16777215)
+            return
+
+        table_min = self._table.minimumHeight()
+        editor_min = self._editor_tabs.minimumHeight()
+        table_cap = max(table_min, min(round(260 * self._ui_scale), 260))
+        self._table.setMaximumHeight(table_cap)
+
+        total = self._splitter.height()
+        if total <= 0:
+            total = table_cap + editor_min
+        table_size = min(table_cap, max(table_min, round(total * 0.42)))
+        editor_size = max(editor_min, total - table_size)
+        self._splitter.setSizes([table_size, editor_size])
 
     def _scaled_table_row_height(self, base_height: int) -> int:
         return max(

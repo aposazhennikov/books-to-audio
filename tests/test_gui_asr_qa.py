@@ -12,13 +12,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from tests.gui.helpers import assert_layout_sane, render_widget
 from tests.gui.helpers import qapp as make_qapp
 
-pytest.importorskip("PyQt6.QtCore")
+QtCore = pytest.importorskip("PyQt6.QtCore")
 pytest.importorskip("PyQt6.QtWidgets")
 
-from book_normalizer.gui.i18n import set_language, t
-from book_normalizer.gui.pages.synthesis_page import SynthesisPage
-from book_normalizer.gui.workers.tts_worker import AsrQaWorker
-from book_normalizer.tts.asr_qa import AsrTranscript
+from book_normalizer.gui.i18n import set_language, t  # noqa: E402
+from book_normalizer.gui.pages.synthesis_page import SynthesisPage  # noqa: E402
+from book_normalizer.gui.workers.tts_worker import AsrQaWorker  # noqa: E402
+from book_normalizer.tts.asr_qa import AsrTranscript  # noqa: E402
 
 
 @pytest.fixture
@@ -173,6 +173,30 @@ def test_synthesis_page_asr_help_tooltips_are_explanatory_and_layout_safe(qapp) 
 
     assert page._asr_model_combo.toolTip() == t("synth.asr_model_help")
     assert page._asr_device_combo.toolTip() == t("synth.asr_device_help")
+    model_line_edit = page._asr_model_combo.lineEdit()
+    assert model_line_edit is not None
+    assert model_line_edit.alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+    assert model_line_edit.minimumHeight() == 0
+    model_combo_center = page._asr_model_combo.mapTo(
+        page,
+        page._asr_model_combo.rect().center(),
+    ).y()
+    model_line_center = model_line_edit.mapTo(page, model_line_edit.rect().center()).y()
+    assert abs(model_combo_center - model_line_center) <= 1
+    assert page._asr_timeout_spin.alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
+    assert page._asr_timeout_spin.alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+    assert page._asr_timeout_spin.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
+    assert page._asr_timeout_spin.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+    assert page._asr_timeout_spin.lineEdit().minimumHeight() == 0
+    spin_center = page._asr_timeout_spin.mapTo(
+        page,
+        page._asr_timeout_spin.rect().center(),
+    ).y()
+    line_center = page._asr_timeout_spin.lineEdit().mapTo(
+        page,
+        page._asr_timeout_spin.lineEdit().rect().center(),
+    ).y()
+    assert abs(spin_center - line_center) <= 1
     assert page._btn_asr_open_report.toolTip() == t("synth.asr_report_help")
     assert page._btn_asr_open_diff.toolTip() == t("synth.asr_diff_help")
     assert_layout_sane(page)

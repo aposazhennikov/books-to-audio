@@ -205,6 +205,30 @@ def test_synthesize_manifest_failed_only_skips_unfailed_chunks(tmp_path: Path) -
     assert client.calls == 0
 
 
+def test_synthesize_manifest_retries_synthesized_chunk_when_audio_is_missing(
+    tmp_path: Path,
+) -> None:
+    manifest = _manifest()
+    chunk = manifest["chapters"][0]["chunks"][0]
+    chunk["synthesized"] = True
+    chunk["audio_file"] = str(tmp_path / "missing.wav")
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    client = _Client()
+
+    summary = synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=client,  # type: ignore[arg-type]
+        builder=_Builder(),  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+    )
+
+    assert summary.synthesized == 1
+    assert client.calls == 1
+    assert Path(chunk["audio_file"]).exists()
+
+
 def test_synthesize_manifest_skips_deleted_chunks(tmp_path: Path) -> None:
     manifest = _manifest()
     chunks = manifest["chapters"][0]["chunks"]

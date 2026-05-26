@@ -146,14 +146,22 @@ def test_voices_page_detect_save_and_build_buttons_use_real_manifest_flow(
 
 def test_voices_page_uses_compact_centered_chunk_size_field(qapp) -> None:
     page = VoicesPage()
+    render_widget(page, 1180, 760, scale=1.45)
 
     assert page._chunk_size.alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
     assert page._chunk_size.alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
     assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
     assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
+    assert page._chunk_size.lineEdit().minimumHeight() == 0
     assert page._chunk_size.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
     assert 38 <= page._chunk_size.height() <= 42
     assert page._chunk_size.width() <= 160
+    spin_center = page._chunk_size.mapTo(page, page._chunk_size.rect().center()).y()
+    line_center = page._chunk_size.lineEdit().mapTo(
+        page,
+        page._chunk_size.lineEdit().rect().center(),
+    ).y()
+    assert abs(spin_center - line_center) <= 1
 
     page.deleteLater()
 

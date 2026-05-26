@@ -61,6 +61,7 @@ _BASE_MAX_WIDTH_PROPERTY = "_books_to_audio_base_maximum_width"
 _BASE_MAX_HEIGHT_PROPERTY = "_books_to_audio_base_maximum_height"
 _COMBO_CONTENT_WIDTH_INSTALLED_PROPERTY = "_books_to_audio_combo_content_width_installed"
 _COMBO_CONTENT_WIDTH_EMPTY_CHARS_PROPERTY = "_books_to_audio_combo_content_width_empty_chars"
+_COMBO_CONTENT_WIDTH_MAX_PROPERTY = "_books_to_audio_combo_content_width_max"
 _QT_UNBOUNDED_SIZE = 16_000_000
 _COMBO_MIN_PIXEL_WIDTH = 72
 _COMBO_HORIZONTAL_CHROME = 56
@@ -134,6 +135,8 @@ def apply_widget_scale_metrics(root: QWidget, scale: float) -> None:
 
     scale = clamp_scale(scale)
     for widget in [root, *root.findChildren(QWidget)]:
+        if _is_embedded_line_edit(widget):
+            continue
         if isinstance(widget, (QComboBox, QAbstractSpinBox, QLineEdit)):
             _set_scaled_minimum_height(widget, scale, fallback=32, padding=14)
             if isinstance(widget, QAbstractSpinBox):
@@ -145,6 +148,7 @@ def apply_widget_scale_metrics(root: QWidget, scale: float) -> None:
                 if line_edit is not None:
                     line_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
             if isinstance(widget, QComboBox):
+                _sync_combo_line_edit_metrics(widget)
                 apply_combo_content_width(widget)
             continue
 
@@ -170,6 +174,23 @@ def apply_widget_scale_metrics(root: QWidget, scale: float) -> None:
             continue
 
 
+def _is_embedded_line_edit(widget: QWidget) -> bool:
+    return isinstance(widget, QLineEdit) and isinstance(
+        widget.parentWidget(),
+        (QAbstractSpinBox, QComboBox),
+    )
+
+
+def _sync_combo_line_edit_metrics(combo: QComboBox) -> None:
+    if not combo.isEditable():
+        return
+    line_edit = combo.lineEdit()
+    if line_edit is None:
+        return
+    line_edit.setAlignment(line_edit.alignment() | Qt.AlignmentFlag.AlignVCenter)
+    line_edit.setMinimumHeight(0)
+
+
 def apply_combo_content_width(
     combo: QComboBox,
     *,
@@ -188,6 +209,12 @@ def apply_combo_content_width(
         )
     elif combo.property(_COMBO_CONTENT_WIDTH_EMPTY_CHARS_PROPERTY) is None:
         combo.setProperty(_COMBO_CONTENT_WIDTH_EMPTY_CHARS_PROPERTY, 0)
+    if combo.property(_COMBO_CONTENT_WIDTH_MAX_PROPERTY) is None:
+        explicit_max = combo.maximumWidth()
+        combo.setProperty(
+            _COMBO_CONTENT_WIDTH_MAX_PROPERTY,
+            explicit_max if 0 < explicit_max < _QT_UNBOUNDED_SIZE else 0,
+        )
 
     _install_combo_content_width_policy(combo)
     _refresh_combo_content_width(combo)
@@ -215,6 +242,13 @@ def _refresh_combo_content_width(combo: QComboBox) -> None:
     combo.setSizeAdjustPolicy(
         QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
     )
+    max_width = combo.property(_COMBO_CONTENT_WIDTH_MAX_PROPERTY)
+    try:
+        cap = int(max_width)
+    except (TypeError, ValueError):
+        cap = 0
+    if cap > 0:
+        width = min(width, cap)
     combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     combo.setMinimumWidth(width)
     combo.setMaximumWidth(width)

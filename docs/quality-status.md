@@ -18,6 +18,13 @@ are intentionally not committed.
 - Lightweight 4B synthetic smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.
   - Report: `output/quality_reports/quality_report_20260526T033607Z.*`
   - Result: 5/5 cases `ok`; model unloaded after the run.
+- Fresh WSL lightweight 4B synthetic smoke passed for `ru`, `en`, `zh`, `kk`,
+  `uz`.
+  - Report: `output/quality_reports/quality_report_20260526T043343Z.*`
+  - Result: 5/5 cases `ok`; normalization, smart voice segments, and chunks
+    preserved text.
+  - Post-run resource check: `ollama ps` was empty, so no model remained
+    resident in memory after the benchmark.
 - Production 8B real public-corpus smoke passed for `en`, `zh`, `kk`, `uz`.
   - Report: `output/quality_reports/quality_report_20260526T034345Z.*`
   - Sources:
@@ -62,6 +69,15 @@ are intentionally not committed.
     Windows, standard `C:\Program Files\Tesseract-OCR\tesseract.exe` is probed
     even when `PATH` is stale, and the OCR install prompt points to the native
     install script.
+- WSL Ollama is installed and has the required local LLM models.
+  - `ollama list` includes `hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M` and
+    `hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M`.
+  - `python -m book_normalizer.cli doctor --json-output` reports the native
+    Ollama API as reachable when the WSL Ollama server is running.
+- ComfyUI/Qwen3-TTS model folders are present under
+  `/mnt/d/ComfyUI-external/models`.
+  - The app now falls back to this installed model root when the installer
+    runtime config points at an empty stale directory.
 
 ## Remaining Before Final Sign-Off
 

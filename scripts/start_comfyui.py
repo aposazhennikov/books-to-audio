@@ -35,6 +35,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8188)
     parser.add_argument("--wait-seconds", type=float, default=240.0)
     parser.add_argument("--log-dir", default="output/runtime_logs")
+    parser.add_argument(
+        "--pid-file",
+        default="",
+        help="Where to write the started ComfyUI process id. Defaults to <log-dir>/comfyui.pid.",
+    )
     parser.add_argument("--no-start", action="store_true", help="Only probe the API; do not start a process.")
     args = parser.parse_args(argv)
 
@@ -50,12 +55,14 @@ def main(argv: list[str] | None = None) -> int:
 
     log_dir = Path(args.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
+    pid_file = Path(args.pid_file) if args.pid_file else log_dir / "comfyui.pid"
     start_comfyui(
         root=root,
         host=args.host,
         port=args.port,
         stdout_log=log_dir / "comfyui_stdout.log",
         stderr_log=log_dir / "comfyui_stderr.log",
+        pid_file=pid_file,
     )
     print(f"Starting ComfyUI from {root}...")
     if wait_for_api(api_url, timeout=args.wait_seconds):
@@ -85,6 +92,7 @@ def start_comfyui(
     port: int,
     stdout_log: Path,
     stderr_log: Path,
+    pid_file: Path | None = None,
 ) -> None:
     """Start ComfyUI detached through Windows cmd when available."""
     python_exe = root / "python_embeded" / "python.exe"
@@ -98,6 +106,7 @@ def start_comfyui(
             port=port,
             stdout_log=_windows_path(stdout_log),
             stderr_log=_windows_path(stderr_log),
+            pid_file=_windows_path(pid_file) if pid_file else "",
         )
         encoded = base64.b64encode(command.encode("utf-16le")).decode("ascii")
         subprocess.Popen(
@@ -113,7 +122,7 @@ def start_comfyui(
         return
 
     with stdout_log.open("ab") as stdout, stderr_log.open("ab") as stderr:
-        subprocess.Popen(
+        process = subprocess.Popen(
             [
                 str(python_exe),
                 "-s",
@@ -129,6 +138,9 @@ def start_comfyui(
             stdout=stdout,
             stderr=stderr,
         )
+    if pid_file is not None:
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
+        pid_file.write_text(str(process.pid), encoding="ascii")
 
 
 def wait_for_api(url: str, *, timeout: float) -> bool:
@@ -199,6 +211,7 @@ def _powershell_start_process_command(
     port: int,
     stdout_log: str,
     stderr_log: str,
+    pid_file: str = "",
 ) -> str:
     arguments = [
         "-s",
@@ -210,15 +223,19 @@ def _powershell_start_process_command(
         str(port),
     ]
     ps_args = ", ".join(_quote_ps_string(arg) for arg in arguments)
-    return (
+    command = (
         f"$argsList = @({ps_args}); "
-        f"Start-Process -FilePath {_quote_ps_string(python_exe)} "
+        f"$p = Start-Process -FilePath {_quote_ps_string(python_exe)} "
         "-ArgumentList $argsList "
         f"-WorkingDirectory {_quote_ps_string(root)} "
         "-WindowStyle Hidden "
         f"-RedirectStandardOutput {_quote_ps_string(stdout_log)} "
-        f"-RedirectStandardError {_quote_ps_string(stderr_log)}"
+        f"-RedirectStandardError {_quote_ps_string(stderr_log)} "
+        "-PassThru"
     )
+    if pid_file:
+        command += f"; Set-Content -LiteralPath {_quote_ps_string(pid_file)} -Value $p.Id -Encoding ascii"
+    return command
 
 
 def _quote_ps_string(value: str) -> str:

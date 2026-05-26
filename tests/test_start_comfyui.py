@@ -52,6 +52,7 @@ def test_start_comfyui_uses_detached_cmd_with_log_redirects(
         port=8188,
         stdout_log=tmp_path / "stdout.log",
         stderr_log=tmp_path / "stderr.log",
+        pid_file=tmp_path / "comfyui.pid",
     )
 
     assert calls
@@ -71,6 +72,9 @@ def test_start_comfyui_uses_detached_cmd_with_log_redirects(
     assert "'--listen', '127.0.0.1', '--port', '8188'" in command
     assert "stdout.log" in command
     assert "stderr.log" in command
+    assert "-PassThru" in command
+    assert "comfyui.pid" in command
+    assert "Set-Content" in command
 
 
 def test_probe_url_can_fallback_to_windows_curl(monkeypatch) -> None:

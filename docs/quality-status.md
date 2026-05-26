@@ -78,6 +78,13 @@ are intentionally not committed.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.
   - Report: `output/quality_reports/ocr_multilingual_smoke_20260526T025818Z.json`
   - Runtime: local WSL Tesseract with `data/tessdata`.
+- Full local WSL verification passed after the latest native-source cleanup.
+  - Command: `python -m ruff check .`
+  - Result: all checks passed.
+  - Command: `python -m pytest -q`
+  - Result: 881 passed, 9 skipped.
+  - GUI snapshot smoke: `tests/test_gui_layout_regression.py::test_main_window_snapshot_matches_baseline`
+    passed locally.
 
 ## Current External Gap
 

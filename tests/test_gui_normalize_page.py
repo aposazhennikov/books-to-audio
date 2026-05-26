@@ -244,6 +244,9 @@ def test_normalize_page_passes_selected_book_language_to_worker(
     assert captured["input_path"] == book_path
     assert captured["book_language"] == "en"
     assert captured["ocr_psm"] == 11
+    assert not page._progress._bar_row.isHidden()
+    assert page._progress._bar.maximum() == 0
+    assert page._progress._status.text() == t("norm.starting")
     page.deleteLater()
 
 
@@ -302,6 +305,65 @@ def test_normalize_page_run_button_starts_worker(qapp, qtbot, tmp_path, monkeypa
     assert captured["book_language"] == "en"
     assert page._book is not None
     assert page._raw_text.toPlainText() == "Hello."
+
+
+def test_normalize_page_shows_worker_preview_before_finished(
+    qapp,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    class _Signal:
+        def __init__(self) -> None:
+            self.callbacks = []
+
+        def connect(self, callback):  # noqa: ANN001
+            self.callbacks.append(callback)
+
+        def emit(self, *args):  # noqa: ANN002
+            for callback in self.callbacks:
+                callback(*args)
+
+    class _FakeWorker:
+        def __init__(self, **_kwargs):
+            self.progress = _Signal()
+            self.progress_pct = _Signal()
+            self.preview_ready = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            self.preview_ready.emit(
+                Book(
+                    chapters=[
+                        Chapter(
+                            index=0,
+                            paragraphs=[
+                                Paragraph(
+                                    raw_text="Raw preview.",
+                                    normalized_text="Normalized preview.",
+                                    index_in_chapter=0,
+                                ),
+                            ],
+                        ),
+                    ],
+                )
+            )
+
+    monkeypatch.setattr(normalize_page, "NormalizeWorker", _FakeWorker)
+    book_path = tmp_path / "book.txt"
+    book_path.write_text("Raw preview.", encoding="utf-8")
+    page = NormalizePage()
+    page._selected_path = str(book_path)
+    page._path_label.setText(str(book_path))
+    page._btn_run.setEnabled(True)
+
+    page._run_normalization()
+
+    assert page._raw_text.toPlainText() == "Raw preview."
+    assert page._norm_text.toPlainText() == "Normalized preview."
+    assert page._book is None
+    assert not page._btn_run.isEnabled()
+    assert page._btn_apply_norm_edits.isHidden()
 
 
 def test_normalize_page_hides_llm_field_help_until_enabled(qapp) -> None:

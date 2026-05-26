@@ -575,9 +575,9 @@ class NormalizePage(QWidget):
         if not path.exists():
             return
 
-        self._btn_run.setEnabled(False)
-        self._progress.set_status(t("norm.starting"))
         self._progress.reset()
+        self._btn_run.setEnabled(False)
+        self._progress.set_busy(t("norm.starting"))
         self._raw_text.clear()
         self._norm_text.clear()
         self._set_manual_edit_available(False)
@@ -592,20 +592,33 @@ class NormalizePage(QWidget):
             llm_model=self._llm_model.text().strip() or PRIMARY_QWEN3_MODEL,
             book_language=str(self._book_language.currentData() or DEFAULT_BOOK_LANGUAGE),
         )
-        self._worker.progress.connect(self._progress.set_status)
+        self._worker.progress.connect(self._progress.set_busy)
         self._worker.progress_pct.connect(self._progress.set_progress)
+        preview_ready = getattr(self._worker, "preview_ready", None)
+        if preview_ready is not None:
+            preview_ready.connect(self._on_preview_ready)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
         self._worker.start()
+
+    def _show_book_preview(self, book: object) -> bool:
+        """Render raw and normalized text panels for a partially or fully ready book."""
+        if getattr(book, "chapters", []):
+            raw_lines, norm_lines = _book_preview_lines(book)
+            self._raw_text.setPlainText("\n\n".join(raw_lines))
+            self._norm_text.setPlainText("\n\n".join(norm_lines))
+            return True
+        return False
+
+    def _on_preview_ready(self, book: object) -> None:
+        """Show rule-normalized text while slower optional stages continue."""
+        self._show_book_preview(book)
 
     def _on_finished(self, book: object) -> None:
         self._book = book
         self._btn_run.setEnabled(True)
 
-        if book.chapters:
-            raw_lines, norm_lines = _book_preview_lines(book)
-            self._raw_text.setPlainText("\n\n".join(raw_lines))
-            self._norm_text.setPlainText("\n\n".join(norm_lines))
+        if self._show_book_preview(book):
             self._set_manual_edit_available(True)
 
     def _set_manual_edit_available(self, available: bool) -> None:

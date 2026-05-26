@@ -97,6 +97,7 @@ class NormalizeWorker(QThread):
 
     progress = pyqtSignal(str)
     progress_pct = pyqtSignal(int, int, str)
+    preview_ready = pyqtSignal(object)
     finished = pyqtSignal(object)
     error = pyqtSignal(str)
 
@@ -155,16 +156,41 @@ class NormalizeWorker(QThread):
         with fitz.open(str(resolved)) as doc:
             total_pages = len(doc)
             start_time = time.time()
+            self.progress.emit(
+                t(
+                    "norm.ocr_pages_start",
+                    total=total_pages,
+                    dpi=dpi,
+                    psm=psm,
+                )
+            )
+            self.progress_pct.emit(0, total_pages, "")
 
             for page_num in range(total_pages):
+                page_index = page_num + 1
+                self.progress.emit(
+                    t(
+                        "norm.ocr_page_rendering",
+                        page=page_index,
+                        total=total_pages,
+                        dpi=dpi,
+                    )
+                )
                 page = doc[page_num]
                 pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY)
                 img = Image.frombytes("L", [pix.width, pix.height], pix.samples)
 
-                for segment_num, segment in enumerate(
-                    _prepare_ocr_page_images(img),
-                    start=1,
-                ):
+                segments = list(_prepare_ocr_page_images(img))
+                for segment_num, segment in enumerate(segments, start=1):
+                    self.progress.emit(
+                        t(
+                            "norm.ocr_page_recognizing",
+                            page=page_index,
+                            total=total_pages,
+                            segment=segment_num,
+                            segments=len(segments),
+                        )
+                    )
                     page_text = _ocr_pil_image_with_tesseract(
                         segment,
                         lang=ocr_lang,
@@ -189,7 +215,9 @@ class NormalizeWorker(QThread):
                 else:
                     eta = "..."
 
-                self.progress.emit(f"OCR: {done}/{total_pages} — ETA: {eta}")
+                self.progress.emit(
+                    t("norm.ocr_page_done", done=done, total=total_pages, eta=eta)
+                )
                 self.progress_pct.emit(done, total_pages, eta)
 
         ocr_text = _repair_ocr_cross_segment_breaks("\n\n".join(pages_text))
@@ -262,6 +290,7 @@ class NormalizeWorker(QThread):
         if total_paragraphs == 0:
             return book
 
+        self.progress_pct.emit(0, total_paragraphs, "")
         start_time = time.time()
         report_interval = max(1, total_paragraphs // 50)
 
@@ -344,6 +373,7 @@ class NormalizeWorker(QThread):
 
             if is_pdf:
                 ocr = OcrMode(self._ocr_mode)
+                self.progress.emit(t("norm.pdf_checking"))
                 tesseract_available = _tesseract_available()
                 effective_ocr = _effective_pdf_extraction_mode(
                     ocr,
@@ -359,6 +389,7 @@ class NormalizeWorker(QThread):
                             )
                         )
 
+                    self.progress.emit(t("norm.pdf_native_extracting"))
                     compare = extract_pdf_with_ocr_mode(
                         self._input_path, effective_ocr,
                         dpi=self._ocr_dpi, psm=self._ocr_psm,
@@ -378,9 +409,14 @@ class NormalizeWorker(QThread):
                     )
                 else:
                     self.progress.emit(
-                        f"OCR (DPI={self._ocr_dpi}, PSM={self._ocr_psm})..."
+                        t(
+                            "norm.ocr_prepare",
+                            dpi=self._ocr_dpi,
+                            psm=self._ocr_psm,
+                        )
                     )
                     loader = PdfLoader()
+                    self.progress.emit(t("norm.pdf_native_extracting"))
                     native_text = remove_repeated_headers(
                         loader._extract_text(self._input_path.resolve()),
                         min_occurrences=3,
@@ -427,6 +463,7 @@ class NormalizeWorker(QThread):
 
             # Re-normalize after chapter split.
             pipeline, book = self._normalize_with_progress(book)
+            self.preview_ready.emit(book)
 
             if self._llm_normalize:
                 self.progress.emit(

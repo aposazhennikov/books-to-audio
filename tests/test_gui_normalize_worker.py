@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from book_normalizer.config import OcrMode
-from book_normalizer.gui.i18n import set_language
+from book_normalizer.gui.i18n import get_language, set_language
 from book_normalizer.gui.workers.normalize_worker import (
     NormalizeWorker,
     _apply_selected_book_language,
@@ -248,10 +248,26 @@ def test_gui_ocr_progress_uses_native_tesseract_runtime(tmp_path, monkeypatch) -
 
     monkeypatch.setattr(pdf_loader, "_ocr_pil_image_with_tesseract", fake_ocr)
     worker = NormalizeWorker(input_path=tmp_path / "scan.pdf", book_language="ru")
+    old_language = get_language()
+    set_language("en")
+    messages: list[str] = []
+    progress: list[tuple[int, int, str]] = []
+    worker.progress.connect(messages.append)
+    worker.progress_pct.connect(
+        lambda current, total, eta: progress.append((current, total, eta))
+    )
 
-    text = worker._ocr_with_progress(tmp_path / "scan.pdf", OcrMode.AUTO, dpi=72, psm=6)
+    try:
+        text = worker._ocr_with_progress(tmp_path / "scan.pdf", OcrMode.AUTO, dpi=72, psm=6)
+    finally:
+        set_language(old_language)
 
     assert text == "Распознанный текст"
+    assert any("OCR will process 1 page" in msg for msg in messages)
+    assert any("rendering page 1/1" in msg for msg in messages)
+    assert any("recognizing page 1/1, segment 1/1" in msg for msg in messages)
+    assert progress[0] == (0, 1, "")
+    assert progress[-1][0:2] == (1, 1)
     assert calls == [
         {
             "lang": "rus",

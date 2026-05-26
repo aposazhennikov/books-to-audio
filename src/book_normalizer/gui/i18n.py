@@ -361,6 +361,55 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Loading book\u2026",
         "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u043a\u043d\u0438\u0433\u0438\u2026",
     },
+    "norm.pdf_checking": {
+        "en": "Checking PDF and OCR settings...",
+        "ru": "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u044e PDF \u0438 OCR-\u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438...",
+        "zh": "正在检查 PDF 和 OCR 设置...",
+        "kk": "PDF және OCR баптаулары тексерілуде...",
+        "uz": "PDF va OCR sozlamalari tekshirilmoqda...",
+    },
+    "norm.pdf_native_extracting": {
+        "en": "Checking the embedded PDF text layer...",
+        "ru": "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u044e \u0432\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442\u043e\u0432\u044b\u0439 \u0441\u043b\u043e\u0439 PDF...",
+        "zh": "正在检查 PDF 内置文本层...",
+        "kk": "PDF ішіндегі мәтін қабаты тексерілуде...",
+        "uz": "PDF ichidagi matn qatlami tekshirilmoqda...",
+    },
+    "norm.ocr_prepare": {
+        "en": "Preparing OCR (DPI={dpi}, PSM={psm})...",
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u043b\u044e OCR (DPI={dpi}, PSM={psm})...",
+        "zh": "正在准备 OCR (DPI={dpi}, PSM={psm})...",
+        "kk": "OCR дайындалуда (DPI={dpi}, PSM={psm})...",
+        "uz": "OCR tayyorlanmoqda (DPI={dpi}, PSM={psm})...",
+    },
+    "norm.ocr_pages_start": {
+        "en": "OCR will process {total} page(s) at {dpi} DPI, PSM {psm}. The first page can take a while; ETA appears after it finishes.",
+        "ru": "OCR \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442 {total} \u0441\u0442\u0440. \u043f\u0440\u0438 {dpi} DPI, PSM {psm}. \u041f\u0435\u0440\u0432\u0430\u044f \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u043c\u043e\u0436\u0435\u0442 \u0438\u0434\u0442\u0438 \u0434\u043e\u043b\u0433\u043e; ETA \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u043f\u043e\u0441\u043b\u0435 \u043d\u0435\u0451.",
+        "zh": "OCR 将处理 {total} 页，{dpi} DPI，PSM {psm}。第一页可能较慢；完成后会显示 ETA。",
+        "kk": "OCR {total} бетті {dpi} DPI, PSM {psm} режимінде өңдейді. Бірінші бет ұзақ жүруі мүмкін; ETA содан кейін шығады.",
+        "uz": "OCR {total} sahifani {dpi} DPI, PSM {psm} bilan qayta ishlaydi. Birinchi sahifa uzoqroq ketishi mumkin; ETA undan keyin chiqadi.",
+    },
+    "norm.ocr_page_rendering": {
+        "en": "OCR: rendering page {page}/{total} at {dpi} DPI...",
+        "ru": "OCR: \u0440\u0435\u043d\u0434\u0435\u0440 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b {page}/{total} \u043f\u0440\u0438 {dpi} DPI...",
+        "zh": "OCR：正在渲染第 {page}/{total} 页，{dpi} DPI...",
+        "kk": "OCR: {page}/{total} бет {dpi} DPI-да рендерленуде...",
+        "uz": "OCR: {page}/{total} sahifa {dpi} DPI da render qilinmoqda...",
+    },
+    "norm.ocr_page_recognizing": {
+        "en": "OCR: recognizing page {page}/{total}, segment {segment}/{segments}...",
+        "ru": "OCR: \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u044e \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 {page}/{total}, \u0441\u0435\u0433\u043c\u0435\u043d\u0442 {segment}/{segments}...",
+        "zh": "OCR：正在识别第 {page}/{total} 页，片段 {segment}/{segments}...",
+        "kk": "OCR: {page}/{total} бет танылуда, сегмент {segment}/{segments}...",
+        "uz": "OCR: {page}/{total} sahifa tanilmoqda, segment {segment}/{segments}...",
+    },
+    "norm.ocr_page_done": {
+        "en": "OCR: {done}/{total} page(s) done - ETA: {eta}",
+        "ru": "OCR: \u0433\u043e\u0442\u043e\u0432\u043e {done}/{total} \u0441\u0442\u0440. - \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}",
+        "zh": "OCR：已完成 {done}/{total} 页 - ETA：{eta}",
+        "kk": "OCR: {done}/{total} бет дайын - ETA: {eta}",
+        "uz": "OCR: {done}/{total} sahifa tayyor - ETA: {eta}",
+    },
     "norm.ocr_unavailable_native": {
         "en": "Tesseract is not installed; using native PDF text extraction. Run: {hint}",
         "ru": "Tesseract не установлен; использую встроенное извлечение текста PDF. Запустите: {hint}",
@@ -2152,8 +2201,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "progress.ready": {"en": "Ready", "ru": "\u0413\u043e\u0442\u043e\u0432\u043e"},
     "progress.eta": {"en": "ETA: {eta}", "ru": "\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}"},
     "progress.remaining_chunks": {
-        "en": "{n} chunks left",
-        "ru": "\u043e\u0441\u0442. {n} \u0447\u0430\u043d\u043a\u043e\u0432",
+        "en": "{n} left",
+        "ru": "\u043e\u0441\u0442\u0430\u043b\u043e\u0441\u044c {n}",
     },
 
     # ── Status bar messages ──

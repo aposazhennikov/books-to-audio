@@ -193,7 +193,7 @@ def test_production_preflight_worker_runs_pipeline(monkeypatch, tmp_path: Path) 
     assert captured["output_dir"] == tmp_path / "production"
     assert captured["package"] is True
     assert captured["dry_run_package"] is True
-    assert captured["allow_review_package"] is True
+    assert captured["allow_review_package"] is False
 
 
 def test_assembly_page_exposes_production_preflight_controls(qapp, qtbot, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
@@ -225,8 +225,43 @@ def test_assembly_page_exposes_production_preflight_controls(qapp, qtbot, tmp_pa
     assert captured["manifest_path"] == manifest_path
     assert captured["output_dir"] == tmp_path
     assert captured["package_outputs"] is False
+    assert captured["dry_run_package"] is True
+    assert captured["allow_review_package"] is False
     assert page._btn_production_preflight.isEnabled()
     assert "Production report" in page._output_label.text()
+
+
+def test_assembly_page_package_button_runs_release_package(qapp, qtbot, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    captured: dict = {}
+
+    class _FakeProductionWorker:
+        def __init__(self, manifest_path, output_dir, **kwargs):  # noqa: ANN001
+            captured["manifest_path"] = manifest_path
+            captured["output_dir"] = output_dir
+            captured.update(kwargs)
+            self.progress = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            self.finished.emit("Audiobook: package.m4b")
+
+    monkeypatch.setattr(assembly_page, "ProductionPreflightWorker", _FakeProductionWorker)
+    page = AssemblyPage()
+    qtbot.addWidget(page)
+    page.set_manifest(manifest_path, tmp_path)
+
+    qtbot.mouseClick(page._btn_production_package, QtCore.Qt.MouseButton.LeftButton)
+
+    assert captured["manifest_path"] == manifest_path
+    assert captured["output_dir"] == tmp_path
+    assert captured["package_outputs"] is True
+    assert captured["chapter_audio_dir"] == tmp_path
+    assert captured["dry_run_package"] is False
+    assert captured["allow_review_package"] is False
+    assert "package.m4b" in page._output_label.text()
 
 
 def test_assembly_page_uses_light_compact_numeric_controls(qapp) -> None:

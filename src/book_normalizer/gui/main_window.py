@@ -333,6 +333,7 @@ class MainWindow(QMainWindow):
         synthesis._compile_check.setChecked(False)
         synthesis._sage_check.setChecked(False)
         synthesis._merge_chapters_check.setChecked(True)
+        synthesis._asr_enable_check.setChecked(True)
         format_idx = synthesis._output_format_combo.findData("wav")
         if format_idx >= 0:
             synthesis._output_format_combo.setCurrentIndex(format_idx)
@@ -391,9 +392,15 @@ class MainWindow(QMainWindow):
         self._statusbar.showMessage(t("status.voices_done"))
         if self._auto_pipeline_active:
             if self._chunks_manifest_audio_complete(mp):
-                self._tabs.setCurrentIndex(4)
-                self._statusbar.showMessage(t("auto.assembly"))
-                QTimer.singleShot(0, self._assembly_page._run_assembly)
+                self._tabs.setCurrentIndex(3)
+                self._apply_auto_quality_settings()
+                self._statusbar.showMessage(t("auto.quality"))
+                QTimer.singleShot(
+                    0,
+                    lambda: self._synthesis_page._start_asr_qa_worker(
+                        (str(out_dir / "audio_chunks"), 0, 0),
+                    ),
+                )
                 return
             self._tabs.setCurrentIndex(3)
             self._apply_auto_quality_settings()
@@ -419,7 +426,7 @@ class MainWindow(QMainWindow):
             return
         self._tabs.setCurrentIndex(4)
         self._statusbar.showMessage(t("auto.production"))
-        QTimer.singleShot(0, self._assembly_page._run_production_preflight)
+        QTimer.singleShot(0, self._assembly_page._run_production_package)
 
     def _on_production_done(self, _output: str) -> None:
         """Finish an active auto pipeline after production preflight."""

@@ -97,6 +97,8 @@ class ProductionPreflightWorker(QThread):
         *,
         package_outputs: bool = False,
         chapter_audio_dir: Path | None = None,
+        dry_run_package: bool = True,
+        allow_review_package: bool = False,
         parent=None,
     ):
         super().__init__(parent)
@@ -104,6 +106,8 @@ class ProductionPreflightWorker(QThread):
         self._output_dir = output_dir
         self._package_outputs = package_outputs
         self._chapter_audio_dir = chapter_audio_dir
+        self._dry_run_package = dry_run_package
+        self._allow_review_package = allow_review_package
 
     def run(self) -> None:
         try:
@@ -115,8 +119,8 @@ class ProductionPreflightWorker(QThread):
                 output_dir=self._output_dir / "production",
                 package=self._package_outputs,
                 chapter_audio_dir=self._chapter_audio_dir,
-                dry_run_package=True,
-                allow_review_package=True,
+                dry_run_package=self._dry_run_package,
+                allow_review_package=self._allow_review_package,
             )
             if result.package_report_path:
                 self.finished.emit(
@@ -124,6 +128,7 @@ class ProductionPreflightWorker(QThread):
                         "asm.production_package_done",
                         run=result.run_report_path,
                         package=result.package_report_path,
+                        book=_package_book_path(result.package_report_path),
                     )
                 )
             else:
@@ -351,12 +356,26 @@ class AssemblyPage(QWidget):
         self._btn_production_package.setEnabled(enabled)
 
     def _run_production_preflight(self) -> None:
-        self._start_production_preflight(package_outputs=False)
+        self._start_production_preflight(
+            package_outputs=False,
+            dry_run_package=True,
+            allow_review_package=False,
+        )
 
     def _run_production_package(self) -> None:
-        self._start_production_preflight(package_outputs=True)
+        self._start_production_preflight(
+            package_outputs=True,
+            dry_run_package=False,
+            allow_review_package=False,
+        )
 
-    def _start_production_preflight(self, *, package_outputs: bool) -> None:
+    def _start_production_preflight(
+        self,
+        *,
+        package_outputs: bool,
+        dry_run_package: bool,
+        allow_review_package: bool,
+    ) -> None:
         if not self._manifest_path or not self._output_dir:
             return
         self._btn_production_preflight.setEnabled(False)
@@ -367,6 +386,8 @@ class AssemblyPage(QWidget):
             self._output_dir,
             package_outputs=package_outputs,
             chapter_audio_dir=self._output_dir,
+            dry_run_package=dry_run_package,
+            allow_review_package=allow_review_package,
         )
         self._production_worker.progress.connect(self._progress.set_status)
         self._production_worker.finished.connect(self._on_production_finished)
@@ -443,6 +464,17 @@ def _make_pause_spin_compact(spin: QSpinBox) -> None:
     spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
     spin.setFixedWidth(128)
     spin.setFixedHeight(38)
+
+
+def _package_book_path(report_path: Path) -> str:
+    """Return the final M4B path from a package report when available."""
+    try:
+        import json
+
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return ""
+    return str(report.get("m4b_path") or "")
 
 
 def _wav_duration(path: Path) -> float:

@@ -75,6 +75,10 @@ This aggregates the automated gates and keeps the remaining human listening
 step explicit instead of marking the project complete without ears on the
 post-filter audio sample.
 
+If `output\manual_listening_verdict.json` exists and contains a `pass` verdict,
+the readiness report also sets `complete_with_human_review=true`. `review` and
+`fail` verdicts keep the final acceptance open.
+
 Manual listening checklist:
 
 ```powershell

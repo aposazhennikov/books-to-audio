@@ -73,6 +73,8 @@ def test_final_readiness_reports_automated_gates_ok(tmp_path: Path) -> None:
 
     assert report["automated_gates_ok"] is True
     assert report["complete_without_human_review"] is False
+    assert report["complete_with_human_review"] is False
+    assert report["manual_verdict_status"] == "missing"
     assert report["manual_remaining"]
 
 
@@ -87,3 +89,46 @@ def test_final_readiness_reports_missing_quality_markers(tmp_path: Path) -> None
 
     assert report["automated_gates_ok"] is False
     assert report["missing_quality_markers"] == ["`ollama ps` was empty"]
+
+
+def test_final_readiness_accepts_pass_verdict(tmp_path: Path) -> None:
+    module = _load_readiness_module()
+    smoke_dir = tmp_path / "smoke"
+    quality_doc = tmp_path / "quality.md"
+    verdict_report = tmp_path / "verdict.json"
+    _write_smoke_dir(smoke_dir)
+    _write_quality_doc(quality_doc)
+    verdict_report.write_text(
+        json.dumps({"verdict": "pass", "passed": True, "notes": "Accepted."}),
+        encoding="utf-8",
+    )
+
+    report = module.build_readiness_report(smoke_dir, quality_doc, verdict_report)
+
+    assert report["automated_gates_ok"] is True
+    assert report["manual_verdict_status"] == "pass"
+    assert report["manual_listening_passed"] is True
+    assert report["complete_with_human_review"] is True
+    assert report["manual_remaining"] == [
+        "Optional full-length real-book LLM+TTS acceptance run in an explicit long-running window.",
+    ]
+
+
+def test_final_readiness_review_verdict_keeps_acceptance_open(tmp_path: Path) -> None:
+    module = _load_readiness_module()
+    smoke_dir = tmp_path / "smoke"
+    quality_doc = tmp_path / "quality.md"
+    verdict_report = tmp_path / "verdict.json"
+    _write_smoke_dir(smoke_dir)
+    _write_quality_doc(quality_doc)
+    verdict_report.write_text(
+        json.dumps({"verdict": "review", "requires_review": True}),
+        encoding="utf-8",
+    )
+
+    report = module.build_readiness_report(smoke_dir, quality_doc, verdict_report)
+
+    assert report["manual_verdict_status"] == "review"
+    assert report["manual_listening_passed"] is False
+    assert report["complete_with_human_review"] is False
+    assert "Resolve manual listening review notes" in report["manual_remaining"][0]

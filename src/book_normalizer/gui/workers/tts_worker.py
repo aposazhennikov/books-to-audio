@@ -64,14 +64,18 @@ class ExportSegmentsWorker(QThread):
             language = normalize_book_language(getattr(metadata, "language", "ru"))
             if self._speaker_mode == "llm":
                 self.progress.emit(t("voice.attributing", mode=self._speaker_mode))
+                review_report_path = self._output_dir / "llm_voice_review_report.json"
+                if review_report_path.exists():
+                    review_report_path.unlink()
                 segmenter = LlmVoiceSegmenter(
                     endpoint=self._llm_endpoint,
                     model=self._llm_model or "",
                     api_key=self._llm_api_key or "",
                     language=language,
                     cache_dir=self._output_dir / "speaker_cache",
-                    review_report_path=self._output_dir / "llm_voice_review_report.json",
+                    review_report_path=review_report_path,
                     max_segment_chars=600,
+                    allow_source_fallback=True,
                 )
                 started_at = time.monotonic()
 

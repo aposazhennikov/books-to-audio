@@ -248,9 +248,15 @@ class RolesPage(QWidget):
             encoding="utf-8",
         )
         self._populate_table(inventory)
-        self._progress.set_status(
-            t("roles.done", n=len(inventory["roles"]))
-        )
+        review_report = output_dir / "llm_voice_review_report.json"
+        if review_report.exists():
+            self._progress.set_status(
+                t("roles.done_with_review", n=len(inventory["roles"]), path=str(review_report))
+            )
+        else:
+            self._progress.set_status(
+                t("roles.done", n=len(inventory["roles"]))
+            )
         return inventory
 
     def _populate_table(self, inventory: dict[str, object]) -> None:

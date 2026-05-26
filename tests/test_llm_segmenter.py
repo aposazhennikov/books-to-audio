@@ -483,3 +483,37 @@ def test_llm_voice_segmenter_writes_review_report_when_all_models_fail(tmp_path:
         FALLBACK_QWEN3_MODEL,
         FALLBACK_QWEN3_MODEL,
     ]
+
+
+def test_llm_voice_segmenter_uses_source_fallback_when_enabled(tmp_path: Path) -> None:
+    report_path = tmp_path / "review.json"
+    text = "Full source text."
+    segmenter = LlmVoiceSegmenter(
+        language="en",
+        review_report_path=report_path,
+        allow_source_fallback=True,
+    )
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [{"role": "narrator", "text": "lost", "intonation": "calm"}],
+        },
+        FALLBACK_QWEN3_MODEL: {
+            "segments": [{"role": "narrator", "text": "also lost", "intonation": "calm"}],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="en"))
+
+    assert [row["text"] for row in rows] == [text]
+    assert rows[0]["role"] == "narrator"
+    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["requires_human_review"] is True
+    assert report["failures"][-1]["model"] == "source-preserving-fallback"
+    assert fake.calls == [
+        PRIMARY_QWEN3_MODEL,
+        PRIMARY_QWEN3_MODEL,
+        FALLBACK_QWEN3_MODEL,
+        FALLBACK_QWEN3_MODEL,
+    ]

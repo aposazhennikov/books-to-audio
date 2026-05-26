@@ -188,6 +188,7 @@ def test_export_segments_llm_mode_uses_smart_segmenter_directly(
     assert captured["language"] == "en"
     assert captured["endpoint"] == "http://localhost:11434"
     assert captured["model"] == ""
+    assert captured["allow_source_fallback"] is True
     data = json.loads(Path(finished[0]).read_text(encoding="utf-8"))
     assert data[0]["role"] == "narrator"
     assert data[0]["text"] == "Hello there."

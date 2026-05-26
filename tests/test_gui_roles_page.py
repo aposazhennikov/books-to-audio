@@ -151,6 +151,38 @@ def test_roles_page_shows_busy_feedback_before_first_llm_window(
     page.deleteLater()
 
 
+def test_roles_page_warns_when_review_report_was_written(qapp, tmp_path: Path) -> None:
+    page = RolesPage()
+    page.set_book(_sample_book(), tmp_path)
+    manifest_path = tmp_path / "segments_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            [
+                {
+                    "segment_index": 0,
+                    "chapter_index": 0,
+                    "language": "ru",
+                    "role": "narrator",
+                    "text": "РџСЂРёРІРµС‚.",
+                    "intonation": "calm",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "llm_voice_review_report.json").write_text(
+        '{"requires_human_review": true}',
+        encoding="utf-8",
+    )
+
+    page.load_segments_manifest(manifest_path)
+
+    assert "llm_voice_review_report.json" in page._progress._status.text()
+
+    page.deleteLater()
+
+
 def test_roles_page_labels_llm_fields_and_shows_endpoint_start(qapp) -> None:
     page = RolesPage()
 

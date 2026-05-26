@@ -354,6 +354,7 @@ class LlmVoiceSegmenter:
         max_segment_chars: int = DEFAULT_MAX_CHUNK_CHARS,
         lightweight: bool = False,
         max_retries: int = 2,
+        allow_source_fallback: bool = False,
     ) -> None:
         self._language = normalize_book_language(language)
         self._model_plan = model_plan_for_language(
@@ -374,6 +375,7 @@ class LlmVoiceSegmenter:
         self._window_chars = max(600, window_chars)
         self._max_segment_chars = max(80, max_segment_chars)
         self._max_retries = max(1, max_retries)
+        self._allow_source_fallback = allow_source_fallback
         self._failures: list[SegmentationFailure] = []
 
     @property
@@ -387,8 +389,12 @@ class LlmVoiceSegmenter:
     ) -> list[dict[str, Any]]:
         """Return flat segment-manifest rows for every chapter in a book."""
 
+        self._failures = []
         try:
-            return self._segment_book(book, progress_callback)
+            rows = self._segment_book(book, progress_callback)
+            if self._failures:
+                self._write_review_report()
+            return rows
         finally:
             self._client.unload_models(self._model_plan.candidates)
 
@@ -566,6 +572,25 @@ class LlmVoiceSegmenter:
                     )
                     self._client.unload_model(model)
 
+        if self._allow_source_fallback:
+            self._failures.append(
+                SegmentationFailure(
+                    chapter_index,
+                    window_index,
+                    "source-preserving-fallback",
+                    f"used_original_text_after_llm_failure: {last_error}",
+                    window_text[:500],
+                    window_text[:500],
+                )
+            )
+            logger.warning(
+                "LLM voice segmentation failed for chapter %d window %d; "
+                "using source-preserving narrator fallback",
+                chapter_index,
+                window_index,
+            )
+            return _source_fallback_segments(window_text)
+
         self._write_review_report()
         raise LlmSegmentationError(
             "LLM voice segmentation failed validation for "
@@ -706,6 +731,23 @@ def _normalise_segments(data: Any) -> list[dict[str, Any]]:
             }
         )
     return segments
+
+
+def _source_fallback_segments(window_text: str) -> list[dict[str, Any]]:
+    """Preserve a failed LLM window as a safe narrator segment."""
+    return [
+        {
+            "role": "narrator",
+            "speaker": "",
+            "character_description": "",
+            "emotion": "neutral",
+            "section_kind": "narration",
+            "text": window_text,
+            "intonation": "calm",
+            "pause_after_ms": 0,
+            "boundary_after": "",
+        }
+    ]
 
 
 def _legacy_voice_text(item: dict[str, Any]) -> str:

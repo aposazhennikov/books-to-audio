@@ -63,6 +63,11 @@ audio = [
     "soundfile>=0.12,<1",
     "pydub>=0.25,<1",
 ]
+asr = [
+    "faster-whisper",
+    "jiwer",
+    "rapidfuzz",
+]
 desktop = [
     "pytesseract>=0.3,<1",
     "Pillow>=10.0,<12",

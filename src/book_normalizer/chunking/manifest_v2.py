@@ -70,6 +70,7 @@ class ManifestChunkV2(BaseModel):
     section_kind: str = ""
     deleted: bool = False
     excluded_from_tts: bool = False
+    asr_qa: dict[str, Any] | None = None
 
     @field_validator("voice_label")
     @classmethod

@@ -240,6 +240,98 @@ class TTSSynthesisWorker(QThread):
             self.error.emit(str(exc))
 
 
+class AsrQaWorker(QThread):
+    """Run report-first ASR QA without blocking the GUI."""
+
+    status = pyqtSignal(str)
+    log_line = pyqtSignal(str)
+    finished = pyqtSignal(str, str, int, int, int)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        manifest_path: Path,
+        *,
+        model: str = "small",
+        device: str = "auto",
+        timeout_seconds: float = 180.0,
+        max_wer: float = 0.30,
+        max_cer: float = 0.18,
+        min_match_ratio: float = 0.78,
+        mark_failed_on_asr: bool = False,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._manifest_path = manifest_path
+        self._model = model
+        self._device = device or "auto"
+        self._timeout_seconds = timeout_seconds
+        self._max_wer = max_wer
+        self._max_cer = max_cer
+        self._min_match_ratio = min_match_ratio
+        self._mark_failed_on_asr = mark_failed_on_asr
+
+    def run(self) -> None:
+        try:
+            from book_normalizer.chunking.manifest_v2 import save_manifest
+            from book_normalizer.tts.asr_qa import (
+                AsrQaConfig,
+                FasterWhisperBackend,
+                annotate_manifest_with_asr,
+                run_asr_qa,
+                write_asr_diff,
+            )
+            from book_normalizer.tts.audio_qa import run_audio_qa
+
+            self.status.emit(t("synth.asr_running"))
+            manifest = json.loads(self._manifest_path.read_text(encoding="utf-8"))
+            report_path = self._manifest_path.with_name("asr_qa_report.json")
+
+            audio_result = run_audio_qa(manifest)
+            self.log_line.emit(
+                f"Audio QA: {audio_result.checked_files}/{audio_result.synthesized_chunks} checked, "
+                f"{len(audio_result.issues)} issue(s)."
+            )
+            asr_result = run_asr_qa(
+                manifest,
+                config=AsrQaConfig(
+                    model=self._model,
+                    device=self._device,
+                    timeout_seconds=self._timeout_seconds,
+                    max_wer=self._max_wer,
+                    max_cer=self._max_cer,
+                    min_match_ratio=self._min_match_ratio,
+                ),
+                backend=FasterWhisperBackend(self._model, device=self._device),
+                manifest_path=self._manifest_path,
+            )
+            payload = {
+                "schema_version": 1,
+                "manifest_path": str(self._manifest_path),
+                "audio_qa": audio_result.to_dict(),
+                "asr_qa": asr_result.to_dict(),
+            }
+            report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            write_asr_diff(report_path.with_suffix(".diff.txt"), asr_result)
+            annotate_manifest_with_asr(
+                manifest,
+                asr_result,
+                report_path=report_path.resolve(),
+                mark_failed_on_asr=self._mark_failed_on_asr,
+            )
+            save_manifest(self._manifest_path, manifest)
+            summary = asr_result.summary
+            self.finished.emit(
+                str(report_path),
+                asr_result.status.value,
+                int(summary["failed"]),
+                int(summary["warning"]),
+                int(summary["error"]),
+            )
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
 class TTSModelInstallWorker(QThread):
     """Download selected Hugging Face TTS models into the configured model dir."""
 

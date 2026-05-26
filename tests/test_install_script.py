@@ -31,6 +31,7 @@ from install import (
     _install_tts_models,
     _ollama_manifest_path,
     _paint,
+    _parse_args,
     _print_install_summary,
     _print_next_steps,
     _pull_ollama_models,
@@ -47,6 +48,14 @@ from install import (
 
 def test_installer_always_installs_packaging_build_tool() -> None:
     assert "build" in INSTALL_TOOL_PACKAGES
+
+
+def test_installer_exposes_asr_extra_flag(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["install.py", "--with-asr", "--minimal"])
+    args = _parse_args()
+    from install import _resolve_extras
+
+    assert _resolve_extras(args) == {"asr"}
 
 
 def test_installer_entrypoints_do_not_contain_mojibake() -> None:

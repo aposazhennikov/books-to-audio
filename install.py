@@ -58,6 +58,7 @@ VERIFY_MODULES = {
         "rich",
     ],
     "audio": ["pydub", "soundfile"],
+    "asr": ["faster_whisper", "jiwer", "rapidfuzz"],
     "dev": ["pytest", "ruff"],
     "gui": ["PyQt6"],
     "llm": ["httpx"],
@@ -258,6 +259,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--without-ocr", action="store_true", help="Skip pytesseract/Pillow OCR dependencies.")
     parser.add_argument("--without-audio", action="store_true", help="Skip pydub/soundfile audio helper dependencies.")
     parser.add_argument("--with-dev", action="store_true", help="Install pytest and ruff.")
+    parser.add_argument("--with-asr", action="store_true", help="Install faster-whisper ASR QA dependencies.")
     parser.add_argument("--with-stress", action="store_true", help="Install optional silero-stress model support.")
     parser.add_argument(
         "--with-tts",
@@ -554,6 +556,8 @@ def _resolve_extras(args: argparse.Namespace) -> set[str]:
 
     if args.with_dev:
         extras.add("dev")
+    if args.with_asr:
+        extras.add("asr")
     if args.with_stress:
         extras.add("stress")
     if args.with_sage:

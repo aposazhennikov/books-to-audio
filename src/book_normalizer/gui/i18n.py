@@ -3227,5 +3227,86 @@ def _install_extra_translations() -> None:
         }
     )
 
+    TRANSLATIONS.update(
+        {
+            "synth.asr_title": {
+                "en": "ASR quality gate",
+                "ru": "ASR-проверка качества",
+            },
+            "synth.asr_enable": {
+                "en": "After synthesis:",
+                "ru": "После синтеза:",
+            },
+            "synth.asr_enable_check": {
+                "en": "Run ASR QA before assembly",
+                "ru": "Запустить ASR QA перед сборкой",
+            },
+            "synth.asr_model": {
+                "en": "ASR model:",
+                "ru": "ASR модель:",
+            },
+            "synth.asr_device": {
+                "en": "ASR device:",
+                "ru": "ASR устройство:",
+            },
+            "synth.asr_timeout": {
+                "en": "ASR timeout:",
+                "ru": "ASR таймаут:",
+            },
+            "synth.asr_filter": {
+                "en": "Chunk filter:",
+                "ru": "Фильтр чанков:",
+            },
+            "synth.asr_run_now": {
+                "en": "Run ASR QA now",
+                "ru": "Запустить ASR QA",
+            },
+            "synth.compact_asr_run_now": {
+                "en": "ASR QA",
+                "ru": "ASR QA",
+            },
+            "synth.asr_open_report": {
+                "en": "Open report",
+                "ru": "Открыть отчет",
+            },
+            "synth.asr_open_diff": {
+                "en": "Open diff",
+                "ru": "Открыть diff",
+            },
+            "synth.asr_select_issue": {
+                "en": "Select issue",
+                "ru": "Выбрать проблему",
+            },
+            "synth.asr_idle": {
+                "en": "ASR QA is report-first: it annotates the manifest and keeps audio unchanged.",
+                "ru": "ASR QA только пишет отчет и аннотации; аудио не меняется.",
+            },
+            "synth.asr_running": {
+                "en": "Running ASR QA...",
+                "ru": "ASR QA выполняется...",
+            },
+            "synth.asr_done": {
+                "en": "ASR QA {status}: failed={failed}, warnings={warning}, errors={error}. Report: {path}",
+                "ru": "ASR QA {status}: ошибок={failed}, предупреждений={warning}, сбоев={error}. Отчет: {path}",
+            },
+            "synth.asr_error": {
+                "en": "ASR QA error: {msg}",
+                "ru": "Ошибка ASR QA: {msg}",
+            },
+            "synth.asr_selected_issue": {
+                "en": "Selected the first ASR warning/failed chunk for manual retry.",
+                "ru": "Выбран первый чанк с предупреждением/ошибкой ASR для ручного повтора.",
+            },
+            "synth.asr_no_issues": {
+                "en": "No ASR warning or failed chunks found.",
+                "ru": "ASR чанков с предупреждениями или ошибками не найдено.",
+            },
+        }
+    )
+    for key, entry in TRANSLATIONS.items():
+        if key.startswith("synth.asr_") or key == "synth.compact_asr_run_now":
+            for code in ("zh", "kk", "uz"):
+                entry.setdefault(code, entry["en"])
+
 
 _install_extra_translations()

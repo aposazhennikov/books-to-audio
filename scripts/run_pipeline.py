@@ -66,6 +66,8 @@ Options:
     --llm-normalize     Run LLM grammar/punctuation/yofication pass.
     --chunk-mode        llm (default) or heuristic (offline rule-based chunks).
     --synthesize        Run ComfyUI synthesis after chunking.
+    --asr-qa-after-synthesis
+                        Run local faster-whisper ASR QA after synthesis and before assembly.
     --workflow          Path to ComfyUI workflow JSON template (required with --synthesize).
     --comfyui-url       ComfyUI URL (default: http://localhost:8188).
     --assemble          Assemble audio chunks into chapter WAV files.
@@ -431,6 +433,79 @@ def run_stage5_assemble(
     _run_script_main("assemble_chapter.py", args)
 
 
+# ── Stage 5: ASR QA ──────────────────────────────────────────────────────────
+
+
+def run_stage5_asr_qa(
+    manifest_path: Path,
+    *,
+    asr_model: str,
+    max_wer: float,
+    max_cer: float,
+    min_match_ratio: float,
+    timeout_seconds: float,
+    mark_failed_on_asr: bool,
+) -> Path:
+    """Run WAV QA, then ASR QA, then write a combined report and manifest annotations."""
+    from book_normalizer.chunking.manifest_v2 import save_manifest
+    from book_normalizer.tts.asr_qa import (
+        AsrQaConfig,
+        FasterWhisperBackend,
+        annotate_manifest_with_asr,
+        run_asr_qa,
+    )
+    from book_normalizer.tts.audio_qa import run_audio_qa
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    report_path = manifest_path.with_name("asr_qa_report.json")
+
+    print("Audio QA: checking WAV files before ASR...")
+    audio_result = run_audio_qa(manifest)
+    print(
+        f"Audio QA: checked {audio_result.checked_files}/{audio_result.synthesized_chunks} "
+        f"synthesized chunks, {len(audio_result.issues)} issue(s)."
+    )
+
+    print(f"ASR QA: backend=faster-whisper model={asr_model}")
+    asr_result = run_asr_qa(
+        manifest,
+        config=AsrQaConfig(
+            model=asr_model,
+            timeout_seconds=timeout_seconds,
+            max_wer=max_wer,
+            max_cer=max_cer,
+            min_match_ratio=min_match_ratio,
+        ),
+        backend=FasterWhisperBackend(asr_model),
+        manifest_path=manifest_path,
+    )
+    summary = asr_result.summary
+    print(
+        "ASR QA: "
+        f"checked {summary['checked_chunks']}/{summary['total_chunks']} chunks, "
+        f"status={asr_result.status.value}, failed={summary['failed']}, "
+        f"warnings={summary['warning']}, errors={summary['error']}."
+    )
+
+    payload = {
+        "schema_version": 1,
+        "manifest_path": str(manifest_path),
+        "audio_qa": audio_result.to_dict(),
+        "asr_qa": asr_result.to_dict(),
+    }
+    report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    annotate_manifest_with_asr(
+        manifest,
+        asr_result,
+        report_path=report_path.resolve(),
+        mark_failed_on_asr=mark_failed_on_asr,
+    )
+    save_manifest(manifest_path, manifest)
+    print(f"ASR QA report: {report_path}")
+    print(f"Manifest ASR annotations updated: {manifest_path}")
+    return report_path
+
+
 def _run_script_main(script_name: str, argv: list[str]) -> None:
     """Run a sibling script main(argv) inside this Python process."""
     main_func = _load_script_main(Path(__file__).resolve().parent / script_name)
@@ -511,6 +586,45 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--synthesize", action="store_true",
         help="Run ComfyUI synthesis after chunking (Stage 4).",
+    )
+    parser.add_argument(
+        "--asr-qa-after-synthesis",
+        action="store_true",
+        help="Run report-first local faster-whisper ASR QA after synthesis and before assembly.",
+    )
+    parser.add_argument(
+        "--asr-model",
+        default="small",
+        help="faster-whisper model for ASR QA (default: small).",
+    )
+    parser.add_argument(
+        "--max-wer",
+        type=float,
+        default=0.30,
+        help="ASR QA fail threshold for word error rate (default: 0.30).",
+    )
+    parser.add_argument(
+        "--max-cer",
+        type=float,
+        default=0.18,
+        help="ASR QA fail threshold for character error rate (default: 0.18).",
+    )
+    parser.add_argument(
+        "--min-match-ratio",
+        type=float,
+        default=0.78,
+        help="ASR QA warning threshold for expected-word match ratio (default: 0.78).",
+    )
+    parser.add_argument(
+        "--asr-timeout-seconds",
+        type=float,
+        default=180.0,
+        help="Per-chunk ASR timeout in seconds (default: 180).",
+    )
+    parser.add_argument(
+        "--mark-failed-on-asr",
+        action="store_true",
+        help="Also mark chunks failed when ASR status is failed/error.",
     )
     parser.add_argument(
         "--workflow", default=None,
@@ -614,11 +728,26 @@ def main(argv: list[str] | None = None) -> None:
         stage_banner(4, "ComfyUI synthesis — SKIPPED (use --synthesize to enable)")
 
     # ── Stage 5 ───────────────────────────────────────────────────────────────
+    if args.asr_qa_after_synthesis:
+        stage_banner(5, "ASR QA: report-first transcript check")
+        run_stage5_asr_qa(
+            manifest_path,
+            asr_model=args.asr_model,
+            max_wer=args.max_wer,
+            max_cer=args.max_cer,
+            min_match_ratio=args.min_match_ratio,
+            timeout_seconds=args.asr_timeout_seconds,
+            mark_failed_on_asr=args.mark_failed_on_asr,
+        )
+    else:
+        stage_banner(5, "ASR QA — SKIPPED (use --asr-qa-after-synthesis to enable)")
+
+    # ── Stage 6 ───────────────────────────────────────────────────────────────
     if args.assemble:
-        stage_banner(5, "Assembly: merge chunks into chapter WAV files")
+        stage_banner(6, "Assembly: merge chunks into chapter WAV files")
         run_stage5_assemble(manifest_path, book_dir, args.chapter)
     else:
-        stage_banner(5, "Assembly — SKIPPED (use --assemble to enable)")
+        stage_banner(6, "Assembly — SKIPPED (use --assemble to enable)")
 
     elapsed = time.monotonic() - t_start
     print(f"\n{'═' * 60}")

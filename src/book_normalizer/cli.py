@@ -179,6 +179,13 @@ def main() -> None:
 )
 @click.option("--max-chunk-chars", type=int, default=400, show_default=True, help="Soft max chars per LLM chunk.")
 @click.option("--synthesize", is_flag=True, default=False, help="Run ComfyUI synthesis after chunking.")
+@click.option(
+    "--asr-qa-after-synthesis",
+    is_flag=True,
+    default=False,
+    help="Run report-first ASR QA after synthesis and before assembly.",
+)
+@click.option("--asr-model", default="small", show_default=True, help="faster-whisper model for ASR QA.")
 @click.option("--workflow", type=click.Path(path_type=Path), default=None, help="ComfyUI workflow template.")
 @click.option("--comfyui-url", default="http://localhost:8188", show_default=True, help="ComfyUI server URL.")
 @click.option("--assemble", is_flag=True, default=False, help="Assemble synthesized chunks via v2 manifest.")
@@ -201,6 +208,8 @@ def pipeline_command(
     chunk_mode: str,
     max_chunk_chars: int,
     synthesize: bool,
+    asr_qa_after_synthesis: bool,
+    asr_model: str,
     workflow: Path | None,
     comfyui_url: str,
     assemble: bool,
@@ -233,6 +242,8 @@ def pipeline_command(
         if not workflow:
             workflow = Path("comfyui_workflows/qwen3_tts_template.json")
         argv.extend(["--workflow", str(workflow), "--comfyui-url", comfyui_url])
+    if asr_qa_after_synthesis:
+        argv.extend(["--asr-qa-after-synthesis", "--asr-model", asr_model])
     if assemble:
         argv.append("--assemble")
     if chapter is not None:
@@ -408,11 +419,65 @@ def install_tts_models_command(
 @main.command(name="audio-qa")
 @click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--report", type=click.Path(path_type=Path), default=None, help="Write JSON QA report.")
-def audio_qa_command(manifest_path: Path, report: Path | None) -> None:
+@click.option(
+    "--asr",
+    "enable_asr",
+    is_flag=True,
+    default=False,
+    help="Run local faster-whisper ASR QA after WAV checks.",
+)
+@click.option("--asr-model", default="small", show_default=True, help="faster-whisper model name or local path.")
+@click.option("--max-wer", type=float, default=0.30, show_default=True, help="Fail chunks above this word error rate.")
+@click.option(
+    "--max-cer",
+    type=float,
+    default=0.18,
+    show_default=True,
+    help="Fail chunks above this character error rate.",
+)
+@click.option(
+    "--min-match-ratio",
+    type=float,
+    default=0.78,
+    show_default=True,
+    help="Warn chunks below this expected-word match ratio.",
+)
+@click.option(
+    "--asr-timeout-seconds",
+    type=float,
+    default=180.0,
+    show_default=True,
+    help="Per-chunk ASR timeout.",
+)
+@click.option(
+    "--write-manifest-asr/--no-write-manifest-asr",
+    default=True,
+    show_default=True,
+    help="Annotate chunks with compact ASR QA metadata.",
+)
+@click.option(
+    "--mark-failed-on-asr",
+    is_flag=True,
+    default=False,
+    help="Also mark manifest chunks failed when ASR status is failed/error.",
+)
+def audio_qa_command(
+    manifest_path: Path,
+    report: Path | None,
+    enable_asr: bool,
+    asr_model: str,
+    max_wer: float,
+    max_cer: float,
+    min_match_ratio: float,
+    asr_timeout_seconds: float,
+    write_manifest_asr: bool,
+    mark_failed_on_asr: bool,
+) -> None:
     """Run QA checks for synthesized audio in a v2 manifest."""
     from book_normalizer.tts.audio_qa import load_manifest, run_audio_qa
 
-    result = run_audio_qa(load_manifest(manifest_path))
+    manifest = load_manifest(manifest_path)
+    result = run_audio_qa(manifest)
     click.echo(
         f"Audio QA: checked {result.checked_files}/{result.synthesized_chunks} synthesized "
         f"chunks, {len(result.issues)} issue(s)."
@@ -422,8 +487,66 @@ def audio_qa_command(manifest_path: Path, report: Path | None) -> None:
         if issue.chapter_index is not None and issue.chunk_index is not None:
             location = f" ch{issue.chapter_index + 1:03d}/chunk{issue.chunk_index + 1:03d}"
         click.echo(f"[{issue.severity.upper()}] {issue.kind}{location}: {issue.message}")
+
+    report_payload: dict[str, object] | None = None
+    if enable_asr:
+        from book_normalizer.chunking.manifest_v2 import save_manifest
+        from book_normalizer.tts.asr_qa import (
+            DEFAULT_ASR_REPORT_NAME,
+            AsrQaConfig,
+            FasterWhisperBackend,
+            annotate_manifest_with_asr,
+            run_asr_qa,
+        )
+
+        report = report or manifest_path.with_name(DEFAULT_ASR_REPORT_NAME)
+        asr_config = AsrQaConfig(
+            model=asr_model,
+            timeout_seconds=asr_timeout_seconds,
+            max_wer=max_wer,
+            max_cer=max_cer,
+            min_match_ratio=min_match_ratio,
+        )
+        click.echo(f"ASR QA: backend=faster-whisper model={asr_model}")
+        asr_result = run_asr_qa(
+            manifest,
+            config=asr_config,
+            backend=FasterWhisperBackend(asr_model),
+            manifest_path=manifest_path,
+        )
+        summary = asr_result.summary
+        click.echo(
+            "ASR QA: "
+            f"checked {summary['checked_chunks']}/{summary['total_chunks']} chunks, "
+            f"status={asr_result.status.value}, "
+            f"failed={summary['failed']}, warnings={summary['warning']}, errors={summary['error']}."
+        )
+        for chunk in asr_result.chunks:
+            if chunk.status.value == "passed":
+                continue
+            location = f" ch{chunk.chapter_index + 1:03d}/chunk{chunk.chunk_index + 1:03d}"
+            issue_text = ", ".join(issue.kind for issue in chunk.issues) or chunk.preview
+            click.echo(f"[{chunk.status.value.upper()}] asr{location}: {issue_text}")
+
+        if write_manifest_asr:
+            annotate_manifest_with_asr(
+                manifest,
+                asr_result,
+                report_path=report.resolve(),
+                mark_failed_on_asr=mark_failed_on_asr,
+            )
+            save_manifest(manifest_path, manifest)
+            click.echo(f"Manifest ASR annotations updated: {manifest_path}")
+        report_payload = {
+            "schema_version": 1,
+            "manifest_path": str(manifest_path),
+            "audio_qa": result.to_dict(),
+            "asr_qa": asr_result.to_dict(),
+        }
+
     if report:
-        report.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        payload = report_payload if report_payload is not None else result.to_dict()
+        report.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         click.echo(f"Report: {report}")
 
 

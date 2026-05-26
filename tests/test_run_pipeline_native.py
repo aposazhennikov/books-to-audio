@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import wave
 from pathlib import Path
 from types import ModuleType
 
@@ -212,3 +213,75 @@ def test_synthesis_and_assembly_stages_invoke_script_mains_in_process(
             ],
         ),
     ]
+
+
+def test_stage5_asr_qa_writes_report_and_manifest_annotations(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pipeline = _load_run_pipeline()
+    import book_normalizer.tts.asr_qa as asr_qa
+
+    class _FakeBackend:
+        name = "fake"
+
+        def __init__(self, model: str, **_kwargs: object) -> None:
+            self.model = model
+
+        def transcribe(self, audio_path: Path, *, language: str | None = None):  # noqa: ANN001
+            return asr_qa.AsrTranscript(
+                text="hello world",
+                language="en",
+                confidence=0.98,
+                duration_seconds=1.0,
+            )
+
+    monkeypatch.setattr(asr_qa, "FasterWhisperBackend", _FakeBackend)
+    wav_path = tmp_path / "audio_chunks" / "chapter_001" / "chunk_001_narrator.wav"
+    wav_path.parent.mkdir(parents=True)
+    with wave.open(str(wav_path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(24000)
+        wav.writeframes(b"\x01\x00" * 24000)
+
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "language": "en",
+                "chapters": [
+                    {
+                        "chapter_index": 0,
+                        "chunks": [
+                            {
+                                "chunk_index": 0,
+                                "voice": "narrator",
+                                "voice_id": "narrator_calm",
+                                "text": "Hello world.",
+                                "synthesized": True,
+                                "audio_file": str(wav_path),
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report_path = pipeline.run_stage5_asr_qa(
+        manifest_path,
+        asr_model="unit",
+        max_wer=0.3,
+        max_cer=0.2,
+        min_match_ratio=0.8,
+        timeout_seconds=30,
+        mark_failed_on_asr=False,
+    )
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert report["asr_qa"]["status"] == "passed"
+    assert manifest["chapters"][0]["chunks"][0]["asr_qa"]["status"] == "passed"

@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -48,6 +49,7 @@ from book_normalizer.chunking.manifest_v2 import (
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.tts_worker import (
+    AsrQaWorker,
     TTSModelInstallWorker,
     TTSSynthesisWorker,
     VoicePromptSaveWorker,
@@ -423,6 +425,7 @@ class SynthesisPage(QWidget):
         self._manifest_path: Path | None = None
         self._output_dir: Path | None = None
         self._worker: TTSSynthesisWorker | None = None
+        self._asr_worker: AsrQaWorker | None = None
         self._model_install_worker: TTSModelInstallWorker | None = None
         self._save_voice_worker: VoicePromptSaveWorker | None = None
         self._chapter_map: dict[int, int] = {}
@@ -451,6 +454,8 @@ class SynthesisPage(QWidget):
         self._run_kind = "idle"
         self._preview_output_dir: Path | None = None
         self._last_test_audio_path: Path | None = None
+        self._last_asr_report_path: Path | None = None
+        self._pending_synthesis_finish: tuple[str, int, int] | None = None
         self._setup_ui()
 
     def closeEvent(self, event) -> None:  # noqa: N802
@@ -1173,6 +1178,7 @@ class SynthesisPage(QWidget):
         )
 
         layout.addLayout(form)
+        layout.addWidget(self._build_asr_qa_panel())
         self._chapter_info = QLabel()
         self._chapter_info.setStyleSheet(
             "color: rgba(51,65,85,0.54); font-size: 11px;"
@@ -1180,6 +1186,104 @@ class SynthesisPage(QWidget):
         layout.addWidget(self._chapter_info)
         layout.addStretch()
         return tab
+
+    def _build_asr_qa_panel(self) -> QFrame:
+        """Build report-first ASR QA controls."""
+        frame = QFrame()
+        frame.setObjectName("asrQaPanel")
+        frame.setStyleSheet(
+            "QFrame#asrQaPanel {"
+            "  background: rgba(239,246,255,0.82);"
+            "  border: 1px solid rgba(59,130,246,0.22);"
+            "  border-radius: 10px;"
+            "}"
+        )
+        outer = QVBoxLayout(frame)
+        outer.setContentsMargins(14, 10, 14, 10)
+        outer.setSpacing(8)
+
+        self._asr_title = QLabel()
+        self._asr_title.setStyleSheet(
+            "font-weight: 800; font-size: 13px; color: #1e3a8a;"
+        )
+        outer.addWidget(self._asr_title)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(7)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+
+        self._asr_enable_check = QCheckBox()
+        self._asr_enable_label = QLabel()
+        form.addRow(self._asr_enable_label, self._asr_enable_check)
+
+        self._asr_model_combo = QComboBox()
+        self._asr_model_combo.setEditable(True)
+        self._asr_model_combo.addItems(["small", "medium", "large-v3", "base", "tiny"])
+        _make_combo_compact(self._asr_model_combo, min_chars=12)
+        self._asr_model_label = QLabel()
+        form.addRow(self._asr_model_label, self._asr_model_combo)
+
+        self._asr_device_combo = QComboBox()
+        self._asr_device_combo.addItem("auto", "auto")
+        self._asr_device_combo.addItem("CPU", "cpu")
+        self._asr_device_combo.addItem("CUDA", "cuda")
+        _make_combo_compact(self._asr_device_combo, min_chars=8)
+        self._asr_device_label = QLabel()
+        form.addRow(self._asr_device_label, self._asr_device_combo)
+
+        self._asr_timeout_spin = QSpinBox()
+        self._asr_timeout_spin.setRange(30, 3600)
+        self._asr_timeout_spin.setValue(180)
+        self._asr_timeout_spin.setSingleStep(30)
+        self._asr_timeout_spin.setSuffix(" s")
+        self._asr_timeout_spin.setMaximumWidth(150)
+        self._asr_timeout_label = QLabel()
+        form.addRow(self._asr_timeout_label, self._asr_timeout_spin)
+
+        self._asr_filter_combo = QComboBox()
+        self._asr_filter_combo.addItem("all", "all")
+        self._asr_filter_combo.addItem("failed/warning", "bad")
+        self._asr_filter_combo.addItem("failed", "failed")
+        self._asr_filter_combo.addItem("warning", "warning")
+        self._asr_filter_combo.addItem("passed", "passed")
+        self._asr_filter_combo.currentIndexChanged.connect(
+            self._refresh_test_chapter_combo,
+        )
+        _make_combo_compact(self._asr_filter_combo, min_chars=14)
+        self._asr_filter_label = QLabel()
+        form.addRow(self._asr_filter_label, self._asr_filter_combo)
+
+        outer.addLayout(form)
+
+        button_row = QHBoxLayout()
+        button_row.setSpacing(6)
+        self._btn_asr_run = QPushButton()
+        self._btn_asr_run.clicked.connect(self._run_asr_qa_now)
+        self._btn_asr_run.setEnabled(False)
+        button_row.addWidget(self._btn_asr_run)
+        self._btn_asr_open_report = QPushButton()
+        self._btn_asr_open_report.clicked.connect(self._open_asr_report)
+        self._btn_asr_open_report.setEnabled(False)
+        button_row.addWidget(self._btn_asr_open_report)
+        self._btn_asr_open_diff = QPushButton()
+        self._btn_asr_open_diff.clicked.connect(self._open_asr_diff)
+        self._btn_asr_open_diff.setEnabled(False)
+        button_row.addWidget(self._btn_asr_open_diff)
+        self._btn_asr_select_issue = QPushButton()
+        self._btn_asr_select_issue.clicked.connect(self._select_first_asr_issue)
+        button_row.addWidget(self._btn_asr_select_issue)
+        button_row.addStretch()
+        outer.addLayout(button_row)
+
+        self._asr_status = QLabel()
+        self._asr_status.setWordWrap(True)
+        self._asr_status.setStyleSheet(
+            "color: rgba(30,58,138,0.76); font-size: 11px;"
+        )
+        outer.addWidget(self._asr_status)
+        return frame
 
     def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
         """Return a compact form label with a hover help button."""
@@ -1530,6 +1634,19 @@ class SynthesisPage(QWidget):
         self._advanced_title.setText(t("synth.advanced_title"))
         self._apply_action_labels()
         self._advanced_desc.setText(t("synth.advanced_desc"))
+        self._asr_title.setText(t("synth.asr_title"))
+        self._asr_enable_label.setText(t("synth.asr_enable"))
+        self._asr_enable_check.setText(t("synth.asr_enable_check"))
+        self._asr_model_label.setText(t("synth.asr_model"))
+        self._asr_device_label.setText(t("synth.asr_device"))
+        self._asr_timeout_label.setText(t("synth.asr_timeout"))
+        self._asr_filter_label.setText(t("synth.asr_filter"))
+        self._btn_asr_run.setText(t("synth.asr_run_now"))
+        self._btn_asr_open_report.setText(t("synth.asr_open_report"))
+        self._btn_asr_open_diff.setText(t("synth.asr_open_diff"))
+        self._btn_asr_select_issue.setText(t("synth.asr_select_issue"))
+        if not self._asr_status.text():
+            self._asr_status.setText(t("synth.asr_idle"))
         for btn, help_key in self._help_buttons:
             btn.setToolTip(t(help_key))
             btn.setStatusTip(t(help_key))
@@ -2047,6 +2164,7 @@ class SynthesisPage(QWidget):
         self._manifest_label.setText(str(manifest_path))
         self._btn_start.setEnabled(True)
         self._btn_test.setEnabled(True)
+        self._btn_asr_run.setEnabled(True)
         self._load_chapters_from_manifest()
 
     def _browse_manifest(self) -> None:
@@ -2060,6 +2178,7 @@ class SynthesisPage(QWidget):
             self._manifest_label.setText(str(p))
             self._btn_start.setEnabled(True)
             self._btn_test.setEnabled(True)
+            self._btn_asr_run.setEnabled(True)
             self._load_chapters_from_manifest()
 
     def _load_chapters_from_manifest(self) -> None:
@@ -2075,6 +2194,7 @@ class SynthesisPage(QWidget):
                 chapter_chunks[ch] = chapter_chunks.get(ch, 0) + 1
             self._chapter_map = chapter_chunks
             self._manifest_chunks = chunks
+            self._sync_last_asr_report_from_manifest()
             self._refresh_manifest_role_entries()
             self._refresh_chapter_combo()
             self._refresh_test_chapter_combo()
@@ -2082,6 +2202,19 @@ class SynthesisPage(QWidget):
             self._manifest_chunks = []
             self._refresh_manifest_role_entries()
             pass
+
+    def _sync_last_asr_report_from_manifest(self) -> None:
+        """Pick up the latest ASR report path from manifest annotations."""
+        for chunk in self._manifest_chunks:
+            asr_block = chunk.get("asr_qa") if isinstance(chunk, dict) else None
+            if not isinstance(asr_block, dict):
+                continue
+            report_path = str(asr_block.get("report_path") or "").strip()
+            if report_path:
+                self._last_asr_report_path = Path(report_path)
+                self._btn_asr_open_report.setEnabled(True)
+                self._btn_asr_open_diff.setEnabled(True)
+                return
 
     def _refresh_chapter_combo(self) -> None:
         """Rebuild the chapter combo from loaded data."""
@@ -2123,6 +2256,17 @@ class SynthesisPage(QWidget):
         self._test_source_combo.blockSignals(False)
         self._update_test_source_controls()
 
+    def _asr_filter_accepts(self, chunk: dict) -> bool:
+        if not hasattr(self, "_asr_filter_combo"):
+            return True
+        selected = self._asr_filter_combo.currentData() or "all"
+        if selected == "all":
+            return True
+        status = str((chunk.get("asr_qa") or {}).get("status") or "")
+        if selected == "bad":
+            return status in {"failed", "warning", "error"}
+        return status == selected
+
     def _refresh_test_chapter_combo(self) -> None:
         """Populate the chapter selector used by test preview chunks."""
         if not hasattr(self, "_test_chapter_combo"):
@@ -2131,13 +2275,13 @@ class SynthesisPage(QWidget):
         chapters = sorted({
             int(chunk.get("chapter_index", 0))
             for chunk in self._manifest_chunks
-            if isinstance(chunk, dict)
+            if isinstance(chunk, dict) and self._asr_filter_accepts(chunk)
         })
         counts = {
             chapter: sum(
                 1
                 for chunk in self._manifest_chunks
-                if int(chunk.get("chapter_index", 0)) == chapter
+                if int(chunk.get("chapter_index", 0)) == chapter and self._asr_filter_accepts(chunk)
             )
             for chapter in chapters
         }
@@ -2170,6 +2314,7 @@ class SynthesisPage(QWidget):
                 chunk
                 for chunk in self._manifest_chunks
                 if int(chunk.get("chapter_index", 0)) == chapter_index
+                and self._asr_filter_accepts(chunk)
             ],
             key=lambda chunk: int(chunk.get("chunk_index", 0)),
         )
@@ -2526,6 +2671,7 @@ class SynthesisPage(QWidget):
         self._output_dir_edit.setEnabled(not active)
         self._btn_output_dir.setEnabled(not active)
         self._btn_install_models.setEnabled(not active)
+        self._btn_asr_run.setEnabled(has_manifest and not active)
 
     def _set_model_install_active(self, active: bool) -> None:
         has_manifest = bool(self._manifest_path)
@@ -2536,6 +2682,7 @@ class SynthesisPage(QWidget):
         self._btn_stop.setEnabled(False)
         self._models_dir_edit.setEnabled(not active)
         self._btn_models_dir.setEnabled(not active)
+        self._btn_asr_run.setEnabled(has_manifest and not active)
 
     def _apply_action_labels(self) -> None:
         """Use short command labels on narrow windows."""
@@ -2547,6 +2694,7 @@ class SynthesisPage(QWidget):
             self._btn_save_sample_voice.setText(t("synth.compact_save_local_voice"))
             self._btn_save_chunk_text.setText(t("synth.compact_chunk_editor_save"))
             self._btn_merge_chunk.setText(t("synth.compact_chunk_editor_merge"))
+            self._btn_asr_run.setText(t("synth.compact_asr_run_now"))
             self._btn_stop.setText(t("synth.stop"))
             return
 
@@ -2557,6 +2705,7 @@ class SynthesisPage(QWidget):
         self._btn_save_sample_voice.setText(t("synth.save_local_voice"))
         self._btn_save_chunk_text.setText(t("synth.chunk_editor_save"))
         self._btn_merge_chunk.setText(t("synth.chunk_editor_merge"))
+        self._btn_asr_run.setText(t("synth.asr_run_now"))
         self._btn_stop.setText(t("synth.stop"))
 
     def _toggle_test_playback(self) -> None:
@@ -2575,6 +2724,113 @@ class SynthesisPage(QWidget):
             self._btn_play_test.setText(
                 t("synth.compact_test_play") if self._compact_mode else t("synth.test_play")
             )
+
+    # ── ASR QA ────────────────────────────────────────────────────────────────
+
+    def _selected_asr_model(self) -> str:
+        return self._asr_model_combo.currentText().strip() or "small"
+
+    def _selected_asr_device(self) -> str:
+        return str(self._asr_device_combo.currentData() or "auto")
+
+    def _run_asr_qa_now(self) -> None:
+        self._start_asr_qa_worker()
+
+    def _start_asr_qa_worker(
+        self,
+        pending_finish: tuple[str, int, int] | None = None,
+    ) -> None:
+        if not self._manifest_path or not self._manifest_path.exists():
+            return
+        self._pending_synthesis_finish = pending_finish
+        self._btn_asr_run.setEnabled(False)
+        self._btn_asr_open_report.setEnabled(False)
+        self._btn_asr_open_diff.setEnabled(False)
+        self._asr_status.setText(t("synth.asr_running"))
+        self._progress.set_busy(t("synth.asr_running"))
+
+        self._asr_worker = AsrQaWorker(
+            self._manifest_path,
+            model=self._selected_asr_model(),
+            device=self._selected_asr_device(),
+            timeout_seconds=float(self._asr_timeout_spin.value()),
+        )
+        self._asr_worker.status.connect(self._asr_status.setText)
+        self._asr_worker.log_line.connect(self._on_log_line)
+        self._asr_worker.finished.connect(self._on_asr_finished)
+        self._asr_worker.error.connect(self._on_asr_error)
+        self._asr_worker.start()
+
+    def _on_asr_finished(
+        self,
+        report_path: str,
+        status: str,
+        failed: int,
+        warning: int,
+        error: int,
+    ) -> None:
+        self._last_asr_report_path = Path(report_path)
+        self._btn_asr_run.setEnabled(bool(self._manifest_path))
+        self._btn_asr_open_report.setEnabled(True)
+        self._btn_asr_open_diff.setEnabled(True)
+        message = t(
+            "synth.asr_done",
+            status=status,
+            failed=failed,
+            warning=warning,
+            error=error,
+            path=report_path,
+        )
+        self._asr_status.setText(message)
+        self._progress.set_status(message)
+        self._load_chapters_from_manifest()
+        self._finish_pending_synthesis_after_asr()
+
+    def _on_asr_error(self, msg: str) -> None:
+        self._btn_asr_run.setEnabled(bool(self._manifest_path))
+        self._asr_status.setText(t("synth.asr_error", msg=msg))
+        self._progress.set_status(t("synth.asr_error", msg=msg))
+        self._finish_pending_synthesis_after_asr()
+
+    def _finish_pending_synthesis_after_asr(self) -> None:
+        pending = self._pending_synthesis_finish
+        self._pending_synthesis_finish = None
+        if pending is None:
+            return
+        output_dir, synthesized, skipped = pending
+        self.synthesis_finished.emit(output_dir, synthesized, skipped)
+
+    def _open_asr_report(self) -> None:
+        self._open_local_file(self._last_asr_report_path)
+
+    def _open_asr_diff(self) -> None:
+        diff_path = (
+            self._last_asr_report_path.with_suffix(".diff.txt")
+            if self._last_asr_report_path
+            else None
+        )
+        self._open_local_file(diff_path)
+
+    def _open_local_file(self, path: Path | None) -> None:
+        if path and path.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def _select_first_asr_issue(self) -> None:
+        for chunk in self._manifest_chunks:
+            if not isinstance(chunk, dict):
+                continue
+            status = str((chunk.get("asr_qa") or {}).get("status") or "")
+            if status not in {"failed", "warning", "error"}:
+                continue
+            chapter_index = int(chunk.get("chapter_index", 0))
+            chunk_index = int(chunk.get("chunk_index", 0))
+            bad_idx = self._asr_filter_combo.findData("bad")
+            if bad_idx >= 0:
+                self._asr_filter_combo.setCurrentIndex(bad_idx)
+            self._select_test_chunk(chapter_index, chunk_index)
+            self._status.setText(t("synth.asr_selected_issue"))
+            return
+        self._status.setText(t("synth.asr_no_issues"))
 
     # ── Signal handlers ───────────────────────────────────────────────────────
 
@@ -2675,6 +2931,9 @@ class SynthesisPage(QWidget):
                 path=output_dir,
             ),
         )
+        if self._asr_enable_check.isChecked():
+            self._start_asr_qa_worker((output_dir, synthesized, skipped))
+            return
         self.synthesis_finished.emit(output_dir, synthesized, skipped)
 
     def _on_error(self, msg: str) -> None:

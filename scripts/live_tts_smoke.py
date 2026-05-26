@@ -71,6 +71,11 @@ def main(argv: list[str] | None = None) -> int:
         default=260,
         help="Maximum characters per real-book TTS smoke chunk.",
     )
+    parser.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help="Build the smoke manifest without connecting to ComfyUI or synthesizing audio.",
+    )
     args = parser.parse_args(argv)
 
     out_dir = Path(args.out_dir)
@@ -84,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         max_book_chars=args.max_book_chars,
         max_smoke_chunks=args.max_smoke_chunks,
         max_chunk_chars=args.max_chunk_chars,
+        manifest_only=args.manifest_only,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     report_path = out_dir / "live_tts_smoke_report.json"
@@ -94,6 +100,9 @@ def main(argv: list[str] | None = None) -> int:
         print(report["message"])
     if report["status"] == "ok":
         print(f"Assembled chapter: {report.get('assembled_chapter', '')}")
+        return 0
+    if report["status"] == "manifest_only":
+        print(f"Manifest: {report.get('manifest', '')}")
         return 0
     if report["status"] == "unavailable":
         return 2
@@ -111,6 +120,7 @@ def run_live_tts_smoke(
     max_book_chars: int = 1200,
     max_smoke_chunks: int = 2,
     max_chunk_chars: int = 260,
+    manifest_only: bool = False,
 ) -> dict[str, Any]:
     """Run the live TTS smoke and return a JSON-serializable report."""
     language = normalize_book_language(language)
@@ -126,21 +136,8 @@ def run_live_tts_smoke(
         "max_book_chars": max_book_chars,
         "max_smoke_chunks": max_smoke_chunks,
         "max_chunk_chars": max_chunk_chars,
+        "manifest_only": manifest_only,
     }
-
-    client = ComfyUIClient(comfyui_url)
-    if not client.is_reachable():
-        report.update({
-            "status": "unavailable",
-            "message": f"ComfyUI is not reachable at {comfyui_url}. Start ComfyUI and rerun.",
-        })
-        return report
-
-    try:
-        builder = WorkflowBuilder(workflow_path)
-    except WorkflowBuilderError as exc:
-        report.update({"status": "error", "message": str(exc)})
-        return report
 
     out_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -160,6 +157,28 @@ def run_live_tts_smoke(
         return report
     manifest_path = out_dir / "chunks_manifest_v2.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    report["manifest"] = str(manifest_path)
+    report["manifest_chunks"] = _manifest_chunk_count(manifest)
+    if manifest_only:
+        report.update({
+            "status": "manifest_only",
+            "message": "Smoke manifest built without contacting ComfyUI.",
+        })
+        return report
+
+    client = ComfyUIClient(comfyui_url)
+    if not client.is_reachable():
+        report.update({
+            "status": "unavailable",
+            "message": f"ComfyUI is not reachable at {comfyui_url}. Start ComfyUI and rerun.",
+        })
+        return report
+
+    try:
+        builder = WorkflowBuilder(workflow_path)
+    except WorkflowBuilderError as exc:
+        report.update({"status": "error", "message": str(exc)})
+        return report
 
     progress_lines: list[str] = []
     try:
@@ -190,7 +209,6 @@ def run_live_tts_smoke(
     assembled = next((item for item in assembly if item.output_path is not None), None)
     report.update({
         "status": "ok" if qa.ok and assembled is not None else "review_required",
-        "manifest": str(manifest_path),
         "synthesis": summary.__dict__,
         "audio_qa": qa.to_dict(),
         "assembled_chapter": str(assembled.output_path) if assembled else "",
@@ -261,6 +279,11 @@ def _real_book_smoke_manifest(
         model="ComfyUI/Qwen3-TTS",
         max_chunk_chars=max_chunk_chars,
     )
+
+
+def _manifest_chunk_count(manifest: dict[str, Any]) -> int:
+    """Return the number of chunks in a manifest record."""
+    return sum(len(chapter.get("chunks", [])) for chapter in manifest.get("chapters", []))
 
 
 def _bounded_book_text(book: object, *, max_book_chars: int) -> str:

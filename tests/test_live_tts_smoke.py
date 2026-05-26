@@ -47,6 +47,11 @@ class _FakeClient:
         return output_path
 
 
+class _ExplodingClient:
+    def __init__(self, _url: str) -> None:
+        raise AssertionError("manifest-only mode must not connect to ComfyUI")
+
+
 class _FakeBuilder:
     def __init__(self, _workflow_path: Path) -> None:
         pass
@@ -86,6 +91,34 @@ def test_live_tts_smoke_runs_synthesis_qa_and_assembly(monkeypatch, tmp_path: Pa
     assert report["audio_qa"]["ok"] is True
     assert Path(report["manifest"]).exists()
     assert Path(report["assembled_chapter"]).exists()
+
+
+def test_live_tts_smoke_manifest_only_skips_comfyui(monkeypatch, tmp_path: Path) -> None:
+    module = _load_live_tts_smoke_module()
+    monkeypatch.setattr(module, "ComfyUIClient", _ExplodingClient)
+    book_path = tmp_path / "book.txt"
+    book_path.write_text(
+        (
+            "Спасибо, что скачали книгу Royallib.ru: http://royallib.ru\n\n"
+            "Глава первая\n\n"
+            "Иван вошёл в комнату. Мария улыбнулась."
+        ),
+        encoding="utf-8",
+    )
+
+    report = module.run_live_tts_smoke(
+        comfyui_url="http://127.0.0.1:8188",
+        workflow_path=tmp_path / "workflow.json",
+        out_dir=tmp_path / "manifest_only",
+        book_path=book_path,
+        manifest_only=True,
+    )
+
+    assert report["status"] == "manifest_only"
+    assert report["manifest_chunks"] >= 1
+    manifest_text = Path(report["manifest"]).read_text(encoding="utf-8")
+    assert "Иван вошёл" in manifest_text
+    assert "royallib" not in manifest_text.casefold()
 
 
 def test_live_tts_smoke_can_use_real_book_excerpt(monkeypatch, tmp_path: Path) -> None:

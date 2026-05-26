@@ -31,6 +31,20 @@ Exit codes:
 - `1`: ComfyUI responded, but synthesis/QA/assembly needs review.
 - `2`: ComfyUI is not reachable; start ComfyUI and rerun.
 
+Manifest-only real-book check:
+
+```powershell
+python scripts\live_tts_smoke.py `
+  --book-path books\monosov\monosov1.txt `
+  --out-dir output\live_tts_real_book_manifest_only `
+  --max-smoke-chunks 3 `
+  --manifest-only
+```
+
+This writes `chunks_manifest_v2.json` and `live_tts_smoke_report.json` without
+contacting ComfyUI. Use it to catch front matter, library URLs, or publisher
+boilerplate before spending GPU time on synthesis.
+
 Expected artifacts:
 
 - `001_chapter_01.txt`

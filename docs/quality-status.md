@@ -77,6 +77,11 @@ are intentionally not committed.
     likely publisher/library boilerplate before choosing chunks. The old
     generated artifact should be rerun before final subjective listening if it
     still contains Royallib/front-matter text.
+  - Lightweight recheck without ComfyUI: `python scripts/live_tts_smoke.py
+    --book-path books/monosov/monosov1.txt --out-dir
+    output/live_tts_real_book_manifest_only --max-smoke-chunks 3
+    --manifest-only` wrote a clean manifest with no `royallib`, `http://`, or
+    `Приятного` front-matter strings.
   - Post-run resource check: ComfyUI was stopped, `ollama ps` was empty, and
     GPU memory returned to the low idle range.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.

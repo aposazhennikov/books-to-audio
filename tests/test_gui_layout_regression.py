@@ -418,12 +418,7 @@ def test_chunk_primary_action_is_not_stretched_across_toolbar() -> None:
 
     assert page._btn_detect.width() <= 380
     assert load_rect.left() - detect_rect.right() >= 40
-    assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
-    assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
-    assert page._chunk_size.lineEdit().minimumHeight() == 0
-    chunk_rect = _rect_in_window(window, page._chunk_size)
-    chunk_line_rect = _rect_in_window(window, page._chunk_size.lineEdit())
-    assert abs(chunk_rect.center().y() - chunk_line_rect.center().y()) <= 1
+    assert page._chunk_size.isHidden()
 
     window.close()
     window.deleteLater()
@@ -582,7 +577,6 @@ def test_zoomed_chunk_markup_controls_do_not_overlap() -> None:
         window,
         [
             page._speaker_mode,
-            page._chunk_size,
             page._btn_detect,
             page._btn_load,
             page._btn_save,
@@ -591,6 +585,7 @@ def test_zoomed_chunk_markup_controls_do_not_overlap() -> None:
         ],
     )
     assert page._stress_mode.isHidden()
+    assert page._chunk_size.isHidden()
     assert page._progress.isHidden()
     assert page._top_tabs.geometry().bottom() <= page._voice_table.geometry().top()
     assert page._voice_table._editor_tabs.isHidden()
@@ -699,7 +694,6 @@ def test_loaded_llm_chunk_page_keeps_settings_controls_inside_panel() -> None:
 
     for child in (
         page._speaker_mode,
-        page._chunk_size,
         page._stress_mode,
         page._llm_panel,
         page._action_panel,
@@ -815,7 +809,6 @@ def test_loaded_llm_chunk_page_ultra_dense_has_no_overlapping_llm_controls() -> 
         window,
         [
             page._speaker_mode,
-            page._chunk_size,
             page._action_panel,
             page._voice_table,
         ],
@@ -932,10 +925,7 @@ def test_zoomed_chunk_actions_keep_breathing_room() -> None:
     render_widget(window, 760, 520, scale=1.45)
 
     page = window._voices_page
-    field_bottom = max(
-        _rect_in_window(window, page._speaker_mode).bottom(),
-        _rect_in_window(window, page._chunk_size).bottom(),
-    )
+    field_bottom = _rect_in_window(window, page._speaker_mode).bottom()
     action_top = min(
         _rect_in_window(window, button).top()
         for button in (

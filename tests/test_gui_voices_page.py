@@ -146,24 +146,20 @@ def test_voices_page_detect_save_and_build_buttons_use_real_manifest_flow(
     assert manifest["chapters"][0]["chunks"][0]["text"] == "Edited line."
 
 
-def test_voices_page_uses_compact_centered_chunk_size_field(qapp) -> None:
+def test_voices_page_keeps_chunk_size_as_hidden_build_setting(qapp) -> None:
     page = VoicesPage()
     render_widget(page, 1180, 760, scale=1.45)
 
+    assert page._chunk_size.isHidden()
+    assert page._chunk_size_label.isHidden()
+    assert page._chunk_size.value() == 600
     assert page._chunk_size.alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
     assert page._chunk_size.alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
     assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignHCenter
     assert page._chunk_size.lineEdit().alignment() & QtCore.Qt.AlignmentFlag.AlignVCenter
     assert page._chunk_size.lineEdit().minimumHeight() == 0
     assert page._chunk_size.buttonSymbols() == QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
-    assert 38 <= page._chunk_size.height() <= 42
     assert page._chunk_size.width() <= 160
-    spin_center = page._chunk_size.mapTo(page, page._chunk_size.rect().center()).y()
-    line_center = page._chunk_size.lineEdit().mapTo(
-        page,
-        page._chunk_size.lineEdit().rect().center(),
-    ).y()
-    assert abs(spin_center - line_center) <= 1
 
     page.deleteLater()
 
@@ -261,6 +257,47 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     assert not table._table.isColumnHidden(5)
 
     page.deleteLater()
+
+
+def test_voice_table_cell_widgets_clear_underlying_fallback_text(qapp) -> None:
+    set_language("ru")
+    page = VoicesPage()
+    table = page._voice_table
+    table.set_segments(
+        [
+            {
+                "segment_index": index,
+                "chapter_index": 0,
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "text": f"Editable segment {index}.",
+            }
+            for index in range(8)
+        ]
+    )
+    render_widget(page, 2048, 760, scale=1.0)
+
+    for column in range(4, 10):
+        assert table._table.cellWidget(0, column) is not None
+        item = table._table.item(0, column)
+        assert item is not None
+        assert item.text() == ""
+
+    set_language("zh")
+    page.retranslate()
+    render_widget(page, 2048, 760, scale=1.0)
+
+    for column in range(4, 10):
+        item = table._table.item(0, column)
+        assert item is not None
+        assert item.text() == ""
+        assert "Слушать" not in item.text()
+        assert "Повтор" not in item.text()
+        assert "Удалить" not in item.text()
+
+    page.deleteLater()
+    set_language("ru")
 
 
 def test_voice_table_exposes_editable_character_roles(qapp, qtbot) -> None:

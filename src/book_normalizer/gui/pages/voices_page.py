@@ -82,9 +82,8 @@ class VoicesPage(QWidget):
         settings.setContentsMargins(0, 0, 0, 0)
         settings.setHorizontalSpacing(16)
         settings.setVerticalSpacing(6)
-        settings.setColumnStretch(0, 3)
+        settings.setColumnStretch(0, 0)
         settings.setColumnStretch(1, 0)
-        settings.setColumnStretch(2, 3)
 
         # Speaker mode.
         self._speaker_mode = QComboBox()
@@ -102,10 +101,11 @@ class VoicesPage(QWidget):
             "color: rgba(51,65,85,0.62); font-size: 10px;"
             "padding: 0 0 4px 0;",
         )
-        settings.addWidget(self._speaker_mode_hint, 2, 0, 1, 3)
+        settings.addWidget(self._speaker_mode_hint, 2, 0, 1, 2)
 
-        # Max chunk chars.
-        self._chunk_size = QSpinBox()
+        # Advanced TTS chunk size. Kept as a hidden value so automated runs can
+        # still tune it without exposing a confusing bare number in the review UI.
+        self._chunk_size = QSpinBox(self)
         self._chunk_size.setRange(30, 2000)
         self._chunk_size.setValue(600)
         self._chunk_size.setSingleStep(10)
@@ -114,14 +114,14 @@ class VoicesPage(QWidget):
         self._chunk_size.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self._chunk_size.setFixedWidth(128)
         self._chunk_size.setFixedHeight(38)
-        self._chunk_size_label = QLabel()
-        settings.addWidget(self._chunk_size_label, 0, 1)
-        settings.addWidget(self._chunk_size, 1, 1)
+        self._chunk_size.setVisible(False)
+        self._chunk_size_label = QLabel(self)
+        self._chunk_size_label.setVisible(False)
 
         self._stress_mode = QComboBox()
         self._stress_mode_label = QLabel()
-        settings.addWidget(self._stress_mode_label, 0, 2)
-        settings.addWidget(self._stress_mode, 1, 2)
+        settings.addWidget(self._stress_mode_label, 0, 1)
+        settings.addWidget(self._stress_mode, 1, 1)
 
         settings_strip.addWidget(settings_fields_panel, 0, Qt.AlignmentFlag.AlignVCenter)
 
@@ -435,6 +435,8 @@ class VoicesPage(QWidget):
         self._action_panel.layout().setContentsMargins(0, 4 if controls_compact else 0, 0, 0)
         self._chunk_size.setFixedHeight(42 if controls_compact else 38)
         self._chunk_size.setFixedWidth(118 if width_compact else 128)
+        self._chunk_size.setVisible(False)
+        self._chunk_size_label.setVisible(False)
         has_loaded_segments = bool(self._voice_table.get_segments())
         show_secondary_status = not controls_compact and (
             self._worker is not None or not has_loaded_segments
@@ -456,7 +458,6 @@ class VoicesPage(QWidget):
                 button.setMinimumHeight(max(38, round(38 * self._ui_scale)))
         for label in (
             self._speaker_mode_label,
-            self._chunk_size_label,
             self._stress_mode_label,
         ):
             label.setVisible(not controls_compact)

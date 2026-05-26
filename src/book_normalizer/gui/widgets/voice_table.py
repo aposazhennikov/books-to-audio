@@ -541,6 +541,7 @@ class VoiceTableWidget(QWidget):
         if isinstance(role_combo, QComboBox):
             current = _segment_role_display(segment)
             self._populate_role_combo(role_combo, current, self._cached_role_options)
+            self._clear_widget_backed_item(row, 4, tooltip=current)
         else:
             self._set_readonly_item(row, 4, _segment_role_display(segment))
 
@@ -548,6 +549,7 @@ class VoiceTableWidget(QWidget):
         if isinstance(combo, QComboBox):
             current = combo.currentData() or "narrator_calm"
             _populate_voice_combo(combo, str(current))
+            self._clear_widget_backed_item(row, 5, tooltip=combo.currentText())
         else:
             voice_id = str(segment.get("voice_id") or "narrator_calm")
             self._set_readonly_item(row, 5, _voice_display(voice_id))
@@ -563,6 +565,7 @@ class VoiceTableWidget(QWidget):
             intonation_combo.setCurrentIndex(idx if idx >= 0 else 0)
             intonation_combo.blockSignals(False)
             apply_combo_content_width(intonation_combo)
+            self._clear_widget_backed_item(row, 6, tooltip=intonation_combo.currentText())
         else:
             intonation = str(segment.get("intonation") or "neutral")
             self._set_readonly_item(row, 6, _intonation_display(intonation))
@@ -570,6 +573,12 @@ class VoiceTableWidget(QWidget):
         play_btn = self._table.cellWidget(row, 7)
         if isinstance(play_btn, QPushButton):
             play_btn.setText(t("voice.play_audio"))
+            self._clear_widget_backed_item(
+                row,
+                7,
+                tooltip=t("voice.play_audio"),
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
         else:
             self._set_readonly_item(
                 row,
@@ -581,6 +590,12 @@ class VoiceTableWidget(QWidget):
         retry_btn = self._table.cellWidget(row, 8)
         if isinstance(retry_btn, QPushButton):
             retry_btn.setText(t("voice.mark_retry"))
+            self._clear_widget_backed_item(
+                row,
+                8,
+                tooltip=t("voice.mark_retry"),
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
         else:
             self._set_readonly_item(
                 row,
@@ -900,16 +915,61 @@ class VoiceTableWidget(QWidget):
         item.setTextAlignment(alignment | Qt.AlignmentFlag.AlignVCenter)
         return item
 
+    def _clear_widget_backed_item(
+        self,
+        row: int,
+        column: int,
+        *,
+        tooltip: str = "",
+        alignment: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignLeft,
+    ) -> None:
+        """Prevent fallback item text from painting under an interactive cell widget."""
+        item = self._table.item(row, column)
+        if item is None:
+            item = QTableWidgetItem()
+            self._table.setItem(row, column, item)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        item.setText("")
+        item.setToolTip(tooltip)
+        item.setTextAlignment(alignment | Qt.AlignmentFlag.AlignVCenter)
+
     def _refresh_row_display_items(self, row: int, seg: dict[str, Any]) -> None:
         """Refresh text fallbacks for rows whose heavy widgets are not built yet."""
         role = _segment_role_display(seg)
         voice_id = str(seg.get("voice_id") or "narrator_calm")
         intonation = str(seg.get("intonation") or "neutral")
-        self._set_readonly_item(row, 4, role)
-        self._set_readonly_item(row, 5, _voice_display(voice_id))
-        self._set_readonly_item(row, 6, _intonation_display(intonation))
-        self._set_readonly_item(row, 7, t("voice.play_audio"), alignment=Qt.AlignmentFlag.AlignCenter)
-        self._set_readonly_item(row, 8, t("voice.mark_retry"), alignment=Qt.AlignmentFlag.AlignCenter)
+        voice = _voice_display(voice_id)
+        intonation_label = _intonation_display(intonation)
+        if self._table.cellWidget(row, 4) is not None:
+            self._clear_widget_backed_item(row, 4, tooltip=role)
+        else:
+            self._set_readonly_item(row, 4, role)
+        if self._table.cellWidget(row, 5) is not None:
+            self._clear_widget_backed_item(row, 5, tooltip=voice)
+        else:
+            self._set_readonly_item(row, 5, voice)
+        if self._table.cellWidget(row, 6) is not None:
+            self._clear_widget_backed_item(row, 6, tooltip=intonation_label)
+        else:
+            self._set_readonly_item(row, 6, intonation_label)
+        if self._table.cellWidget(row, 7) is not None:
+            self._clear_widget_backed_item(
+                row,
+                7,
+                tooltip=t("voice.play_audio"),
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
+        else:
+            self._set_readonly_item(row, 7, t("voice.play_audio"), alignment=Qt.AlignmentFlag.AlignCenter)
+        if self._table.cellWidget(row, 8) is not None:
+            self._clear_widget_backed_item(
+                row,
+                8,
+                tooltip=t("voice.mark_retry"),
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
+        else:
+            self._set_readonly_item(row, 8, t("voice.mark_retry"), alignment=Qt.AlignmentFlag.AlignCenter)
         self._refresh_row_action_item(row, seg)
 
     def _row_delete_label(self, segment_index: int, seg: dict[str, Any]) -> str:
@@ -937,6 +997,12 @@ class VoiceTableWidget(QWidget):
         if isinstance(button, QPushButton):
             button.setText(label)
             button.setToolTip(tip)
+            self._clear_widget_backed_item(
+                row,
+                9,
+                tooltip=tip,
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
             return
         item = self._set_readonly_item(
             row,
@@ -1013,6 +1079,7 @@ class VoiceTableWidget(QWidget):
                     ),
                 )
             self._table.setCellWidget(row, 4, role_combo)
+            self._clear_widget_backed_item(row, 4, tooltip=role_combo.currentText())
 
         if not isinstance(self._table.cellWidget(row, 5), QComboBox):
             voice_combo = _make_voice_combo(str(seg.get("voice_id", "narrator_calm")))
@@ -1022,6 +1089,7 @@ class VoiceTableWidget(QWidget):
                 ),
             )
             self._table.setCellWidget(row, 5, voice_combo)
+            self._clear_widget_backed_item(row, 5, tooltip=voice_combo.currentText())
 
         if not isinstance(self._table.cellWidget(row, 6), QComboBox):
             inton_combo = _make_intonation_combo(str(seg.get("intonation", "neutral")))
@@ -1031,6 +1099,7 @@ class VoiceTableWidget(QWidget):
                 ),
             )
             self._table.setCellWidget(row, 6, inton_combo)
+            self._clear_widget_backed_item(row, 6, tooltip=inton_combo.currentText())
 
         if self._table.cellWidget(row, 7) is None:
             play_btn = QPushButton(t("voice.play_audio"))
@@ -1040,12 +1109,24 @@ class VoiceTableWidget(QWidget):
             )
             play_btn.clicked.connect(lambda _checked=False, p=audio_path: self._play_audio(p))
             self._table.setCellWidget(row, 7, play_btn)
+            self._clear_widget_backed_item(
+                row,
+                7,
+                tooltip=t("voice.play_audio"),
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
 
         if self._table.cellWidget(row, 8) is None:
             retry_btn = QPushButton(t("voice.mark_retry"))
             retry_btn.setEnabled(self._manifest_is_v2)
             retry_btn.clicked.connect(lambda _checked=False, r=segment_index: self._mark_retry(r))
             self._table.setCellWidget(row, 8, retry_btn)
+            self._clear_widget_backed_item(
+                row,
+                8,
+                tooltip=t("voice.mark_retry"),
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
 
         if self._table.cellWidget(row, 9) is None:
             delete_btn = QPushButton()

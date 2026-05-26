@@ -43,9 +43,27 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from book_normalizer.comfyui.client import ComfyUIClient, ComfyUIError
+from book_normalizer.comfyui.generation_options import GenerationOptions
+from book_normalizer.comfyui.synthesis import collect_pending_chunks
 from book_normalizer.comfyui.synthesis import load_manifest as load_manifest_v2
-from book_normalizer.comfyui.synthesis import synthesize_manifest
+from book_normalizer.comfyui.synthesis import save_manifest, synthesize_manifest
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder, WorkflowBuilderError
+from book_normalizer.tts.artifact_qa import (
+    DEFAULT_ARTIFACT_REPORT_NAME,
+    annotate_manifest_with_artifacts,
+    run_artifact_qa,
+    write_artifact_report,
+)
+from book_normalizer.tts.asr_qa import (
+    DEFAULT_ASR_REPORT_NAME,
+    AsrQaConfig,
+    FasterWhisperBackend,
+    annotate_manifest_with_asr,
+    run_asr_qa,
+    write_asr_diff,
+    write_asr_report,
+)
+from book_normalizer.tts.quality_gate import split_problem_chunks_for_retry
 
 # ── Manifest helpers ──────────────────────────────────────────────────────────
 
@@ -224,7 +242,7 @@ def synthesize_all(
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Synthesize audio chunks via ComfyUI + Qwen3-TTS",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -258,7 +276,25 @@ def main() -> None:
         "--failed-only", action="store_true",
         help="Retry only chunks previously marked as failed.",
     )
-    args = parser.parse_args()
+    parser.add_argument("--quality-loop", action="store_true", help="QA and resynthesize bad chunks.")
+    parser.add_argument("--artifact-qa", action="store_true", help="Run artifact QA after synthesis.")
+    parser.add_argument("--asr-qa-after-synthesis", action="store_true", help="Run ASR QA after synthesis.")
+    parser.add_argument("--asr-model", default="small", help="faster-whisper ASR model (default: small).")
+    parser.add_argument(
+        "--max-resynth-attempts",
+        type=int,
+        default=2,
+        help="Max automatic resynthesis attempts per bad chunk (default: 2).",
+    )
+    parser.add_argument("--batch-size", type=int, default=1, help="Generation batch size metadata.")
+    parser.add_argument("--temperature", type=float, default=1.0, help="TTS sampling temperature.")
+    parser.add_argument("--top-p", type=float, default=0.8, help="TTS top-p sampling.")
+    parser.add_argument("--top-k", type=int, default=20, help="TTS top-k sampling.")
+    parser.add_argument("--repetition-penalty", type=float, default=1.05, help="TTS repetition penalty.")
+    parser.add_argument("--max-new-tokens", type=int, default=2048, help="TTS max new tokens.")
+    parser.add_argument("--seed", type=int, default=-1, help="TTS seed; -1 lets retries derive one.")
+    parser.add_argument("--speech-rate", type=float, default=1.0, help="TTS speech rate when supported.")
+    args = parser.parse_args(argv)
 
     manifest_path = Path(args.chunks_json)
     out_dir = Path(args.out)
@@ -290,18 +326,92 @@ def main() -> None:
         sys.exit(1)
     print(f"Workflow template: {args.workflow}")
 
-    # Run synthesis.
-    synthesize_manifest(
-        manifest=manifest,
-        manifest_path=manifest_path,
-        client=client,
-        builder=builder,
-        out_dir=out_dir,
-        chapter_filter=args.chapter,
-        chunk_timeout=args.chunk_timeout,
-        failed_only=args.failed_only,
-        progress=print,
+    generation_options = GenerationOptions(
+        batch_size=args.batch_size,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        top_k=args.top_k,
+        repetition_penalty=args.repetition_penalty,
+        max_new_tokens=args.max_new_tokens,
+        seed=args.seed,
+        speech_rate=args.speech_rate,
     )
+    max_passes = max(1, int(args.max_resynth_attempts) + 1)
+    for pass_index in range(max_passes):
+        if pass_index:
+            print(f"Quality retry pass {pass_index}/{max_passes - 1}")
+        synthesize_manifest(
+            manifest=manifest,
+            manifest_path=manifest_path,
+            client=client,
+            builder=builder,
+            out_dir=out_dir,
+            chapter_filter=args.chapter,
+            chunk_timeout=args.chunk_timeout,
+            failed_only=args.failed_only or pass_index > 0,
+            generation_options=generation_options,
+            progress=print,
+        )
+        if not (args.quality_loop or args.artifact_qa or args.asr_qa_after_synthesis):
+            break
+
+        if args.quality_loop or args.artifact_qa:
+            artifact_report = manifest_path.with_name(DEFAULT_ARTIFACT_REPORT_NAME)
+            artifact_result = run_artifact_qa(manifest, manifest_path=manifest_path)
+            write_artifact_report(artifact_report, artifact_result)
+            annotate_manifest_with_artifacts(
+                manifest,
+                artifact_result,
+                report_path=artifact_report.resolve(),
+                reset_bad_chunks=args.quality_loop,
+                max_resynthesis_attempts=args.max_resynth_attempts,
+            )
+            save_manifest(manifest_path, manifest)
+            summary = artifact_result.summary
+            print(
+                "Artifact QA: "
+                f"status={artifact_result.status}, failed={summary['failed']}, "
+                f"warnings={summary['warning']}, errors={summary['error']}."
+            )
+
+        if args.asr_qa_after_synthesis:
+            asr_report = manifest_path.with_name(DEFAULT_ASR_REPORT_NAME)
+            asr_result = run_asr_qa(
+                manifest,
+                config=AsrQaConfig(model=args.asr_model),
+                backend=FasterWhisperBackend(args.asr_model),
+                manifest_path=manifest_path,
+            )
+            write_asr_report(asr_report, asr_result)
+            write_asr_diff(asr_report.with_suffix(".diff.txt"), asr_result)
+            annotate_manifest_with_asr(
+                manifest,
+                asr_result,
+                report_path=asr_report.resolve(),
+                reset_bad_chunks=args.quality_loop,
+                max_resynthesis_attempts=args.max_resynth_attempts,
+            )
+            save_manifest(manifest_path, manifest)
+            summary = asr_result.summary
+            print(
+                "ASR QA: "
+                f"status={asr_result.status.value}, failed={summary['failed']}, "
+                f"warnings={summary['warning']}, errors={summary['error']}."
+            )
+
+        if not args.quality_loop:
+            break
+        splits = split_problem_chunks_for_retry(manifest)
+        if splits:
+            save_manifest(manifest_path, manifest)
+            print(f"Quality loop split {splits} repeated/overlong chunk(s) for retry.")
+        retry_pending = collect_pending_chunks(manifest, args.chapter, failed_only=True)
+        if not retry_pending:
+            break
+        if pass_index == max_passes - 1:
+            print(f"Quality loop stopped: {len(retry_pending)} chunk(s) still need attention.")
+            break
+        print(f"Quality loop reset {len(retry_pending)} bad chunk(s) for resynthesis.")
 
 
 if __name__ == "__main__":

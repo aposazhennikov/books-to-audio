@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest
+from book_normalizer.gui.i18n import set_language
 from book_normalizer.gui.pages.synthesis_page import (
     SynthesisPage,
     _build_test_manifest_chunks,
@@ -20,7 +21,6 @@ from book_normalizer.gui.pages.synthesis_page import (
 from book_normalizer.gui.workers.tts_worker import (
     ExportSegmentsWorker,
     TTSSynthesisWorker,
-    _flatten_manifest_chunks,
 )
 from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.tts.model_download import (
@@ -28,6 +28,7 @@ from book_normalizer.tts.model_download import (
     QWEN3_TTS_TOKENIZER,
     VOICE_CLONE_MODEL_ID,
 )
+from book_normalizer.tts.voice_library import voice_paths
 
 
 def _app():
@@ -58,34 +59,20 @@ def _v2_manifest() -> dict:
 def test_synthesis_page_reads_v2_manifest_chunks() -> None:
     chunks = _iter_manifest_chunks(_v2_manifest())
 
-    assert chunks == [
-        {
-            "chapter_index": 3,
-            "chunk_index": 0,
-            "voice_id": "narrator_calm",
-            "text": "Hello",
-        },
-    ]
+    assert len(chunks) == 1
+    assert chunks[0]["chapter_index"] == 3
+    assert chunks[0]["chunk_index"] == 0
+    assert chunks[0]["voice_id"] == "narrator_calm"
+    assert chunks[0]["text"] == "Hello"
 
 
-def test_tts_worker_flattens_v2_manifest_for_legacy_runner() -> None:
-    chunks = _flatten_manifest_chunks(_v2_manifest())
-
-    assert chunks == [
-        {
-            "chapter_index": 3,
-            "chunk_index": 0,
-            "voice_id": "narrator_calm",
-            "text": "Hello",
-        },
-    ]
-
-
-def test_tts_worker_converts_models_dir_to_wsl_path() -> None:
-    assert (
-        TTSSynthesisWorker._wsl_path_text(r"D:\ComfyUI-external\models")
-        == "/mnt/d/ComfyUI-external/models"
-    )
+def test_synthesis_page_rejects_v1_manifest_lists() -> None:
+    try:
+        _iter_manifest_chunks([])
+    except ValueError as exc:
+        assert "chunks_manifest_v2.json" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected v1 list manifest to be rejected")
 
 
 def test_synthesis_page_installs_base_model_for_custom_voice_mode() -> None:
@@ -111,31 +98,17 @@ def test_synthesis_page_installs_selected_model_for_preset_mode() -> None:
     ]
 
 
-def test_tts_worker_converts_sample_audio_path_inside_clone_config(tmp_path: Path) -> None:
-    cfg_path = tmp_path / "clone.json"
-    cfg_path.write_text(
-        json.dumps(
-            {
-                "__all__": {
-                    "ref_audio": r"D:\samples\narrator.wav",
-                    "ref_text": "Sample transcript.",
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
+def test_tts_worker_passes_clone_config_as_active_v2_input(tmp_path: Path) -> None:
+    clone_config = tmp_path / "clone.json"
     worker = TTSSynthesisWorker(
         manifest_path=tmp_path / "manifest.json",
         output_dir=tmp_path,
-        clone_config=str(cfg_path),
+        clone_config=str(clone_config),
+        models_dir=r"D:\ComfyUI-external\models",
     )
 
-    converted_path = worker._prepare_clone_config()
-
-    assert converted_path is not None
-    converted = json.loads(converted_path.read_text(encoding="utf-8"))
-    assert converted["__all__"]["ref_audio"] == "/mnt/d/samples/narrator.wav"
+    assert worker._clone_config_path == clone_config
+    assert "clone_config" not in worker._unused_runner_options
 
 
 def test_build_test_manifest_uses_selected_chapter_and_trims_text() -> None:
@@ -249,17 +222,86 @@ def test_synthesis_page_test_chunk_label_shows_effective_custom_voice(
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PyQt6.QtWidgets import QApplication
 
+    set_language("en")
+    try:
+        app = QApplication.instance() or QApplication([])
+        _ = app
+        page = SynthesisPage()
+        manifest_path = tmp_path / "chunks_manifest_v2.json"
+        manifest_path.write_text(json.dumps(_v2_manifest()), encoding="utf-8")
+
+        page.set_manifest(manifest_path, tmp_path / "out")
+
+        item_text = page._test_chunk_combo.itemText(0)
+        assert "CustomVoice sample" in item_text
+        assert "narrator_calm" not in item_text
+    finally:
+        set_language("ru")
+
+
+def test_synthesis_page_maps_saved_voices_to_llm_character_roles(
+    tmp_path: Path,
+) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+
     app = QApplication.instance() or QApplication([])
     _ = app
-    page = SynthesisPage()
+    library_dir = tmp_path / "voices"
+    prompt_path, metadata_path, voice_id = voice_paths(library_dir, "Margarita Sad")
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_bytes(b"fake prompt")
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "id": voice_id,
+                "name": "Margarita Sad",
+                "prompt_file": prompt_path.name,
+                "speech_rate": 0.94,
+            },
+        ),
+        encoding="utf-8",
+    )
+    manifest = {
+        "version": 2,
+        "chapters": [
+            {
+                "chapter_index": 0,
+                "chunks": [
+                    {
+                        "chapter_index": 0,
+                        "chunk_index": 0,
+                        "voice_label": "women",
+                        "voice_id": "female_warm",
+                        "role": "female",
+                        "speaker": "Маргарита",
+                        "emotion": "sad",
+                        "text": "Я вернусь.",
+                    }
+                ],
+            }
+        ],
+    }
     manifest_path = tmp_path / "chunks_manifest_v2.json"
-    manifest_path.write_text(json.dumps(_v2_manifest()), encoding="utf-8")
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
 
+    page = SynthesisPage()
+    page._voice_library_dir_edit.setText(str(library_dir))
+    page._refresh_saved_voices()
     page.set_manifest(manifest_path, tmp_path / "out")
+    page._mode_tabs.setCurrentIndex(0)
+    page._custom_strategy_combo.setCurrentIndex(
+        page._custom_strategy_combo.findData("saved_roles")
+    )
 
-    item_text = page._test_chunk_combo.itemText(0)
-    assert "CustomVoice sample" in item_text
-    assert "narrator_calm" not in item_text
+    combo = page._role_voice_combos["speaker:Маргарита|emotion:sad"]
+    combo.setCurrentIndex(combo.findData(voice_id))
+    clone_config = json.loads(Path(page._build_temp_sample_voice_config()).read_text(encoding="utf-8"))
+
+    assert list(page._role_voice_combos) == ["speaker:Маргарита|emotion:sad"]
+    assert clone_config["speaker:Маргарита|emotion:sad"]["saved_voice"] == voice_id
+    assert clone_config["speaker:Маргарита|emotion:sad"]["speech_rate"] == 0.94
+    assert "Margarita Sad" in page._test_chunk_combo.itemText(0)
 
 
 def test_synthesis_page_test_synthesis_uses_persisted_speech_rate(

@@ -23,6 +23,8 @@ from book_normalizer.dialogue.models import (
     SpeakerAnnotationResult,
     SpeakerRole,
 )
+from book_normalizer.llm.model_router import model_plan_for_language
+from book_normalizer.llm.ollama_client import OllamaChatClient
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +175,7 @@ _LLM_SYSTEM_PROMPT = (
 
 
 class LlmAttributor(BaseSpeakerAttributor):
-    """Speaker attribution using an LLM via OpenAI-compatible API.
+    """Speaker attribution using an LLM via native Ollama API.
 
     Sends chapter text to an LLM and parses structured gender annotations.
     Results are cached to avoid redundant API calls.
@@ -181,15 +183,24 @@ class LlmAttributor(BaseSpeakerAttributor):
 
     def __init__(
         self,
-        endpoint: str = "http://localhost:11434/v1",
-        model: str = "qwen3:8b",
+        endpoint: str = "http://localhost:11434",
+        model: str = "",
         api_key: str = "",
         cache_dir: Path | None = None,
     ) -> None:
         self._endpoint = endpoint.rstrip("/")
-        self._model = model
+        self._model_plan = model_plan_for_language("ru", preferred_model=model)
+        self._model = self._model_plan.primary_model
         self._api_key = api_key
         self._cache_dir = cache_dir
+        self._client = OllamaChatClient(
+            endpoint=endpoint,
+            api_key=api_key,
+            num_ctx=self._model_plan.num_ctx,
+            num_parallel=self._model_plan.num_parallel,
+            keep_alive=self._model_plan.keep_alive,
+            think=self._model_plan.think,
+        )
 
     def attribute(
         self, chapters: list[AnnotatedChapter]
@@ -232,12 +243,6 @@ class LlmAttributor(BaseSpeakerAttributor):
         dialogue_lines: list[DialogueLine],
     ) -> list[dict[str, str]]:
         """Send dialogue lines to the LLM and parse response."""
-        try:
-            import httpx
-        except ImportError:
-            logger.error("httpx is required for LLM attribution: pip install httpx")
-            return []
-
         lines_payload = self._build_context_payload(chapter, dialogue_lines)
         user_msg = (
             f"Chapter: {chapter.chapter_title}\n\n"
@@ -245,29 +250,29 @@ class LlmAttributor(BaseSpeakerAttributor):
             f"{json.dumps(lines_payload, ensure_ascii=False, indent=2)}"
         )
 
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
-
-        payload = {
-            "model": self._model,
-            "messages": [
-                {"role": "system", "content": _LLM_SYSTEM_PROMPT},
-                {"role": "user", "content": user_msg},
-            ],
-            "temperature": 0.1,
-        }
-
         try:
-            resp = httpx.post(
-                f"{self._endpoint}/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=60.0,
+            attempt = self._client.chat_json_with_fallback(
+                models=self._model_plan.candidates,
+                messages=[
+                    {"role": "system", "content": _LLM_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_msg},
+                ],
+                schema={
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "line_id": {"type": "string"},
+                            "role": {"type": "string", "enum": ["male", "female", "unknown"]},
+                        },
+                        "required": ["line_id", "role"],
+                    },
+                },
+                temperature=0.1,
             )
-            resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"]
-            return self._parse_llm_response(content)
+            if isinstance(attempt.data, list):
+                return attempt.data
+            return self._parse_llm_response(attempt.content)
         except Exception as exc:
             logger.warning("LLM attribution failed: %s", exc)
             return []
@@ -396,7 +401,7 @@ class LlmAttributor(BaseSpeakerAttributor):
             for i, line in enumerate(dialogue_lines)
         ]
         payload = "\n\0".join((
-            self._model,
+            ",".join(self._model_plan.candidates),
             self._endpoint,
             _LLM_SYSTEM_PROMPT,
             chapter.chapter_title,
@@ -510,7 +515,7 @@ def create_attributor(
     mode: SpeakerMode,
     *,
     llm_endpoint: str = "",
-    llm_model: str = "qwen3:8b",
+    llm_model: str = "",
     llm_api_key: str = "",
     cache_dir: Path | None = None,
     session_path: Path | None = None,
@@ -520,7 +525,7 @@ def create_attributor(
         return HeuristicAttributor()
     if mode == SpeakerMode.LLM:
         return LlmAttributor(
-            endpoint=llm_endpoint or "http://localhost:11434/v1",
+            endpoint=llm_endpoint or "http://localhost:11434",
             model=llm_model,
             api_key=llm_api_key,
             cache_dir=cache_dir,

@@ -2,31 +2,94 @@
 
 from __future__ import annotations
 
+import logging
+import platform
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QProcess, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QCheckBox,
     QComboBox,
     QFileDialog,
-    QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
-    QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
+from book_normalizer.gui.dialog_styles import apply_readable_message_box_style
 from book_normalizer.gui.i18n import t
+from book_normalizer.gui.normalization_cache import (
+    CachedNormalization,
+    NormalizationCacheSettings,
+    find_cached_normalization,
+    load_cached_book,
+    save_cached_book,
+)
 from book_normalizer.gui.widgets.help_button import label_with_help, set_help_text
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.normalize_worker import NormalizeWorker
+from book_normalizer.languages import (
+    DEFAULT_BOOK_LANGUAGE,
+    SUPPORTED_LANGUAGE_CODES,
+    tesseract_language,
+)
+from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
+from book_normalizer.loaders.pdf_ocr_engine import (
+    tesseract_available,
+    tesseract_language_available,
+)
+from book_normalizer.runtime_paths import configured_ollama_endpoint
 
 _PDF_EXTENSIONS = {".pdf"}
+_PSM_VALUES = (3, 4, 6, 11, 13)
+logger = logging.getLogger(__name__)
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def _native_ocr_install_display_command() -> str:
+    """Return the user-facing native OCR installer command."""
+    script = "install.bat" if platform.system() == "Windows" else "./install.sh"
+    return f"{script} --interactive --install-system-tools --download-tessdata"
+
+
+def _native_ocr_installer_command(
+    project_root: Path | None = None,
+) -> tuple[str, list[str], Path]:
+    """Return a native command that launches the OCR installer helper."""
+    root = (project_root or _project_root()).resolve()
+    if platform.system() == "Windows":
+        script = root / "install.bat"
+        return (
+            "cmd.exe",
+            [
+                "/c",
+                "start",
+                "",
+                str(script),
+                "--interactive",
+                "--install-system-tools",
+                "--download-tessdata",
+            ],
+            root,
+        )
+    script = root / "install.sh"
+    return (
+        str(script),
+        ["--interactive", "--install-system-tools", "--download-tessdata"],
+        root,
+    )
 
 
 def _book_preview_lines(book: object, limit: int | None = None) -> tuple[list[str], list[str]]:
@@ -63,12 +126,17 @@ def _book_preview_lines(book: object, limit: int | None = None) -> tuple[list[st
 class NormalizePage(QWidget):
     """Page for book loading and text normalization."""
 
+    normalization_failed = pyqtSignal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._book = None
         self._worker: NormalizeWorker | None = None
         self._selected_path: str = ""
         self._help_buttons: dict[str, object] = {}
+        self._compact_mode = False
+        self._tesseract_available: bool | None = None
+        self._tesseract_language_available: dict[str, bool] = {}
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -79,9 +147,13 @@ class NormalizePage(QWidget):
         file_row = QHBoxLayout()
         file_row.setSpacing(8)
         self._path_label = QLabel()
+        self._path_label.setWordWrap(True)
+        self._path_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse,
+        )
         self._path_label.setStyleSheet(
             "font-weight: 700; font-size: 13px; padding: 6px 12px;"
-            "background: rgba(15,23,42,0.62); border: 1px solid rgba(148,163,184,0.12);"
+            "background: rgba(255,255,255,0.70); border: 1px solid rgba(91,115,142,0.16);"
             "border-radius: 8px;"
         )
         file_row.addWidget(self._path_label, stretch=1)
@@ -94,45 +166,102 @@ class NormalizePage(QWidget):
         # ── OCR settings (PDF only) ──
         self._ocr_widgets: list[QWidget] = []
 
-        settings = QFormLayout()
-        settings.setHorizontalSpacing(16)
-        settings.setVerticalSpacing(6)
+        settings = QGridLayout()
+        settings.setHorizontalSpacing(14)
+        settings.setVerticalSpacing(8)
+        for column in range(3):
+            settings.setColumnStretch(column, 1)
+
+        self._book_language = QComboBox()
+        self._book_language.setMaximumWidth(360)
+        self._book_language.setMinimumHeight(36)
+        self._book_language.currentIndexChanged.connect(
+            lambda _index: self._update_ocr_visibility()
+        )
+        self._book_language_label = QLabel()
+        self._book_language_label_wrap = self._label_with_help(
+            self._book_language_label, "norm.book_language_tip"
+        )
+        self._add_setting(settings, 0, 0, self._book_language_label_wrap, self._book_language)
 
         self._ocr_mode = QComboBox()
         self._ocr_mode.addItems(["auto", "off", "force", "compare"])
+        self._ocr_mode.setFixedWidth(180)
+        self._ocr_mode.setMinimumHeight(36)
         self._ocr_mode_label = QLabel()
         self._ocr_mode_label_wrap = self._label_with_help(
             self._ocr_mode_label, "norm.ocr_mode_tip"
         )
-        settings.addRow(self._ocr_mode_label_wrap, self._ocr_mode)
+        self._add_setting(settings, 0, 1, self._ocr_mode_label_wrap, self._ocr_mode)
         self._ocr_widgets.extend([self._ocr_mode_label_wrap, self._ocr_mode])
 
         self._ocr_dpi = QSpinBox()
         self._ocr_dpi.setRange(72, 1200)
         self._ocr_dpi.setValue(400)
+        self._ocr_dpi.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._ocr_dpi.lineEdit().setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._ocr_dpi.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self._ocr_dpi.setFixedWidth(128)
+        self._ocr_dpi.setFixedHeight(38)
         self._ocr_dpi_label = QLabel()
         self._ocr_dpi_label_wrap = self._label_with_help(
             self._ocr_dpi_label, "norm.ocr_dpi_tip"
         )
-        settings.addRow(self._ocr_dpi_label_wrap, self._ocr_dpi)
+        self._add_setting(settings, 0, 2, self._ocr_dpi_label_wrap, self._ocr_dpi)
         self._ocr_widgets.extend([self._ocr_dpi_label_wrap, self._ocr_dpi])
 
-        self._ocr_psm = QSpinBox()
-        self._ocr_psm.setRange(0, 13)
-        self._ocr_psm.setValue(6)
+        self._ocr_psm = QComboBox()
+        self._ocr_psm.setMaximumWidth(360)
+        self._ocr_psm.setMinimumHeight(36)
+        self._ocr_psm.currentIndexChanged.connect(self._update_psm_summary)
+        self._populate_psm_combo()
+        self._ocr_psm_summary = QLabel()
+        self._ocr_psm_summary.setWordWrap(True)
+        self._ocr_psm_summary.setStyleSheet(
+            "color: rgba(51,65,85,0.68); font-size: 11px; padding: 2px 2px 0 2px;"
+        )
+        self._ocr_psm_field = QWidget()
+        self._ocr_psm_field.setMaximumWidth(380)
+        psm_field_layout = QVBoxLayout(self._ocr_psm_field)
+        psm_field_layout.setContentsMargins(0, 0, 0, 0)
+        psm_field_layout.setSpacing(3)
+        psm_field_layout.addWidget(self._ocr_psm)
+        psm_field_layout.addWidget(self._ocr_psm_summary)
         self._ocr_psm_label = QLabel()
         self._ocr_psm_label_wrap = self._label_with_help(
             self._ocr_psm_label, "norm.ocr_psm_tip"
         )
-        settings.addRow(self._ocr_psm_label_wrap, self._ocr_psm)
-        self._ocr_widgets.extend([self._ocr_psm_label_wrap, self._ocr_psm])
+        self._add_setting(settings, 1, 1, self._ocr_psm_label_wrap, self._ocr_psm_field)
+        self._ocr_widgets.extend([self._ocr_psm_label_wrap, self._ocr_psm_field])
 
         self._ocr_not_applicable_label = QLabel()
         self._ocr_not_applicable_label.setStyleSheet(
-            "color: rgba(226,232,240,0.52); font-style: italic; font-size: 12px;"
+            "color: rgba(51,65,85,0.64); font-style: italic; font-size: 12px;"
             "padding: 4px 0;"
         )
-        settings.addRow("", self._ocr_not_applicable_label)
+        settings.addWidget(self._ocr_not_applicable_label, 4, 0, 1, 3)
+
+        self._ocr_install_panel = QWidget()
+        self._ocr_install_panel.setObjectName("ocrInstallPanel")
+        ocr_install_row = QHBoxLayout(self._ocr_install_panel)
+        ocr_install_row.setContentsMargins(10, 8, 10, 8)
+        ocr_install_row.setSpacing(10)
+        self._ocr_install_panel.setStyleSheet(
+            "QWidget#ocrInstallPanel {"
+            "  background: rgba(255,247,237,0.92);"
+            "  border: 1px solid rgba(251,146,60,0.34);"
+            "  border-radius: 8px;"
+            "}"
+        )
+        self._ocr_install_label = QLabel()
+        self._ocr_install_label.setWordWrap(True)
+        self._ocr_install_label.setStyleSheet(
+            "color: rgba(124,45,18,0.92); font-size: 12px; font-weight: 600;"
+        )
+        ocr_install_row.addWidget(self._ocr_install_label, stretch=1)
+        self._btn_install_ocr_tools = QPushButton()
+        self._btn_install_ocr_tools.clicked.connect(self._launch_ocr_installer)
+        ocr_install_row.addWidget(self._btn_install_ocr_tools)
 
         self._llm_normalize = QCheckBox()
         self._llm_normalize.stateChanged.connect(self._update_llm_visibility)
@@ -140,23 +269,26 @@ class NormalizePage(QWidget):
         self._llm_normalize_label_wrap = self._label_with_help(
             self._llm_normalize_label, "norm.llm_tip"
         )
-        settings.addRow(self._llm_normalize_label_wrap, self._llm_normalize)
+        self._add_setting(settings, 1, 0, self._llm_normalize_label_wrap, self._llm_normalize)
 
-        self._llm_endpoint = QLineEdit("http://localhost:11434/v1")
+        self._llm_endpoint = QLineEdit(configured_ollama_endpoint())
+        self._llm_endpoint.setMinimumWidth(260)
         self._llm_endpoint_label = QLabel()
         self._llm_endpoint_label_wrap = self._label_with_help(
             self._llm_endpoint_label, "norm.llm_tip"
         )
-        settings.addRow(self._llm_endpoint_label_wrap, self._llm_endpoint)
+        self._add_setting(settings, 2, 0, self._llm_endpoint_label_wrap, self._llm_endpoint)
 
-        self._llm_model = QLineEdit("qwen3:8b")
+        self._llm_model = QLineEdit(PRIMARY_QWEN3_MODEL)
+        self._llm_model.setMinimumWidth(320)
         self._llm_model_label = QLabel()
         self._llm_model_label_wrap = self._label_with_help(
             self._llm_model_label, "norm.llm_tip"
         )
-        settings.addRow(self._llm_model_label_wrap, self._llm_model)
+        self._add_setting(settings, 2, 1, self._llm_model_label_wrap, self._llm_model)
 
         layout.addLayout(settings)
+        layout.addWidget(self._ocr_install_panel)
 
         # ── Run button ──
         self._btn_run = QPushButton()
@@ -171,11 +303,12 @@ class NormalizePage(QWidget):
         layout.addWidget(self._progress)
 
         # ── Text comparison panels ──
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        text_row = QHBoxLayout()
+        text_row.setSpacing(14)
 
         self._raw_label = QLabel()
         self._raw_label.setStyleSheet(
-            "font-weight: 800; font-size: 11px; color: rgba(226,232,240,0.62);"
+            "font-weight: 800; font-size: 11px; color: rgba(51,65,85,0.64);"
             "text-transform: uppercase;"
         )
         raw_container = QWidget()
@@ -185,8 +318,11 @@ class NormalizePage(QWidget):
         raw_layout.addWidget(self._raw_label)
         self._raw_text = QPlainTextEdit()
         self._raw_text.setReadOnly(True)
+        self._raw_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self._raw_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._raw_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         raw_layout.addWidget(self._raw_text)
-        splitter.addWidget(raw_container)
+        text_row.addWidget(raw_container, stretch=1)
 
         norm_container = QWidget()
         norm_layout = QVBoxLayout(norm_container)
@@ -194,16 +330,29 @@ class NormalizePage(QWidget):
         norm_layout.setSpacing(4)
         self._norm_label = QLabel()
         self._norm_label.setStyleSheet(
-            "font-weight: 800; font-size: 11px; color: rgba(226,232,240,0.62);"
+            "font-weight: 800; font-size: 11px; color: rgba(51,65,85,0.64);"
             "text-transform: uppercase;"
         )
-        norm_layout.addWidget(self._norm_label)
+        norm_header = QHBoxLayout()
+        norm_header.setContentsMargins(0, 0, 0, 0)
+        norm_header.setSpacing(8)
+        norm_header.addWidget(self._norm_label)
+        norm_header.addStretch()
+        self._btn_apply_norm_edits = QPushButton()
+        self._btn_apply_norm_edits.clicked.connect(self._apply_normalized_edits)
+        self._btn_apply_norm_edits.setEnabled(False)
+        self._btn_apply_norm_edits.setVisible(False)
+        norm_header.addWidget(self._btn_apply_norm_edits)
+        norm_layout.addLayout(norm_header)
         self._norm_text = QPlainTextEdit()
-        self._norm_text.setReadOnly(True)
+        self._norm_text.setReadOnly(False)
+        self._norm_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self._norm_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._norm_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         norm_layout.addWidget(self._norm_text)
-        splitter.addWidget(norm_container)
+        text_row.addWidget(norm_container, stretch=1)
 
-        layout.addWidget(splitter, stretch=1)
+        layout.addLayout(text_row, stretch=1)
 
         self._update_ocr_visibility()
         self._update_llm_visibility()
@@ -213,23 +362,73 @@ class NormalizePage(QWidget):
         """Show/hide OCR settings based on selected file type."""
         is_pdf = self._selected_path.lower().endswith(".pdf") if self._selected_path else False
         for w in self._ocr_widgets:
-            w.setVisible(is_pdf)
+            is_label = w in {
+                self._ocr_mode_label_wrap,
+                self._ocr_dpi_label_wrap,
+                self._ocr_psm_label_wrap,
+            }
+            w.setVisible(is_pdf and (not is_label or not self._compact_mode))
             w.setEnabled(is_pdf)
         self._ocr_not_applicable_label.setVisible(
             bool(self._selected_path) and not is_pdf
         )
+        self._ocr_psm_summary.setVisible(is_pdf and not self._compact_mode)
+        self._book_language_label_wrap.setVisible(not self._compact_mode)
+        show_ocr_install = False
+        if is_pdf:
+            if not self._is_tesseract_available():
+                self._update_ocr_install_hint()
+                show_ocr_install = True
+            else:
+                tess_lang = self._selected_tesseract_language()
+                if not self._is_tesseract_language_available(tess_lang):
+                    self._update_ocr_install_hint(tess_lang)
+                    show_ocr_install = True
+        self._ocr_install_panel.setVisible(show_ocr_install)
 
     def _update_llm_visibility(self) -> None:
         """Show local LLM settings only when LLM normalization is enabled."""
         enabled = self._llm_normalize.isChecked()
-        for widget in (
-            self._llm_endpoint_label_wrap,
-            self._llm_endpoint,
-            self._llm_model_label_wrap,
-            self._llm_model,
-        ):
+        label_widgets = (self._llm_endpoint_label_wrap, self._llm_model_label_wrap)
+        field_widgets = (self._llm_endpoint, self._llm_model)
+        self._llm_normalize_label_wrap.setVisible(not self._compact_mode)
+        for widget in label_widgets:
+            widget.setVisible(enabled and not self._compact_mode)
+            widget.setEnabled(enabled)
+        for widget in field_widgets:
             widget.setVisible(enabled)
             widget.setEnabled(enabled)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Keep action labels readable when the window is narrow or zoomed."""
+        super().resizeEvent(event)
+        self._sync_compact_mode()
+
+    def _sync_compact_mode(self) -> None:
+        compact = self.width() < 900
+        if self._compact_mode == compact:
+            return
+        self._compact_mode = compact
+        self._populate_psm_combo()
+        self._update_ocr_visibility()
+        self._update_llm_visibility()
+        self._apply_action_labels()
+
+    @staticmethod
+    def _add_setting(
+        grid: QGridLayout,
+        row: int,
+        column: int,
+        label: QWidget,
+        field: QWidget,
+    ) -> None:
+        if field.maximumWidth() == 16777215 and field.sizePolicy().horizontalPolicy() != QSizePolicy.Policy.Fixed:
+            field.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+        grid.addWidget(label, row * 2, column)
+        grid.addWidget(field, row * 2 + 1, column)
 
     def retranslate(self) -> None:
         """Update all translatable strings."""
@@ -243,11 +442,18 @@ class NormalizePage(QWidget):
         self._ocr_dpi.setToolTip(t("norm.ocr_dpi_tip"))
         self._ocr_dpi_label.setToolTip(t("norm.ocr_dpi_tip"))
         self._ocr_psm_label.setText(t("norm.ocr_psm"))
+        self._populate_psm_combo()
         self._ocr_psm.setToolTip(t("norm.ocr_psm_tip"))
         self._ocr_psm_label.setToolTip(t("norm.ocr_psm_tip"))
+        self._update_psm_summary()
         self._ocr_not_applicable_label.setText(t("norm.ocr_not_applicable"))
+        self._update_ocr_install_hint()
+        self._btn_install_ocr_tools.setText(t("norm.ocr_install_button"))
+        self._book_language_label.setText(t("norm.book_language"))
+        self._book_language.setToolTip(t("norm.book_language_tip"))
+        self._book_language_label.setToolTip(t("norm.book_language_tip"))
+        self._populate_book_language_combo()
         self._llm_normalize_label.setText(t("norm.llm_normalize"))
-        self._llm_normalize.setText(t("norm.llm_normalize_check"))
         self._llm_normalize.setToolTip(t("norm.llm_tip"))
         self._llm_normalize_label.setToolTip(t("norm.llm_tip"))
         self._llm_endpoint_label.setText(t("norm.llm_endpoint"))
@@ -258,13 +464,105 @@ class NormalizePage(QWidget):
         self._llm_model_label.setToolTip(t("norm.llm_tip"))
         self._update_help_buttons()
         self._btn_run.setText(t("norm.run"))
+        self._apply_action_labels()
+        self._btn_apply_norm_edits.setToolTip(t("norm.apply_manual_edits_tip"))
         self._raw_text.setPlaceholderText(t("norm.raw_placeholder"))
         self._norm_text.setPlaceholderText(t("norm.norm_placeholder"))
         self._raw_label.setText(t("norm.raw_placeholder"))
         self._norm_label.setText(t("norm.norm_placeholder"))
 
+    def _apply_action_labels(self) -> None:
+        self._llm_normalize.setText(
+            t("norm.llm_normalize_check_compact")
+            if self._compact_mode
+            else t("norm.llm_normalize_check")
+        )
+        self._btn_apply_norm_edits.setText(
+            t("norm.apply_manual_edits_compact")
+            if self._compact_mode
+            else t("norm.apply_manual_edits")
+        )
+
+    def _populate_book_language_combo(self) -> None:
+        """Populate supported book languages while preserving selection."""
+        current = self._book_language.currentData() or DEFAULT_BOOK_LANGUAGE
+        self._book_language.blockSignals(True)
+        self._book_language.clear()
+        for code in SUPPORTED_LANGUAGE_CODES:
+            self._book_language.addItem(t(f"book_language.{code}"), code)
+        idx = self._book_language.findData(current)
+        if idx < 0:
+            idx = self._book_language.findData(DEFAULT_BOOK_LANGUAGE)
+        self._book_language.setCurrentIndex(idx if idx >= 0 else 0)
+        self._book_language.blockSignals(False)
+
+    def _populate_psm_combo(self) -> None:
+        """Populate human-readable Tesseract PSM options."""
+        current = self._ocr_psm.currentData() if hasattr(self, "_ocr_psm") else 6
+        key_prefix = "norm.ocr_psm_compact" if self._compact_mode else "norm.ocr_psm"
+        self._ocr_psm.blockSignals(True)
+        self._ocr_psm.clear()
+        for value in _PSM_VALUES:
+            self._ocr_psm.addItem(t(f"{key_prefix}_{value}"), value)
+        idx = self._ocr_psm.findData(current if current is not None else 6)
+        if idx < 0:
+            idx = self._ocr_psm.findData(6)
+        self._ocr_psm.setCurrentIndex(idx if idx >= 0 else 0)
+        self._ocr_psm.blockSignals(False)
+        self._update_psm_summary()
+
+    def _update_psm_summary(self) -> None:
+        """Show a visible one-line explanation for the selected PSM mode."""
+        if not hasattr(self, "_ocr_psm_summary"):
+            return
+        value = int(self._ocr_psm.currentData() or 6)
+        self._ocr_psm_summary.setText(t(f"norm.ocr_psm_summary_{value}"))
+
+    def _is_tesseract_available(self) -> bool:
+        """Return cached native Tesseract availability for OCR UI hints."""
+        if self._tesseract_available is None:
+            self._tesseract_available = tesseract_available()
+        return self._tesseract_available
+
+    def _selected_tesseract_language(self) -> str:
+        """Return the Tesseract language code implied by the book language UI."""
+        language = str(self._book_language.currentData() or DEFAULT_BOOK_LANGUAGE)
+        return tesseract_language(language)
+
+    def _is_tesseract_language_available(self, lang: str) -> bool:
+        """Return cached Tesseract language-data availability for OCR UI hints."""
+        if lang not in self._tesseract_language_available:
+            self._tesseract_language_available[lang] = tesseract_language_available(lang)
+        return self._tesseract_language_available[lang]
+
+    def _update_ocr_install_hint(self, missing_language: str | None = None) -> None:
+        """Refresh OCR install guidance for missing binary or language data."""
+        command = _native_ocr_install_display_command()
+        if missing_language:
+            text = t(
+                "norm.ocr_install_language_hint",
+                lang=missing_language,
+                cmd=command,
+            )
+        else:
+            text = t("norm.ocr_install_hint", cmd=command)
+        self._ocr_install_label.setText(text)
+        self._btn_install_ocr_tools.setToolTip(text)
+
+    def _launch_ocr_installer(self) -> None:
+        """Start the native installer helper for OCR system tools."""
+        command, args, cwd = _native_ocr_installer_command()
+        started = QProcess.startDetached(command, args, str(cwd))
+        display = _native_ocr_install_display_command()
+        self._progress.set_status(
+            t("norm.ocr_install_started", cmd=display)
+            if started
+            else t("norm.ocr_install_failed", cmd=display)
+        )
+
     def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
         """Create a form label with a reusable help button."""
+        label.setWordWrap(True)
         wrap, button = label_with_help(label, t(help_key))
         self._help_buttons[help_key] = button
         return wrap
@@ -285,44 +583,214 @@ class NormalizePage(QWidget):
             self._btn_run.setEnabled(True)
             self._update_ocr_visibility()
 
-    def _run_normalization(self) -> None:
+    def run_normalization(self, *, cache_choice: str | None = None) -> None:
+        """Start normalization, optionally choosing a cache action without prompting."""
+        self._run_normalization(cache_choice=cache_choice)
+
+    def _run_normalization(self, cache_choice: str | None = None) -> None:
         path = Path(self._path_label.text())
         if not path.exists():
             return
 
-        self._btn_run.setEnabled(False)
-        self._progress.set_status(t("norm.starting"))
+        cache_choice = cache_choice if cache_choice in {"restore", "fresh", "cancel"} else None
+        settings = self._normalization_cache_settings(path)
+        cached = self._find_cached_normalization(path, settings)
+        if cached is not None:
+            choice = cache_choice or self._ask_cached_normalization(path)
+            if choice == "restore":
+                self._restore_cached_normalization(path, cached)
+                return
+            if choice == "cancel":
+                return
+
         self._progress.reset()
+        self._btn_run.setEnabled(False)
+        self._progress.set_busy(t("norm.starting"))
         self._raw_text.clear()
         self._norm_text.clear()
+        self._set_manual_edit_available(False)
 
         self._worker = NormalizeWorker(
             input_path=path,
             ocr_mode=self._ocr_mode.currentText(),
             ocr_dpi=self._ocr_dpi.value(),
-            ocr_psm=self._ocr_psm.value(),
+            ocr_psm=int(self._ocr_psm.currentData() or 6),
             llm_normalize=self._llm_normalize.isChecked(),
-            llm_endpoint=self._llm_endpoint.text().strip() or "http://localhost:11434/v1",
-            llm_model=self._llm_model.text().strip() or "qwen3:8b",
+            llm_endpoint=self._llm_endpoint.text().strip() or configured_ollama_endpoint(),
+            llm_model=self._llm_model.text().strip() or PRIMARY_QWEN3_MODEL,
+            book_language=str(self._book_language.currentData() or DEFAULT_BOOK_LANGUAGE),
         )
-        self._worker.progress.connect(self._progress.set_status)
+        self._worker.progress.connect(self._progress.set_busy)
         self._worker.progress_pct.connect(self._progress.set_progress)
+        preview_ready = getattr(self._worker, "preview_ready", None)
+        if preview_ready is not None:
+            preview_ready.connect(self._on_preview_ready)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
-    def _on_finished(self, book: object) -> None:
-        self._book = book
-        self._btn_run.setEnabled(True)
+    def _normalization_cache_settings(self, path: Path) -> NormalizationCacheSettings:
+        """Return the settings that define a reusable completed normalization result."""
+        is_pdf = path.suffix.lower() in _PDF_EXTENSIONS
+        language = str(self._book_language.currentData() or DEFAULT_BOOK_LANGUAGE)
+        tesseract_ok: bool | None = None
+        tesseract_lang_ok: bool | None = None
+        if is_pdf:
+            tesseract_ok = self._is_tesseract_available()
+            if tesseract_ok:
+                tesseract_lang_ok = self._is_tesseract_language_available(tesseract_language(language))
 
-        if book.chapters:
+        return NormalizationCacheSettings(
+            source_format=path.suffix.lower().lstrip(".") or "unknown",
+            book_language=language,
+            ocr_mode=self._ocr_mode.currentText() if is_pdf else "off",
+            ocr_dpi=self._ocr_dpi.value() if is_pdf else 0,
+            ocr_psm=int(self._ocr_psm.currentData() or 6) if is_pdf else 0,
+            llm_normalize=self._llm_normalize.isChecked(),
+            llm_endpoint=self._llm_endpoint.text().strip() or configured_ollama_endpoint(),
+            llm_model=self._llm_model.text().strip() or PRIMARY_QWEN3_MODEL,
+            tesseract_available=tesseract_ok,
+            tesseract_language_available=tesseract_lang_ok,
+        )
+
+    def _find_cached_normalization(
+        self,
+        path: Path,
+        settings: NormalizationCacheSettings,
+    ) -> CachedNormalization | None:
+        """Find a completed normalization cache entry, ignoring unreadable cache state."""
+        try:
+            return find_cached_normalization(path, settings)
+        except OSError as exc:
+            logger.debug("Could not inspect normalization cache for %s: %s", path, exc)
+            return None
+
+    def _ask_cached_normalization(self, path: Path) -> str:
+        """Ask whether to restore a cached completed normalization or run again."""
+        box = QMessageBox(self)
+        apply_readable_message_box_style(box)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(t("norm.cache_dialog_title"))
+        box.setText(t("norm.cache_dialog_text", name=path.name))
+        box.setInformativeText(t("norm.cache_dialog_informative"))
+        restore_button = box.addButton(
+            t("norm.cache_restore_button"),
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        fresh_button = box.addButton(
+            t("norm.cache_run_fresh_button"),
+            QMessageBox.ButtonRole.ActionRole,
+        )
+        cancel_button = box.addButton(
+            t("norm.cache_cancel_button"),
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        box.setDefaultButton(restore_button)
+        box.setEscapeButton(cancel_button)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is restore_button:
+            return "restore"
+        if clicked is fresh_button:
+            return "fresh"
+        return "cancel"
+
+    def _restore_cached_normalization(
+        self,
+        path: Path,
+        cached: CachedNormalization,
+    ) -> None:
+        """Load a completed normalization result and continue the GUI workflow."""
+        try:
+            book = load_cached_book(cached)
+        except (OSError, ValueError) as exc:
+            self._progress.set_status(t("norm.cache_restore_failed", msg=str(exc)))
+            self._btn_run.setEnabled(True)
+            self.normalization_failed.emit(str(exc))
+            return
+
+        metadata = getattr(book, "metadata", None)
+        if metadata is not None:
+            metadata.source_path = str(path)
+            metadata.source_format = path.suffix.lower().lstrip(".") or metadata.source_format
+        if hasattr(book, "add_audit"):
+            book.add_audit("normalization_cache", "restore", f"path={cached.path}")
+
+        self._progress.reset()
+        self._on_finished(book)
+        self._progress.set_status(t("norm.cache_restored", n=len(getattr(book, "chapters", []))))
+
+    def _save_current_normalization_cache(self, book: object) -> None:
+        """Save the completed normalization result for the current source/settings."""
+        path = Path(self._path_label.text())
+        if not path.exists():
+            return
+        try:
+            settings = self._normalization_cache_settings(path)
+            save_cached_book(book, path, settings)
+        except (OSError, ValueError, TypeError) as exc:
+            logger.debug("Could not save normalization cache for %s: %s", path, exc)
+
+    def _show_book_preview(self, book: object) -> bool:
+        """Render raw and normalized text panels for a partially or fully ready book."""
+        if getattr(book, "chapters", []):
             raw_lines, norm_lines = _book_preview_lines(book)
             self._raw_text.setPlainText("\n\n".join(raw_lines))
             self._norm_text.setPlainText("\n\n".join(norm_lines))
+            return True
+        return False
+
+    def _on_preview_ready(self, book: object) -> None:
+        """Show rule-normalized text while slower optional stages continue."""
+        self._show_book_preview(book)
+
+    def _on_finished(self, book: object) -> None:
+        self._book = book
+        self._btn_run.setEnabled(True)
+        self._save_current_normalization_cache(book)
+
+        if self._show_book_preview(book):
+            self._set_manual_edit_available(True)
+
+    def _set_manual_edit_available(self, available: bool) -> None:
+        """Show manual-edit apply only when normalized text exists."""
+        self._btn_apply_norm_edits.setVisible(available)
+        self._btn_apply_norm_edits.setEnabled(available)
+
+    def _apply_normalized_edits(self) -> None:
+        """Apply the editable normalized preview back to the current Book."""
+        if self._book is None:
+            return
+
+        edited_blocks = [
+            block.strip()
+            for block in self._norm_text.toPlainText().split("\n\n")
+            if block.strip() and not block.strip().startswith("===")
+        ]
+        paragraphs = [
+            para
+            for chapter in getattr(self._book, "chapters", [])
+            for para in getattr(chapter, "paragraphs", [])
+            if (getattr(para, "raw_text", "") or getattr(para, "normalized_text", "")).strip()
+        ]
+        if len(edited_blocks) != len(paragraphs):
+            self._progress.set_status(
+                t(
+                    "norm.manual_edit_mismatch",
+                    edited=len(edited_blocks),
+                    paragraphs=len(paragraphs),
+                )
+            )
+            return
+
+        for para, text in zip(paragraphs, edited_blocks, strict=True):
+            para.normalized_text = text
+        self._progress.set_status(t("norm.manual_edit_applied", n=len(paragraphs)))
 
     def _on_error(self, msg: str) -> None:
         self._btn_run.setEnabled(True)
         self._progress.set_status(f"Error: {msg}")
+        self.normalization_failed.emit(msg)
 
     def get_book(self) -> object | None:
         """Return the processed book object."""

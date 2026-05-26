@@ -9,8 +9,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.chunking.manifest_v2 import (
+    DEFAULT_MANIFEST_NAME,
+    chunk_is_excluded,
+    ensure_v2_manifest,
+)
 from book_normalizer.comfyui.client import ComfyUIClient, ComfyUIError
+from book_normalizer.comfyui.generation_options import (
+    GenerationOptions,
+    generation_options_from_mapping,
+)
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
+from book_normalizer.tts.voice_mapping import voice_mapping_candidates
 
 ProgressCallback = Callable[[str], None]
 
@@ -30,14 +40,13 @@ def load_manifest(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Manifest not found: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("ComfyUI synthesis requires a v2 manifest object.")
-    if data.get("version", 1) == 1:
+    try:
+        return ensure_v2_manifest(data).to_record()
+    except ValueError as exc:
         raise ValueError(
-            "This synthesis path requires chunks_manifest_v2.json. "
-            "Generate it with export_chunks.py --mode llm or the GUI Voices tab."
-        )
-    return data
+            f"ComfyUI synthesis requires a v2 manifest ({DEFAULT_MANIFEST_NAME}). "
+            "Generate it with export_chunks.py or the GUI Voices tab."
+        ) from exc
 
 
 def save_manifest(path: Path, data: dict[str, Any]) -> None:
@@ -52,6 +61,7 @@ def iter_manifest_chunks(
     chapter_filter: int | None = None,
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     """Return ``(chapter, chunk)`` pairs matching an optional 1-based chapter."""
+    ensure_v2_manifest(manifest)
     pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for chapter in manifest.get("chapters", []):
         if not isinstance(chapter, dict):
@@ -74,6 +84,8 @@ def collect_pending_chunks(
     """Return chunk pairs that should be synthesized."""
     pending: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for chapter, chunk in iter_manifest_chunks(manifest, chapter_filter):
+        if chunk_is_excluded(chunk):
+            continue
         if chunk.get("synthesized", False):
             continue
         if failed_only and not chunk.get("failed", False):
@@ -87,7 +99,7 @@ def count_done_chunks(manifest: dict[str, Any], chapter_filter: int | None = Non
     return sum(
         1
         for _chapter, chunk in iter_manifest_chunks(manifest, chapter_filter)
-        if chunk.get("synthesized", False)
+        if not chunk_is_excluded(chunk) and chunk.get("synthesized", False)
     )
 
 
@@ -104,6 +116,52 @@ def build_output_path(
     return chapter_dir / f"chunk_{chunk_index + 1:03d}_{safe_voice}.wav"
 
 
+def load_speaker_overrides(path: Path | str | None) -> dict[str, str]:
+    """Load saved CustomVoice speaker overrides from a GUI clone config."""
+    if not path:
+        return {}
+    config_path = Path(path)
+    if not config_path.exists():
+        return {}
+    data = json.loads(config_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return {}
+
+    overrides: dict[str, str] = {}
+    for raw_key, raw_value in data.items():
+        key = str(raw_key).strip()
+        speaker = ""
+        if isinstance(raw_value, str):
+            speaker = raw_value.strip()
+        elif isinstance(raw_value, dict):
+            speaker = str(
+                raw_value.get("speaker")
+                or raw_value.get("saved_voice")
+                or raw_value.get("voice_id")
+                or "",
+            ).strip()
+        if key and speaker:
+            overrides[key] = speaker
+    return overrides
+
+
+def resolve_speaker_override(
+    chunk: dict[str, Any],
+    voice_label: str,
+    speaker_overrides: dict[str, str] | None,
+) -> str:
+    """Resolve a concrete CustomVoice speaker for one chunk if configured."""
+    if not speaker_overrides:
+        return ""
+    enriched = dict(chunk)
+    enriched.setdefault("voice_label", voice_label)
+    for key in voice_mapping_candidates(enriched):
+        speaker = speaker_overrides.get(key)
+        if speaker:
+            return speaker
+    return ""
+
+
 def synthesize_manifest(
     *,
     manifest: dict[str, Any],
@@ -114,11 +172,16 @@ def synthesize_manifest(
     chapter_filter: int | None = None,
     chunk_timeout: float = 300.0,
     failed_only: bool = False,
+    speaker_overrides: dict[str, str] | None = None,
+    generation_options: GenerationOptions | dict[str, Any] | None = None,
     progress: ProgressCallback | None = None,
 ) -> SynthesisSummary:
     """Synthesize all pending chunks and update the manifest after each chunk."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    all_pairs = iter_manifest_chunks(manifest, chapter_filter)
+    all_pairs = [
+        pair for pair in iter_manifest_chunks(manifest, chapter_filter)
+        if not chunk_is_excluded(pair[1])
+    ]
     pending = collect_pending_chunks(manifest, chapter_filter, failed_only=failed_only)
     total = len(all_pairs)
     done_start = count_done_chunks(manifest, chapter_filter)
@@ -136,6 +199,8 @@ def synthesize_manifest(
     emit(f"Chunks: {total} total, {done_start} already done, {len(pending)} to synthesize.")
     done = done_start
     synthesized_now = 0
+    manifest_language = str(manifest.get("language") or "ru")
+    base_generation_options = generation_options_from_mapping(generation_options)
 
     for chapter_entry, chunk in pending:
         chapter_index = int(chapter_entry.get("chapter_index", 0))
@@ -143,6 +208,13 @@ def synthesize_manifest(
         voice_label = str(chunk.get("voice_label") or "narrator")
         voice_tone = str(chunk.get("voice_tone") or "calm")
         text = str(chunk.get("text") or chunk.get(voice_label) or "")
+        language = str(chunk.get("language") or manifest_language)
+        attempt = int(chunk.get("resynthesis_attempt") or 0)
+        effective_options = base_generation_options.for_attempt(
+            attempt,
+            chapter_index=chapter_index,
+            chunk_index=chunk_index,
+        )
 
         chunk["failed"] = False
         chunk["error"] = ""
@@ -171,6 +243,18 @@ def synthesize_manifest(
                 voice_label=voice_label,
                 voice_tone=voice_tone,
                 output_filename=output_filename,
+                language=language,
+                speaker_override=resolve_speaker_override(
+                    chunk,
+                    voice_label,
+                    speaker_overrides,
+                ),
+                generation_options=effective_options,
+                speaker=str(chunk.get("speaker") or ""),
+                emotion=str(chunk.get("emotion") or ""),
+                section_kind=str(chunk.get("section_kind") or ""),
+                director=chunk.get("director") if isinstance(chunk.get("director"), dict) else None,
+                resynthesis_attempt=attempt,
             )
             client.synthesize_chunk(workflow, output_path, timeout=chunk_timeout)
         except ComfyUIError as exc:
@@ -189,6 +273,7 @@ def synthesize_manifest(
         chunk["failed"] = False
         chunk["error"] = ""
         chunk["audio_file"] = str(output_path)
+        chunk["last_generation_options"] = effective_options
         done += 1
         synthesized_now += 1
         emit(f"PROGRESS {done}/{total}")

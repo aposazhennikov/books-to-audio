@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
 import sys
+from collections.abc import Callable
 from copy import deepcopy
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 import click
@@ -17,6 +18,7 @@ from book_normalizer.config import AppConfig, OcrMode
 from book_normalizer.exporters.json_exporter import JsonExporter
 from book_normalizer.exporters.qwen_exporter import QwenExporter
 from book_normalizer.exporters.txt_exporter import TxtExporter
+from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
 from book_normalizer.loaders.factory import LoaderFactory
 from book_normalizer.loaders.pdf_loader import (
     PdfLoader,
@@ -130,6 +132,7 @@ def _run_llm_normalization(
         model=llm_model,
         cache_dir=output_dir / "llm_norm_cache",
         api_key=llm_api_key,
+        language=getattr(getattr(book, "metadata", None), "language", "ru"),
     )
 
     def report(done: int, total: int, accepted: int, rejected: int) -> None:
@@ -150,18 +153,53 @@ def main() -> None:
 
 
 @main.command(name="pipeline")
-@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
+@click.argument("input_path", required=False, type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--book",
+    "book_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Book file path. Alias for positional INPUT_PATH.",
+)
 @click.option("--out", "-o", type=click.Path(path_type=Path), default=Path("output"), help="Output root directory.")
-@click.option("--llm-model", default="gemma3:4b", show_default=True, help="Ollama model for chunking.")
+@click.option("--llm-model", default=PRIMARY_QWEN3_MODEL, show_default=True, help="Ollama model for chunking.")
 @click.option(
     "--llm-endpoint",
-    default="http://localhost:11434/v1",
+    default="http://localhost:11434",
     show_default=True,
     help="OpenAI-compatible LLM endpoint.",
 )
 @click.option("--llm-normalize", is_flag=True, default=False, help="Run LLM normalization before chunking.")
+@click.option(
+    "--chunk-mode",
+    type=click.Choice(["llm", "heuristic"]),
+    default="llm",
+    show_default=True,
+    help="Chunking mode: LLM smart markup or offline heuristic chunks.",
+)
 @click.option("--max-chunk-chars", type=int, default=400, show_default=True, help="Soft max chars per LLM chunk.")
 @click.option("--synthesize", is_flag=True, default=False, help="Run ComfyUI synthesis after chunking.")
+@click.option(
+    "--quality-loop",
+    is_flag=True,
+    default=False,
+    help="Run artifact/ASR QA and resynthesize bad chunks before assembly.",
+)
+@click.option(
+    "--asr-qa-after-synthesis",
+    is_flag=True,
+    default=False,
+    help="Run report-first ASR QA after synthesis and before assembly.",
+)
+@click.option("--artifact-qa", is_flag=True, default=False, help="Run artifact QA after synthesis.")
+@click.option("--asr-model", default="small", show_default=True, help="faster-whisper model for ASR QA.")
+@click.option(
+    "--max-resynth-attempts",
+    type=int,
+    default=2,
+    show_default=True,
+    help="Max automatic resynthesis attempts per bad chunk.",
+)
 @click.option("--workflow", type=click.Path(path_type=Path), default=None, help="ComfyUI workflow template.")
 @click.option("--comfyui-url", default="http://localhost:8188", show_default=True, help="ComfyUI server URL.")
 @click.option("--assemble", is_flag=True, default=False, help="Assemble synthesized chunks via v2 manifest.")
@@ -175,13 +213,20 @@ def main() -> None:
     help="PDF OCR mode.",
 )
 def pipeline_command(
-    input_path: Path,
+    input_path: Path | None,
+    book_path: Path | None,
     out: Path,
     llm_model: str,
     llm_endpoint: str,
     llm_normalize: bool,
+    chunk_mode: str,
     max_chunk_chars: int,
     synthesize: bool,
+    quality_loop: bool,
+    asr_qa_after_synthesis: bool,
+    artifact_qa: bool,
+    asr_model: str,
+    max_resynth_attempts: int,
     workflow: Path | None,
     comfyui_url: str,
     assemble: bool,
@@ -190,47 +235,87 @@ def pipeline_command(
     ocr_mode: str,
 ) -> None:
     """Run the recommended normalize -> v2 chunks -> ComfyUI -> manifest assembly pipeline."""
-    script = Path(__file__).resolve().parents[2] / "scripts" / "run_pipeline.py"
-    cmd = [
-        sys.executable,
-        str(script),
+    selected_book = _resolve_pipeline_input(input_path, book_path)
+    argv = [
         "--book",
-        str(input_path),
+        str(selected_book),
         "--out",
         str(out),
         "--llm-model",
         llm_model,
         "--llm-endpoint",
         llm_endpoint,
+        "--chunk-mode",
+        chunk_mode,
         "--max-chunk-chars",
         str(max_chunk_chars),
         "--ocr-mode",
         ocr_mode,
     ]
     if llm_normalize:
-        cmd.append("--llm-normalize")
+        argv.append("--llm-normalize")
     if synthesize:
-        cmd.append("--synthesize")
+        argv.append("--synthesize")
         if not workflow:
             workflow = Path("comfyui_workflows/qwen3_tts_template.json")
-        cmd.extend(["--workflow", str(workflow), "--comfyui-url", comfyui_url])
+        argv.extend(["--workflow", str(workflow), "--comfyui-url", comfyui_url])
+    if quality_loop:
+        argv.extend(["--quality-loop", "--max-resynth-attempts", str(max_resynth_attempts)])
+    if artifact_qa:
+        argv.append("--artifact-qa")
+    if asr_qa_after_synthesis:
+        argv.extend(["--asr-qa-after-synthesis", "--asr-model", asr_model])
     if assemble:
-        cmd.append("--assemble")
+        argv.append("--assemble")
     if chapter is not None:
-        cmd.extend(["--chapter", str(chapter)])
+        argv.extend(["--chapter", str(chapter)])
     if skip_stage1:
-        cmd.append("--skip-stage1")
+        argv.append("--skip-stage1")
 
-    result = subprocess.run(cmd, check=False)
-    if result.returncode != 0:
-        raise click.ClickException(f"Pipeline exited with code {result.returncode}")
+    _run_pipeline_in_process(argv)
+
+
+def _resolve_pipeline_input(input_path: Path | None, book_path: Path | None) -> Path:
+    """Return the pipeline book path from either supported CLI style."""
+    if input_path is None and book_path is None:
+        raise click.UsageError("Pass a book file as INPUT_PATH or with --book.")
+    if input_path is not None and book_path is not None and input_path.resolve() != book_path.resolve():
+        raise click.UsageError("Pass only one book file: INPUT_PATH and --book differ.")
+    selected = input_path or book_path
+    assert selected is not None
+    return selected
+
+
+def _run_pipeline_in_process(argv: list[str]) -> None:
+    """Run the repository pipeline script without shelling out to a child interpreter."""
+    script = Path(__file__).resolve().parents[2] / "scripts" / "run_pipeline.py"
+    pipeline_main = _load_pipeline_main(script)
+    try:
+        pipeline_main(argv)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+        if code:
+            raise click.ClickException(f"Pipeline exited with code {code}") from exc
+
+
+def _load_pipeline_main(script: Path) -> Callable[[list[str] | None], None]:
+    """Load ``scripts/run_pipeline.py`` as a module and return its main function."""
+    spec = spec_from_file_location("books_to_audio_run_pipeline", script)
+    if spec is None or spec.loader is None:
+        raise click.ClickException(f"Cannot load pipeline script: {script}")
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    main_func = getattr(module, "main", None)
+    if not callable(main_func):
+        raise click.ClickException(f"Pipeline script has no callable main(): {script}")
+    return main_func
 
 
 @main.command(name="doctor")
 @click.option("--comfyui-url", default="http://localhost:8188", show_default=True, help="ComfyUI server URL.")
 @click.option(
     "--llm-endpoint",
-    default="http://localhost:11434/v1",
+    default="http://localhost:11434",
     show_default=True,
     help="OpenAI-compatible LLM endpoint.",
 )
@@ -355,11 +440,88 @@ def install_tts_models_command(
 @main.command(name="audio-qa")
 @click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--report", type=click.Path(path_type=Path), default=None, help="Write JSON QA report.")
-def audio_qa_command(manifest_path: Path, report: Path | None) -> None:
+@click.option(
+    "--asr",
+    "enable_asr",
+    is_flag=True,
+    default=False,
+    help="Run local faster-whisper ASR QA after WAV checks.",
+)
+@click.option(
+    "--artifact",
+    "enable_artifact",
+    is_flag=True,
+    default=False,
+    help="Run artifact QA for clipping, silence, dropouts, and repeated audio.",
+)
+@click.option("--asr-model", default="small", show_default=True, help="faster-whisper model name or local path.")
+@click.option("--max-wer", type=float, default=0.30, show_default=True, help="Fail chunks above this word error rate.")
+@click.option(
+    "--max-cer",
+    type=float,
+    default=0.18,
+    show_default=True,
+    help="Fail chunks above this character error rate.",
+)
+@click.option(
+    "--min-match-ratio",
+    type=float,
+    default=0.78,
+    show_default=True,
+    help="Warn chunks below this expected-word match ratio.",
+)
+@click.option(
+    "--asr-timeout-seconds",
+    type=float,
+    default=180.0,
+    show_default=True,
+    help="Per-chunk ASR timeout.",
+)
+@click.option(
+    "--write-manifest-asr/--no-write-manifest-asr",
+    default=True,
+    show_default=True,
+    help="Annotate chunks with compact ASR QA metadata.",
+)
+@click.option(
+    "--mark-failed-on-asr",
+    is_flag=True,
+    default=False,
+    help="Also mark manifest chunks failed when ASR status is failed/error.",
+)
+@click.option(
+    "--reset-bad-chunks",
+    is_flag=True,
+    default=False,
+    help="Reset failed/warning/error QA chunks so --failed-only can resynthesize them.",
+)
+@click.option(
+    "--max-resynth-attempts",
+    type=int,
+    default=2,
+    show_default=True,
+    help="Max automatic resynthesis attempts per chunk when resetting bad chunks.",
+)
+def audio_qa_command(
+    manifest_path: Path,
+    report: Path | None,
+    enable_asr: bool,
+    enable_artifact: bool,
+    asr_model: str,
+    max_wer: float,
+    max_cer: float,
+    min_match_ratio: float,
+    asr_timeout_seconds: float,
+    write_manifest_asr: bool,
+    mark_failed_on_asr: bool,
+    reset_bad_chunks: bool,
+    max_resynth_attempts: int,
+) -> None:
     """Run QA checks for synthesized audio in a v2 manifest."""
     from book_normalizer.tts.audio_qa import load_manifest, run_audio_qa
 
-    result = run_audio_qa(load_manifest(manifest_path))
+    manifest = load_manifest(manifest_path)
+    result = run_audio_qa(manifest)
     click.echo(
         f"Audio QA: checked {result.checked_files}/{result.synthesized_chunks} synthesized "
         f"chunks, {len(result.issues)} issue(s)."
@@ -369,9 +531,152 @@ def audio_qa_command(manifest_path: Path, report: Path | None) -> None:
         if issue.chapter_index is not None and issue.chunk_index is not None:
             location = f" ch{issue.chapter_index + 1:03d}/chunk{issue.chunk_index + 1:03d}"
         click.echo(f"[{issue.severity.upper()}] {issue.kind}{location}: {issue.message}")
+
+    report_payload: dict[str, object] | None = None
+    if enable_artifact:
+        from book_normalizer.chunking.manifest_v2 import save_manifest
+        from book_normalizer.tts.artifact_qa import (
+            DEFAULT_ARTIFACT_REPORT_NAME,
+            annotate_manifest_with_artifacts,
+            run_artifact_qa,
+            write_artifact_report,
+        )
+
+        artifact_report = manifest_path.with_name(DEFAULT_ARTIFACT_REPORT_NAME)
+        artifact_result = run_artifact_qa(manifest, manifest_path=manifest_path)
+        write_artifact_report(artifact_report, artifact_result)
+        annotate_manifest_with_artifacts(
+            manifest,
+            artifact_result,
+            report_path=artifact_report.resolve(),
+            reset_bad_chunks=reset_bad_chunks,
+            max_resynthesis_attempts=max_resynth_attempts,
+        )
+        save_manifest(manifest_path, manifest)
+        summary = artifact_result.summary
+        click.echo(
+            "Artifact QA: "
+            f"status={artifact_result.status}, failed={summary['failed']}, "
+            f"warnings={summary['warning']}, errors={summary['error']}."
+        )
+        for chunk in artifact_result.chunks:
+            if chunk.status == "passed":
+                continue
+            location = f" ch{chunk.chapter_index + 1:03d}/chunk{chunk.chunk_index + 1:03d}"
+            issue_text = ", ".join(issue.kind for issue in chunk.issues) or chunk.status
+            click.echo(f"[{chunk.status.upper()}] artifact{location}: {issue_text}")
+        report_payload = {
+            "schema_version": 1,
+            "manifest_path": str(manifest_path),
+            "audio_qa": result.to_dict(),
+            "artifact_qa": artifact_result.to_dict(),
+        }
+
+    if enable_asr:
+        from book_normalizer.chunking.manifest_v2 import save_manifest
+        from book_normalizer.tts.asr_qa import (
+            DEFAULT_ASR_REPORT_NAME,
+            AsrQaConfig,
+            FasterWhisperBackend,
+            annotate_manifest_with_asr,
+            run_asr_qa,
+        )
+
+        report = report or manifest_path.with_name(DEFAULT_ASR_REPORT_NAME)
+        asr_config = AsrQaConfig(
+            model=asr_model,
+            timeout_seconds=asr_timeout_seconds,
+            max_wer=max_wer,
+            max_cer=max_cer,
+            min_match_ratio=min_match_ratio,
+        )
+        click.echo(f"ASR QA: backend=faster-whisper model={asr_model}")
+        asr_result = run_asr_qa(
+            manifest,
+            config=asr_config,
+            backend=FasterWhisperBackend(asr_model),
+            manifest_path=manifest_path,
+        )
+        summary = asr_result.summary
+        click.echo(
+            "ASR QA: "
+            f"checked {summary['checked_chunks']}/{summary['total_chunks']} chunks, "
+            f"status={asr_result.status.value}, "
+            f"failed={summary['failed']}, warnings={summary['warning']}, errors={summary['error']}."
+        )
+        for chunk in asr_result.chunks:
+            if chunk.status.value == "passed":
+                continue
+            location = f" ch{chunk.chapter_index + 1:03d}/chunk{chunk.chunk_index + 1:03d}"
+            issue_text = ", ".join(issue.kind for issue in chunk.issues) or chunk.preview
+            click.echo(f"[{chunk.status.value.upper()}] asr{location}: {issue_text}")
+
+        if write_manifest_asr:
+            annotate_manifest_with_asr(
+                manifest,
+                asr_result,
+                report_path=report.resolve(),
+                mark_failed_on_asr=mark_failed_on_asr,
+                reset_bad_chunks=reset_bad_chunks,
+                max_resynthesis_attempts=max_resynth_attempts,
+            )
+            save_manifest(manifest_path, manifest)
+            click.echo(f"Manifest ASR annotations updated: {manifest_path}")
+        report_payload = {
+            "schema_version": 1,
+            "manifest_path": str(manifest_path),
+            "audio_qa": result.to_dict(),
+            **({"artifact_qa": report_payload["artifact_qa"]} if report_payload and "artifact_qa" in report_payload else {}),
+            "asr_qa": asr_result.to_dict(),
+        }
+
     if report:
-        report.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        payload = report_payload if report_payload is not None else result.to_dict()
+        report.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         click.echo(f"Report: {report}")
+
+
+@main.command(name="master")
+@click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--out",
+    "output_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory for assembled and mastered chapters. Defaults to manifest folder.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["both", "wav", "mp3"]),
+    default="both",
+    show_default=True,
+    help="Mastered export format.",
+)
+@click.option("--chapter", type=int, default=None, help="Only master one 1-based chapter.")
+def master_command(
+    manifest_path: Path,
+    output_dir: Path | None,
+    output_format: str,
+    chapter: int | None,
+) -> None:
+    """Assemble QA-passed chunks and create mastered WAV/MP3 chapters."""
+    from book_normalizer.tts.mastering import master_manifest
+
+    try:
+        result = master_manifest(
+            manifest_path,
+            output_dir=output_dir,
+            output_format=output_format,
+            chapter_filter=chapter,
+        )
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    click.echo(f"Mastered files: {len(result.files)}")
+    for item in result.files:
+        click.echo(f"  ch{item.chapter_number:03d} {item.format}: {item.output_path}")
+    click.echo(f"Report: {result.report_path}")
 
 
 @main.command(name="process")
@@ -415,13 +720,13 @@ def audio_qa_command(manifest_path: Path, report: Path | None) -> None:
 )
 @click.option(
     "--llm-endpoint",
-    default="http://localhost:11434/v1",
+    default="http://localhost:11434",
     show_default=True,
     help="OpenAI-compatible endpoint for LLM normalization.",
 )
 @click.option(
     "--llm-model",
-    default="qwen3:8b",
+    default=PRIMARY_QWEN3_MODEL,
     show_default=True,
     help="Model name for LLM normalization.",
 )
@@ -870,7 +1175,12 @@ def _parse_chapter_range(value: str) -> tuple[int, int] | None:
 @click.option("--pause-chapter-ms", type=int, default=3000, show_default=True, help="Pause between chapters (ms).")
 @click.option("--skip-assembly", is_flag=True, default=False, help="Only generate chunks, skip assembly.")
 @click.option("--llm-endpoint", default="", help="API endpoint for LLM speaker attribution.")
-@click.option("--llm-model", default="qwen3:8b", show_default=True, help="LLM model name for speaker attribution.")
+@click.option(
+    "--llm-model",
+    default=PRIMARY_QWEN3_MODEL,
+    show_default=True,
+    help="LLM model name for speaker attribution.",
+)
 @click.option("--skip-stress", is_flag=True, default=False, help="Skip stress annotation.")
 @click.option(
     "--ocr-mode",
@@ -906,8 +1216,13 @@ def synthesize_command(
     llm_api_key: str,
     verbose: bool,
 ) -> None:
-    """Synthesize an audiobook from a book file using Qwen3-TTS."""
+    """Synthesize an audiobook from a book file using the v2 pipeline."""
     setup_logging(verbose=verbose)
+    raise click.ClickException(
+        "Direct v1/Qwen synthesis was removed. Use `normalize-book pipeline --synthesize "
+        "--workflow comfyui_workflows/qwen3_tts_template.json` to generate and synthesize "
+        "chunks_manifest_v2.json."
+    )
 
     click.echo(f"Loading: {input_path}")
 
@@ -1035,13 +1350,7 @@ def synthesize_command(
     vm = VoiceManager(voice_cfg, device=gpu_device)
     vm.initialize()
 
-    from book_normalizer.tts.synthesizer import TTSSynthesizer
-
-    synthesizer = TTSSynthesizer(vm, output_dir, resume=resume)
-
-    ch_range = _parse_chapter_range(chapter_range) if chapter_range else None
-    synthesizer.synthesize_chapters(chunked, chapter_range=ch_range)
-    click.echo("TTS synthesis complete.")
+    raise click.ClickException("Direct in-process TTS synthesis has been removed; use the v2 ComfyUI pipeline.")
 
     # --- Audio assembly ---
     if not skip_assembly:

@@ -4,11 +4,15 @@ Books to Audio - инструмент для подготовки русскоя
 загрузка PDF/TXT/EPUB/FB2/DOCX, нормализация текста, разметка глав и реплик,
 нарезка на TTS-чанки, синтез через ComfyUI/Qwen3-TTS и сборка WAV/MP3.
 
+GUI доступен на русском, английском, китайском, казахском и узбекском языках.
+Нормализация, LLM-разметка голосов и chunk manifest покрывают языки
+`ru/en/zh/kk/uz`; русские правила ударений и `ё` применяются только для `ru`.
+
 ## Поддерживаемые OS
 
 | OS | Статус | Комментарий |
 | --- | --- | --- |
-| Windows 10/11 | Поддерживается | Есть `install.bat` и `run_gui.bat`. Старый WSL-runner для Qwen-TTS тоже остается. |
+| Windows 10/11 | Поддерживается | Есть `install.bat` и `run_gui.bat`. TTS pipeline uses `chunks_manifest_v2.json` + ComfyUI. |
 | Linux | Поддерживается | Основной путь для локального GPU/CUDA TTS. GUI работает через PyQt6. |
 | macOS | Поддерживается | GUI, OCR, LLM-чанкинг и работа с ComfyUI. Локальный CUDA TTS недоступен на Mac, используйте ComfyUI/remote GPU. |
 
@@ -58,7 +62,15 @@ Linux/macOS:
 .venv/bin/python -m book_normalizer.gui.app
 ```
 
-`install.py` создает `.venv`, обновляет `pip`, ставит пакет в editable-режиме и проверяет импорты. Windows wrapper `install.bat` использует `.venv-windows`, чтобы не смешивать Windows GUI и Linux/WSL `.venv`. По умолчанию ставится desktop-профиль: GUI, OCR, LLM-клиент и audio helpers.
+`install.py` создает `.venv`, обновляет `pip`, ставит пакет в editable-режиме,
+проверяет импорты, спрашивает пути для моделей/Hugging Face/Ollama в
+интерактивном терминале и сохраняет их в `data/local_runtime_paths.json`.
+Для Ollama-моделей можно выбрать отдельную папку через
+`--ollama-models-dir`; installer передает ее в native Ollama как
+`OLLAMA_MODELS`, поэтому `ollama pull` не пишет модели в неожиданное место.
+Windows wrapper `install.bat` использует `.venv-windows`, чтобы не смешивать
+Windows GUI и Linux `.venv`. По умолчанию ставится desktop-профиль: GUI, OCR,
+LLM-клиент и audio helpers. `install.log` перезаписывается при каждом запуске.
 
 ## Системные зависимости
 
@@ -68,33 +80,38 @@ Python-зависимости ставит `install.py`. Системные ут
 
 ```powershell
 winget install Python.Python.3.12
-winget install UB-Mannheim.TesseractOCR
-winget install Gyan.FFmpeg
+winget install -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --id UB-Mannheim.TesseractOCR
+winget install -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --id Gyan.FFmpeg
 ```
 
-После установки Tesseract перезапустите терминал, чтобы обновился `PATH`.
+Если Windows покажет UAC/installer confirmation, подтвердите установку. После установки Tesseract перезапустите терминал, чтобы обновился `PATH`.
 
 ### Ubuntu/Debian
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y python3 python3-venv python3-pip \
-  tesseract-ocr tesseract-ocr-rus ffmpeg \
-  libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0
+  tesseract-ocr tesseract-ocr-eng tesseract-ocr-rus \
+  tesseract-ocr-chi-sim tesseract-ocr-kaz tesseract-ocr-uzb \
+  ffmpeg libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0 fonts-noto-cjk
 ```
 
 ### Fedora
 
 ```bash
-sudo dnf install python3 python3-pip tesseract tesseract-langpack-rus ffmpeg \
-  libglvnd-glx libxkbcommon-x11 xcb-util-cursor
+sudo dnf install python3 python3-pip tesseract \
+  tesseract-langpack-eng tesseract-langpack-rus tesseract-langpack-chi_sim \
+  tesseract-langpack-kaz tesseract-langpack-uzb ffmpeg \
+  libglvnd-glx libxkbcommon-x11 xcb-util-cursor google-noto-sans-cjk-fonts
 ```
 
 ### Arch Linux
 
 ```bash
-sudo pacman -S python python-pip tesseract tesseract-data-rus ffmpeg \
-  libgl libxkbcommon-x11 xcb-util-cursor
+sudo pacman -S python python-pip tesseract \
+  tesseract-data-eng tesseract-data-rus tesseract-data-chi_sim \
+  tesseract-data-kaz tesseract-data-uzb ffmpeg \
+  libgl libxkbcommon-x11 xcb-util-cursor noto-fonts-cjk
 ```
 
 ### macOS
@@ -120,6 +137,13 @@ python install.py --with-tts              # прямой Qwen-TTS runner, луч
 python install.py --with-sage             # Qwen-TTS + SageAttention, только Linux/CUDA
 python install.py --recreate              # пересоздать .venv
 python install.py --dry-run               # показать план без установки
+python install.py --yes                   # не спрашивать пути, взять defaults/flags
+python install.py --interactive           # явно спросить пути и optional downloads
+python install.py --ollama-models-dir D:/OllamaModels
+python install.py --tesseract-bin "C:/Program Files/Tesseract-OCR/tesseract.exe" --tessdata-dir "C:/Program Files/Tesseract-OCR/tessdata"
+python install.py --download-tessdata     # локальные OCR-языки eng/rus/chi_sim/kaz/uzb без sudo
+python install.py --download-ollama-models
+python install.py --download-tts-models --verify-hashes
 ```
 
 Старый вариант тоже работает:
@@ -173,23 +197,126 @@ tesseract --version
 tesseract --list-langs
 ```
 
-Для русских книг должен быть язык `rus`. Если его нет, установите `tesseract-ocr-rus`, `tesseract-langpack-rus` или `tesseract-lang` в зависимости от OS.
-
-## Настройка LLM
-
-LLM используется для нормализации, разметки реплик, голоса и настроения чанков. Самый простой локальный вариант - Ollama.
+Для книг на поддерживаемых языках должны быть доступны коды `eng`, `rus`,
+`chi_sim`, `kaz`, `uzb`. Если их нет, запустите native installer. Флаг
+`--download-tessdata` скачивает языковые файлы в локальную ignored-папку
+`data/tessdata` и прописывает ее в runtime config, поэтому не требует `sudo`:
 
 ```bash
-ollama pull gemma3:4b
+# Windows
+install.bat --interactive --install-system-tools --download-tessdata
+
+# Linux/macOS
+./install.sh --interactive --install-system-tools --download-tessdata
 ```
 
-По умолчанию приложение ожидает OpenAI-compatible endpoint:
+## Настройка LLM через нативную Ollama
+
+LLM используется для нормализации текста и умной разметки голосов. Ollama должна
+работать нативно в той OS, где запускается приложение, либо быть доступной по
+HTTP endpoint. Важно не держать одновременно несколько больших моделей:
+приложение отправляет запросы через native `/api/chat`, использует
+`num_parallel=1`, `num_ctx=4096`, `think=false`, `keep_alive` и выгружает модели
+после батчей.
+
+Установка Ollama:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama serve
+```
+
+На Windows можно поставить Ollama Desktop или указать полный путь к `ollama.exe`
+в `install.py --ollama-bin`. Главное, чтобы `http://localhost:11434` отвечал из
+приложения; в dev shell должен быть доступен тот же endpoint.
+Если модели должны лежать на другом диске, запускайте installer с
+`--ollama-models-dir` или укажите путь в interactive-режиме; он сохранится в
+`data/local_runtime_paths.json` и `.env`, а `ollama pull` получит `OLLAMA_MODELS`.
+
+Рекомендуемые модели для 8 GB VRAM / 16 GB RAM:
+
+```bash
+ollama pull hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
+ollama pull hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
+```
+
+Маршрутизация языков:
 
 ```text
-http://localhost:11434/v1
+ru/en/zh/kk/uz -> hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
+fallback       -> hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
 ```
 
-Можно указать другой endpoint и модель в GUI или CLI.
+По умолчанию приложение использует native Ollama endpoint:
+
+```text
+http://localhost:11434
+```
+
+`gemma3:12b` не используется по умолчанию: размер модели плюс KV/cache слишком
+рискованны для 8 GB VRAM.
+
+Если включить `LLM/GPU нормализация`, книга получает metadata-флаг
+`llm_processing_enabled`, а вкладка голосов автоматически выбирает LLM smart
+markup с тем же language/model profile. Если 8B не проходит validation,
+приложение пробует 4B; если модели не сохраняют текст, создается review report
+с проблемными окнами вместо тихого downgrade.
+
+Ручной benchmark качества:
+
+```bash
+python scripts/quality_benchmark.py
+RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama
+RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama --ollama-lightweight --languages en --max-chars 300
+RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama --languages ru --book-glob "*.fb2" --limit-books 1 --max-chars 350
+python scripts/quality_benchmark.py --skip-synthetic --book-glob "*.pdf" --limit-books 1
+```
+
+Воспроизводимый public corpus для `en/zh/kk/uz` можно скачать без коммита самих
+текстов:
+
+```bash
+python scripts/fetch_quality_corpus.py --out-dir output/public_quality_corpus
+python scripts/quality_benchmark.py \
+  --skip-synthetic \
+  --books-dir output/public_quality_corpus \
+  --languages en,zh,kk,uz \
+  --book-language-map output/public_quality_corpus/languages.json \
+  --out-dir output/quality_reports_public_corpus
+```
+
+Для реального многоязычного корпуса задавайте язык на файл через JSON-карту,
+иначе TXT/DOCX/PDF без метаданных будут проверяться с общим `--book-language`.
+Пример `books/languages.json`:
+
+```json
+{
+  "english/*.txt": "en",
+  "china/*.epub": "zh",
+  "kazakh/*.fb2": "kk",
+  "uzbek/*.pdf": "uz"
+}
+```
+
+Запуск:
+
+```bash
+python scripts/quality_benchmark.py \
+  --skip-synthetic \
+  --books-dir books \
+  --languages en,zh,kk,uz \
+  --book-language-map books/languages.json
+
+RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py \
+  --run-ollama \
+  --books-dir books \
+  --languages en,zh,kk,uz \
+  --book-language-map books/languages.json \
+  --limit-books 4 \
+  --max-chars 600
+```
+
+Отчеты пишутся в `output/quality_reports`. Локальные книги из `books/` используются только для проверки и не коммитятся.
 
 ## Настройка TTS
 
@@ -252,9 +379,10 @@ normalize-book install-tts-models --models-dir /path/to/models \
 репозиторий требует авторизации, задайте `HF_TOKEN` или передайте `--token`.
 Python-зависимость для скачивания: `huggingface-hub` (ставится через `install.py`).
 Для прямого Qwen-TTS runner также нужны `qwen-tts`, `torch`, `soundfile`, `numpy`;
-на практике для production-озвучки рекомендуется Linux/WSL с CUDA GPU.
+на практике для production-озвучки рекомендуется нативный CUDA GPU-хост или
+ComfyUI endpoint с достаточной VRAM.
 
-Прямой runner `scripts/tts_runner.py` оставлен для Linux/WSL и CUDA. Для него ставьте:
+Direct `scripts/tts_runner.py` legacy flow has been removed. Use `chunks_manifest_v2.json` + ComfyUI synthesis.
 
 ```bash
 python install.py --with-tts
@@ -288,6 +416,12 @@ Linux/macOS:
 python -m book_normalizer.gui.app
 ```
 
+Визуальный аудит GUI с PNG-скриншотами и JSON-summary:
+
+```bash
+python scripts/gui_visual_audit.py --out-dir output/gui_visual_audit
+```
+
 ## CLI workflow
 
 Нормализовать книгу:
@@ -299,7 +433,7 @@ normalize-book process books/mybook.pdf --out output --ocr-mode auto
 Рекомендуемый pipeline без синтеза:
 
 ```bash
-normalize-book pipeline books/mybook.pdf --out output --llm-model gemma3:4b
+normalize-book pipeline books/mybook.pdf --out output --llm-normalize
 ```
 
 Pipeline с ComfyUI-синтезом и сборкой глав:
@@ -307,7 +441,7 @@ Pipeline с ComfyUI-синтезом и сборкой глав:
 ```bash
 normalize-book pipeline books/mybook.pdf \
   --out output \
-  --llm-model gemma3:4b \
+  --llm-normalize \
   --synthesize \
   --workflow comfyui_workflows/qwen3_tts_template.json \
   --assemble

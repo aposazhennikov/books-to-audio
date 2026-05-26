@@ -1,4 +1,4 @@
-"""Internationalization (i18n) support for GUI — Russian / English."""
+"""Internationalization (i18n) support for GUI."""
 
 # ruff: noqa: E501
 
@@ -7,6 +7,14 @@ from __future__ import annotations
 from typing import Any
 
 _LANG: str = "ru"
+
+SUPPORTED_LANGUAGES: tuple[tuple[str, str], ...] = (
+    ("ru", "RU  Русский"),
+    ("en", "EN  English"),
+    ("zh", "ZH  中文"),
+    ("kk", "KK  Қазақша"),
+    ("uz", "UZ  Oʻzbekcha"),
+)
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
     # ── App-level ──
@@ -20,6 +28,90 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0413\u043e\u0442\u043e\u0432\u043e. \u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u043a\u043d\u0438\u0433\u0443 \u0434\u043b\u044f \u043d\u0430\u0447\u0430\u043b\u0430.",
     },
     "app.lang_label": {"en": "Language:", "ru": "\u042f\u0437\u044b\u043a:"},
+    "auto.button": {
+        "en": "Build audiobook automatically",
+        "ru": "\u0421\u043e\u0431\u0440\u0430\u0442\u044c \u0430\u0443\u0434\u0438\u043e\u043a\u043d\u0438\u0433\u0443 \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438",
+        "zh": "\u81ea\u52a8\u751f\u6210\u6709\u58f0\u4e66",
+        "kk": "\u0410\u0443\u0434\u0438\u043e\u043a\u0456\u0442\u0430\u043f\u0442\u044b \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0442\u044b \u0436\u0438\u043d\u0430\u0443",
+        "uz": "Audiokitobni avtomatik yig'ish",
+    },
+    "auto.button_short": {
+        "en": "Auto build",
+        "ru": "\u0410\u0432\u0442\u043e\u0441\u0431\u043e\u0440\u043a\u0430",
+        "zh": "\u81ea\u52a8\u751f\u6210",
+        "kk": "\u0410\u0432\u0442\u043e\u0436\u0438\u043d\u0430\u0443",
+        "uz": "Avtoyig'ish",
+    },
+    "auto.button_tiny": {
+        "en": "Auto",
+        "ru": "\u0410\u0432\u0442\u043e",
+        "zh": "\u81ea\u52a8",
+        "kk": "\u0410\u0432\u0442\u043e",
+        "uz": "Avto",
+    },
+    "auto.tooltip": {
+        "en": "Runs normalization, role extraction, chunking, TTS, and assembly with quality-first settings.",
+        "ru": "\u0417\u0430\u043f\u0443\u0441\u043a\u0430\u0435\u0442 \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044e, \u0438\u0437\u0432\u043b\u0435\u0447\u0435\u043d\u0438\u0435 \u0440\u043e\u043b\u0435\u0439, \u0447\u0430\u043d\u043a\u0438, \u043e\u0437\u0432\u0443\u0447\u043a\u0443 \u0438 \u0441\u043a\u043b\u0435\u0439\u043a\u0443 \u0441 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430\u043c\u0438 \u043d\u0430 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e.",
+        "zh": "\u4ee5\u8d28\u91cf\u4f18\u5148\u8bbe\u7f6e\u4f9d\u6b21\u8fd0\u884c\u89c4\u8303\u5316\u3001\u89d2\u8272\u63d0\u53d6\u3001\u5206\u5757\u3001TTS \u548c\u5408\u6210\u3002",
+        "kk": "\u0421\u0430\u043f\u0430\u0493\u0430 \u0431\u0430\u0441\u044b\u043c\u0434\u044b\u049b \u0431\u0435\u0440\u0435\u0442\u0456\u043d \u0431\u0430\u043f\u0442\u0430\u0443\u043b\u0430\u0440\u043c\u0435\u043d \u043d\u043e\u0440\u043c\u0430\u043b\u0434\u0430\u0443, \u0440\u04e9\u043b\u0434\u0435\u0440, \u0447\u0430\u043d\u043a\u0442\u0430\u0440, TTS \u0436\u04d9\u043d\u0435 \u0436\u0438\u043d\u0430\u0443 \u049b\u0430\u0434\u0430\u043c\u0434\u0430\u0440\u044b\u043d \u0456\u0441\u043a\u0435 \u049b\u043e\u0441\u0430\u0434\u044b.",
+        "uz": "Sifatga ustuvor sozlamalar bilan normalizatsiya, rollar, bo'laklar, TTS va yig'ishni ishga tushiradi.",
+    },
+    "auto.need_file": {
+        "en": "Select a book first, then start automatic audiobook build.",
+        "ru": "\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043a\u043d\u0438\u0433\u0443, \u0437\u0430\u0442\u0435\u043c \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u0435 \u0430\u0432\u0442\u043e\u0441\u0431\u043e\u0440\u043a\u0443.",
+        "zh": "\u8bf7\u5148\u9009\u62e9\u4e66\u7a3f\uff0c\u7136\u540e\u542f\u52a8\u81ea\u52a8\u751f\u6210\u3002",
+        "kk": "\u0410\u043b\u0434\u044b\u043c\u0435\u043d \u043a\u0456\u0442\u0430\u043f\u0442\u044b \u0442\u0430\u04a3\u0434\u0430\u04a3\u044b\u0437, \u0441\u043e\u0434\u0430\u043d \u043a\u0435\u0439\u0456\u043d \u0430\u0432\u0442\u043e\u0436\u0438\u043d\u0430\u0443\u0434\u044b \u0456\u0441\u043a\u0435 \u049b\u043e\u0441\u044b\u04a3\u044b\u0437.",
+        "uz": "Avval kitobni tanlang, keyin avtomatik yig'ishni boshlang.",
+    },
+    "auto.normalizing": {
+        "en": "Automatic build started: normalizing with quality-first settings.",
+        "ru": "\u0410\u0432\u0442\u043e\u0441\u0431\u043e\u0440\u043a\u0430 \u0437\u0430\u043f\u0443\u0449\u0435\u043d\u0430: \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0443\u0435\u043c \u0441 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430\u043c\u0438 \u043d\u0430 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e.",
+        "zh": "\u81ea\u52a8\u751f\u6210\u5df2\u542f\u52a8\uff1a\u6b63\u4ee5\u8d28\u91cf\u4f18\u5148\u8bbe\u7f6e\u89c4\u8303\u5316\u3002",
+        "kk": "\u0410\u0432\u0442\u043e\u0436\u0438\u043d\u0430\u0443 \u0431\u0430\u0441\u0442\u0430\u043b\u0434\u044b: \u0441\u0430\u043f\u0430\u0493\u0430 \u0431\u0430\u0441\u044b\u043c\u0434\u044b\u049b \u0431\u0435\u0440\u0456\u043f \u043d\u043e\u0440\u043c\u0430\u043b\u0434\u0430\u0443.",
+        "uz": "Avtoyig'ish boshlandi: sifatga ustuvor sozlamalar bilan normallashtirilmoqda.",
+    },
+    "auto.roles": {
+        "en": "Automatic build: extracting roles and smart segments.",
+        "ru": "\u0410\u0432\u0442\u043e\u0441\u0431\u043e\u0440\u043a\u0430: \u0438\u0437\u0432\u043b\u0435\u043a\u0430\u0435\u043c \u0440\u043e\u043b\u0438 \u0438 \u0443\u043c\u043d\u044b\u0435 \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u044b.",
+        "zh": "\u81ea\u52a8\u751f\u6210\uff1a\u6b63\u5728\u63d0\u53d6\u89d2\u8272\u548c\u667a\u80fd\u5206\u6bb5\u3002",
+        "kk": "\u0410\u0432\u0442\u043e\u0436\u0438\u043d\u0430\u0443: \u0440\u04e9\u043b\u0434\u0435\u0440 \u043c\u0435\u043d \u0430\u049b\u044b\u043b\u0434\u044b \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0442\u0435\u0440 \u0430\u043b\u044b\u043d\u0443\u0434\u0430.",
+        "uz": "Avtoyig'ish: rollar va aqlli segmentlar ajratilmoqda.",
+    },
+    "auto.chunks": {
+        "en": "Automatic build: preparing TTS chunks.",
+        "ru": "\u0410\u0432\u0442\u043e\u0441\u0431\u043e\u0440\u043a\u0430: \u0433\u043e\u0442\u043e\u0432\u0438\u043c TTS-\u0447\u0430\u043d\u043a\u0438.",
+        "zh": "\u81ea\u52a8\u751f\u6210\uff1a\u6b63\u5728\u51c6\u5907 TTS \u5206\u5757\u3002",
+        "kk": "\u0410\u0432\u0442\u043e\u0436\u0438\u043d\u0430\u0443: TTS \u0447\u0430\u043d\u043a\u0442\u0430\u0440\u044b \u0434\u0430\u0439\u044b\u043d\u0434\u0430\u043b\u0443\u0434\u0430.",
+        "uz": "Avtoyig'ish: TTS bo'laklari tayyorlanmoqda.",
+    },
+    "auto.synthesis": {
+        "en": "Automatic build: generating audio. This is the long overnight step.",
+        "ru": "\u0410\u0432\u0442\u043e\u0441\u0431\u043e\u0440\u043a\u0430: \u043e\u0437\u0432\u0443\u0447\u0438\u0432\u0430\u0435\u043c. \u042d\u0442\u043e \u0434\u043e\u043b\u0433\u0438\u0439 \u043d\u043e\u0447\u043d\u043e\u0439 \u044d\u0442\u0430\u043f.",
+        "zh": "\u81ea\u52a8\u751f\u6210\uff1a\u6b63\u5728\u751f\u6210\u97f3\u9891\u3002\u8fd9\u662f\u9002\u5408\u591c\u95f4\u8fd0\u884c\u7684\u957f\u6b65\u9aa4\u3002",
+        "kk": "\u0410\u0432\u0442\u043e\u0436\u0438\u043d\u0430\u0443: \u0434\u044b\u0431\u044b\u0441 \u0436\u0430\u0441\u0430\u043b\u0443\u0434\u0430. \u0411\u04b1\u043b \u0442\u04af\u043d\u0433\u0456 \u04b1\u0437\u0430\u049b \u049b\u0430\u0434\u0430\u043c.",
+        "uz": "Avtoyig'ish: audio yaratilmoqda. Bu tun bo'yi davom etadigan uzun bosqich.",
+    },
+    "auto.assembly": {
+        "en": "Automatic build: assembling the final audiobook.",
+        "ru": "\u0410\u0432\u0442\u043e\u0441\u0431\u043e\u0440\u043a\u0430: \u0441\u043a\u043b\u0435\u0438\u0432\u0430\u0435\u043c \u0433\u043e\u0442\u043e\u0432\u0443\u044e \u0430\u0443\u0434\u0438\u043e\u043a\u043d\u0438\u0433\u0443.",
+        "zh": "\u81ea\u52a8\u751f\u6210\uff1a\u6b63\u5728\u5408\u6210\u6700\u7ec8\u6709\u58f0\u4e66\u3002",
+        "kk": "\u0410\u0432\u0442\u043e\u0436\u0438\u043d\u0430\u0443: \u0434\u0430\u0439\u044b\u043d \u0430\u0443\u0434\u0438\u043e\u043a\u0456\u0442\u0430\u043f \u0436\u0438\u043d\u0430\u043b\u0443\u0434\u0430.",
+        "uz": "Avtoyig'ish: yakuniy audiokitob yig'ilmoqda.",
+    },
+    "auto.complete": {
+        "en": "Automatic audiobook build complete.",
+        "ru": "\u0410\u0432\u0442\u043e\u0441\u0431\u043e\u0440\u043a\u0430 \u0430\u0443\u0434\u0438\u043e\u043a\u043d\u0438\u0433\u0438 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0430.",
+        "zh": "\u6709\u58f0\u4e66\u5df2\u81ea\u52a8\u751f\u6210\u5b8c\u6210\u3002",
+        "kk": "\u0410\u0443\u0434\u0438\u043e\u043a\u0456\u0442\u0430\u043f\u0442\u044b \u0430\u0432\u0442\u043e\u0436\u0438\u043d\u0430\u0443 \u0430\u044f\u049b\u0442\u0430\u043b\u0434\u044b.",
+        "uz": "Audiokitobni avtomatik yig'ish tugadi.",
+    },
+    "auto.failed": {
+        "en": "Automatic build stopped: {msg}",
+        "ru": "\u0410\u0432\u0442\u043e\u0441\u0431\u043e\u0440\u043a\u0430 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0430: {msg}",
+        "zh": "\u81ea\u52a8\u751f\u6210\u5df2\u505c\u6b62\uff1a{msg}",
+        "kk": "\u0410\u0432\u0442\u043e\u0436\u0438\u043d\u0430\u0443 \u0442\u043e\u049b\u0442\u0430\u0434\u044b: {msg}",
+        "uz": "Avtoyig'ish to'xtadi: {msg}",
+    },
 
     # ── Tab names ──
     "tab.normalize": {
@@ -30,23 +122,63 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "1. Norm.",
         "ru": "1. \u041d\u043e\u0440\u043c.",
     },
-    "tab.voices": {"en": "2. Voices", "ru": "2. \u0413\u043e\u043b\u043e\u0441\u0430"},
-    "tab.voices_short": {"en": "2. Voices", "ru": "2. \u0413\u043e\u043b\u043e\u0441\u0430"},
+    "tab.roles": {
+        "en": "2. Roles",
+        "ru": "2. \u0420\u043e\u043b\u0438",
+        "zh": "2. \u89d2\u8272",
+        "kk": "2. \u0420\u04e9\u043b\u0434\u0435\u0440",
+        "uz": "2. Rollar",
+    },
+    "tab.roles_short": {
+        "en": "2. Roles",
+        "ru": "2. \u0420\u043e\u043b\u0438",
+        "zh": "2. \u89d2\u8272",
+        "kk": "2. \u0420\u04e9\u043b",
+        "uz": "2. Rol",
+    },
+    "tab.chunks": {
+        "en": "3. Chunks",
+        "ru": "3. \u0427\u0430\u043d\u043a\u0438",
+        "zh": "3. \u5206\u5757",
+        "kk": "3. \u0427\u0430\u043d\u043a\u0442\u0430\u0440",
+        "uz": "3. Bo\u02bblaklar",
+    },
+    "tab.chunks_short": {
+        "en": "3. Chunks",
+        "ru": "3. \u0427\u0430\u043d\u043a\u0438",
+        "zh": "3. \u5206\u5757",
+        "kk": "3. \u0427\u0430\u043d\u043a",
+        "uz": "3. Bo\u02bb.",
+    },
+    "tab.voices": {
+        "en": "4. Voices",
+        "ru": "4. \u0413\u043e\u043b\u043e\u0441\u0430",
+        "zh": "4. \u58f0\u97f3",
+        "kk": "4. \u0414\u0430\u0443\u044b\u0441\u0442\u0430\u0440",
+        "uz": "4. Ovozlar",
+    },
+    "tab.voices_short": {
+        "en": "4. Voices",
+        "ru": "4. \u0413\u043e\u043b\u043e\u0441\u0430",
+        "zh": "4. \u58f0\u97f3",
+        "kk": "4. \u0414\u0430\u0443\u044b\u0441",
+        "uz": "4. Ovoz",
+    },
     "tab.synthesize": {
-        "en": "3. Synthesize",
-        "ru": "3. \u0421\u0438\u043d\u0442\u0435\u0437",
+        "en": "4. Voices",
+        "ru": "4. \u0413\u043e\u043b\u043e\u0441\u0430",
     },
     "tab.synthesize_short": {
-        "en": "3. TTS",
-        "ru": "3. \u0421\u0438\u043d\u0442\u0435\u0437",
+        "en": "4. Voices",
+        "ru": "4. \u0413\u043e\u043b\u043e\u0441\u0430",
     },
     "tab.assemble": {
-        "en": "4. Assemble",
-        "ru": "4. \u0421\u0431\u043e\u0440\u043a\u0430",
+        "en": "5. Chapters",
+        "ru": "5. \u041e\u0444\u043e\u0440\u043c\u043b\u0435\u043d\u0438\u0435",
     },
     "tab.assemble_short": {
-        "en": "4. Build",
-        "ru": "4. \u0421\u0431\u043e\u0440\u043a\u0430",
+        "en": "5. Build",
+        "ru": "5. \u0413\u043b\u0430\u0432\u044b",
     },
 
     # ── Normalize page ──
@@ -55,6 +187,19 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0424\u0430\u0439\u043b \u043d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d",
     },
     "norm.browse": {"en": "Browse\u2026", "ru": "\u041e\u0431\u0437\u043e\u0440\u2026"},
+    "norm.book_language": {
+        "en": "Book language:",
+        "ru": "\u042f\u0437\u044b\u043a \u043a\u043d\u0438\u0433\u0438:",
+    },
+    "norm.book_language_tip": {
+        "en": "Controls OCR language, language-safe normalization, chunk metadata, and Qwen/ComfyUI synthesis language.",
+        "ru": "\u0412\u043b\u0438\u044f\u0435\u0442 \u043d\u0430 \u044f\u0437\u044b\u043a OCR, \u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u0443\u044e \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044e, \u043c\u0435\u0442\u0430\u0434\u0430\u043d\u043d\u044b\u0435 \u0447\u0430\u043d\u043a\u043e\u0432 \u0438 \u044f\u0437\u044b\u043a \u0441\u0438\u043d\u0442\u0435\u0437\u0430 Qwen/ComfyUI.",
+    },
+    "book_language.ru": {"en": "Russian", "ru": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"},
+    "book_language.en": {"en": "English", "ru": "\u0410\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439"},
+    "book_language.zh": {"en": "Chinese", "ru": "\u041a\u0438\u0442\u0430\u0439\u0441\u043a\u0438\u0439"},
+    "book_language.kk": {"en": "Kazakh", "ru": "\u041a\u0430\u0437\u0430\u0445\u0441\u043a\u0438\u0439"},
+    "book_language.uz": {"en": "Uzbek", "ru": "\u0423\u0437\u0431\u0435\u043a\u0441\u043a\u0438\u0439"},
     "norm.ocr_mode": {"en": "OCR Mode:", "ru": "\u0420\u0435\u0436\u0438\u043c OCR:"},
     "norm.ocr_mode_hint": {
         "en": "auto = OCR if text unreadable | off = no OCR | force = always OCR | compare = both",
@@ -91,32 +236,160 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "300 = \u0431\u044b\u0441\u0442\u0440\u043e, 400 = \u043e\u043f\u0442\u0438\u043c\u0430\u043b\u044c\u043d\u043e, 600 = \u043c\u0430\u043a\u0441\u0438\u043c\u0430\u043b\u044c\u043d\u043e\u0435 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e."
         ),
     },
-    "norm.ocr_psm": {"en": "Tesseract PSM:", "ru": "Tesseract PSM:"},
+    "norm.ocr_psm": {
+        "en": "OCR page layout (PSM):",
+        "ru": "Разметка страницы OCR (PSM):",
+    },
     "norm.ocr_psm_hint": {
-        "en": "6 = cropped text block (recommended) | 4 = single column | 3 = auto",
-        "ru": "6 = \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u043d\u044b\u0439 \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 (\u0440\u0435\u043a\u043e\u043c.) | 4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 | 3 = \u0430\u0432\u0442\u043e",
+        "en": "Choose the layout that best matches the rendered page.",
+        "ru": "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u0430\u0437\u043c\u0435\u0442\u043a\u0443, \u043a\u043e\u0442\u043e\u0440\u0430\u044f \u0431\u043b\u0438\u0436\u0435 \u0432\u0441\u0435\u0433\u043e \u043a \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0435 \u043f\u043e\u0441\u043b\u0435 \u0440\u0435\u043d\u0434\u0435\u0440\u0430.",
+    },
+    "norm.ocr_psm_3": {
+        "en": "3 - Auto full page: unknown book layout",
+        "ru": "3 - Авто-страница: если верстка книги непонятна",
+    },
+    "norm.ocr_psm_4": {
+        "en": "4 - Normal book page: continuous reading order",
+        "ru": "4 - Обычная страница книги: сплошной порядок чтения",
+    },
+    "norm.ocr_psm_6": {
+        "en": "6 - Cropped body text: one selected text block",
+        "ru": "6 - Вырезанный основной текст: один выбранный блок",
+    },
+    "norm.ocr_psm_11": {
+        "en": "11 - Loose fragments: captions, stamps, margin notes",
+        "ru": "11 - Разбросанные фрагменты: подписи, штампы, поля",
+    },
+    "norm.ocr_psm_13": {
+        "en": "13 - Title or one line: short strip, not a page",
+        "ru": "13 - Заголовок или одна строка: не целая страница",
+    },
+    "norm.ocr_psm_compact_3": {
+        "en": "3 - Auto",
+        "ru": "3 - Авто",
+        "zh": "3 - 自动",
+        "kk": "3 - Авто",
+        "uz": "3 - Avto",
+    },
+    "norm.ocr_psm_compact_4": {
+        "en": "4 - Book page",
+        "ru": "4 - Страница книги",
+        "zh": "4 - 书页",
+        "kk": "4 - Кітап беті",
+        "uz": "4 - Kitob sahifasi",
+    },
+    "norm.ocr_psm_compact_6": {
+        "en": "6 - Cropped text",
+        "ru": "6 - Обрезанный текст",
+        "zh": "6 - 裁剪正文",
+        "kk": "6 - Қиылған мәтін",
+        "uz": "6 - Kesilgan matn",
+    },
+    "norm.ocr_psm_compact_11": {
+        "en": "11 - Fragments",
+        "ru": "11 - Фрагменты",
+        "zh": "11 - 片段",
+        "kk": "11 - Фрагменттер",
+        "uz": "11 - Bo'laklar",
+    },
+    "norm.ocr_psm_compact_13": {
+        "en": "13 - One line",
+        "ru": "13 - Одна строка",
+        "zh": "13 - 单行",
+        "kk": "13 - Бір жол",
+        "uz": "13 - Bir qator",
+    },
+    "norm.ocr_psm_summary_3": {
+        "en": "Use when page layout is uncertain; review reading order after OCR.",
+        "ru": "Для сложной страницы: Tesseract сам ищет порядок, но результат надо проверить.",
+        "zh": "页面结构不确定时使用；OCR 后请复核阅读顺序。",
+        "kk": "Бет құрылымы белгісіз болса; OCR-дан кейін оқу ретін тексеріңіз.",
+        "uz": "Sahifa tuzilmasi noaniq bo'lsa ishlating; OCRdan keyin o'qish tartibini tekshiring.",
+    },
+    "norm.ocr_psm_summary_4": {
+        "en": "Best first choice for a normal full-page book scan.",
+        "ru": "Лучший первый выбор для обычного полного скана книжной страницы.",
+        "zh": "普通整页书籍扫描的首选。",
+        "kk": "Кітаптың қалыпты толық скан беті үшін бірінші таңдау.",
+        "uz": "Oddiy to'liq skan qilingan kitob sahifasi uchun birinchi tanlov.",
+    },
+    "norm.ocr_psm_summary_6": {
+        "en": "Use only for a cropped rectangle with one main text block.",
+        "ru": "Только для обрезанного прямоугольника с одним основным блоком текста.",
+        "zh": "仅用于已裁剪的单个正文矩形区域。",
+        "kk": "Бір негізгі мәтін блогы бар қиылған тікбұрыш үшін ғана.",
+        "uz": "Faqat bitta asosiy matn bloki bor kesilgan to'rtburchak uchun.",
+    },
+    "norm.ocr_psm_summary_11": {
+        "en": "For notes, stamps, captions, or scattered pieces; not for normal pages.",
+        "ru": "Для заметок, штампов, подписей и разбросанных кусков; не для обычной страницы.",
+        "zh": "用于笔记、印章、图注或分散片段；不适合普通书页。",
+        "kk": "Жазба, мөр, түсіндірме не шашыраған бөліктер үшін; қалыпты бетке емес.",
+        "uz": "Izoh, muhr, sarlavha yoki tarqoq bo'laklar uchun; oddiy sahifa uchun emas.",
+    },
+    "norm.ocr_psm_summary_13": {
+        "en": "For a single title/header line; do not use for full pages.",
+        "ru": "Для одной строки или заголовка; не используйте для полной страницы.",
+        "zh": "用于单行标题或页眉；不要用于整页。",
+        "kk": "Бір жол не тақырып үшін; толық бетке қолданбаңыз.",
+        "uz": "Bitta sarlavha yoki qator uchun; to'liq sahifaga ishlatmang.",
     },
     "norm.ocr_psm_tip": {
         "en": (
             "Tesseract Page Segmentation Mode (PSM):\n"
-            "3 = fully automatic (default Tesseract)\n"
-            "4 = single column of variable-size text\n"
-            "6 = uniform cropped text block (recommended after auto spread splitting)\n"
-            "11 = sparse text, find as much as possible\n"
-            "13 = raw line, treat as single text line"
+            "3 auto full page = use when the book page has unknown layout, several blocks, illustrations, or mixed structure.\n"
+            "4 normal book page = use for a full scanned page whose main text can be read from top to bottom in a stable order.\n"
+            "6 cropped body text = use only when the image is already a selected rectangle with one main text block.\n"
+            "11 loose fragments = use for captions, stamps, margin notes, forms, or scattered text pieces; reading order may need review.\n"
+            "13 title or one line = use for one short horizontal title/header/line; do not use for full pages."
         ),
         "ru": (
             "\u0420\u0435\u0436\u0438\u043c \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0430\u0446\u0438\u0438 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b Tesseract (PSM):\n"
-            "3 = \u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439\n"
-            "4 = \u043e\u0434\u043d\u0430 \u043a\u043e\u043b\u043e\u043d\u043a\u0430 \u0442\u0435\u043a\u0441\u0442\u0430\n"
-            "6 = \u0440\u043e\u0432\u043d\u044b\u0439 \u043e\u0431\u0440\u0435\u0437\u0430\u043d\u043d\u044b\u0439 \u0431\u043b\u043e\u043a \u0442\u0435\u043a\u0441\u0442\u0430 (\u0440\u0435\u043a\u043e\u043c. \u043f\u043e\u0441\u043b\u0435 \u0430\u0432\u0442\u043e-\u0440\u0430\u0437\u0434\u0435\u043b\u0435\u043d\u0438\u044f \u0440\u0430\u0437\u0432\u043e\u0440\u043e\u0442\u043e\u0432)\n"
-            "11 = \u0440\u0430\u0437\u0440\u0435\u0436\u0435\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442\n"
-            "13 = \u043e\u0434\u043d\u0430 \u0441\u0442\u0440\u043e\u043a\u0430 \u0442\u0435\u043a\u0441\u0442\u0430"
+            "3 авто-страница = когда у страницы книги непонятная верстка, несколько блоков, иллюстрации или смешанная структура.\n"
+            "4 обычная страница книги = полный скан страницы, где основной текст читается сверху вниз в стабильном порядке.\n"
+            "6 вырезанный основной текст = только если изображение уже обрезано до одного прямоугольного блока текста без полей и колонтитулов.\n"
+            "11 разбросанные фрагменты = подписи, штампы, заметки на полях, формы или отдельные куски текста; порядок чтения надо проверить.\n"
+            "13 заголовок или одна строка = одна короткая горизонтальная строка/шапка; не использовать для полной страницы."
         ),
     },
     "norm.ocr_not_applicable": {
         "en": "OCR settings apply only to PDF files",
         "ru": "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 OCR \u043f\u0440\u0438\u043c\u0435\u043d\u0438\u043c\u044b \u0442\u043e\u043b\u044c\u043a\u043e \u043a PDF",
+    },
+    "norm.ocr_install_hint": {
+        "en": "Tesseract is not available in this OS. Install native OCR tools: {cmd}",
+        "ru": "Tesseract не найден в этой ОС. Установите OCR нативным установщиком: {cmd}",
+        "zh": "当前系统未找到 Tesseract。请用本机安装器安装 OCR 工具：{cmd}",
+        "kk": "Бұл ОС-та Tesseract табылмады. OCR құралдарын жергілікті орнатқышпен орнатыңыз: {cmd}",
+        "uz": "Bu OSda Tesseract topilmadi. OCR vositalarini mahalliy o‘rnatuvchi bilan o‘rnating: {cmd}",
+    },
+    "norm.ocr_install_language_hint": {
+        "en": "Tesseract is installed, but language data '{lang}' is missing. Install OCR language packs: {cmd}",
+        "ru": "Tesseract установлен, но нет языкового пакета '{lang}'. Установите OCR-языки: {cmd}",
+        "zh": "已安装 Tesseract，但缺少语言数据 '{lang}'。请安装 OCR 语言包：{cmd}",
+        "kk": "Tesseract орнатылған, бірақ '{lang}' тіл деректері жоқ. OCR тіл пакеттерін орнатыңыз: {cmd}",
+        "uz": "Tesseract o‘rnatilgan, lekin '{lang}' til maʼlumoti yo‘q. OCR til paketlarini o‘rnating: {cmd}",
+    },
+    "norm.ocr_install_button": {
+        "en": "Install OCR",
+        "ru": "Установить OCR",
+        "zh": "安装 OCR",
+        "kk": "OCR орнату",
+        "uz": "OCR o‘rnatish",
+    },
+    "norm.ocr_install_started": {
+        "en": "Started native OCR installer: {cmd}",
+        "ru": "Запущен нативный установщик OCR: {cmd}",
+        "zh": "已启动本机 OCR 安装器：{cmd}",
+        "kk": "Жергілікті OCR орнатқышы іске қосылды: {cmd}",
+        "uz": "Mahalliy OCR o‘rnatuvchisi ishga tushdi: {cmd}",
+    },
+    "norm.ocr_install_failed": {
+        "en": "Could not launch installer. Run manually: {cmd}",
+        "ru": "Не удалось запустить установщик. Запустите вручную: {cmd}",
+        "zh": "无法启动安装器。请手动运行：{cmd}",
+        "kk": "Орнатқышты іске қосу мүмкін болмады. Қолмен іске қосыңыз: {cmd}",
+        "uz": "O‘rnatuvchini ishga tushirib bo‘lmadi. Qo‘lda ishga tushiring: {cmd}",
     },
     "norm.llm_normalize": {
         "en": "LLM/GPU normalization:",
@@ -125,6 +398,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "norm.llm_normalize_check": {
         "en": "Use local model after rules",
         "ru": "\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u044c \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u0443\u044e \u043c\u043e\u0434\u0435\u043b\u044c \u043f\u043e\u0441\u043b\u0435 \u043f\u0440\u0430\u0432\u0438\u043b",
+    },
+    "norm.llm_normalize_check_compact": {
+        "en": "Local LLM",
+        "ru": "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u0430\u044f LLM",
+        "zh": "\u672c\u5730 LLM",
+        "kk": "\u0416\u0435\u0440\u0433\u0456\u043b\u0456\u043a\u0442\u0456 LLM",
+        "uz": "Lokal LLM",
     },
     "norm.llm_endpoint": {
         "en": "LLM endpoint:",
@@ -161,21 +441,138 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Starting\u2026",
         "ru": "\u0417\u0430\u043f\u0443\u0441\u043a\u2026",
     },
+    "norm.cache_dialog_title": {
+        "en": "Completed normalization found",
+        "ru": "Готовая нормализация найдена",
+        "zh": "已找到完成的标准化结果",
+        "kk": "Дайын нормализация табылды",
+        "uz": "Yakunlangan normalizatsiya topildi",
+    },
+    "norm.cache_dialog_text": {
+        "en": "A cached result exists for “{name}” with the current settings.",
+        "ru": "Для «{name}» найден результат с текущими параметрами.",
+        "zh": "“{name}”在当前设置下已有缓存结果。",
+        "kk": "«{name}» үшін ағымдағы баптаулармен кеш нәтижесі бар.",
+        "uz": "“{name}” uchun joriy sozlamalar bilan kesh natijasi bor.",
+    },
+    "norm.cache_dialog_informative": {
+        "en": (
+            "Restore it to continue immediately with chapters and role extraction. "
+            "Choose “Run from scratch” only if you want to read the source, OCR, and LLM steps again."
+        ),
+        "ru": (
+            "Восстановите его из кеша, чтобы сразу продолжить с главами и ролями. "
+            "Выберите «Запустить заново», только если хотите повторно прочитать файл, OCR и LLM-шаги."
+        ),
+        "zh": "从缓存恢复即可立即继续处理章节和角色。只有在想重新读取源文件、OCR 和 LLM 步骤时，才选择“重新运行”。",
+        "kk": (
+            "Кештен қалпына келтірсеңіз, тараулар мен рөлдерге бірден өтесіз. "
+            "Бастапқы файлды, OCR және LLM қадамдарын қайта орындау керек болса ғана «Қайта іске қосу» таңдаңыз."
+        ),
+        "uz": (
+            "Keshdan tiklasangiz, boblar va rollar bilan darhol davom etasiz. "
+            "Manba fayl, OCR va LLM bosqichlarini qayta bajarishni istasangizgina “Qayta ishga tushirish”ni tanlang."
+        ),
+    },
+    "norm.cache_restore_button": {
+        "en": "Restore from cache",
+        "ru": "Восстановить из кеша",
+        "zh": "从缓存恢复",
+        "kk": "Кештен қалпына келтіру",
+        "uz": "Keshdan tiklash",
+    },
+    "norm.cache_run_fresh_button": {
+        "en": "Run from scratch",
+        "ru": "Запустить заново",
+        "zh": "重新运行",
+        "kk": "Қайта іске қосу",
+        "uz": "Qayta ishga tushirish",
+    },
+    "norm.cache_cancel_button": {
+        "en": "Cancel",
+        "ru": "Отмена",
+        "zh": "取消",
+        "kk": "Болдырмау",
+        "uz": "Bekor qilish",
+    },
+    "norm.cache_restored": {
+        "en": "Restored from cache. Chapters: {n}.",
+        "ru": "Восстановлено из кеша. Глав: {n}.",
+        "zh": "已从缓存恢复。章节数：{n}。",
+        "kk": "Кештен қалпына келтірілді. Тараулар: {n}.",
+        "uz": "Keshdan tiklandi. Boblar: {n}.",
+    },
+    "norm.cache_restore_failed": {
+        "en": "Could not restore cached normalization: {msg}",
+        "ru": "Не удалось восстановить нормализацию из кеша: {msg}",
+        "zh": "无法恢复缓存的标准化结果：{msg}",
+        "kk": "Кештегі нормализацияны қалпына келтіру мүмкін болмады: {msg}",
+        "uz": "Keshlangan normalizatsiyani tiklab bo'lmadi: {msg}",
+    },
     "norm.loading": {
         "en": "Loading book\u2026",
         "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u043a\u043d\u0438\u0433\u0438\u2026",
     },
+    "norm.pdf_checking": {
+        "en": "Checking PDF and OCR settings...",
+        "ru": "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u044e PDF \u0438 OCR-\u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438...",
+        "zh": "正在检查 PDF 和 OCR 设置...",
+        "kk": "PDF және OCR баптаулары тексерілуде...",
+        "uz": "PDF va OCR sozlamalari tekshirilmoqda...",
+    },
+    "norm.pdf_native_extracting": {
+        "en": "Checking the embedded PDF text layer...",
+        "ru": "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u044e \u0432\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442\u043e\u0432\u044b\u0439 \u0441\u043b\u043e\u0439 PDF...",
+        "zh": "正在检查 PDF 内置文本层...",
+        "kk": "PDF ішіндегі мәтін қабаты тексерілуде...",
+        "uz": "PDF ichidagi matn qatlami tekshirilmoqda...",
+    },
+    "norm.ocr_prepare": {
+        "en": "Preparing OCR (DPI={dpi}, PSM={psm})...",
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u043b\u044e OCR (DPI={dpi}, PSM={psm})...",
+        "zh": "正在准备 OCR (DPI={dpi}, PSM={psm})...",
+        "kk": "OCR дайындалуда (DPI={dpi}, PSM={psm})...",
+        "uz": "OCR tayyorlanmoqda (DPI={dpi}, PSM={psm})...",
+    },
+    "norm.ocr_pages_start": {
+        "en": "OCR will process {total} page(s) at {dpi} DPI, PSM {psm}. The first page can take a while; ETA appears after it finishes.",
+        "ru": "OCR \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442 {total} \u0441\u0442\u0440. \u043f\u0440\u0438 {dpi} DPI, PSM {psm}. \u041f\u0435\u0440\u0432\u0430\u044f \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 \u043c\u043e\u0436\u0435\u0442 \u0438\u0434\u0442\u0438 \u0434\u043e\u043b\u0433\u043e; ETA \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u043f\u043e\u0441\u043b\u0435 \u043d\u0435\u0451.",
+        "zh": "OCR 将处理 {total} 页，{dpi} DPI，PSM {psm}。第一页可能较慢；完成后会显示 ETA。",
+        "kk": "OCR {total} бетті {dpi} DPI, PSM {psm} режимінде өңдейді. Бірінші бет ұзақ жүруі мүмкін; ETA содан кейін шығады.",
+        "uz": "OCR {total} sahifani {dpi} DPI, PSM {psm} bilan qayta ishlaydi. Birinchi sahifa uzoqroq ketishi mumkin; ETA undan keyin chiqadi.",
+    },
+    "norm.ocr_page_rendering": {
+        "en": "OCR: rendering page {page}/{total} at {dpi} DPI...",
+        "ru": "OCR: \u0440\u0435\u043d\u0434\u0435\u0440 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b {page}/{total} \u043f\u0440\u0438 {dpi} DPI...",
+        "zh": "OCR：正在渲染第 {page}/{total} 页，{dpi} DPI...",
+        "kk": "OCR: {page}/{total} бет {dpi} DPI-да рендерленуде...",
+        "uz": "OCR: {page}/{total} sahifa {dpi} DPI da render qilinmoqda...",
+    },
+    "norm.ocr_page_recognizing": {
+        "en": "OCR: recognizing page {page}/{total}, segment {segment}/{segments}...",
+        "ru": "OCR: \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u044e \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 {page}/{total}, \u0441\u0435\u0433\u043c\u0435\u043d\u0442 {segment}/{segments}...",
+        "zh": "OCR：正在识别第 {page}/{total} 页，片段 {segment}/{segments}...",
+        "kk": "OCR: {page}/{total} бет танылуда, сегмент {segment}/{segments}...",
+        "uz": "OCR: {page}/{total} sahifa tanilmoqda, segment {segment}/{segments}...",
+    },
+    "norm.ocr_page_done": {
+        "en": "OCR: {done}/{total} page(s) done - ETA: {eta}",
+        "ru": "OCR: \u0433\u043e\u0442\u043e\u0432\u043e {done}/{total} \u0441\u0442\u0440. - \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}",
+        "zh": "OCR：已完成 {done}/{total} 页 - ETA：{eta}",
+        "kk": "OCR: {done}/{total} бет дайын - ETA: {eta}",
+        "uz": "OCR: {done}/{total} sahifa tayyor - ETA: {eta}",
+    },
     "norm.ocr_unavailable_native": {
-        "en": "Tesseract is not installed; using native PDF text extraction.",
-        "ru": "Tesseract \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d; \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u044e \u0432\u0441\u0442\u0440\u043e\u0435\u043d\u043d\u043e\u0435 \u0438\u0437\u0432\u043b\u0435\u0447\u0435\u043d\u0438\u0435 \u0442\u0435\u043a\u0441\u0442\u0430 PDF.",
+        "en": "Tesseract is not installed; using native PDF text extraction. Run: {hint}",
+        "ru": "Tesseract не установлен; использую встроенное извлечение текста PDF. Запустите: {hint}",
     },
     "norm.err_tesseract_missing_force": {
-        "en": "Tesseract is not installed. Switch OCR mode to auto/off or install Tesseract with the Russian language pack.",
-        "ru": "Tesseract \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d. \u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u0435 OCR \u0432 auto/off \u0438\u043b\u0438 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 Tesseract \u0441 \u0440\u0443\u0441\u0441\u043a\u0438\u043c \u044f\u0437\u044b\u043a\u043e\u0432\u044b\u043c \u043f\u0430\u043a\u0435\u0442\u043e\u043c.",
+        "en": "Tesseract is not installed. Run: {hint}. Or switch OCR mode to auto/off.",
+        "ru": "Tesseract не установлен. Запустите: {hint}. Или переключите OCR в auto/off.",
     },
     "norm.err_tesseract_missing_scanned": {
-        "en": "The PDF text layer is missing or unreadable, and Tesseract is not installed. Install Tesseract with the Russian language pack, then run normalization again.",
-        "ru": "\u0422\u0435\u043a\u0441\u0442\u043e\u0432\u044b\u0439 \u0441\u043b\u043e\u0439 PDF \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0438\u043b\u0438 \u043d\u0435\u0447\u0438\u0442\u0430\u0435\u043c, \u0430 Tesseract \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d. \u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 Tesseract \u0441 \u0440\u0443\u0441\u0441\u043a\u0438\u043c \u044f\u0437\u044b\u043a\u043e\u0432\u044b\u043c \u043f\u0430\u043a\u0435\u0442\u043e\u043c \u0438 \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u0435 \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044e \u0441\u043d\u043e\u0432\u0430.",
+        "en": "The PDF text layer is missing or unreadable, and Tesseract is not installed. Run: {hint}. Then run normalization again.",
+        "ru": "Текстовый слой PDF отсутствует или нечитаем, а Tesseract не установлен. Запустите: {hint}. Затем запустите нормализацию снова.",
     },
     "norm.err_ocr_failed_unreadable": {
         "en": "The PDF text layer is unreadable, and OCR did not produce readable Russian text. Check the Tesseract Russian language pack or try another DPI/PSM setting.",
@@ -205,6 +602,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "LLM normalization complete: accepted {accepted}, rejected {rejected}",
         "ru": "LLM-\u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0433\u043e\u0442\u043e\u0432\u0430: \u043f\u0440\u0438\u043d\u044f\u0442\u043e {accepted}, \u043e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e {rejected}",
     },
+    "norm.llm_review_required": {
+        "en": "LLM left {rejected} paragraph(s) unchanged. Review report: {path}",
+        "ru": "LLM \u043e\u0441\u0442\u0430\u0432\u0438\u043b\u0430 {rejected} \u0430\u0431\u0437\u0430\u0446(\u0435\u0432) \u0431\u0435\u0437 \u043f\u0440\u0430\u0432\u043a\u0438. Review-report: {path}",
+    },
     "norm.detecting_chapters": {
         "en": "Detecting chapters\u2026",
         "ru": "\u041e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0438\u0435 \u0433\u043b\u0430\u0432\u2026",
@@ -218,51 +619,311 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0413\u043e\u0442\u043e\u0432\u043e: {n} \u0433\u043b\u0430\u0432, {time} \u0432\u0441\u0435\u0433\u043e",
     },
     "norm.raw_placeholder": {
-        "en": "Raw text (before normalization)",
-        "ru": "\u0418\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442 (\u0434\u043e \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u0438)",
+        "en": "Original text",
+        "ru": "\u041e\u0440\u0438\u0433\u0438\u043d\u0430\u043b \u0438\u0437 \u0444\u0430\u0439\u043b\u0430",
     },
     "norm.norm_placeholder": {
-        "en": "Normalized text (after)",
-        "ru": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u043e\u0432\u0430\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442 (\u043f\u043e\u0441\u043b\u0435)",
+        "en": "After normalization",
+        "ru": "\u041f\u043e\u0441\u043b\u0435 \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u0438",
+    },
+    "norm.apply_manual_edits": {
+        "en": "Apply edits",
+        "ru": "\u041f\u0440\u0438\u043c\u0435\u043d\u0438\u0442\u044c \u043f\u0440\u0430\u0432\u043a\u0438",
+        "zh": "\u5e94\u7528\u7f16\u8f91",
+        "kk": "\u04e8\u04a3\u0434\u0435\u0443\u0434\u0456 \u049b\u043e\u043b\u0434\u0430\u043d\u0443",
+        "uz": "Tahrirlarni qo\u02bblash",
+    },
+    "norm.apply_manual_edits_compact": {
+        "en": "Apply",
+        "ru": "\u041f\u0440\u0438\u043c\u0435\u043d\u0438\u0442\u044c",
+        "zh": "\u5e94\u7528",
+        "kk": "\u049a\u043e\u043b\u0434\u0430\u043d\u0443",
+        "uz": "Qo'llash",
+    },
+    "norm.apply_manual_edits_tip": {
+        "en": "Write the edited normalized text back into the book before role/chunk markup.",
+        "ru": "\u0417\u0430\u043f\u0438\u0441\u0430\u0442\u044c \u0440\u0443\u0447\u043d\u044b\u0435 \u043f\u0440\u0430\u0432\u043a\u0438 \u0432 \u043a\u043d\u0438\u0433\u0443 \u043f\u0435\u0440\u0435\u0434 \u0440\u0430\u0437\u043c\u0435\u0442\u043a\u043e\u0439 \u0440\u043e\u043b\u0435\u0439 \u0438 \u0447\u0430\u043d\u043a\u043e\u0432.",
+        "zh": "\u5728\u89d2\u8272\u548c\u5206\u5757\u6807\u6ce8\u524d\uff0c\u5c06\u5df2\u7f16\u8f91\u7684\u89c4\u8303\u5316\u6587\u672c\u5199\u56de\u4e66\u7a3f\u3002",
+        "kk": "\u0420\u04e9\u043b\u0434\u0435\u0440 \u043c\u0435\u043d \u0447\u0430\u043d\u043a\u0442\u0430\u0440\u0434\u044b \u0431\u0435\u043b\u0433\u0456\u043b\u0435\u0443\u0434\u0435\u043d \u0431\u04b1\u0440\u044b\u043d \u04e9\u04a3\u0434\u0435\u043b\u0433\u0435\u043d \u043c\u04d9\u0442\u0456\u043d\u0434\u0456 \u043a\u0456\u0442\u0430\u043f\u049b\u0430 \u049b\u0430\u0439\u0442\u0430 \u0436\u0430\u0437\u0443.",
+        "uz": "Rol va bo\u02bbak belgilashdan oldin tahrirlangan normallashtirilgan matnni kitobga yozish.",
+    },
+    "norm.manual_edit_applied": {
+        "en": "Applied manual edits to {n} paragraph(s).",
+        "ru": "\u0420\u0443\u0447\u043d\u044b\u0435 \u043f\u0440\u0430\u0432\u043a\u0438 \u043f\u0440\u0438\u043c\u0435\u043d\u0435\u043d\u044b \u043a {n} \u0430\u0431\u0437\u0430\u0446(\u0430\u043c).",
+        "zh": "\u5df2\u5c06\u624b\u52a8\u7f16\u8f91\u5e94\u7528\u5230 {n} \u4e2a\u6bb5\u843d\u3002",
+        "kk": "\u049a\u043e\u043b\u043c\u0435\u043d \u04e9\u04a3\u0434\u0435\u0443 {n} \u0430\u0431\u0437\u0430\u0446\u049b\u0430 \u049b\u043e\u043b\u0434\u0430\u043d\u044b\u043b\u0434\u044b.",
+        "uz": "Qo\u02bblanma tahrirlar {n} paragrafga qo\u02bbllandi.",
+    },
+    "norm.manual_edit_mismatch": {
+        "en": "Cannot apply edits: {edited} edited blocks for {paragraphs} book paragraph(s). Keep blank-line paragraph boundaries.",
+        "ru": "\u041d\u0435 \u043c\u043e\u0433\u0443 \u043f\u0440\u0438\u043c\u0435\u043d\u0438\u0442\u044c \u043f\u0440\u0430\u0432\u043a\u0438: {edited} \u0431\u043b\u043e\u043a(\u0430) \u043d\u0430 {paragraphs} \u0430\u0431\u0437\u0430\u0446(\u0435\u0432) \u043a\u043d\u0438\u0433\u0438. \u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u0435 \u0433\u0440\u0430\u043d\u0438\u0446\u044b \u0430\u0431\u0437\u0430\u0446\u0435\u0432 \u043f\u0443\u0441\u0442\u044b\u043c\u0438 \u0441\u0442\u0440\u043e\u043a\u0430\u043c\u0438.",
+        "zh": "\u65e0\u6cd5\u5e94\u7528\u7f16\u8f91\uff1a{edited} \u4e2a\u7f16\u8f91\u5757\u5bf9\u5e94 {paragraphs} \u4e2a\u4e66\u7a3f\u6bb5\u843d\u3002\u8bf7\u4fdd\u7559\u7a7a\u884c\u6bb5\u843d\u8fb9\u754c\u3002",
+        "kk": "\u04e8\u04a3\u0434\u0435\u0443\u0434\u0456 \u049b\u043e\u043b\u0434\u0430\u043d\u0443 \u043c\u04af\u043c\u043a\u0456\u043d \u0435\u043c\u0435\u0441: {paragraphs} \u0430\u0431\u0437\u0430\u0446 \u04af\u0448\u0456\u043d {edited} \u04e9\u04a3\u0434\u0435\u043b\u0433\u0435\u043d \u0431\u043b\u043e\u043a. \u0410\u0431\u0437\u0430\u0446 \u0448\u0435\u043a\u0430\u0440\u0430\u043b\u0430\u0440\u044b\u043d \u0431\u043e\u0441 \u0436\u043e\u043b\u0434\u0430\u0440\u043c\u0435\u043d \u0441\u0430\u049b\u0442\u0430\u04a3\u044b\u0437.",
+        "uz": "Tahrirlarni qo\u02bblab bo\u02bblmadi: {paragraphs} kitob paragrafi uchun {edited} tahrirlangan blok. Paragraf chegaralarini bo\u02bbsh qatorlar bilan saqlang.",
     },
     "norm.select_file": {
         "en": "Select Book File",
         "ru": "\u0412\u044b\u0431\u0440\u0430\u0442\u044c \u0444\u0430\u0439\u043b \u043a\u043d\u0438\u0433\u0438",
     },
 
+    # ── Roles page ──
+    "roles.llm_endpoint": {
+        "en": "Local LLM endpoint",
+        "ru": "\u0410\u0434\u0440\u0435\u0441 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0439 LLM",
+        "zh": "\u672c\u5730 LLM \u7aef\u70b9",
+        "kk": "\u0416\u0435\u0440\u0433\u0456\u043b\u0456\u043a\u0442\u0456 LLM endpoint",
+        "uz": "Lokal LLM endpoint",
+    },
+    "roles.llm_model": {
+        "en": "Model profile",
+        "ru": "\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u043c\u043e\u0434\u0435\u043b\u0438",
+        "zh": "\u6a21\u578b\u914d\u7f6e",
+        "kk": "\u041c\u043e\u0434\u0435\u043b\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u0456",
+        "uz": "Model profili",
+    },
+    "roles.extract": {
+        "en": "Extract roles and chunks",
+        "ru": "\u0418\u0437\u0432\u043b\u0435\u0447\u044c \u0440\u043e\u043b\u0438 \u0438 \u0447\u0430\u043d\u043a\u0438",
+        "zh": "\u63d0\u53d6\u89d2\u8272\u548c\u5206\u5757",
+        "kk": "\u0420\u04e9\u043b\u0434\u0435\u0440 \u043c\u0435\u043d \u0447\u0430\u043d\u043a\u0442\u0430\u0440\u0434\u044b \u0430\u043b\u0443",
+        "uz": "Rollar va bo\u02bblaklarni ajratish",
+    },
+    "roles.empty": {
+        "en": "Normalize a book, then extract roles for audiobook casting.",
+        "ru": "\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0443\u0439\u0442\u0435 \u043a\u043d\u0438\u0433\u0443, \u0437\u0430\u0442\u0435\u043c \u0438\u0437\u0432\u043b\u0435\u043a\u0438\u0442\u0435 \u0440\u043e\u043b\u0438 \u0434\u043b\u044f \u0430\u0443\u0434\u0438\u043e\u0441\u043f\u0435\u043a\u0442\u0430\u043a\u043b\u044f.",
+        "zh": "\u5148\u89c4\u8303\u5316\u4e66\u7a3f\uff0c\u518d\u4e3a\u6709\u58f0\u5267\u63d0\u53d6\u89d2\u8272\u3002",
+        "kk": "\u0410\u043b\u0434\u044b\u043c\u0435\u043d \u043a\u0456\u0442\u0430\u043f\u0442\u044b \u043d\u043e\u0440\u043c\u0430\u043b\u0434\u0430\u04a3\u044b\u0437, \u0441\u043e\u0434\u0430\u043d \u043a\u0435\u0439\u0456\u043d \u0430\u0443\u0434\u0438\u043e\u049b\u043e\u0439\u044b\u043b\u044b\u043c \u04af\u0448\u0456\u043d \u0440\u04e9\u043b\u0434\u0435\u0440\u0434\u0456 \u0430\u043b\u044b\u04a3\u044b\u0437.",
+        "uz": "Avval kitobni normallashtiring, keyin audiospektakl uchun rollarni ajrating.",
+    },
+    "roles.ready": {
+        "en": "Book is ready. Local LLM will build character roles and segment manifest.",
+        "ru": "\u041a\u043d\u0438\u0433\u0430 \u0433\u043e\u0442\u043e\u0432\u0430. \u041b\u043e\u043a\u0430\u043b\u044c\u043d\u0430\u044f LLM \u0441\u043e\u0431\u0435\u0440\u0451\u0442 \u0440\u043e\u043b\u0438 \u0438 segment manifest.",
+        "zh": "\u4e66\u7a3f\u5df2\u5c31\u7eea\u3002\u672c\u5730 LLM \u5c06\u6784\u5efa\u89d2\u8272\u548c\u7247\u6bb5\u6e05\u5355\u3002",
+        "kk": "\u041a\u0456\u0442\u0430\u043f \u0434\u0430\u0439\u044b\u043d. \u0416\u0435\u0440\u0433\u0456\u043b\u0456\u043a\u0442\u0456 LLM \u0440\u04e9\u043b\u0434\u0435\u0440 \u043c\u0435\u043d segment manifest \u049b\u04b1\u0440\u0430\u0434\u044b.",
+        "uz": "Kitob tayyor. Lokal LLM rollar va segment manifestini yaratadi.",
+    },
+    "roles.extracting": {
+        "en": "Extracting roles and smart segments with local LLM...",
+        "ru": "\u0418\u0437\u0432\u043b\u0435\u043a\u0430\u0435\u043c \u0440\u043e\u043b\u0438 \u0438 \u0443\u043c\u043d\u044b\u0435 \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u044b \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0439 LLM...",
+        "zh": "\u6b63\u5728\u7528\u672c\u5730 LLM \u63d0\u53d6\u89d2\u8272\u548c\u667a\u80fd\u7247\u6bb5...",
+        "kk": "\u0416\u0435\u0440\u0433\u0456\u043b\u0456\u043a\u0442\u0456 LLM \u0430\u0440\u049b\u044b\u043b\u044b \u0440\u04e9\u043b\u0434\u0435\u0440 \u043c\u0435\u043d \u0430\u049b\u044b\u043b\u0434\u044b \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0442\u0435\u0440 \u0430\u043b\u044b\u043d\u044b\u043f \u0436\u0430\u0442\u044b\u0440...",
+        "uz": "Lokal LLM bilan rollar va aqlli segmentlar ajratilmoqda...",
+    },
+    "roles.cache_dialog_title": {
+        "en": "Completed role extraction found",
+        "ru": "\u0413\u043e\u0442\u043e\u0432\u044b\u0435 \u0440\u043e\u043b\u0438 \u043d\u0430\u0439\u0434\u0435\u043d\u044b",
+        "zh": "\u5df2\u627e\u5230\u5b8c\u6210\u7684\u89d2\u8272\u63d0\u53d6",
+        "kk": "\u0414\u0430\u0439\u044b\u043d \u0440\u04e9\u043b\u0434\u0435\u0440 \u0442\u0430\u0431\u044b\u043b\u0434\u044b",
+        "uz": "Yakunlangan rollar topildi",
+    },
+    "roles.cache_dialog_text": {
+        "en": "Cached roles and chunks already exist for this book and the current settings.",
+        "ru": "\u0414\u043b\u044f \u044d\u0442\u043e\u0439 \u043a\u043d\u0438\u0433\u0438 \u0438 \u0442\u0435\u043a\u0443\u0449\u0438\u0445 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043a \u0443\u0436\u0435 \u0435\u0441\u0442\u044c \u0438\u0437\u0432\u043b\u0435\u0447\u0451\u043d\u043d\u044b\u0435 \u0440\u043e\u043b\u0438 \u0438 \u0447\u0430\u043d\u043a\u0438.",
+        "zh": "\u5f53\u524d\u4e66\u7a3f\u548c\u8bbe\u7f6e\u5df2\u6709\u7f13\u5b58\u7684\u89d2\u8272\u4e0e\u5206\u5757\u3002",
+        "kk": "\u041e\u0441\u044b \u043a\u0456\u0442\u0430\u043f \u043f\u0435\u043d \u0430\u0493\u044b\u043c\u0434\u0430\u0493\u044b \u0431\u0430\u043f\u0442\u0430\u0443\u043b\u0430\u0440 \u04af\u0448\u0456\u043d \u0430\u043b\u044b\u043d\u0493\u0430\u043d \u0440\u04e9\u043b\u0434\u0435\u0440 \u043c\u0435\u043d \u0447\u0430\u043d\u043a\u0442\u0430\u0440 \u043a\u0435\u0448\u0442\u0435 \u0431\u0430\u0440.",
+        "uz": "Bu kitob va joriy sozlamalar uchun rollar va bo'laklar keshda bor.",
+    },
+    "roles.cache_dialog_informative": {
+        "en": (
+            "Restore them from cache to continue immediately with chunk review. "
+            "Choose \"Extract again\" only if you want to rerun LLM role markup."
+        ),
+        "ru": (
+            "\u0412\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 \u0438\u0445 \u0438\u0437 \u043a\u0435\u0448\u0430, \u0447\u0442\u043e\u0431\u044b \u0441\u0440\u0430\u0437\u0443 \u043f\u0435\u0440\u0435\u0439\u0442\u0438 \u043a \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0435 \u0447\u0430\u043d\u043a\u043e\u0432. "
+            "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \"\u0418\u0437\u0432\u043b\u0435\u0447\u044c \u0437\u0430\u043d\u043e\u0432\u043e\", \u0442\u043e\u043b\u044c\u043a\u043e \u0435\u0441\u043b\u0438 \u0445\u043e\u0442\u0438\u0442\u0435 \u043f\u043e\u0432\u0442\u043e\u0440\u043d\u043e \u043f\u0440\u043e\u0433\u043d\u0430\u0442\u044c LLM-\u0440\u0430\u0437\u043c\u0435\u0442\u043a\u0443 \u0440\u043e\u043b\u0435\u0439."
+        ),
+        "zh": "\u4ece\u7f13\u5b58\u6062\u590d\u5373\u53ef\u7acb\u5373\u8fdb\u5165\u5206\u5757\u68c0\u67e5\u3002\u53ea\u6709\u60f3\u91cd\u65b0\u8fd0\u884c LLM \u89d2\u8272\u6807\u6ce8\u65f6\uff0c\u624d\u9009\u62e9\u201c\u91cd\u65b0\u63d0\u53d6\u201d\u3002",
+        "kk": (
+            "\u041a\u0435\u0448\u0442\u0435\u043d \u049b\u0430\u043b\u043f\u044b\u043d\u0430 \u043a\u0435\u043b\u0442\u0456\u0440\u0441\u0435\u04a3\u0456\u0437, \u0447\u0430\u043d\u043a\u0442\u0430\u0440\u0434\u044b \u0442\u0435\u043a\u0441\u0435\u0440\u0443\u0433\u0435 \u0431\u0456\u0440\u0434\u0435\u043d \u04e9\u0442\u0435\u0441\u0456\u0437. "
+            "LLM \u0430\u0440\u049b\u044b\u043b\u044b \u0440\u04e9\u043b\u0434\u0435\u0440\u0434\u0456 \u049b\u0430\u0439\u0442\u0430 \u0431\u0435\u043b\u0433\u0456\u043b\u0435\u0443 \u049b\u0430\u0436\u0435\u0442 \u0431\u043e\u043b\u0441\u0430 \u0493\u0430\u043d\u0430 \"\u049a\u0430\u0439\u0442\u0430 \u0430\u043b\u0443\" \u0442\u0430\u04a3\u0434\u0430\u04a3\u044b\u0437."
+        ),
+        "uz": (
+            "Keshdan tiklasangiz, bo'laklarni tekshirishga darhol o'tasiz. "
+            "LLM orqali rollarni qayta belgilash kerak bo'lsagina \"Qayta ajratish\"ni tanlang."
+        ),
+    },
+    "roles.cache_restore_button": {
+        "en": "Restore roles",
+        "ru": "\u0412\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0440\u043e\u043b\u0438",
+        "zh": "\u6062\u590d\u89d2\u8272",
+        "kk": "\u0420\u04e9\u043b\u0434\u0435\u0440\u0434\u0456 \u049b\u0430\u043b\u043f\u044b\u043d\u0430 \u043a\u0435\u043b\u0442\u0456\u0440\u0443",
+        "uz": "Rollarni tiklash",
+    },
+    "roles.cache_run_fresh_button": {
+        "en": "Extract again",
+        "ru": "\u0418\u0437\u0432\u043b\u0435\u0447\u044c \u0437\u0430\u043d\u043e\u0432\u043e",
+        "zh": "\u91cd\u65b0\u63d0\u53d6",
+        "kk": "\u049a\u0430\u0439\u0442\u0430 \u0430\u043b\u0443",
+        "uz": "Qayta ajratish",
+    },
+    "roles.cache_cancel_button": {
+        "en": "Cancel",
+        "ru": "\u041e\u0442\u043c\u0435\u043d\u0430",
+        "zh": "\u53d6\u6d88",
+        "kk": "\u0411\u043e\u043b\u0434\u044b\u0440\u043c\u0430\u0443",
+        "uz": "Bekor qilish",
+    },
+    "roles.cache_restored": {
+        "en": "Restored roles from cache. Roles: {n}.",
+        "ru": "\u0420\u043e\u043b\u0438 \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u044b \u0438\u0437 \u043a\u0435\u0448\u0430. \u0420\u043e\u043b\u0435\u0439: {n}.",
+        "zh": "\u5df2\u4ece\u7f13\u5b58\u6062\u590d\u89d2\u8272\u3002\u89d2\u8272\u6570\uff1a{n}\u3002",
+        "kk": "\u0420\u04e9\u043b\u0434\u0435\u0440 \u043a\u0435\u0448\u0442\u0435\u043d \u049b\u0430\u043b\u043f\u044b\u043d\u0430 \u043a\u0435\u043b\u0442\u0456\u0440\u0456\u043b\u0434\u0456. \u0420\u04e9\u043b\u0434\u0435\u0440: {n}.",
+        "uz": "Rollar keshdan tiklandi. Rollar: {n}.",
+    },
+    "roles.cache_restore_failed": {
+        "en": "Could not restore cached roles: {msg}",
+        "ru": "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0440\u043e\u043b\u0438 \u0438\u0437 \u043a\u0435\u0448\u0430: {msg}",
+        "zh": "\u65e0\u6cd5\u6062\u590d\u7f13\u5b58\u89d2\u8272\uff1a{msg}",
+        "kk": "\u041a\u0435\u0448\u0442\u0435\u0433\u0456 \u0440\u04e9\u043b\u0434\u0435\u0440\u0434\u0456 \u049b\u0430\u043b\u043f\u044b\u043d\u0430 \u043a\u0435\u043b\u0442\u0456\u0440\u0443 \u043c\u04af\u043c\u043a\u0456\u043d \u0431\u043e\u043b\u043c\u0430\u0434\u044b: {msg}",
+        "uz": "Keshlangan rollarni tiklab bo'lmadi: {msg}",
+    },
+    "roles.done": {
+        "en": "Role inventory ready: {n} role(s).",
+        "ru": "\u0421\u043f\u0438\u0441\u043e\u043a \u0440\u043e\u043b\u0435\u0439 \u0433\u043e\u0442\u043e\u0432: {n}.",
+        "zh": "\u89d2\u8272\u6e05\u5355\u5df2\u5c31\u7eea\uff1a{n} \u4e2a\u89d2\u8272\u3002",
+        "kk": "\u0420\u04e9\u043b\u0434\u0435\u0440 \u0442\u0456\u0437\u0456\u043c\u0456 \u0434\u0430\u0439\u044b\u043d: {n}.",
+        "uz": "Rollar ro\u02bbyxati tayyor: {n}.",
+    },
+    "roles.done_with_review": {
+        "en": "Role inventory ready: {n} role(s). Some windows used safe source fallback; review report: {path}",
+        "ru": "\u0421\u043f\u0438\u0441\u043e\u043a \u0440\u043e\u043b\u0435\u0439 \u0433\u043e\u0442\u043e\u0432: {n}. \u041d\u0435\u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u043e\u043a\u043d\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u044b \u0438\u0441\u0445\u043e\u0434\u043d\u044b\u043c \u0442\u0435\u043a\u0441\u0442\u043e\u043c; \u043e\u0442\u0447\u0451\u0442: {path}",
+        "zh": "\u89d2\u8272\u6e05\u5355\u5df2\u5c31\u7eea\uff1a{n} \u4e2a\u89d2\u8272\u3002\u90e8\u5206\u7a97\u53e3\u4f7f\u7528\u5b89\u5168\u539f\u6587\u56de\u9000\uff1b\u62a5\u544a\uff1a{path}",
+        "kk": "\u0420\u04e9\u043b\u0434\u0435\u0440 \u0442\u0456\u0437\u0456\u043c\u0456 \u0434\u0430\u0439\u044b\u043d: {n}. \u041a\u0435\u0439\u0431\u0456\u0440 \u0442\u0435\u0440\u0435\u0437\u0435\u043b\u0435\u0440 \u0431\u0430\u0441\u0442\u0430\u043f\u049b\u044b \u043c\u04d9\u0442\u0456\u043d\u043c\u0435\u043d \u0441\u0430\u049b\u0442\u0430\u043b\u0434\u044b; \u0435\u0441\u0435\u043f: {path}",
+        "uz": "Rollar ro\u02bbyxati tayyor: {n}. Ayrim oynalar asl matn bilan saqlandi; hisobot: {path}",
+    },
+    "roles.summary": {
+        "en": "{roles} role(s), {speech} direct-speech segment(s), {segments} total segment(s).",
+        "ru": "{roles} \u0440\u043e\u043b\u0435\u0439, {speech} \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u043e\u0432 \u043f\u0440\u044f\u043c\u043e\u0439 \u0440\u0435\u0447\u0438, {segments} \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u043e\u0432 \u0432\u0441\u0435\u0433\u043e.",
+        "zh": "{roles} \u4e2a\u89d2\u8272\uff0c{speech} \u4e2a\u76f4\u63a5\u8bed\u97f3\u7247\u6bb5\uff0c\u5171 {segments} \u4e2a\u7247\u6bb5\u3002",
+        "kk": "{roles} \u0440\u04e9\u043b, {speech} \u0442\u0456\u043a\u0435\u043b\u0435\u0439 \u0441\u04e9\u0437 \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0456, \u0431\u0430\u0440\u043b\u044b\u0493\u044b {segments} \u0441\u0435\u0433\u043c\u0435\u043d\u0442.",
+        "uz": "{roles} rol, {speech} to\u02bbg\u02bbridan-to\u02bbg\u02bbri nutq segmenti, jami {segments} segment.",
+    },
+    "roles.error": {
+        "en": "Role extraction failed: {msg}",
+        "ru": "\u0418\u0437\u0432\u043b\u0435\u0447\u0435\u043d\u0438\u0435 \u0440\u043e\u043b\u0435\u0439 \u043d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c: {msg}",
+        "zh": "\u89d2\u8272\u63d0\u53d6\u5931\u8d25\uff1a{msg}",
+        "kk": "\u0420\u04e9\u043b\u0434\u0435\u0440\u0434\u0456 \u0430\u043b\u0443 \u0441\u04d9\u0442\u0441\u0456\u0437: {msg}",
+        "uz": "Rollarni ajratib bo\u02bblmadi: {msg}",
+    },
+    "roles.col_role": {
+        "en": "Role",
+        "ru": "\u0420\u043e\u043b\u044c",
+        "zh": "\u89d2\u8272",
+        "kk": "\u0420\u04e9\u043b",
+        "uz": "Rol",
+    },
+    "roles.col_description": {
+        "en": "Description",
+        "ru": "\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435",
+        "zh": "\u63cf\u8ff0",
+        "kk": "\u0421\u0438\u043f\u0430\u0442\u0442\u0430\u043c\u0430",
+        "uz": "Tavsif",
+    },
+    "roles.col_description_short": {
+        "en": "Desc.",
+        "ru": "Опис.",
+        "zh": "描述",
+        "kk": "Сип.",
+        "uz": "Tavs.",
+    },
+    "roles.col_speech": {
+        "en": "Direct speech",
+        "ru": "\u041f\u0440\u044f\u043c\u0430\u044f \u0440\u0435\u0447\u044c",
+        "zh": "\u76f4\u63a5\u5bf9\u8bdd",
+        "kk": "\u0422\u0456\u043a\u0435\u043b\u0435\u0439 \u0441\u04e9\u0437",
+        "uz": "Bevosita nutq",
+    },
+    "roles.col_speech_short": {
+        "en": "Speech",
+        "ru": "Речь",
+        "zh": "台词",
+        "kk": "Сөз",
+        "uz": "Nutq",
+    },
+    "roles.col_emotions": {
+        "en": "Emotion spectrum",
+        "ru": "\u042d\u043c\u043e\u0446\u0438\u0438",
+        "zh": "\u60c5\u7eea\u9891\u8c31",
+        "kk": "\u042d\u043c\u043e\u0446\u0438\u044f\u043b\u0430\u0440",
+        "uz": "Hissiyotlar",
+    },
+    "roles.col_emotions_short": {
+        "en": "Emotions",
+        "ru": "Эмоции",
+        "zh": "情绪",
+        "kk": "Эмоц.",
+        "uz": "Hiss.",
+    },
+    "roles.col_segments": {
+        "en": "Segments",
+        "ru": "\u0421\u0435\u0433\u043c\u0435\u043d\u0442\u044b",
+        "zh": "\u7247\u6bb5",
+        "kk": "\u0421\u0435\u0433\u043c\u0435\u043d\u0442\u0442\u0435\u0440",
+        "uz": "Segmentlar",
+    },
+    "roles.col_segments_short": {
+        "en": "Seg.",
+        "ru": "Сегм.",
+        "zh": "片段",
+        "kk": "Сегм.",
+        "uz": "Seg.",
+    },
+
     # ── Voices page ──
     "voice.speaker_mode": {
-        "en": "Dialogue Attribution:",
-        "ru": "\u0420\u0430\u0437\u043c\u0435\u0442\u043a\u0430 \u0440\u0435\u043f\u043b\u0438\u043a:",
+        "en": "Segment source:",
+        "ru": "\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u043e\u0432:",
     },
     "voice.speaker_mode_heuristic": {
-        "en": "Rules (fast)",
-        "ru": "\u041f\u0440\u0430\u0432\u0438\u043b\u0430 (\u0431\u044b\u0441\u0442\u0440\u043e)",
+        "en": "Rules: quick split",
+        "ru": "\u041f\u0440\u0430\u0432\u0438\u043b\u0430: \u0431\u044b\u0441\u0442\u0440\u043e\u0435 \u0440\u0430\u0437\u0431\u0438\u0435\u043d\u0438\u0435",
     },
     "voice.speaker_mode_llm": {
-        "en": "LLM (smarter)",
-        "ru": "LLM (\u0443\u043c\u043d\u0435\u0435)",
+        "en": "LLM: roles and scenes",
+        "ru": "LLM: \u0440\u043e\u043b\u0438 \u0438 \u0441\u0446\u0435\u043d\u044b",
     },
     "voice.speaker_mode_manual": {
-        "en": "Manual",
-        "ru": "\u0412\u0440\u0443\u0447\u043d\u0443\u044e",
+        "en": "Manual manifest",
+        "ru": "\u0420\u0443\u0447\u043d\u043e\u0439 \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
     },
     "voice.speaker_mode_hint": {
         "en": (
-            "Rules (fast) - finds narrator/speech and guesses male/female "
-            "dialogue by verb endings. No network.\n"
-            "LLM (smarter) - asks a model to assign narrator, male, and "
-            "female roles. Needs a local LLM server or OpenAI API key.\n"
-            "Manual - creates segments, then lets you choose voices in the "
-            "table."
+            "Rules: quick split - builds a local draft from punctuation and "
+            "dialogue marks. No network.\n"
+            "LLM: roles and scenes - asks the local model to preserve text, "
+            "split scenes, and label roles.\n"
+            "Manual manifest - load or create segments, then edit text, roles, "
+            "and voices in the table."
         ),
         "ru": (
-            "\u041f\u0440\u0430\u0432\u0438\u043b\u0430 (\u0431\u044b\u0441\u0442\u0440\u043e) - \u0438\u0449\u0435\u0442 \u0430\u0432\u0442\u043e\u0440\u0441\u043a\u0438\u0439 \u0442\u0435\u043a\u0441\u0442/\u0440\u0435\u0447\u044c \u0438 \u0443\u0433\u0430\u0434\u044b\u0432\u0430\u0435\u0442 \u043c\u0443\u0436./\u0436\u0435\u043d. "
-            "\u0440\u0435\u043f\u043b\u0438\u043a\u0438 \u043f\u043e \u043e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u044f\u043c. \u0411\u0435\u0437 \u0441\u0435\u0442\u0438.\n"
-            "LLM (\u0443\u043c\u043d\u0435\u0435) - \u043f\u0440\u043e\u0441\u0438\u0442 \u043c\u043e\u0434\u0435\u043b\u044c \u0440\u0430\u0437\u043c\u0435\u0442\u0438\u0442\u044c \u0440\u043e\u043b\u0438: \u0430\u0432\u0442\u043e\u0440, "
-            "\u043c\u0443\u0436\u0441\u043a\u043e\u0439, \u0436\u0435\u043d\u0441\u043a\u0438\u0439. \u041d\u0443\u0436\u0435\u043d \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 LLM \u0438\u043b\u0438 OpenAI API \u043a\u043b\u044e\u0447.\n"
-            "\u0412\u0440\u0443\u0447\u043d\u0443\u044e - \u0441\u043e\u0437\u0434\u0430\u0435\u0442 \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u044b, \u0430 \u0433\u043e\u043b\u043e\u0441\u0430 \u0432\u044b\u0431\u0438\u0440\u0430\u044e\u0442\u0441\u044f \u0440\u0443\u043a\u0430\u043c\u0438 \u0432 \u0442\u0430\u0431\u043b\u0438\u0446\u0435."
+            "\u041f\u0440\u0430\u0432\u0438\u043b\u0430: \u0431\u044b\u0441\u0442\u0440\u043e\u0435 \u0440\u0430\u0437\u0431\u0438\u0435\u043d\u0438\u0435 - \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0447\u0435\u0440\u043d\u043e\u0432\u0438\u043a \u043f\u043e \u043f\u0443\u043d\u043a\u0442\u0443\u0430\u0446\u0438\u0438 "
+            "\u0438 \u043a\u0430\u0432\u044b\u0447\u043a\u0430\u043c. \u0411\u0435\u0437 \u0441\u0435\u0442\u0438.\n"
+            "LLM: \u0440\u043e\u043b\u0438 \u0438 \u0441\u0446\u0435\u043d\u044b - \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u0430\u044f \u043c\u043e\u0434\u0435\u043b\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u044f\u0435\u0442 \u0442\u0435\u043a\u0441\u0442, "
+            "\u0434\u0435\u043b\u0438\u0442 \u043d\u0430 \u0441\u0446\u0435\u043d\u044b \u0438 \u0440\u0430\u0437\u043c\u0435\u0447\u0430\u0435\u0442 \u0440\u043e\u043b\u0438.\n"
+            "\u0420\u0443\u0447\u043d\u043e\u0439 \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442 - \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0438\u043b\u0438 \u0441\u043e\u0437\u0434\u0430\u0439\u0442\u0435 \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u044b, "
+            "\u0437\u0430\u0442\u0435\u043c \u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0442\u0435\u043a\u0441\u0442, \u0440\u043e\u043b\u0438 \u0438 \u0433\u043e\u043b\u043e\u0441\u0430 \u0432 \u0442\u0430\u0431\u043b\u0438\u0446\u0435."
         ),
+    },
+    "voice.speaker_mode_hint_inline_heuristic": {
+        "en": "Fast local draft from punctuation and dialogue marks.",
+        "ru": "\u0411\u044b\u0441\u0442\u0440\u044b\u0439 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0447\u0435\u0440\u043d\u043e\u0432\u0438\u043a \u043f\u043e \u043f\u0443\u043d\u043a\u0442\u0443\u0430\u0446\u0438\u0438 \u0438 \u043a\u0430\u0432\u044b\u0447\u043a\u0430\u043c.",
+        "zh": "\u57fa\u4e8e\u6807\u70b9\u548c\u5bf9\u8bdd\u7b26\u53f7\u7684\u672c\u673a\u5feb\u901f\u8349\u7a3f\u3002",
+        "kk": "\u0422\u044b\u043d\u044b\u0441 \u0431\u0435\u043b\u0433\u0456\u043b\u0435\u0440\u0456 \u043c\u0435\u043d \u0442\u044b\u0440\u043d\u0430\u049b\u0448\u0430\u0493\u0430 \u0441\u04af\u0439\u0435\u043d\u0433\u0435\u043d \u0436\u044b\u043b\u0434\u0430\u043c \u0436\u0435\u0440\u0433\u0456\u043b\u0456\u043a\u0442\u0456 \u043d\u04b1\u0441\u049b\u0430.",
+        "uz": "Tinish belgilari va qo'shtirnoqlardan tez lokal qoralama.",
+    },
+    "voice.speaker_mode_hint_inline_llm": {
+        "en": "Local LLM preserves text, splits scenes, and labels roles.",
+        "ru": "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u0430\u044f LLM \u0441\u043e\u0445\u0440\u0430\u043d\u044f\u0435\u0442 \u0442\u0435\u043a\u0441\u0442, \u0441\u0446\u0435\u043d\u044b \u0438 \u0440\u043e\u043b\u0438.",
+        "zh": "\u672c\u673a LLM \u4fdd\u7559\u6587\u672c\uff0c\u5212\u5206\u573a\u666f\u5e76\u6807\u6ce8\u89d2\u8272\u3002",
+        "kk": "\u0416\u0435\u0440\u0433\u0456\u043b\u0456\u043a\u0442\u0456 LLM \u043c\u04d9\u0442\u0456\u043d\u0434\u0456, \u043a\u04e9\u0440\u0456\u043d\u0456\u0441\u0442\u0456 \u0436\u04d9\u043d\u0435 \u0440\u04e9\u043b\u0434\u0435\u0440\u0434\u0456 \u0441\u0430\u049b\u0442\u0430\u0439\u0434\u044b.",
+        "uz": "Lokal LLM matnni saqlaydi, sahnalar va rollarni belgilaydi.",
+    },
+    "voice.speaker_mode_hint_inline_manual": {
+        "en": "Load or create segments, then edit text, roles, and voices.",
+        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0438\u043b\u0438 \u0441\u043e\u0437\u0434\u0430\u0439\u0442\u0435 \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u044b, \u0437\u0430\u0442\u0435\u043c \u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0440\u043e\u043b\u0438.",
+        "zh": "\u52a0\u8f7d\u6216\u521b\u5efa\u5206\u6bb5\uff0c\u7136\u540e\u7f16\u8f91\u6587\u672c\u3001\u89d2\u8272\u548c\u58f0\u97f3\u3002",
+        "kk": "\u0421\u0435\u0433\u043c\u0435\u043d\u0442\u0442\u0435\u0440\u0434\u0456 \u0436\u04af\u043a\u0442\u0435\u043f \u043d\u0435 \u0436\u0430\u0441\u0430\u043f, \u043c\u04d9\u0442\u0456\u043d \u043c\u0435\u043d \u0440\u04e9\u043b\u0434\u0435\u0440\u0434\u0456 \u0442\u04af\u0437\u0435\u0442\u0456\u04a3\u0456\u0437.",
+        "uz": "Segmentlarni yuklang yoki yarating, keyin matn va rollarni tahrirlang.",
     },
     "voice.max_chunk": {
         "en": "Max Chunk Chars:",
@@ -307,20 +968,28 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         ),
     },
     "voice.detect": {
-        "en": "Detect Segments",
-        "ru": "Определить сегменты",
+        "en": "Rebuild segments",
+        "ru": "Пересобрать сегменты",
     },
     "voice.build_chunks": {
         "en": "Build TTS Chunks",
         "ru": "Собрать чанки для TTS",
     },
     "voice.load_manifest": {
-        "en": "Load Manifest",
-        "ru": "Загрузить манифест",
+        "en": "Load",
+        "ru": "Загрузить",
+    },
+    "voice.load_manifest_tip": {
+        "en": "Load a saved segment manifest.",
+        "ru": "Загрузить сохранённый манифест сегментов.",
     },
     "voice.save_manifest": {
-        "en": "Save Manifest",
-        "ru": "Сохранить манифест",
+        "en": "Save",
+        "ru": "Сохранить",
+    },
+    "voice.save_manifest_tip": {
+        "en": "Save current segment and voice assignments.",
+        "ru": "Сохранить текущие сегменты и назначения голосов.",
     },
     "voice.all_narrator": {
         "en": "All \u2192 Narrator",
@@ -359,6 +1028,76 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Text Preview",
         "ru": "Превью текста",
     },
+    "voice.col_role": {
+        "en": "Role",
+        "ru": "Роль",
+        "zh": "角色",
+        "kk": "Рөл",
+        "uz": "Rol",
+    },
+    "voice.col_role_tip": {
+        "en": "Character or system role for this chunk. You can type a corrected character name.",
+        "ru": "Персонаж или системная роль чанка. Можно вписать исправленное имя.",
+        "zh": "此分块的人物或系统角色。可以输入更正后的人物名。",
+        "kk": "Чанктың кейіпкері не жүйелік рөлі. Түзетілген атын жазуға болады.",
+        "uz": "Bu bo‘lakdagi personaj yoki tizimli rol. Tuzatilgan personaj nomini yozish mumkin.",
+    },
+    "voice.role_narrator": {
+        "en": "Narrator",
+        "ru": "Диктор",
+        "zh": "旁白",
+        "kk": "Диктор",
+        "uz": "Hikoyachi",
+    },
+    "voice.role_male": {
+        "en": "Male character",
+        "ru": "Мужской персонаж",
+        "zh": "男性角色",
+        "kk": "Ер кейіпкер",
+        "uz": "Erkak personaj",
+    },
+    "voice.role_female": {
+        "en": "Female character",
+        "ru": "Женский персонаж",
+        "zh": "女性角色",
+        "kk": "Әйел кейіпкер",
+        "uz": "Ayol personaj",
+    },
+    "voice.role_unknown": {
+        "en": "Unknown speaker",
+        "ru": "Неизвестный говорящий",
+        "zh": "未知说话人",
+        "kk": "Белгісіз сөйлеуші",
+        "uz": "Noma'lum so'zlovchi",
+    },
+    "voice.role_annotation": {
+        "en": "Annotation",
+        "ru": "Аннотация",
+        "zh": "内容简介",
+        "kk": "Аннотация",
+        "uz": "Annotatsiya",
+    },
+    "voice.role_preface": {
+        "en": "Preface",
+        "ru": "Предисловие",
+        "zh": "序言",
+        "kk": "Алғысөз",
+        "uz": "So'zboshi",
+    },
+    "voice.role_epilogue": {
+        "en": "Epilogue",
+        "ru": "Эпилог",
+        "zh": "后记",
+        "kk": "Эпилог",
+        "uz": "Epilog",
+    },
+    "voice.role_chapter_title": {
+        "en": "Chapter title",
+        "ru": "Название главы",
+        "zh": "章节标题",
+        "kk": "Тарау аты",
+        "uz": "Bob sarlavhasi",
+    },
     "voice.col_voice": {"en": "Voice", "ru": "Голос"},
     "voice.col_intonation": {
         "en": "Intonation",
@@ -385,8 +1124,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u0442\u0440\u043e\u043a\u0443 \u0438 \u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0442\u043e\u0447\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442 \u0434\u043b\u044f TTS.",
     },
     "voice.editor_split": {
-        "en": "Split at cursor",
-        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u043f\u043e \u043a\u0443\u0440\u0441\u043e\u0440\u0443",
+        "en": "Split",
+        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c",
+    },
+    "voice.editor_split_tip": {
+        "en": "Split the selected segment at the text cursor.",
+        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0441\u0435\u0433\u043c\u0435\u043d\u0442 \u043f\u043e \u043a\u0443\u0440\u0441\u043e\u0440\u0443.",
     },
     "voice.editor_merge_next": {
         "en": "Merge next",
@@ -395,6 +1138,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "voice.editor_delete_empty": {
         "en": "Delete if empty",
         "ru": "\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043f\u0443\u0441\u0442\u043e\u0439",
+    },
+    "voice.editor_delete": {
+        "en": "Delete",
+        "ru": "\u0423\u0434\u0430\u043b\u0438\u0442\u044c",
+        "zh": "\u5220\u9664",
+        "kk": "\u0416\u043e\u044e",
+        "uz": "O\u02bbchirish",
+    },
+    "voice.editor_restore": {
+        "en": "Undo delete",
+        "ru": "\u0412\u0435\u0440\u043d\u0443\u0442\u044c",
+        "zh": "\u64a4\u9500\u5220\u9664",
+        "kk": "\u049a\u0430\u0439\u0442\u0430\u0440\u0443",
+        "uz": "Qaytarish",
     },
     "voice.editor_full_title": {
         "en": "Whole text before chunking",
@@ -422,6 +1179,34 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "voice.type_speech": {"en": "Speech", "ru": "Речь"},
     "voice.type_narrator": {"en": "Narr.", "ru": "Автор"},
+    "voice.type_deleted": {
+        "en": "Deleted",
+        "ru": "\u0423\u0434\u0430\u043b\u0451\u043d",
+        "zh": "\u5df2\u5220\u9664",
+        "kk": "\u0416\u043e\u0439\u044b\u043b\u0493\u0430\u043d",
+        "uz": "O\u02bbchirilgan",
+    },
+    "voice.chapter_filter": {
+        "en": "Chapter:",
+        "ru": "\u0413\u043b\u0430\u0432\u0430:",
+        "zh": "\u7ae0\u8282\uff1a",
+        "kk": "\u0422\u0430\u0440\u0430\u0443:",
+        "uz": "Bob:",
+    },
+    "voice.chapter_all": {
+        "en": "All chapters",
+        "ru": "\u0412\u0441\u0435 \u0433\u043b\u0430\u0432\u044b",
+        "zh": "\u6240\u6709\u7ae0\u8282",
+        "kk": "\u0411\u0430\u0440\u043b\u044b\u049b \u0442\u0430\u0440\u0430\u0443",
+        "uz": "Barcha boblar",
+    },
+    "voice.chapter_item": {
+        "en": "Chapter {chapter}",
+        "ru": "\u0413\u043b\u0430\u0432\u0430 {chapter}",
+        "zh": "\u7b2c {chapter} \u7ae0",
+        "kk": "{chapter}-\u0442\u0430\u0440\u0430\u0443",
+        "uz": "{chapter}-bob",
+    },
     "voice.stats_segments": {
         "en": "{total} segments | Speech: {speech} | Narrator: {narr}",
         "ru": "{total} сегментов | Речь: {speech} | Автор: {narr}",
@@ -433,16 +1218,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
               "| Муж.: {male} | Жен.: {female}",
     },
     "voice.detecting": {
-        "en": "Detecting dialogue segments\u2026",
-        "ru": "Определяем сегменты диалогов\u2026",
+        "en": "Building smart segments\u2026",
+        "ru": "Собираем умные сегменты\u2026",
     },
     "voice.detecting_dialogue": {
-        "en": "Detecting dialogue\u2026",
-        "ru": "Определение диалогов\u2026",
+        "en": "Reading dialogue boundaries\u2026",
+        "ru": "Читаем границы диалогов\u2026",
     },
     "voice.attributing": {
-        "en": "Speaker attribution ({mode})\u2026",
-        "ru": "Атрибуция дикторов ({mode})\u2026",
+        "en": "Assigning roles ({mode})\u2026",
+        "ru": "Размечаем роли ({mode})\u2026",
     },
     "voice.extracting_segments": {
         "en": "Extracting segments\u2026",
@@ -465,16 +1250,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Собираем TTS-чанки из {n} сегментов\u2026",
     },
     "voice.segments_ready": {
-        "en": "\u2714 {n} segments detected. Assign voices, then click "
+        "en": "\u2714 {n} segments ready. Review roles and text, then click "
               "'Build TTS Chunks'.",
-        "ru": "\u2714 {n} сегментов найдено. Назначьте голоса, "
+        "ru": "\u2714 {n} сегментов готово. Проверьте роли и текст, "
               "затем нажмите \u00abСобрать чанки для TTS\u00bb.",
     },
     "voice.chunks_done": {
         "en": "\u2714 Built {n} TTS chunks! "
-              "Go to the Synthesize tab to start synthesis.",
+              "Go to the Voices tab to choose or train voices.",
         "ru": "\u2714 Собрано {n} TTS-чанков! "
-              "Перейдите на вкладку \u00abСинтез\u00bb для запуска.",
+              "Перейдите на вкладку \u00abГолоса\u00bb, чтобы выбрать или обучить голоса.",
     },
     "voice.saved": {
         "en": "\u2714 Saved: {path}",
@@ -509,8 +1294,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "OpenAI API ключ:",
     },
     "voice.generate_previews": {
-        "en": "Generate Previews (WSL)",
-        "ru": "Сгенерировать превью (WSL)",
+        "en": "Generate Previews",
+        "ru": "Сгенерировать превью",
     },
     "voice.refresh_previews": {
         "en": "Refresh",
@@ -525,8 +1310,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "{count}/{total} \u043f\u0440\u0435\u0432\u044c\u044e \u0433\u043e\u0442\u043e\u0432\u044b",
     },
     "voice.generating_previews": {
-        "en": "Generating previews via WSL (this takes a few minutes)\u2026",
-        "ru": "\u0413\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f \u043f\u0440\u0435\u0432\u044c\u044e \u0447\u0435\u0440\u0435\u0437 WSL (\u044d\u0442\u043e \u0437\u0430\u0439\u043c\u0451\u0442 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u043c\u0438\u043d\u0443\u0442)\u2026",
+        "en": "Generating previews locally (this takes a few minutes)\u2026",
+        "ru": "\u0413\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f \u043f\u0440\u0435\u0432\u044c\u044e \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e (\u044d\u0442\u043e \u0437\u0430\u0439\u043c\u0451\u0442 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u043c\u0438\u043d\u0443\u0442)\u2026",
     },
     "voice.preview_panel": {
         "en": "Voice Library",
@@ -535,6 +1320,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "voice.settings_panel": {
         "en": "Voice Markup",
         "ru": "\u0420\u0430\u0437\u043c\u0435\u0442\u043a\u0430",
+    },
+    "chunks.settings_panel": {
+        "en": "Chunk Review",
+        "ru": "\u0420\u0435\u0432\u044c\u044e \u0447\u0430\u043d\u043a\u043e\u0432",
+        "zh": "\u5206\u5757\u5ba1\u6838",
+        "kk": "\u0427\u0430\u043d\u043a\u0442\u0430\u0440\u0434\u044b \u0442\u0435\u043a\u0441\u0435\u0440\u0443",
+        "uz": "Bo\u02bbaklarni ko\u02bbrib chiqish",
+    },
+    "chunks.preset_panel": {
+        "en": "Voice Presets",
+        "ru": "\u041f\u0440\u0435\u0441\u0435\u0442\u044b \u0433\u043e\u043b\u043e\u0441\u043e\u0432",
+        "zh": "\u58f0\u97f3\u9884\u8bbe",
+        "kk": "\u0414\u0430\u0443\u044b\u0441 \u043f\u0440\u0435\u0441\u0435\u0442\u0442\u0435\u0440\u0456",
+        "uz": "Ovoz presetlari",
     },
     "voice.output_dir": {
         "en": "Output folder:",
@@ -577,20 +1376,46 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u041c\u0430\u043d\u0438\u0444\u0435\u0441\u0442 \u043d\u0435 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d",
     },
     "synth.load_manifest": {
-        "en": "Load Manifest",
-        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043c\u0430\u043d\u0438\u0444\u0435\u0441\u0442",
+        "en": "Load",
+        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c",
+        "zh": "\u52a0\u8f7d",
+        "kk": "\u0416\u04af\u043a\u0442\u0435\u0443",
+        "uz": "Yuklash",
+    },
+    "synth.load_manifest_tip": {
+        "en": "Load a chunk manifest for synthesis.",
+        "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c manifest \u0447\u0430\u043d\u043a\u043e\u0432 \u0434\u043b\u044f \u0441\u0438\u043d\u0442\u0435\u0437\u0430.",
+        "zh": "\u52a0\u8f7d\u7528\u4e8e\u5408\u6210\u7684\u5206\u5757\u6e05\u5355\u3002",
+        "kk": "\u0421\u0438\u043d\u0442\u0435\u0437\u0433\u0435 \u0430\u0440\u043d\u0430\u043b\u0493\u0430\u043d \u0447\u0430\u043d\u043a manifest \u0444\u0430\u0439\u043b\u044b\u043d \u0436\u04af\u043a\u0442\u0435\u0443.",
+        "uz": "Sintez uchun chunk manifestini yuklash.",
+    },
+    "synth.compact_load_manifest": {
+        "en": "Open",
+        "ru": "\u041e\u0442\u043a\u0440.",
+        "zh": "打开",
+        "kk": "Ашу",
+        "uz": "Och",
     },
     "synth.mode_custom_voice": {
         "en": "Custom Voice",
-        "ru": "Custom Voice",
+        "ru": "Свой голос",
+        "zh": "自定义声音",
+        "kk": "Өз дауысы",
+        "uz": "O'z ovozi",
     },
     "synth.mode_preset_speakers": {
         "en": "Built-in Speakers",
-        "ru": "Готовые спикеры",
+        "ru": "Готовые голоса",
+        "zh": "内置声音",
+        "kk": "Дайын дауыстар",
+        "uz": "Tayyor ovozlar",
     },
     "synth.mode_advanced": {
         "en": "Advanced",
         "ru": "Дополнительно",
+        "zh": "高级",
+        "kk": "Қосымша",
+        "uz": "Qo'shimcha",
     },
     "synth.preset_title": {
         "en": "Built-in Qwen speakers",
@@ -658,11 +1483,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "synth.models_dir_hint": {
         "en": (
-            "The WSL runner looks here before HuggingFace. Default points to "
+            "ComfyUI/model setup uses this shared folder. Default points to "
             "D:\\ComfyUI-external\\models and expects Qwen folders in audio_encoders."
         ),
         "ru": (
-            "WSL-runner сначала ищет модели здесь, а уже потом в HuggingFace. "
+            "ComfyUI/model setup использует эту общую папку моделей. "
             "По умолчанию: D:\\ComfyUI-external\\models; Qwen ожидается в audio_encoders."
         ),
     },
@@ -807,6 +1632,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Save Voice",
         "ru": "Сохранить голос",
     },
+    "synth.compact_save_local_voice": {
+        "en": "Save",
+        "ru": "Сохр.",
+        "zh": "保存",
+        "kk": "Сақт.",
+        "uz": "Saql.",
+    },
     "synth.saved_voice_all_hint": {
         "en": "The selected saved voice will be used for every chunk; previous voice markup stays in the manifest but does not affect timbre.",
         "ru": "Выбранный сохраненный голос будет использован для всех чанков; разметка голосов останется в манифесте, но не повлияет на тембр.",
@@ -928,15 +1760,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Модель Qwen CustomVoice для готовых спикеров. 1.7B качественнее; 0.6B быстрее и легче.",
     },
     "synth.models_dir_help": {
-        "en": "Folder with downloaded models. The WSL runner checks it before downloading from HuggingFace.",
-        "ru": "Папка с уже скачанными моделями. WSL-runner сначала ищет здесь, потом уже в HuggingFace.",
+        "en": "Folder with downloaded models used by the v2 ComfyUI synthesis workflow.",
+        "ru": "Папка с уже скачанными моделями для v2 ComfyUI synthesis workflow.",
     },
     "synth.voice_library_dir_help": {
         "en": "Shared folder for reusable .voice.pt prompts. Saved voices can be reused across books without prompt extraction.",
         "ru": "Общая папка для reusable .voice.pt prompt'ов. Сохраненные голоса можно переиспользовать в разных книгах без prompt extraction.",
     },
     "synth.output_dir_help": {
-        "en": "Folder where synthesis files are written: audio_chunks, tts_test_preview, synthesis_log.txt, synthesis_manifest.json, and merged chapters.",
+        "en": "Folder where v2 synthesis files are written: audio_chunks, tts_test_preview, synthesis_log.txt, and merged chapters.",
         "ru": "\u041f\u0430\u043f\u043a\u0430, \u043a\u0443\u0434\u0430 \u043f\u0438\u0448\u0443\u0442\u0441\u044f \u0444\u0430\u0439\u043b\u044b \u0441\u0438\u043d\u0442\u0435\u0437\u0430: audio_chunks, tts_test_preview, synthesis_log.txt, synthesis_manifest.json \u0438 \u0441\u043e\u0431\u0440\u0430\u043d\u043d\u044b\u0435 \u0433\u043b\u0430\u0432\u044b.",
     },
     "synth.batch_help": {
@@ -968,8 +1800,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "torch.compile может ускорить следующие чанки после более медленного прогрева. Оставьте выключенным для максимально предсказуемого запуска.",
     },
     "synth.sage_help": {
-        "en": "SageAttention is an optional faster attention kernel in WSL. Enable only if it is installed and tested on your GPU.",
-        "ru": "SageAttention — опциональное ускорение attention в WSL. Включайте только если оно установлено и проверено на вашей GPU.",
+        "en": "SageAttention is an optional faster attention kernel for the local TTS Python environment. Enable only if it is installed and tested on your GPU.",
+        "ru": "SageAttention — опциональное ускорение attention для локального TTS Python. Включайте только если оно установлено и проверено на вашей GPU.",
     },
     "synth.sample_audio_help": {
         "en": "A short clean recording of the target voice. WAV/FLAC is best; noisy audio gives worse cloning.",
@@ -1169,13 +2001,37 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Save chunk text",
         "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0447\u0430\u043d\u043a",
     },
+    "synth.compact_chunk_editor_save": {
+        "en": "Save",
+        "ru": "\u0421\u043e\u0445\u0440. \u0447\u0430\u043d\u043a",
+        "zh": "\u4fdd\u5b58",
+        "kk": "\u0421\u0430\u049b\u0442.",
+        "uz": "Saql.",
+    },
     "synth.chunk_editor_split": {
-        "en": "Split at cursor",
-        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u043f\u043e \u043a\u0443\u0440\u0441\u043e\u0440\u0443",
+        "en": "Split",
+        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c",
+        "zh": "\u5206\u5272",
+        "kk": "\u0411\u04e9\u043b\u0443",
+        "uz": "Bo'lish",
+    },
+    "synth.chunk_editor_split_tip": {
+        "en": "Split the selected chunk at the cursor.",
+        "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0447\u0430\u043d\u043a \u0432 \u043c\u0435\u0441\u0442\u0435 \u043a\u0443\u0440\u0441\u043e\u0440\u0430.",
+        "zh": "\u5728\u5149\u6807\u5904\u5206\u5272\u9009\u4e2d\u7684\u5206\u5757\u3002",
+        "kk": "\u0422\u0430\u04a3\u0434\u0430\u043b\u0493\u0430\u043d \u0447\u0430\u043d\u043a\u0442\u044b \u043a\u0443\u0440\u0441\u043e\u0440 \u0442\u04b1\u0440\u0493\u0430\u043d \u0436\u0435\u0440\u0434\u0435\u043d \u0431\u04e9\u043b\u0443.",
+        "uz": "Tanlangan bo'lakni kursor turgan joydan bo'lish.",
     },
     "synth.chunk_editor_merge": {
         "en": "Merge next",
         "ru": "\u0421\u043a\u043b\u0435\u0438\u0442\u044c \u0441\u043e \u0441\u043b\u0435\u0434.",
+    },
+    "synth.compact_chunk_editor_merge": {
+        "en": "Merge",
+        "ru": "\u0421\u043a\u043b\u0435\u0438\u0442\u044c",
+        "zh": "\u5408\u5e76",
+        "kk": "\u0411\u0456\u0440\u0456\u043a.",
+        "uz": "Birlasht.",
     },
     "synth.chunk_editor_saved": {
         "en": "Chunk manifest saved. Synthesis will use the edited text.",
@@ -1346,13 +2202,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.sage_hint": {
         "en": (
             "SageAttention replaces SDPA with quantized attention kernels.\n"
-            "Requires SageAttention in the WSL TTS venv; GitHub v2 is preferred:\n"
+            "Requires SageAttention in the local TTS Python environment; GitHub v2 is preferred:\n"
             "  pip install git+https://github.com/thu-ml/SageAttention.git\n"
             "If enabled and unavailable, synthesis stops with an explicit error."
         ),
         "ru": (
             "SageAttention заменяет SDPA квантованными attention-ядрами.\n"
-            "Нужен SageAttention в WSL TTS venv; GitHub v2 предпочтительнее:\n"
+            "Нужен SageAttention в локальном TTS Python; GitHub v2 предпочтительнее:\n"
             "  pip install git+https://github.com/thu-ml/SageAttention.git\n"
             "Если включено, но пакет недоступен, синтез остановится с явной ошибкой."
         ),
@@ -1572,31 +2428,166 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "progress.ready": {"en": "Ready", "ru": "\u0413\u043e\u0442\u043e\u0432\u043e"},
     "progress.eta": {"en": "ETA: {eta}", "ru": "\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}"},
     "progress.remaining_chunks": {
-        "en": "{n} chunks left",
-        "ru": "\u043e\u0441\u0442. {n} \u0447\u0430\u043d\u043a\u043e\u0432",
+        "en": "{n} left",
+        "ru": "\u043e\u0441\u0442\u0430\u043b\u043e\u0441\u044c {n}",
     },
 
     # ── Status bar messages ──
     "status.norm_done": {
-        "en": "Normalization complete. {n} chapters. Go to Voices tab.",
-        "ru": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0430. {n} \u0433\u043b\u0430\u0432. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043d\u0430 \u0432\u043a\u043b\u0430\u0434\u043a\u0443 \u00ab\u0413\u043e\u043b\u043e\u0441\u0430\u00bb.",
+        "en": "Normalization complete. {n} chapters. Extract roles next.",
+        "ru": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0430. {n} \u0433\u043b\u0430\u0432. \u0414\u0430\u043b\u044c\u0448\u0435 \u0438\u0437\u0432\u043b\u0435\u043a\u0438\u0442\u0435 \u0440\u043e\u043b\u0438.",
+        "zh": "\u89c4\u8303\u5316\u5b8c\u6210\uff1a{n} \u7ae0\u3002\u4e0b\u4e00\u6b65\u63d0\u53d6\u89d2\u8272\u3002",
+        "kk": "\u041d\u043e\u0440\u043c\u0430\u043b\u0434\u0430\u0443 \u0430\u044f\u049b\u0442\u0430\u043b\u0434\u044b: {n} \u0442\u0430\u0440\u0430\u0443. \u0415\u043d\u0434\u0456 \u0440\u04e9\u043b\u0434\u0435\u0440\u0434\u0456 \u0430\u043b\u044b\u04a3\u044b\u0437.",
+        "uz": "Normallashtirish tugadi: {n} bob. Keyin rollarni ajrating.",
+    },
+    "status.roles_done": {
+        "en": "Roles and smart segments are ready. Review chunks next.",
+        "ru": "\u0420\u043e\u043b\u0438 \u0438 \u0443\u043c\u043d\u044b\u0435 \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u044b \u0433\u043e\u0442\u043e\u0432\u044b. \u0414\u0430\u043b\u044c\u0448\u0435 \u043f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0447\u0430\u043d\u043a\u0438.",
+        "zh": "\u89d2\u8272\u548c\u667a\u80fd\u7247\u6bb5\u5df2\u5c31\u7eea\u3002\u4e0b\u4e00\u6b65\u68c0\u67e5\u5206\u5757\u3002",
+        "kk": "\u0420\u04e9\u043b\u0434\u0435\u0440 \u043c\u0435\u043d \u0430\u049b\u044b\u043b\u0434\u044b \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u0442\u0435\u0440 \u0434\u0430\u0439\u044b\u043d. \u0415\u043d\u0434\u0456 \u0447\u0430\u043d\u043a\u0442\u0430\u0440\u0434\u044b \u0442\u0435\u043a\u0441\u0435\u0440\u0456\u04a3\u0456\u0437.",
+        "uz": "Rollar va aqlli segmentlar tayyor. Keyin bo\u02bblaklarni tekshiring.",
     },
     "status.voices_done": {
-        "en": "Voice assignment ready. Go to Synthesize tab.",
-        "ru": "\u0413\u043e\u043b\u043e\u0441\u0430 \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u044b. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043d\u0430 \u0432\u043a\u043b\u0430\u0434\u043a\u0443 \u00ab\u0421\u0438\u043d\u0442\u0435\u0437\u00bb.",
+        "en": "Chunks are ready. Go to Voices tab.",
+        "ru": "\u0427\u0430\u043d\u043a\u0438 \u0433\u043e\u0442\u043e\u0432\u044b. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043d\u0430 \u0432\u043a\u043b\u0430\u0434\u043a\u0443 \u00ab\u0413\u043e\u043b\u043e\u0441\u0430\u00bb.",
+        "zh": "\u5206\u5757\u5df2\u5c31\u7eea\u3002\u8fdb\u5165\u58f0\u97f3\u9875\u3002",
+        "kk": "\u0427\u0430\u043d\u043a\u0442\u0430\u0440 \u0434\u0430\u0439\u044b\u043d. \u0414\u0430\u0443\u044b\u0441\u0442\u0430\u0440 \u049b\u043e\u0439\u044b\u043d\u0434\u044b\u0441\u044b\u043d\u0430 \u04e9\u0442\u0456\u04a3\u0456\u0437.",
+        "uz": "Bo\u02bblaklar tayyor. Ovozlar sahifasiga o\u02bbting.",
     },
 }
 
 
 def set_language(lang: str) -> None:
-    """Set current UI language ('en' or 'ru')."""
+    """Set current UI language."""
     global _LANG  # noqa: PLW0603
-    _LANG = lang
+    supported = {code for code, _label in SUPPORTED_LANGUAGES}
+    _LANG = lang if lang in supported else "en"
 
 
 def get_language() -> str:
     """Return current UI language code."""
     return _LANG
+
+
+_VOICE_PRESET_LOCALES: dict[str, dict[str, tuple[str, str]]] = {
+    "narrator_calm": {
+        "zh": ("旁白 — 平静", "平静稳定的旁白。吐字清晰，节奏从容。"),
+        "kk": ("Диктор — Сабырлы", "Сабырлы, тұрақты диктор. Айқын дикция, байыпты қарқын."),
+        "uz": ("Hikoyachi — Vazmin", "Vazmin, barqaror hikoyachi. Aniq talaffuz, me'yorli sur'at."),
+    },
+    "narrator_energetic": {
+        "zh": ("旁白 — 充满活力", "有张力的旁白。自信、富有表现力的朗读。"),
+        "kk": ("Диктор — Қуатты", "Ширақ диктор. Сенімді, әсерлі оқу."),
+        "uz": ("Hikoyachi — Jo'shqin", "Jo'shqin hikoyachi. Ishonchli, ifodali o'qish."),
+    },
+    "narrator_wise": {
+        "zh": ("旁白 — 睿智", "沉稳睿智的旁白。低沉音色，节奏不急不缓。"),
+        "kk": ("Диктор — Дана", "Тәжірибелі, дана диктор. Терең тембр, асықпай оқу."),
+        "uz": ("Hikoyachi — Dono", "Tajribali, dono hikoyachi. Chuqur tembr, shoshilmagan sur'at."),
+    },
+    "male_young": {
+        "zh": ("男声 — 年轻", "年轻、有活力的男声。自然且带情绪的语调。"),
+        "kk": ("Ер дауыс — Жас", "Жас, серпінді ер дауыс. Табиғи әрі эмоциялық интонация."),
+        "uz": ("Erkak ovozi — Yosh", "Yosh, serg'ayrat erkak ovozi. Tabiiy, hissiy intonatsiya."),
+    },
+    "male_confident": {
+        "zh": ("男声 — 自信", "自信的中年男声。清晰、果断。"),
+        "kk": ("Ер дауыс — Сенімді", "Орта жастағы сенімді ер дауыс. Айқын, шешімді."),
+        "uz": ("Erkak ovozi — Ishonchli", "O'rta yoshdagi ishonchli erkak ovozi. Aniq, qat'iy."),
+    },
+    "male_deep": {
+        "zh": ("男声 — 低沉", "低沉的男中音。庄重、有分量的表达。"),
+        "kk": ("Ер дауыс — Терең", "Терең баритон. Салмақты, беделді сөйлеу."),
+        "uz": ("Erkak ovozi — Chuqur", "Chuqur bariton. Salobatli, vazmin nutq."),
+    },
+    "male_lively": {
+        "zh": ("男声 — 活泼", "活泼开朗的男声。带幽默感，轻松有魅力。"),
+        "kk": ("Ер дауыс — Ширақ", "Көңілді, ширақ ер дауыс. Әзіл мен жеңілдік бар."),
+        "uz": ("Erkak ovozi — Tetik", "Tetik, quvnoq erkak ovozi. Hazil va yengillik bilan."),
+    },
+    "male_regional": {
+        "zh": ("男声 — 富有表现力", "有性格的男声。表达鲜明，有个人魅力。"),
+        "kk": ("Ер дауыс — Әсерлі", "Мінезі бар әсерлі ер дауыс. Харизмалы сөйлеу."),
+        "uz": ("Erkak ovozi — Ifodali", "Xarakterli ifodali erkak ovozi. Jozibali nutq."),
+    },
+    "female_warm": {
+        "zh": ("女声 — 温暖", "温暖柔和的女声。温柔、关怀的语调。"),
+        "kk": ("Әйел дауыс — Жылы", "Жылы, жұмсақ әйел дауыс. Нәзік, қамқор интонация."),
+        "uz": ("Ayol ovozi — Iliq", "Iliq, yumshoq ayol ovozi. Mehribon, g'amxo'r intonatsiya."),
+    },
+    "female_bright": {
+        "zh": ("女声 — 明亮", "明亮清晰的女声。富有表现力，充满能量。"),
+        "kk": ("Әйел дауыс — Жарқын", "Жарқын, анық әйел дауыс. Әсерлі, қуатты."),
+        "uz": ("Ayol ovozi — Yorqin", "Yorqin, tiniq ayol ovozi. Ifodali, serg'ayrat."),
+    },
+    "female_playful": {
+        "zh": ("女声 — 俏皮", "俏皮的女声。轻快，像带着微笑说话。"),
+        "kk": ("Әйел дауыс — Ойнақы", "Ойнақы әйел дауыс. Жеңіл, күлімдеген үн."),
+        "uz": ("Ayol ovozi — O'ynoqi", "O'ynoqi ayol ovozi. Yengil, tabassumli nutq."),
+    },
+    "female_gentle": {
+        "zh": ("女声 — 轻柔", "轻柔、旋律感强的女声。柔和、安抚的表达。"),
+        "kk": ("Әйел дауыс — Нәзік", "Нәзік, әуезді әйел дауыс. Жұмсақ, тыныштандыратын сөйлеу."),
+        "uz": ("Ayol ovozi — Muloyim", "Muloyim, ohangdor ayol ovozi. Yumshoq, tinchlantiruvchi nutq."),
+    },
+}
+
+
+_VOICE_CATEGORY_LABELS: dict[str, dict[str, str]] = {
+    "narrator": {
+        "en": "Narrators",
+        "ru": "Дикторы",
+        "zh": "旁白声音",
+        "kk": "Дикторлар",
+        "uz": "Hikoyachilar",
+    },
+    "male": {
+        "en": "Male voices",
+        "ru": "Мужские голоса",
+        "zh": "男声",
+        "kk": "Ер дауыстар",
+        "uz": "Erkak ovozlari",
+    },
+    "female": {
+        "en": "Female voices",
+        "ru": "Женские голоса",
+        "zh": "女声",
+        "kk": "Әйел дауыстар",
+        "uz": "Ayol ovozlari",
+    },
+}
+
+
+def voice_category_label(category: str) -> str:
+    """Return a localized voice category label."""
+    labels = _VOICE_CATEGORY_LABELS.get(category, {})
+    return labels.get(_LANG, labels.get("en", category))
+
+
+def voice_preset_label(preset: object) -> str:
+    """Return a localized voice preset label."""
+    if _LANG == "ru":
+        return str(getattr(preset, "label_ru"))
+    if _LANG == "en":
+        return str(getattr(preset, "label_en"))
+    preset_id = str(getattr(preset, "id"))
+    return _VOICE_PRESET_LOCALES.get(preset_id, {}).get(
+        _LANG,
+        (str(getattr(preset, "label_en")), ""),
+    )[0]
+
+
+def voice_preset_description(preset: object) -> str:
+    """Return a localized voice preset description."""
+    if _LANG == "ru":
+        return str(getattr(preset, "description_ru"))
+    if _LANG == "en":
+        return str(getattr(preset, "description_en"))
+    preset_id = str(getattr(preset, "id"))
+    return _VOICE_PRESET_LOCALES.get(preset_id, {}).get(
+        _LANG,
+        ("", str(getattr(preset, "description_en"))),
+    )[1]
 
 
 def t(key: str, **kwargs: Any) -> str:
@@ -1608,3 +2599,841 @@ def t(key: str, **kwargs: Any) -> str:
     if kwargs:
         text = text.format(**kwargs)
     return text
+
+
+def _install_extra_translations() -> None:
+    """Install optional locale catalogs and fail fast if they drift."""
+    from book_normalizer.gui.i18n_extra import EXTRA_TRANSLATIONS
+
+    base_keys = set(TRANSLATIONS)
+    for lang, catalog in EXTRA_TRANSLATIONS.items():
+        extra = set(catalog) - base_keys
+        if extra:
+            raise RuntimeError(
+                f"Locale '{lang}' is out of sync: extra={sorted(extra)}"
+            )
+        for key, text in catalog.items():
+            TRANSLATIONS[key][lang] = text
+
+    polished = {
+        "app.title": {
+            "zh": "书籍转音频",
+            "kk": "Кітаптарды аудиоға",
+            "uz": "Kitoblarni audioga",
+        },
+        "app.subtitle": {"en": "", "ru": "", "zh": "", "kk": "", "uz": ""},
+        "app.lang_label": {"zh": "语言：", "kk": "Тіл:", "uz": "Til:"},
+        "tab.voices": {"zh": "4. 声音", "kk": "4. Дауыстар", "uz": "4. Ovozlar"},
+        "tab.voices_short": {"zh": "4. 声音", "kk": "4. Дауыс", "uz": "4. Ovoz"},
+        "tab.synthesize": {"zh": "4. 声音", "kk": "4. Дауыстар", "uz": "4. Ovozlar"},
+        "tab.synthesize_short": {"zh": "4. 声音", "kk": "4. Дауыс", "uz": "4. Ovoz"},
+        "tab.assemble": {"zh": "5. 章节", "kk": "5. Тараулар", "uz": "5. Boblar"},
+        "tab.assemble_short": {"zh": "5. 章节", "kk": "5. Тарау", "uz": "5. Bob"},
+        "synth.mode_custom_voice": {
+            "ru": "Свой голос",
+            "zh": "自定义声音",
+            "kk": "Өз дауысы",
+            "uz": "O'z ovozi",
+        },
+        "synth.mode_preset_speakers": {
+            "ru": "Готовые голоса",
+            "zh": "内置声音",
+            "kk": "Дайын дауыстар",
+            "uz": "Tayyor ovozlar",
+        },
+        "synth.mode_advanced": {
+            "ru": "Дополнительно",
+            "zh": "高级",
+            "kk": "Қосымша",
+            "uz": "Qo'shimcha",
+        },
+        "voice.generate_previews": {
+            "zh": "生成预览",
+            "kk": "Алдын ала тыңдауды жасау",
+            "uz": "Oldindan tinglashlarni yaratish",
+        },
+        "voice.generating_previews": {
+            "zh": "正在本机生成预览（可能需要几分钟）…",
+            "kk": "Алдын ала тыңдаулар жергілікті жасалуда (бірнеше минут алуы мүмкін)…",
+            "uz": "Oldindan tinglashlar lokal yaratilmoqda (bir necha daqiqa olishi mumkin)…",
+        },
+        "norm.raw_placeholder": {
+            "zh": "原始文本",
+            "kk": "Файлдағы түпнұсқа мәтін",
+            "uz": "Fayldagi asl matn",
+        },
+        "norm.norm_placeholder": {
+            "zh": "规范化后",
+            "kk": "Нормалдаудан кейін",
+            "uz": "Normallashtirishdan keyin",
+        },
+        "norm.ocr_psm_hint": {
+            "zh": "选择最接近页面渲染结果的版式。",
+            "kk": "Рендерленген бетке ең жақын орналасуды таңдаңыз.",
+            "uz": "Render qilingan sahifaga eng yaqin tuzilmani tanlang.",
+        },
+        "norm.ocr_psm": {
+            "zh": "OCR 页面版式 (PSM)：",
+            "kk": "OCR бет құрылымы (PSM):",
+            "uz": "OCR sahifa tuzilmasi (PSM):",
+        },
+        "norm.ocr_psm_3": {
+            "zh": "3 - 自动整页：书页版式不确定",
+            "kk": "3 - Авто толық бет: кітап орналасуы белгісіз",
+            "uz": "3 - Avto to'liq sahifa: kitob tuzilmasi noma'lum",
+        },
+        "norm.ocr_psm_4": {
+            "zh": "4 - 普通书页：稳定阅读顺序",
+            "kk": "4 - Кітаптың қалыпты беті: тұрақты оқу реті",
+            "uz": "4 - Oddiy kitob sahifasi: barqaror o'qish tartibi",
+        },
+        "norm.ocr_psm_6": {
+            "zh": "6 - 裁剪正文：一个选中的文本块",
+            "kk": "6 - Қиылған негізгі мәтін: бір таңдалған блок",
+            "uz": "6 - Kesilgan asosiy matn: bitta tanlangan blok",
+        },
+        "norm.ocr_psm_11": {
+            "zh": "11 - 零散片段：题注/印章/边注",
+            "kk": "11 - Шашыраған фрагменттер: жазу, мөр, шеткі белгі",
+            "uz": "11 - Tarqoq bo'laklar: izoh, muhr, chet yozuv",
+        },
+        "norm.ocr_psm_13": {
+            "zh": "13 - 标题或单行：不是整页",
+            "kk": "13 - Тақырып не бір жол: толық бет емес",
+            "uz": "13 - Sarlavha yoki bir qator: to'liq sahifa emas",
+        },
+        "norm.ocr_psm_tip": {
+            "zh": (
+                "Tesseract 页面分割模式 (PSM)：\n"
+                "3 自动整页 = 书页结构不确定、混排、多个正文块或含插图时使用。\n"
+                "4 普通书页 = 完整扫描书页，正文能按稳定顺序从上到下阅读；多数书先试它。\n"
+                "6 裁剪正文 = 图片已经是一个选中的矩形正文块，没有页眉、页脚或边注。\n"
+                "11 零散片段 = 题注、印章、边注、表单或分散文字；阅读顺序可能需要复查。\n"
+                "13 标题或单行 = 只有一条短横向标题/页眉/文字；不要用于整页。"
+            ),
+            "kk": (
+                "Tesseract бет сегментациясы (PSM):\n"
+                "3 авто толық бет = кітап бетінің құрылымы белгісіз, аралас, бірнеше мәтін блогы немесе сурет бар.\n"
+                "4 кітаптың қалыпты беті = толық скан, негізгі мәтін жоғарыдан төмен тұрақты ретпен оқылады; көбіне алдымен осыны таңдаңыз.\n"
+                "6 қиылған негізгі мәтін = сурет бір таңдалған тікбұрышты мәтін блогына дейін қиылған, өріс/колонтитул жоқ.\n"
+                "11 шашыраған фрагменттер = жазулар, мөрлер, шеткі белгілер, формалар немесе бөлек мәтіндер; оқу ретін тексеріңіз.\n"
+                "13 тақырып не бір жол = бір қысқа көлденең тақырып/жол ғана; толық бетке қолданбаңыз."
+            ),
+            "uz": (
+                "Tesseract sahifa segmentatsiyasi (PSM):\n"
+                "3 avto to'liq sahifa = kitob sahifasi tuzilmasi noma'lum, aralash, bir nechta matn bloki yoki rasm bor.\n"
+                "4 oddiy kitob sahifasi = to'liq skan, asosiy matn yuqoridan pastga barqaror tartibda o'qiladi; ko'p kitoblarda avval shuni sinang.\n"
+                "6 kesilgan asosiy matn = rasm bitta tanlangan to'rtburchak matn blokigacha kesilgan, chet yozuv yoki kolontitul yo'q.\n"
+                "11 tarqoq bo'laklar = izohlar, muhrlar, chet yozuvlar, blanklar yoki tarqoq matn; o'qish tartibini tekshiring.\n"
+                "13 sarlavha yoki bir qator = faqat qisqa gorizontal sarlavha/qator; to'liq sahifa uchun ishlatmang."
+            ),
+        },
+        "norm.ocr_unavailable_native": {
+            "zh": "Tesseract 未安装；正在使用 PDF 内置文本提取。请运行：{hint}",
+            "kk": "Tesseract орнатылмаған; PDF ішіндегі мәтінді шығарып көремін. Іске қосыңыз: {hint}",
+            "uz": "Tesseract o'rnatilmagan; PDF ichidagi matn olinmoqda. Ishga tushiring: {hint}",
+        },
+        "norm.err_tesseract_missing_force": {
+            "zh": "Tesseract 未安装。请运行：{hint}。或把 OCR 模式切换为 auto/off。",
+            "kk": "Tesseract орнатылмаған. Іске қосыңыз: {hint}. Немесе OCR режимін auto/off етіңіз.",
+            "uz": "Tesseract o'rnatilmagan. Ishga tushiring: {hint}. Yoki OCR rejimini auto/off qiling.",
+        },
+        "norm.err_tesseract_missing_scanned": {
+            "zh": "PDF 文本层缺失或不可读，并且未安装 Tesseract。请运行：{hint}。然后重新运行规范化。",
+            "kk": "PDF мәтін қабаты жоқ немесе оқылмайды, ал Tesseract орнатылмаған. Іске қосыңыз: {hint}. Содан кейін нормалдауды қайта іске қосыңыз.",
+            "uz": "PDF matn qatlami yo'q yoki o'qilmaydi, Tesseract esa o'rnatilmagan. Ishga tushiring: {hint}. Keyin normallashtirishni qayta boshlang.",
+        },
+        "norm.llm_review_required": {
+            "zh": "LLM 保留了 {rejected} 个段落未修改。Review report：{path}",
+            "kk": "LLM {rejected} абзацты өзгертпей қалдырды. Review report: {path}",
+            "uz": "LLM {rejected} paragrafni o'zgartirmay qoldirdi. Review report: {path}",
+        },
+        "synth.sage_help": {
+            "zh": "SageAttention 是本机 TTS Python 环境中的可选加速内核。仅在已安装并在 GPU 上测试后启用。",
+            "kk": "SageAttention — жергілікті TTS Python ортасына арналған қосымша жылдам attention ядросы. Тек орнатылып, GPU-да тексерілген болса қосыңыз.",
+            "uz": "SageAttention lokal TTS Python muhiti uchun ixtiyoriy tezroq attention yadrosi. Faqat GPU qurilmangizda o‘rnatilgan va sinovdan o‘tgan bo‘lsa yoqing.",
+        },
+        "synth.sage_hint": {
+            "zh": "SageAttention 用量化 attention 内核替换 SDPA。\n需要在本机 TTS Python 环境中安装 SageAttention；推荐 GitHub v2：\n  pip install git+https://github.com/thu-ml/SageAttention.git\n如果启用但不可用，合成会以明确错误停止。",
+            "kk": "SageAttention SDPA-ны квантталған attention ядроларымен ауыстырады.\nЖергілікті TTS Python ортасында SageAttention қажет; GitHub v2 ұсынылады:\n  pip install git+https://github.com/thu-ml/SageAttention.git\nҚосылып, бірақ қолжетімсіз болса, синтез анық қатемен тоқтайды.",
+            "uz": "SageAttention SDPA o‘rniga kvantlangan attention yadrolarini ishlatadi.\nLokal TTS Python muhitida SageAttention kerak; GitHub v2 tavsiya etiladi:\n  pip install git+https://github.com/thu-ml/SageAttention.git\nYoqilgan, lekin mavjud bo‘lmasa, sintez aniq xato bilan to‘xtaydi.",
+        },
+        "tab.normalize": {"zh": "1. 规范化", "kk": "1. Нормалдау"},
+        "tab.normalize_short": {"zh": "1. 规范", "kk": "1. Норм."},
+        "norm.book_language": {
+            "zh": "书籍语言：",
+            "kk": "Кітап тілі:",
+            "uz": "Kitob tili:",
+        },
+        "norm.book_language_tip": {
+            "zh": "控制 OCR 语言、语言安全的规范化、分块元数据以及 Qwen/ComfyUI 合成语言。",
+            "kk": "OCR тілін, тілге қауіпсіз нормалдауды, чанк метадеректерін және Qwen/ComfyUI синтез тілін басқарады.",
+            "uz": "OCR tili, tilga xavfsiz normallashtirish, chunk metadata va Qwen/ComfyUI sintez tilini boshqaradi.",
+        },
+        "book_language.ru": {"zh": "俄语", "kk": "Орысша", "uz": "Ruscha"},
+        "book_language.en": {"zh": "英语", "kk": "Ағылшынша", "uz": "Inglizcha"},
+        "book_language.zh": {"zh": "中文", "kk": "Қытайша", "uz": "Xitoycha"},
+        "book_language.kk": {"zh": "哈萨克语", "kk": "Қазақша", "uz": "Qozoqcha"},
+        "book_language.uz": {"zh": "乌兹别克语", "kk": "Өзбекше", "uz": "Oʻzbekcha"},
+        "voice.col_chapter": {"zh": "章", "kk": "Тар.", "uz": "Bob"},
+        "voice.col_chunk": {"zh": "分块", "kk": "Чанк", "uz": "Boʻlak"},
+        "voice.col_audio": {"zh": "音频", "kk": "Дыбыс", "uz": "Ovoz"},
+        "voice.col_retry": {"zh": "重试", "kk": "Қайталау", "uz": "Qayta"},
+        "voice.load_manifest": {"zh": "加载", "kk": "Жүктеу", "uz": "Yuklash"},
+        "voice.load_manifest_tip": {
+            "zh": "加载已保存的分段清单。",
+            "kk": "Сақталған сегмент манифесін жүктеу.",
+            "uz": "Saqlangan segment manifestini yuklash.",
+        },
+        "voice.save_manifest": {"zh": "保存", "kk": "Сақтау", "uz": "Saqlash"},
+        "voice.save_manifest_tip": {
+            "zh": "保存当前分段和声音分配。",
+            "kk": "Қазіргі сегменттер мен дауыс тағайындауларын сақтау.",
+            "uz": "Joriy segmentlar va ovoz biriktirishlarini saqlash.",
+        },
+        "voice.play_audio": {
+            "ru": "Слушать",
+            "zh": "播放",
+            "kk": "Тыңдау",
+            "uz": "Eshitish",
+        },
+        "voice.editor_split": {"zh": "分割", "kk": "Бөлу", "uz": "Bo'lish"},
+        "voice.editor_split_tip": {
+            "zh": "在光标位置分割选中的分段。",
+            "kk": "Таңдалған сегментті курсор тұрған жерден бөлу.",
+            "uz": "Tanlangan segmentni kursor turgan joydan bo'lish.",
+        },
+        "synth.chunk_editor_split": {
+            "zh": "\u5206\u5272",
+            "kk": "\u0411\u04e9\u043b\u0443",
+            "uz": "Bo'lish",
+        },
+        "synth.load_manifest": {
+            "zh": "\u52a0\u8f7d",
+            "kk": "\u0416\u04af\u043a\u0442\u0435\u0443",
+            "uz": "Yuklash",
+        },
+        "synth.sample_enable": {
+            "ru": "Использовать образец голоса для этой книги",
+            "zh": "为本书使用声音样本",
+            "kk": "Осы кітап үшін дауыс үлгісін қолдану",
+            "uz": "Bu kitob uchun ovoz namunasidan foydalanish",
+        },
+        "synth.sample_title": {
+            "ru": "Образец голоса",
+            "zh": "声音样本",
+            "kk": "Дауыс үлгісі",
+            "uz": "Ovoz namunasi",
+        },
+        "synth.strategy_sample_all": {
+            "ru": "Новый образец на всю книгу",
+            "zh": "整本书使用新样本",
+            "kk": "Бүкіл кітапқа жаңа үлгі",
+            "uz": "Butun kitob uchun yangi namuna",
+        },
+        "synth.sample_audio": {
+            "ru": "Аудио образца:",
+            "zh": "样本音频：",
+            "kk": "Үлгі аудио:",
+            "uz": "Namuna audiosi:",
+        },
+        "synth.sample_play": {
+            "ru": "Слушать",
+            "zh": "播放",
+            "kk": "Тыңдау",
+            "uz": "Eshitish",
+        },
+        "synth.sample_pause": {
+            "ru": "Пауза",
+            "zh": "暂停",
+            "kk": "Пауза",
+            "uz": "Pauza",
+        },
+        "synth.sample_transcript": {
+            "ru": "Текст образца:",
+            "zh": "样本文本：",
+            "kk": "Үлгі мәтіні:",
+            "uz": "Namuna matni:",
+        },
+        "synth.sample_ready": {
+            "ru": "Аудио образца загружено. Перед синтезом введите точный текст.",
+            "zh": "样本音频已加载。合成前请输入准确文本。",
+            "kk": "Үлгі аудио жүктелді. Синтез алдында нақты мәтінді енгізіңіз.",
+            "uz": "Namuna audiosi yuklandi. Sintezdan oldin aniq matnni kiriting.",
+        },
+        "synth.sample_missing": {
+            "ru": "Выберите аудио образца и введите точный текст.",
+            "zh": "请选择样本音频并输入准确文本。",
+            "kk": "Үлгі аудионы таңдап, нақты мәтінді енгізіңіз.",
+            "uz": "Namuna audiosini tanlang va aniq matnni kiriting.",
+        },
+        "synth.sample_preview_help": {
+            "ru": "Прослушайте выбранный образец, чтобы проверить голос и текст.",
+            "zh": "播放所选样本，检查声音和文本是否正确。",
+            "kk": "Дауыс пен мәтін дұрыс екенін тексеру үшін үлгіні тыңдаңыз.",
+            "uz": "Ovoz va matn to'g'riligini tekshirish uchun tanlangan namunani tinglang.",
+        },
+        "synth.sample_transcript_help": {
+            "ru": "Точный текст, произнесенный в аудио образца. Чем точнее совпадение, тем лучше голосовой промпт.",
+            "zh": "样本音频中实际说出的准确文本。越接近，声音提示越好。",
+            "kk": "Үлгі аудиода айтылған нақты мәтін. Сәйкестік неғұрлым дәл болса, дауыс промпты соғұрлым жақсы.",
+            "uz": "Namuna audiosida aytilgan aniq matn. Qanchalik mos bo'lsa, ovoz prompti shunchalik yaxshi bo'ladi.",
+        },
+        "voice.speaker_mode": {
+            "zh": "分段来源：",
+            "kk": "Сегмент көзі:",
+            "uz": "Segment manbasi:",
+        },
+        "voice.speaker_mode_heuristic": {
+            "zh": "规则：快速分段",
+            "kk": "Ереже: жылдам бөлу",
+            "uz": "Qoidalar: tez bo'lish",
+        },
+        "voice.speaker_mode_llm": {
+            "zh": "LLM：角色与场景",
+            "kk": "LLM: рөлдер мен көріністер",
+            "uz": "LLM: rollar va sahnalar",
+        },
+        "voice.speaker_mode_manual": {
+            "zh": "手动清单",
+            "kk": "Қолмен манифест",
+            "uz": "Qo'lda manifest",
+        },
+        "voice.speaker_mode_hint": {
+            "zh": (
+                "规则：快速分段 - 根据标点和引号在本机生成草稿。无需网络。\n"
+                "LLM：角色与场景 - 本地模型保留文本、划分场景并标注角色。\n"
+                "手动清单 - 加载或创建分段，然后在表格中编辑文本、角色和声音。"
+            ),
+            "kk": (
+                "Ереже: жылдам бөлу - тыныс белгілері мен тырнақша бойынша жергілікті жоба жасайды. Желі қажет емес.\n"
+                "LLM: рөлдер мен көріністер - жергілікті модель мәтінді сақтап, көріністерге бөліп, рөлдерді белгілейді.\n"
+                "Қолмен манифест - сегменттерді жүктеп не жасаңыз, кейін мәтінді, рөлдерді және дауыстарды кестеде түзетіңіз."
+            ),
+            "uz": (
+                "Qoidalar: tez bo'lish - tinish belgilari va qo'shtirnoqlar asosida lokal qoralama yaratadi. Tarmoq kerak emas.\n"
+                "LLM: rollar va sahnalar - lokal model matnni saqlab, sahnalarga bo'ladi va rollarni belgilaydi.\n"
+                "Qo'lda manifest - segmentlarni yuklang yoki yarating, keyin jadvalda matn, rollar va ovozlarni tahrirlang."
+            ),
+        },
+        "voice.detect": {
+            "zh": "重新生成分段",
+            "kk": "Сегменттерді қайта құру",
+            "uz": "Segmentlarni qayta qurish",
+        },
+        "voice.detecting": {
+            "zh": "正在生成智能分段…",
+            "kk": "Ақылды сегменттер жиналуда…",
+            "uz": "Aqlli segmentlar yig'ilmoqda…",
+        },
+        "voice.detecting_dialogue": {
+            "zh": "正在读取对话边界…",
+            "kk": "Диалог шекаралары оқылуда…",
+            "uz": "Dialog chegaralari o'qilmoqda…",
+        },
+        "voice.attributing": {
+            "zh": "正在标注角色 ({mode})…",
+            "kk": "Рөлдер белгіленуде ({mode})…",
+            "uz": "Rollar belgilanmoqda ({mode})…",
+        },
+        "voice.segments_ready": {
+            "zh": "✔ {n} 个分段已就绪。请检查角色和文本，然后点击“构建 TTS 分块”。",
+            "kk": "✔ {n} сегмент дайын. Рөлдер мен мәтінді тексеріп, «TTS чанктарын құру» түймесін басыңыз.",
+            "uz": "✔ {n} segment tayyor. Rollar va matnni tekshirib, “TTS bo‘laklarini qurish” tugmasini bosing.",
+        },
+        "voice.mark_retry": {"zh": "重试", "kk": "Қайталау", "uz": "Qayta"},
+        "voice.type_narrator": {"zh": "旁白", "kk": "Автор", "uz": "Hikoya"},
+        "voice.chunks_done": {
+            "en": "✔ Built {n} TTS chunks! Go to the Voices tab to choose or train voices.",
+            "ru": "✔ Собрано {n} TTS-чанков! Перейдите на вкладку «Голоса», чтобы выбрать или обучить голоса.",
+            "zh": "✔ 已生成 {n} 个 TTS 分块。下一步进入“声音”页选择或训练声音。",
+            "kk": "✔ {n} TTS чанкі дайын. Енді «Дауыстар» қойындысында дауыстарды таңдаңыз не үйретіңіз.",
+            "uz": "✔ {n} TTS bo‘lagi tayyor. Endi “Ovozlar” sahifasida ovoz tanlang yoki o‘rgating.",
+        },
+        "voice.manifest_path": {
+            "zh": "清单：{path}",
+            "kk": "Манифест: {path}",
+            "uz": "Manifest: {path}",
+        },
+        "voice.llm_model": {
+            "zh": "LLM 模型：",
+            "kk": "LLM моделі:",
+            "uz": "LLM modeli:",
+        },
+        "voice.stats_segments": {
+            "zh": "{total} 段 | 对话: {speech} | 旁白: {narr}",
+            "kk": "{total} сегмент | Сөз: {speech} | Автор: {narr}",
+            "uz": "{total} segment | Nutq: {speech} | Hikoya: {narr}",
+        },
+        "status.norm_done": {
+            "en": "Normalization complete. {n} chapters. Extract roles next.",
+            "ru": "Нормализация завершена. {n} глав. Дальше извлеките роли.",
+            "zh": "规范化完成：{n} 章。下一步提取角色。",
+            "kk": "Нормалдау аяқталды: {n} тарау. Енді рөлдерді алыңыз.",
+            "uz": "Normallashtirish tugadi: {n} bob. Keyin rollarni ajrating.",
+        },
+        "status.roles_done": {
+            "en": "Roles and smart segments are ready. Review chunks next.",
+            "ru": "Роли и умные сегменты готовы. Дальше проверьте чанки.",
+            "zh": "角色和智能片段已就绪。下一步检查分块。",
+            "kk": "Рөлдер мен ақылды сегменттер дайын. Енді чанктарды тексеріңіз.",
+            "uz": "Rollar va aqlli segmentlar tayyor. Keyin bo‘laklarni tekshiring.",
+        },
+        "status.voices_done": {
+            "en": "Chunks are ready. Go to Voices tab.",
+            "ru": "Чанки готовы. Перейдите на вкладку «Голоса».",
+            "zh": "分块已就绪。进入“声音”页。",
+            "kk": "Чанктар дайын. «Дауыстар» қойындысына өтіңіз.",
+            "uz": "Bo‘laklar tayyor. “Ovozlar” sahifasiga o‘ting.",
+        },
+        "synth.chunks_word": {"zh": "分块"},
+    }
+    for key, values in polished.items():
+        TRANSLATIONS[key].update(values)
+
+    TRANSLATIONS.update(
+        {
+            "voice.select_all": {
+                "en": "☑ All",
+                "ru": "☑ Все",
+                "zh": "☑ 全选",
+                "kk": "☑ Барлығы",
+                "uz": "☑ Hammasi",
+            },
+            "voice.select_none": {
+                "en": "☐ None",
+                "ru": "☐ Ничего",
+                "zh": "☐ 全不选",
+                "kk": "☐ Ешқайсысы",
+                "uz": "☐ Hech biri",
+            },
+            "voice.compact_narrator": {
+                "en": "Narr.",
+                "ru": "Диктор",
+                "zh": "旁白",
+                "kk": "Диктор",
+                "uz": "Hikoya",
+            },
+            "voice.compact_male": {
+                "en": "Male",
+                "ru": "Муж.",
+                "zh": "男声",
+                "kk": "Ер",
+                "uz": "Erkak",
+            },
+            "voice.compact_female": {
+                "en": "Female",
+                "ru": "Жен.",
+                "zh": "女声",
+                "kk": "Әйел",
+                "uz": "Ayol",
+            },
+            "voice.compact_auto": {
+                "en": "Auto",
+                "ru": "Авто",
+                "zh": "自动",
+                "kk": "Авто",
+                "uz": "Avto",
+            },
+            "voice.compact_all": {
+                "en": "All",
+                "ru": "Все",
+                "zh": "全部",
+                "kk": "Бәрі",
+                "uz": "Barchasi",
+            },
+            "voice.compact_dialogue": {
+                "en": "Speech",
+                "ru": "Речь",
+                "zh": "对白",
+                "kk": "Сөз",
+                "uz": "Nutq",
+            },
+            "voice.compact_author": {
+                "en": "Narr.",
+                "ru": "Автор",
+                "zh": "旁白",
+                "kk": "Автор",
+                "uz": "Muallif",
+            },
+            "voice.compact_detect": {
+                "en": "Detect",
+                "ru": "\u0421\u0435\u0433\u043c.",
+                "zh": "检测",
+                "kk": "Белгілеу",
+                "uz": "Aniqlash",
+            },
+            "voice.compact_load_manifest": {
+                "en": "Load",
+                "ru": "\u041e\u0442\u043a\u0440.",
+                "zh": "加载",
+                "kk": "Жүктеу",
+                "uz": "Yuklash",
+            },
+            "voice.compact_save_manifest": {
+                "en": "Save",
+                "ru": "\u0421\u043e\u0445\u0440.",
+                "zh": "保存",
+                "kk": "Сақтау",
+                "uz": "Saqlash",
+            },
+            "voice.compact_build_chunks": {
+                "en": "TTS",
+                "ru": "TTS",
+                "zh": "构建",
+                "kk": "Жинау",
+                "uz": "Yig'ish",
+            },
+            "voice.compact_split": {
+                "en": "Split",
+                "ru": "\u0420\u0435\u0437.",
+                "zh": "分割",
+                "kk": "Бөлу",
+                "uz": "Bo'lish",
+            },
+            "voice.compact_merge": {
+                "en": "Merge",
+                "ru": "\u0421\u043a\u043b.",
+                "zh": "合并",
+                "kk": "Біріктіру",
+                "uz": "Birlashtirish",
+            },
+            "voice.compact_empty": {
+                "en": "Empty",
+                "ru": "\u041f\u0443\u0441\u0442.",
+                "zh": "空白",
+                "kk": "Бос",
+                "uz": "Bo'sh",
+            },
+            "voice.compact_delete": {
+                "en": "Delete",
+                "ru": "\u0423\u0434\u0430\u043b",
+                "zh": "删除",
+                "kk": "Өшіру",
+                "uz": "O'chirish",
+            },
+            "voice.compact_restore": {
+                "en": "Restore",
+                "ru": "Назад",
+                "zh": "恢复",
+                "kk": "Қайтару",
+                "uz": "Tiklash",
+            },
+            "synth.compact_test_start": {
+                "en": "Test",
+                "ru": "Тест",
+                "zh": "测试",
+                "kk": "Тест",
+                "uz": "Sinov",
+            },
+            "synth.compact_test_play": {
+                "en": "Play",
+                "ru": "Слушать",
+                "zh": "播放",
+                "kk": "Тыңдау",
+                "uz": "Eshitish",
+            },
+            "synth.compact_start": {
+                "en": "Start",
+                "ru": "Пуск",
+                "zh": "开始",
+                "kk": "Бастау",
+                "uz": "Boshlash",
+            },
+            "voice.speaker_label": {
+                "en": "speaker: {speaker}",
+                "ru": "спикер: {speaker}",
+                "zh": "说话人：{speaker}",
+                "kk": "спикер: {speaker}",
+                "uz": "spiker: {speaker}",
+            },
+            "voice.none_selected": {
+                "en": "Nothing selected! Check the voices to generate.",
+                "ru": "Ничего не выбрано! Отметьте голоса галочками.",
+                "zh": "没有选择声音！请勾选要生成的声音。",
+                "kk": "Ештеңе таңдалмаған! Жасалатын дауыстарды белгілеңіз.",
+                "uz": "Hech narsa tanlanmagan! Yaratiladigan ovozlarni belgilang.",
+            },
+            "voice.generating": {
+                "en": "Generating…",
+                "ru": "Генерация…",
+                "zh": "正在生成…",
+                "kk": "Жасалуда…",
+                "uz": "Yaratilmoqda…",
+            },
+            "voice.model_loaded_generating": {
+                "en": "Model loaded. Generating...",
+                "ru": "Модель загружена. Генерация...",
+                "zh": "模型已加载。正在生成...",
+                "kk": "Модель жүктелді. Жасалуда...",
+                "uz": "Model yuklandi. Yaratilmoqda...",
+            },
+            "voice.process_exit_code": {
+                "en": "Process exited with code {code}",
+                "ru": "Процесс завершился с кодом {code}",
+                "zh": "进程已退出，代码 {code}",
+                "kk": "Процесс {code} кодымен аяқталды",
+                "uz": "Jarayon {code} kodi bilan tugadi",
+            },
+            "voice.timeout_generation": {
+                "en": "Timeout: generation took too long",
+                "ru": "Таймаут: генерация заняла слишком много времени",
+                "zh": "超时：生成耗时过长",
+                "kk": "Таймаут: жасау тым ұзаққа созылды",
+                "uz": "Vaqt tugadi: yaratish juda uzoq davom etdi",
+            },
+            "voice.script_not_found": {
+                "en": "Script not found: {path}",
+                "ru": "Скрипт не найден: {path}",
+                "zh": "未找到脚本：{path}",
+                "kk": "Скрипт табылмады: {path}",
+                "uz": "Skript topilmadi: {path}",
+            },
+            "synth.select_reference_audio": {
+                "en": "Select Reference Audio",
+                "ru": "Выбрать аудио-образец",
+                "zh": "选择参考音频",
+                "kk": "Эталон аудионы таңдау",
+                "uz": "Namuna audioni tanlash",
+            },
+            "synth.clone_remove_voice": {
+                "en": "Remove voice",
+                "ru": "Удалить голос",
+                "zh": "移除声音",
+                "kk": "Дауысты жою",
+                "uz": "Ovozni olib tashlash",
+            },
+            "voice.error": {
+                "en": "Error: {msg}",
+                "ru": "Ошибка: {msg}",
+                "zh": "错误：{msg}",
+                "kk": "Қате: {msg}",
+                "uz": "Xato: {msg}",
+            },
+            "voice.model_loading_attn_hint": {
+                "en": "Model loading... (attn: {impl} — install flash-attn for 1.5–2x speedup)",
+                "ru": "Модель загружается... (attn: {impl} — установите flash-attn для ускорения в 1.5–2 раза)",
+                "zh": "模型正在加载...（attn：{impl} — 安装 flash-attn 可提速 1.5–2 倍）",
+                "kk": "Модель жүктелуде... (attn: {impl} — 1.5–2 есе жылдамдату үшін flash-attn орнатыңыз)",
+                "uz": "Model yuklanmoqda... (attn: {impl} — 1.5–2 marta tezlashtirish uchun flash-attn o'rnating)",
+            },
+            "time.seconds_short": {
+                "en": "{sec}s",
+                "ru": "{sec} сек",
+                "zh": "{sec} 秒",
+                "kk": "{sec} с",
+                "uz": "{sec} s",
+            },
+        }
+    )
+
+    TRANSLATIONS.update(
+        {
+            "synth.asr_title": {
+                "en": "ASR quality gate",
+                "ru": "ASR-проверка качества",
+            },
+            "synth.asr_enable": {
+                "en": "After synthesis:",
+                "ru": "После синтеза:",
+            },
+            "synth.asr_enable_check": {
+                "en": "Run ASR QA before assembly",
+                "ru": "Запустить ASR QA перед сборкой",
+            },
+            "synth.asr_model": {
+                "en": "ASR model:",
+                "ru": "ASR модель:",
+            },
+            "synth.asr_device": {
+                "en": "ASR device:",
+                "ru": "ASR устройство:",
+            },
+            "synth.asr_timeout": {
+                "en": "ASR timeout:",
+                "ru": "ASR таймаут:",
+            },
+            "synth.asr_filter": {
+                "en": "Chunk filter:",
+                "ru": "Фильтр чанков:",
+            },
+            "synth.asr_run_now": {
+                "en": "Run ASR QA now",
+                "ru": "Запустить ASR QA",
+            },
+            "synth.compact_asr_run_now": {
+                "en": "ASR QA",
+                "ru": "ASR QA",
+            },
+            "synth.asr_open_report": {
+                "en": "Open report",
+                "ru": "Открыть отчет",
+            },
+            "synth.asr_open_diff": {
+                "en": "Open diff",
+                "ru": "Открыть diff",
+            },
+            "synth.asr_select_issue": {
+                "en": "Select issue",
+                "ru": "Выбрать проблему",
+            },
+            "synth.asr_idle": {
+                "en": "ASR QA is report-first: it annotates the manifest and keeps audio unchanged.",
+                "ru": "ASR QA только пишет отчет и аннотации; аудио не меняется.",
+            },
+            "synth.asr_running": {
+                "en": "Running ASR QA...",
+                "ru": "ASR QA выполняется...",
+            },
+            "synth.asr_done": {
+                "en": "ASR QA {status}: failed={failed}, warnings={warning}, errors={error}. Report: {path}",
+                "ru": "ASR QA {status}: ошибок={failed}, предупреждений={warning}, сбоев={error}. Отчет: {path}",
+            },
+            "synth.asr_error": {
+                "en": "ASR QA error: {msg}",
+                "ru": "Ошибка ASR QA: {msg}",
+            },
+            "synth.asr_selected_issue": {
+                "en": "Selected the first ASR warning/failed chunk for manual retry.",
+                "ru": "Выбран первый чанк с предупреждением/ошибкой ASR для ручного повтора.",
+            },
+            "synth.asr_no_issues": {
+                "en": "No ASR warning or failed chunks found.",
+                "ru": "ASR чанков с предупреждениями или ошибками не найдено.",
+            },
+            "synth.asr_overview_help": {
+                "en": (
+                    "ASR means automatic speech recognition. Here it is used as a local quality gate: "
+                    "the app listens to each synthesized chunk with faster-whisper, turns the audio back "
+                    "into text, then compares that transcript with the expected chunk text. It checks "
+                    "missing words, extra words, repeated text, WER, CER, language, low confidence, empty "
+                    "transcripts, timeouts, and ASR errors. It does not judge acting, emotion, accent, "
+                    "speaker artistry, or voice similarity, and it does not resynthesize automatically."
+                ),
+                "ru": (
+                    "ASR - это автоматическое распознавание речи. Здесь это локальная проверка качества: "
+                    "приложение прослушивает каждый синтезированный чанк через faster-whisper, превращает "
+                    "аудио обратно в текст и сравнивает распознанный текст с ожидаемым текстом чанка. "
+                    "Проверяются пропущенные слова, лишние слова, повторы, WER, CER, язык, низкая "
+                    "уверенность, пустой transcript, timeout и ошибки ASR. Это не оценка актерской игры, "
+                    "эмоций, акцента, художественности, похожести голоса и не автоматический пересинтез."
+                ),
+            },
+            "synth.asr_enable_help": {
+                "en": (
+                    "When enabled, ASR QA runs after TTS synthesis and before chapter assembly. It writes "
+                    "a full JSON report and compact manifest annotations. The generated audio stays in "
+                    "place, so failed chunks are left for manual review or retry."
+                ),
+                "ru": (
+                    "Если включено, ASR QA запускается после TTS-синтеза и до сборки глав. Она пишет "
+                    "полный JSON-отчет и компактные аннотации в manifest. Готовое аудио не меняется: "
+                    "проблемные чанки остаются для ручной проверки или повтора."
+                ),
+            },
+            "synth.asr_model_help": {
+                "en": (
+                    "Choose the faster-whisper model. tiny/base are fastest and least accurate, useful for "
+                    "quick smoke checks. small is the recommended default for normal QA. medium is slower "
+                    "but usually catches more mistakes. large-v3 is the most accurate listed option and is "
+                    "best for final QA, but it needs much more VRAM/RAM and time. For Chinese and other "
+                    "languages without spaces, prefer CER-heavy judgment because WER/match ratio are less stable."
+                ),
+                "ru": (
+                    "Выберите модель faster-whisper. tiny/base самые быстрые и менее точные, подходят для "
+                    "быстрой проверки. small - рекомендуемый вариант по умолчанию. medium медленнее, но "
+                    "обычно лучше ловит ошибки. large-v3 самая точная из списка и лучше для финальной QA, "
+                    "но требует намного больше VRAM/RAM и времени. Для китайского и языков без пробелов "
+                    "лучше сильнее смотреть на CER, потому что WER/match ratio менее стабильны."
+                ),
+            },
+            "synth.asr_device_help": {
+                "en": (
+                    "auto lets faster-whisper choose the best available device and is safest for most users. "
+                    "cpu works everywhere and avoids GPU setup problems, but is slower, especially with "
+                    "medium or large-v3. cuda uses an NVIDIA GPU and is best for long books or large models "
+                    "when CUDA drivers and enough VRAM are installed. If CUDA fails, switch back to auto or cpu."
+                ),
+                "ru": (
+                    "auto позволяет faster-whisper выбрать лучшее доступное устройство и обычно безопаснее "
+                    "для большинства пользователей. cpu работает почти везде и не требует настройки GPU, "
+                    "но медленнее, особенно с medium или large-v3. cuda использует NVIDIA GPU и лучше для "
+                    "длинных книг или больших моделей, если установлены CUDA-драйверы и хватает VRAM. "
+                    "Если cuda падает, вернитесь на auto или cpu."
+                ),
+            },
+            "synth.asr_timeout_help": {
+                "en": (
+                    "Maximum time for recognizing one chunk. Keep it around 180 seconds for normal chunks. "
+                    "Increase it for very long chunks, CPU mode, or large-v3. If a chunk times out, the book "
+                    "continues and that chunk is marked with a timeout issue in the report."
+                ),
+                "ru": (
+                    "Максимальное время распознавания одного чанка. Для обычных чанков оставьте около "
+                    "180 секунд. Увеличивайте для очень длинных чанков, CPU-режима или large-v3. Если "
+                    "чанк превысит timeout, книга продолжит проверяться, а этот чанк получит issue timeout."
+                ),
+            },
+            "synth.asr_filter_help": {
+                "en": (
+                    "Filters the chunk selector after an ASR report is written. failed/warning shows chunks "
+                    "that need attention. failed means hard metric or language/empty transcript problems. "
+                    "warning means suspicious but not necessarily broken, such as low confidence or partial "
+                    "word mismatch. passed shows chunks with no ASR issues."
+                ),
+                "ru": (
+                    "Фильтрует список чанков после записи ASR-отчета. failed/warning показывает то, что "
+                    "нужно проверить. failed - серьезные проблемы по метрикам, языку или пустому transcript. "
+                    "warning - подозрительно, но не обязательно сломано: например, низкая уверенность или "
+                    "частичное несовпадение слов. passed показывает чанки без ASR-проблем."
+                ),
+            },
+            "synth.asr_run_help": {
+                "en": (
+                    "Run ASR QA immediately for the loaded manifest. This first keeps the existing WAV checks, "
+                    "then runs faster-whisper only for active chunks that have audio files."
+                ),
+                "ru": (
+                    "Запускает ASR QA сразу для загруженного manifest. Сначала выполняются существующие "
+                    "WAV-проверки, затем faster-whisper запускается только для активных чанков с аудио."
+                ),
+            },
+            "synth.asr_report_help": {
+                "en": (
+                    "Opens the full JSON report: expected text, ASR transcript, normalized text, metrics, "
+                    "missing and extra word spans, issue summary, backend, model, language, and timings."
+                ),
+                "ru": (
+                    "Открывает полный JSON-отчет: ожидаемый текст, ASR transcript, нормализованный текст, "
+                    "метрики, пропущенные и лишние spans слов, summary issues, backend, модель, язык и время."
+                ),
+            },
+            "synth.asr_diff_help": {
+                "en": (
+                    "Opens a readable text diff for chunks with ASR warnings or failures. Use it to decide "
+                    "whether to manually retry, edit text, or ignore a harmless ASR mismatch."
+                ),
+                "ru": (
+                    "Открывает читаемый text diff для чанков с ASR warning/failure. По нему удобно решить, "
+                    "нужен ли ручной повтор, правка текста или можно игнорировать безвредное несовпадение ASR."
+                ),
+            },
+            "synth.asr_select_issue_help": {
+                "en": (
+                    "Jumps to the first failed, warning, or error chunk from the ASR annotations so you can "
+                    "listen, inspect the text, and choose a manual retry."
+                ),
+                "ru": (
+                    "Переходит к первому chunk с failed, warning или error из ASR-аннотаций, чтобы можно "
+                    "было прослушать, проверить текст и выбрать ручной повтор."
+                ),
+            },
+        }
+    )
+    for key, entry in TRANSLATIONS.items():
+        if key.startswith("synth.asr_") or key == "synth.compact_asr_run_now":
+            for code in ("zh", "kk", "uz"):
+                entry.setdefault(code, entry["en"])
+
+
+_install_extra_translations()

@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.chunking.manifest_v2 import chunk_is_excluded, ensure_v2_manifest
+
 
 @dataclass
 class AudioIssue:
@@ -49,9 +51,7 @@ class AudioQaResult:
 def load_manifest(path: Path) -> dict[str, Any]:
     """Load a v2 manifest for QA."""
     data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("Manifest must be a JSON object.")
-    return data
+    return ensure_v2_manifest(data).to_record()
 
 
 def run_audio_qa(
@@ -63,6 +63,7 @@ def run_audio_qa(
     clipping_ratio_threshold: float = 0.01,
 ) -> AudioQaResult:
     """Check manifest/audio consistency and basic WAV health."""
+    manifest = ensure_v2_manifest(manifest).to_record()
     result = AudioQaResult()
     for chapter in manifest.get("chapters", []):
         if not isinstance(chapter, dict):
@@ -70,6 +71,8 @@ def run_audio_qa(
         chapter_index = int(chapter.get("chapter_index", 0))
         for chunk in chapter.get("chunks", []):
             if not isinstance(chunk, dict):
+                continue
+            if chunk_is_excluded(chunk):
                 continue
             chunk_index = int(chunk.get("chunk_index", 0))
             result.total_chunks += 1

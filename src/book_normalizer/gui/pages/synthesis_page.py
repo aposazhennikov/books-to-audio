@@ -9,8 +9,10 @@ import time
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QDesktopServices
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -28,15 +30,30 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QStackedWidget,
     QTabWidget,
+    QHeaderView,
+    QTableWidget,
+    QTableWidgetItem,
     QToolButton,
     QToolTip,
     QVBoxLayout,
     QWidget,
 )
 
+from book_normalizer.chunking.manifest_v2 import (
+    DEFAULT_MANIFEST_NAME,
+    chunks_to_manifest,
+    ensure_v2_manifest,
+    flatten_manifest,
+    merge_chunk_with_next,
+    role_for_voice_id,
+    save_manifest,
+    split_chunk_text,
+    update_chunk_text,
+)
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.tts_worker import (
+    AsrQaWorker,
     TTSModelInstallWorker,
     TTSSynthesisWorker,
     VoicePromptSaveWorker,
@@ -48,12 +65,14 @@ from book_normalizer.tts.model_download import (
     expand_tts_model_ids,
     missing_tts_model_ids,
 )
-from book_normalizer.tts.model_paths import default_comfyui_models_dir
+from book_normalizer.tts.model_paths import effective_comfyui_models_dir
+from book_normalizer.tts.quality_gate import quality_summary_by_chapter
 from book_normalizer.tts.voice_library import (
     default_voice_library_dir,
     list_saved_voices,
     normalize_voice_library_dir,
 )
+from book_normalizer.tts.voice_mapping import primary_voice_mapping_key
 
 MODELS = [
     "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
@@ -62,7 +81,7 @@ MODELS = [
     "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
 ]
 
-# All available voice preset IDs (must match tts_runner VOICE_PRESETS).
+# All available voice preset IDs used by v2 manifests and ComfyUI workflows.
 VOICE_IDS = [
     "narrator_calm",
     "narrator_energetic",
@@ -83,7 +102,7 @@ _TEST_CHUNK_LABEL_MAX_CHARS = 64
 
 
 def _host_path_from_text(path_text: str | Path) -> Path:
-    """Normalize Windows or WSL-style path text to a host filesystem path."""
+    """Normalize pasted host path text across Windows and POSIX styles."""
     text = str(path_text).strip()
     if os.name == "nt" and text.startswith("/mnt/") and len(text) > 6:
         drive = text[5]
@@ -110,24 +129,13 @@ def _make_text_edit_compact(edit: QPlainTextEdit) -> None:
     """Wrap long lines and prevent horizontal scrolling inside text boxes."""
     edit.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
     edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
 
 def _iter_manifest_chunks(data: object) -> list[dict]:
-    """Return chunk records from v1 list or v2 grouped manifest."""
-    if isinstance(data, list):
-        return [item for item in data if isinstance(item, dict)]
-    if isinstance(data, dict):
-        chunks: list[dict] = []
-        for chapter in data.get("chapters", []):
-            if not isinstance(chapter, dict):
-                continue
-            chapter_index = chapter.get("chapter_index", 0)
-            for chunk in chapter.get("chunks", []):
-                if isinstance(chunk, dict):
-                    chunks.append({"chapter_index": chapter_index, **chunk})
-        return chunks
-    return []
+    """Return chunk records from a strict v2 grouped manifest."""
+    return flatten_manifest(ensure_v2_manifest(data))
 
 
 def _shorten_test_fragment(text: str, max_chars: int = _TEST_FRAGMENT_MAX_CHARS) -> str:
@@ -177,12 +185,7 @@ def _build_test_manifest_chunks(data: object, chapter: int | None = None) -> lis
 
 def _role_for_voice_id(voice_id: str) -> str:
     """Infer a manifest role from a Qwen voice preset id."""
-    normalized = (voice_id or "").strip().lower()
-    if normalized.startswith("male_") or normalized in {"male", "men"}:
-        return "male"
-    if normalized.startswith("female_") or normalized in {"female", "women"}:
-        return "female"
-    return "narrator"
+    return role_for_voice_id(voice_id)
 
 
 def _chunk_preview_text(text: str, max_chars: int = _TEST_CHUNK_LABEL_MAX_CHARS) -> str:
@@ -232,24 +235,21 @@ def _set_manifest_chunk_text(chunk: dict, text: str) -> None:
     chunk.pop("error", None)
 
 
+def _replace_manifest_data(data: object, record: dict) -> None:
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected {DEFAULT_MANIFEST_NAME} object.")
+    data.clear()
+    data.update(record)
+
+
 def _find_manifest_chunk(
     data: object,
     chapter_index: int,
     chunk_index: int,
 ) -> tuple[list, int, dict] | None:
-    """Find a mutable chunk record in v1 or v2 manifest data."""
-    if isinstance(data, list):
-        for idx, chunk in enumerate(data):
-            if not isinstance(chunk, dict):
-                continue
-            if (
-                int(chunk.get("chapter_index", 0)) == chapter_index
-                and int(chunk.get("chunk_index", idx)) == chunk_index
-            ):
-                return data, idx, chunk
-        return None
-
+    """Find a mutable chunk record in a v2 manifest object."""
     if isinstance(data, dict):
+        ensure_v2_manifest(data)
         for chapter in data.get("chapters", []):
             if not isinstance(chapter, dict):
                 continue
@@ -282,11 +282,10 @@ def _update_manifest_chunk_text(
     chunk_index: int,
     text: str,
 ) -> bool:
-    found = _find_manifest_chunk(data, chapter_index, chunk_index)
-    if found is None:
+    manifest = ensure_v2_manifest(data)
+    if not update_chunk_text(manifest, chapter_index, chunk_index, text):
         return False
-    _, _, chunk = found
-    _set_manifest_chunk_text(chunk, text)
+    _replace_manifest_data(data, manifest.to_record())
     return True
 
 
@@ -296,27 +295,10 @@ def _split_manifest_chunk_text(
     chunk_index: int,
     split_at: int,
 ) -> bool:
-    found = _find_manifest_chunk(data, chapter_index, chunk_index)
-    if found is None:
+    manifest = ensure_v2_manifest(data)
+    if not split_chunk_text(manifest, chapter_index, chunk_index, split_at):
         return False
-    container, idx, chunk = found
-    text = str(chunk.get("text") or "")
-    if split_at <= 0 or split_at >= len(text):
-        return False
-    before = text[:split_at].strip()
-    after = text[split_at:].strip()
-    if not before or not after:
-        return False
-
-    new_chunk = dict(chunk)
-    new_chunk["pause_after_ms"] = chunk.get("pause_after_ms", 0)
-    new_chunk["boundary_after"] = chunk.get("boundary_after", "")
-    _set_manifest_chunk_text(chunk, before)
-    _set_manifest_chunk_text(new_chunk, after)
-    chunk.pop("pause_after_ms", None)
-    chunk.pop("boundary_after", None)
-    container.insert(idx + 1, new_chunk)
-    _renumber_manifest_chunks(container, chapter_index)
+    _replace_manifest_data(data, manifest.to_record())
     return True
 
 
@@ -325,32 +307,10 @@ def _merge_manifest_chunk_with_next(
     chapter_index: int,
     chunk_index: int,
 ) -> bool:
-    found = _find_manifest_chunk(data, chapter_index, chunk_index)
-    if found is None:
+    manifest = ensure_v2_manifest(data)
+    if not merge_chunk_with_next(manifest, chapter_index, chunk_index):
         return False
-    container, idx, chunk = found
-    if idx + 1 >= len(container):
-        return False
-    next_chunk = container[idx + 1]
-    if not isinstance(next_chunk, dict):
-        return False
-    if int(next_chunk.get("chapter_index", chapter_index)) != chapter_index:
-        return False
-
-    merged = " ".join(
-        part.strip()
-        for part in (str(chunk.get("text") or ""), str(next_chunk.get("text") or ""))
-        if part.strip()
-    )
-    if not merged:
-        return False
-    _set_manifest_chunk_text(chunk, merged)
-    if next_chunk.get("pause_after_ms"):
-        chunk["pause_after_ms"] = next_chunk.get("pause_after_ms", 0)
-    if next_chunk.get("boundary_after"):
-        chunk["boundary_after"] = next_chunk.get("boundary_after", "")
-    del container[idx + 1]
-    _renumber_manifest_chunks(container, chapter_index)
+    _replace_manifest_data(data, manifest.to_record())
     return True
 
 
@@ -363,6 +323,7 @@ class _CloneVoiceRow(QWidget):
     def __init__(self, voice_ids: list[str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._build_ui(voice_ids)
+        self.retranslate()
 
     def _build_ui(self, voice_ids: list[str]) -> None:
         layout = QVBoxLayout(self)
@@ -383,26 +344,24 @@ class _CloneVoiceRow(QWidget):
         self._wav_edit.setPlaceholderText("reference.wav")
         self._wav_edit.setReadOnly(True)
         self._wav_edit.setStyleSheet(
-            "color: rgba(226,232,240,0.78); font-size: 11px; padding: 4px 6px;"
-            "background: rgba(15,23,42,0.72); border-radius: 6px;"
-            "border: 1px solid rgba(148,163,184,0.16);",
+            "color: #1e293b; font-size: 11px; padding: 4px 6px;"
+            "background: rgba(255,255,255,0.92); border-radius: 6px;"
+            "border: 1px solid rgba(91,115,142,0.18);",
         )
         row1.addWidget(self._wav_edit, stretch=1)
 
-        self._btn_wav = QPushButton("WAV…")
-        self._btn_wav.setText("WAV...")
-        self._btn_wav.setMaximumWidth(72)
+        self._btn_wav = QPushButton()
+        self._btn_wav.setMaximumWidth(92)
         self._btn_wav.clicked.connect(self._browse_wav)
         row1.addWidget(self._btn_wav)
 
-        self._btn_remove = QPushButton("✕")
-        self._btn_remove.setText("x")
+        self._btn_remove = QPushButton()
         self._btn_remove.setMaximumWidth(34)
         self._btn_remove.setStyleSheet(
-            "QPushButton { color: rgba(252,165,165,0.86); font-weight: 700;"
-            "background: rgba(239,68,68,0.08); border: 1px solid rgba(248,113,113,0.16);"
+            "QPushButton { color: #b91c1c; font-weight: 700;"
+            "background: rgba(254,226,226,0.82); border: 1px solid rgba(248,113,113,0.24);"
             "border-radius: 7px; padding: 2px; }"
-            "QPushButton:hover { color: #ffffff; background: rgba(239,68,68,0.24); }",
+            "QPushButton:hover { color: #7f1d1d; background: rgba(254,202,202,0.96); }",
         )
         self._btn_remove.clicked.connect(self._on_remove)
         row1.addWidget(self._btn_remove)
@@ -412,15 +371,18 @@ class _CloneVoiceRow(QWidget):
         # Row 2: transcript text field.
         self._transcript = QLineEdit()
         self._transcript.setStyleSheet(
-            "color: rgba(226,232,240,0.78); font-size: 11px; padding: 4px 6px;"
-            "background: rgba(15,23,42,0.72); border-radius: 6px;"
-            "border: 1px solid rgba(148,163,184,0.16);",
+            "color: #1e293b; font-size: 11px; padding: 4px 6px;"
+            "background: rgba(255,255,255,0.92); border-radius: 6px;"
+            "border: 1px solid rgba(91,115,142,0.18);",
         )
         layout.addWidget(self._transcript)
 
     def _browse_wav(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select Reference WAV", "", "Audio (*.wav *.mp3 *.flac *.ogg);;All (*)",
+            self,
+            t("synth.select_reference_audio"),
+            "",
+            "Audio (*.wav *.mp3 *.flac *.ogg);;All (*)",
         )
         if path:
             self._wav_edit.setText(path)
@@ -450,6 +412,9 @@ class _CloneVoiceRow(QWidget):
 
     def retranslate(self) -> None:
         """Update translatable placeholder text."""
+        self._btn_wav.setText(t("synth.choose_file"))
+        self._btn_remove.setText("x")
+        self._btn_remove.setToolTip(t("synth.clone_remove_voice"))
         self._transcript.setPlaceholderText(t("synth.clone_transcript_ph"))
 
 
@@ -457,16 +422,21 @@ class SynthesisPage(QWidget):
     """Page for running TTS synthesis with progress tracking."""
 
     output_dir_changed = pyqtSignal(str, str)
+    synthesis_finished = pyqtSignal(str, int, int)
+    synthesis_failed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._manifest_path: Path | None = None
         self._output_dir: Path | None = None
         self._worker: TTSSynthesisWorker | None = None
+        self._asr_worker: AsrQaWorker | None = None
         self._model_install_worker: TTSModelInstallWorker | None = None
         self._save_voice_worker: VoicePromptSaveWorker | None = None
         self._chapter_map: dict[int, int] = {}
         self._manifest_chunks: list[dict] = []
+        self._manifest_role_counts: dict[str, int] = {}
+        self._manifest_role_entries: list[tuple[str, str]] = []
         self._phase = "idle"
         self._phase_start = 0.0
         self._tick_timer = QTimer(self)
@@ -485,10 +455,21 @@ class SynthesisPage(QWidget):
         self._help_buttons: list[tuple[QToolButton, str]] = []
         self._voice_mode = "custom"
         self._saved_voices = []
+        self._compact_mode = False
         self._run_kind = "idle"
         self._preview_output_dir: Path | None = None
         self._last_test_audio_path: Path | None = None
+        self._last_asr_report_path: Path | None = None
+        self._pending_synthesis_finish: tuple[str, int, int] | None = None
+        self._worker_handles_asr = False
         self._setup_ui()
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self._tick_timer.stop()
+        for player in (self._sample_player, self._test_player):
+            player.stop()
+            player.setSource(QUrl())
+        super().closeEvent(event)
 
     # ── UI construction ──────────────────────────────────────────────────────
 
@@ -499,13 +480,15 @@ class SynthesisPage(QWidget):
 
         # Scrollable settings area.
         scroll = QScrollArea()
+        self._settings_scroll = scroll
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.horizontalScrollBar().setEnabled(False)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
         container = QWidget()
+        self._settings_container = container
         container.setMinimumWidth(0)
         container.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -525,19 +508,26 @@ class SynthesisPage(QWidget):
         )
         self._manifest_label.setStyleSheet(
             "font-weight: 700; font-size: 13px; padding: 6px 12px;"
-            "background: rgba(15,23,42,0.62); border: 1px solid rgba(148,163,184,0.12);"
+            "background: rgba(255,255,255,0.86); border: 1px solid rgba(91,115,142,0.18);"
             "border-radius: 8px;",
         )
         file_row.addWidget(self._manifest_label, stretch=1)
 
         self._btn_load = QPushButton()
         self._btn_load.clicked.connect(self._browse_manifest)
+        self._btn_load.setMaximumWidth(220)
+        self._btn_load.setMinimumWidth(156)
         file_row.addWidget(self._btn_load)
         layout.addLayout(file_row)
 
         # ── Main settings form ────────────────────────────────────────────
         self._mode_tabs = QTabWidget()
         self._mode_tabs.setObjectName("synthesisModeTabs")
+        self._mode_tabs.setMinimumWidth(0)
+        self._mode_tabs.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         self._mode_tabs.currentChanged.connect(self._on_mode_changed)
         self._mode_tabs.addTab(self._build_sample_voice_panel(), "")
         self._mode_tabs.addTab(self._build_preset_speakers_tab(), "")
@@ -577,11 +567,11 @@ class SynthesisPage(QWidget):
         self._btn_stop.setEnabled(False)
         btn_row.addWidget(self._btn_stop)
 
-        layout.addLayout(btn_row)
         layout.addStretch()
 
         scroll.setWidget(container)
         outer.addWidget(scroll, stretch=1)
+        outer.addLayout(btn_row)
 
         # ── Progress + log (outside scroll, always visible) ───────────────
         bottom = QVBoxLayout()
@@ -597,8 +587,8 @@ class SynthesisPage(QWidget):
         _make_text_edit_compact(self._log_edit)
         self._log_edit.setStyleSheet(
             "font-family: 'Cascadia Code', Consolas, monospace;"
-            "font-size: 11px; background: rgba(9,14,24,0.86);"
-            "border: 1px solid rgba(148,163,184,0.12); border-radius: 8px; padding: 6px;",
+            "font-size: 11px; background: rgba(255,255,255,0.90);"
+            "border: 1px solid rgba(91,115,142,0.18); border-radius: 8px; padding: 6px;",
         )
         bottom.addWidget(self._log_edit)
 
@@ -608,7 +598,7 @@ class SynthesisPage(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
         self._status.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 12px; padding: 2px 0;",
+            "color: rgba(51,65,85,0.70); font-size: 12px; padding: 2px 0;",
         )
         bottom.addWidget(self._status)
 
@@ -618,15 +608,35 @@ class SynthesisPage(QWidget):
         self._refresh_saved_voices()
         self._update_custom_voice_controls()
 
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Keep command buttons readable as the page width changes."""
+        super().resizeEvent(event)
+        self._sync_compact_mode()
+
+    def _sync_compact_mode(self) -> None:
+        compact = self.width() < 900
+        if compact:
+            viewport_width = self._settings_scroll.viewport().width()
+            compact_width = max(320, min(self.width(), viewport_width or self.width()))
+            self._settings_container.setMaximumWidth(compact_width)
+            self._mode_tabs.setMaximumWidth(compact_width)
+        else:
+            self._settings_container.setMaximumWidth(16777215)
+            self._mode_tabs.setMaximumWidth(16777215)
+        if self._compact_mode == compact:
+            return
+        self._compact_mode = compact
+        self._apply_action_labels()
+
     def _build_test_fragment_panel(self) -> QFrame:
         """Build controls for selecting the exact preview text."""
         frame = QFrame()
         frame.setObjectName("testFragmentPanel")
         frame.setStyleSheet(
             "QFrame#testFragmentPanel {"
-            "  background: rgba(15,23,42,0.72);"
-            "  border: 1px solid rgba(148,163,184,0.14);"
-            "  border-radius: 12px;"
+            "  background: rgba(255,255,255,0.82);"
+            "  border: 1px solid rgba(91,115,142,0.18);"
+            "  border-radius: 10px;"
             "}"
         )
         outer = QVBoxLayout(frame)
@@ -635,14 +645,14 @@ class SynthesisPage(QWidget):
 
         self._test_source_title = QLabel()
         self._test_source_title.setStyleSheet(
-            "font-weight: 800; font-size: 13px; color: #ddd6fe;",
+            "font-weight: 800; font-size: 13px; color: #0f172a;",
         )
         outer.addWidget(self._test_source_title)
 
         self._test_source_desc = QLabel()
         self._test_source_desc.setWordWrap(True)
         self._test_source_desc.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 11px;",
+            "color: rgba(51,65,85,0.62); font-size: 11px;",
         )
         outer.addWidget(self._test_source_desc)
 
@@ -695,7 +705,7 @@ class SynthesisPage(QWidget):
         self._test_chunk_preview.setMaximumHeight(94)
         _make_text_edit_compact(self._test_chunk_preview)
         self._test_chunk_preview.setStyleSheet(
-            "color: rgba(226,232,240,0.76); font-size: 12px;"
+            "color: rgba(30,41,59,0.86); font-size: 12px;"
         )
         self._test_custom_text_edit = QPlainTextEdit()
         self._test_custom_text_edit.setMaximumHeight(118)
@@ -736,9 +746,9 @@ class SynthesisPage(QWidget):
         frame.setObjectName("sampleVoicePanel")
         frame.setStyleSheet(
             "QFrame#sampleVoicePanel {"
-            "  background: rgba(18,24,36,0.94);"
-            "  border: 1px solid rgba(139,92,246,0.24);"
-            "  border-radius: 14px;"
+            "  background: rgba(255,255,255,0.86);"
+            "  border: 1px solid rgba(91,115,142,0.18);"
+            "  border-radius: 10px;"
             "}"
         )
         outer = QVBoxLayout(frame)
@@ -747,14 +757,14 @@ class SynthesisPage(QWidget):
 
         self._sample_title = QLabel()
         self._sample_title.setStyleSheet(
-            "font-weight: 800; font-size: 14px; color: #ddd6fe;"
+            "font-weight: 800; font-size: 14px; color: #0f172a;"
         )
         outer.addWidget(self._sample_title)
 
         self._sample_desc = QLabel()
         self._sample_desc.setWordWrap(True)
         self._sample_desc.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 11px;"
+            "color: rgba(51,65,85,0.62); font-size: 11px;"
         )
         outer.addWidget(self._sample_desc)
 
@@ -794,18 +804,9 @@ class SynthesisPage(QWidget):
         role_form.setVerticalSpacing(6)
         role_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         role_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        self._role_mapping_layout = role_form
         self._role_voice_combos: dict[str, QComboBox] = {}
         self._role_voice_labels: dict[str, QLabel] = {}
-        for role in ("narrator", "male", "female"):
-            combo = QComboBox()
-            _make_combo_compact(combo, min_chars=22)
-            combo.currentIndexChanged.connect(
-                lambda _index, self=self: self._refresh_test_chunk_combo(),
-            )
-            self._role_voice_combos[role] = combo
-            label = QLabel()
-            self._role_voice_labels[role] = label
-            role_form.addRow(label, combo)
         outer.addWidget(self._role_mapping_widget)
 
         self._sample_fields = QWidget()
@@ -837,7 +838,7 @@ class SynthesisPage(QWidget):
         playback_row.addWidget(self._btn_sample_play)
         self._sample_duration_label = QLabel("0:00 / 0:00")
         self._sample_duration_label.setStyleSheet(
-            "color: rgba(226,232,240,0.76); font-size: 12px;"
+            "color: rgba(51,65,85,0.70); font-size: 12px;"
         )
         playback_row.addWidget(self._sample_duration_label)
         playback_row.addStretch()
@@ -868,6 +869,7 @@ class SynthesisPage(QWidget):
         self._voice_name_edit.setPlaceholderText("voice_name")
         save_row.addWidget(self._voice_name_edit, stretch=1)
         self._btn_save_sample_voice = QPushButton()
+        self._btn_save_sample_voice.setMinimumWidth(220)
         self._btn_save_sample_voice.clicked.connect(self._save_sample_voice)
         save_row.addWidget(self._btn_save_sample_voice)
         self._save_voice_label = QLabel()
@@ -962,7 +964,7 @@ class SynthesisPage(QWidget):
         self._speech_rate_value_label = QLabel("1.00x")
         self._speech_rate_value_label.setMinimumWidth(96)
         self._speech_rate_value_label.setStyleSheet(
-            "color: rgba(226,232,240,0.76); font-size: 12px;"
+            "color: rgba(51,65,85,0.70); font-size: 12px;"
         )
         speech_rate_row.addWidget(self._speech_rate_value_label)
         self._speech_rate_label = QLabel()
@@ -990,7 +992,7 @@ class SynthesisPage(QWidget):
         self._sample_status = QLabel()
         self._sample_status.setWordWrap(True)
         self._sample_status.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 11px;"
+            "color: rgba(51,65,85,0.62); font-size: 11px;"
         )
         outer.addWidget(self._sample_status)
         return frame
@@ -1004,14 +1006,14 @@ class SynthesisPage(QWidget):
 
         self._preset_title = QLabel()
         self._preset_title.setStyleSheet(
-            "font-weight: 800; font-size: 14px; color: #ddd6fe;"
+            "font-weight: 800; font-size: 14px; color: #0f172a;"
         )
         layout.addWidget(self._preset_title)
 
         self._preset_desc = QLabel()
         self._preset_desc.setWordWrap(True)
         self._preset_desc.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 11px;"
+            "color: rgba(51,65,85,0.62); font-size: 11px;"
         )
         layout.addWidget(self._preset_desc)
 
@@ -1041,14 +1043,14 @@ class SynthesisPage(QWidget):
 
         self._advanced_title = QLabel()
         self._advanced_title.setStyleSheet(
-            "font-weight: 800; font-size: 14px; color: #ddd6fe;"
+            "font-weight: 800; font-size: 14px; color: #0f172a;"
         )
         layout.addWidget(self._advanced_title)
 
         self._advanced_desc = QLabel()
         self._advanced_desc.setWordWrap(True)
         self._advanced_desc.setStyleSheet(
-            "color: rgba(226,232,240,0.62); font-size: 11px;"
+            "color: rgba(51,65,85,0.62); font-size: 11px;"
         )
         layout.addWidget(self._advanced_desc)
 
@@ -1075,7 +1077,7 @@ class SynthesisPage(QWidget):
 
         model_dir_row = QHBoxLayout()
         model_dir_row.setSpacing(6)
-        self._models_dir_edit = QLineEdit(str(default_comfyui_models_dir()))
+        self._models_dir_edit = QLineEdit(str(effective_comfyui_models_dir()))
         self._models_dir_edit.setMinimumWidth(180)
         model_dir_row.addWidget(self._models_dir_edit, stretch=1)
         self._btn_models_dir = QPushButton()
@@ -1182,13 +1184,193 @@ class SynthesisPage(QWidget):
         )
 
         layout.addLayout(form)
+        layout.addWidget(self._build_quality_dashboard_panel())
+        layout.addWidget(self._build_asr_qa_panel())
         self._chapter_info = QLabel()
         self._chapter_info.setStyleSheet(
-            "color: rgba(226,232,240,0.48); font-size: 11px;"
+            "color: rgba(51,65,85,0.54); font-size: 11px;"
         )
         layout.addWidget(self._chapter_info)
         layout.addStretch()
         return tab
+
+    def _build_quality_dashboard_panel(self) -> QFrame:
+        """Build compact chapter-level QA dashboard."""
+        frame = QFrame()
+        frame.setObjectName("qualityDashboardPanel")
+        frame.setStyleSheet(
+            "QFrame#qualityDashboardPanel {"
+            "  background: rgba(248,250,252,0.92);"
+            "  border: 1px solid rgba(100,116,139,0.20);"
+            "  border-radius: 10px;"
+            "}"
+        )
+        outer = QVBoxLayout(frame)
+        outer.setContentsMargins(14, 10, 14, 10)
+        outer.setSpacing(8)
+
+        title = QLabel("Quality dashboard")
+        title.setStyleSheet("font-weight: 800; font-size: 13px; color: #334155;")
+        outer.addWidget(title)
+
+        self._quality_summary_label = QLabel("No manifest loaded.")
+        self._quality_summary_label.setWordWrap(True)
+        self._quality_summary_label.setStyleSheet("color: rgba(51,65,85,0.72); font-size: 11px;")
+        outer.addWidget(self._quality_summary_label)
+
+        self._quality_table = QTableWidget(0, 6)
+        self._quality_table.setHorizontalHeaderLabels(["Chapter", "Status", "Passed", "Warn", "Failed", "Unchecked"])
+        self._quality_table.verticalHeader().setVisible(False)
+        self._quality_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._quality_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._quality_table.setMaximumHeight(160)
+        self._quality_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        outer.addWidget(self._quality_table)
+
+        button_row = QHBoxLayout()
+        button_row.setSpacing(6)
+        self._btn_quality_run = QPushButton("Run full QA")
+        self._btn_quality_run.clicked.connect(self._run_asr_qa_now)
+        self._btn_quality_run.setEnabled(False)
+        button_row.addWidget(self._btn_quality_run)
+
+        self._btn_quality_resynth = QPushButton("Resynthesize failed/warning")
+        self._btn_quality_resynth.clicked.connect(self._start_failed_resynthesis)
+        self._btn_quality_resynth.setEnabled(False)
+        button_row.addWidget(self._btn_quality_resynth)
+
+        self._btn_quality_open_issue = QPushButton("Open issue")
+        self._btn_quality_open_issue.clicked.connect(self._select_first_asr_issue)
+        self._btn_quality_open_issue.setEnabled(False)
+        button_row.addWidget(self._btn_quality_open_issue)
+
+        self._btn_quality_open_report = QPushButton("Open report")
+        self._btn_quality_open_report.clicked.connect(self._open_asr_report)
+        self._btn_quality_open_report.setEnabled(False)
+        button_row.addWidget(self._btn_quality_open_report)
+
+        self._btn_quality_master = QPushButton("Master passed chapters")
+        self._btn_quality_master.clicked.connect(self._master_passed_chapters)
+        self._btn_quality_master.setEnabled(False)
+        button_row.addWidget(self._btn_quality_master)
+        button_row.addStretch()
+        outer.addLayout(button_row)
+        return frame
+
+    def _build_asr_qa_panel(self) -> QFrame:
+        """Build report-first ASR QA controls."""
+        frame = QFrame()
+        frame.setObjectName("asrQaPanel")
+        frame.setStyleSheet(
+            "QFrame#asrQaPanel {"
+            "  background: rgba(239,246,255,0.82);"
+            "  border: 1px solid rgba(59,130,246,0.22);"
+            "  border-radius: 10px;"
+            "}"
+        )
+        outer = QVBoxLayout(frame)
+        outer.setContentsMargins(14, 10, 14, 10)
+        outer.setSpacing(8)
+
+        self._asr_title = QLabel()
+        self._asr_title.setStyleSheet(
+            "font-weight: 800; font-size: 13px; color: #1e3a8a;"
+        )
+        outer.addWidget(
+            self._label_with_help(self._asr_title, "synth.asr_overview_help")
+        )
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(7)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+
+        self._asr_enable_check = QCheckBox()
+        self._asr_enable_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._asr_enable_label, "synth.asr_enable_help"),
+            self._asr_enable_check,
+        )
+
+        self._asr_model_combo = QComboBox()
+        self._asr_model_combo.setEditable(True)
+        self._asr_model_combo.addItems(["small", "medium", "large-v3", "base", "tiny"])
+        _make_combo_compact(self._asr_model_combo, min_chars=12)
+        self._asr_model_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._asr_model_label, "synth.asr_model_help"),
+            self._asr_model_combo,
+        )
+
+        self._asr_device_combo = QComboBox()
+        self._asr_device_combo.addItem("auto", "auto")
+        self._asr_device_combo.addItem("CPU", "cpu")
+        self._asr_device_combo.addItem("CUDA", "cuda")
+        _make_combo_compact(self._asr_device_combo, min_chars=8)
+        self._asr_device_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._asr_device_label, "synth.asr_device_help"),
+            self._asr_device_combo,
+        )
+
+        self._asr_timeout_spin = QSpinBox()
+        self._asr_timeout_spin.setRange(30, 3600)
+        self._asr_timeout_spin.setValue(180)
+        self._asr_timeout_spin.setSingleStep(30)
+        self._asr_timeout_spin.setSuffix(" s")
+        self._asr_timeout_spin.setMaximumWidth(150)
+        self._asr_timeout_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._asr_timeout_label, "synth.asr_timeout_help"),
+            self._asr_timeout_spin,
+        )
+
+        self._asr_filter_combo = QComboBox()
+        self._asr_filter_combo.addItem("all", "all")
+        self._asr_filter_combo.addItem("failed/warning", "bad")
+        self._asr_filter_combo.addItem("failed", "failed")
+        self._asr_filter_combo.addItem("warning", "warning")
+        self._asr_filter_combo.addItem("passed", "passed")
+        self._asr_filter_combo.currentIndexChanged.connect(
+            self._refresh_test_chapter_combo,
+        )
+        _make_combo_compact(self._asr_filter_combo, min_chars=14)
+        self._asr_filter_label = QLabel()
+        form.addRow(
+            self._label_with_help(self._asr_filter_label, "synth.asr_filter_help"),
+            self._asr_filter_combo,
+        )
+
+        outer.addLayout(form)
+
+        button_row = QHBoxLayout()
+        button_row.setSpacing(6)
+        self._btn_asr_run = QPushButton()
+        self._btn_asr_run.clicked.connect(self._run_asr_qa_now)
+        self._btn_asr_run.setEnabled(False)
+        button_row.addWidget(self._btn_asr_run)
+        self._btn_asr_open_report = QPushButton()
+        self._btn_asr_open_report.clicked.connect(self._open_asr_report)
+        self._btn_asr_open_report.setEnabled(False)
+        button_row.addWidget(self._btn_asr_open_report)
+        self._btn_asr_open_diff = QPushButton()
+        self._btn_asr_open_diff.clicked.connect(self._open_asr_diff)
+        self._btn_asr_open_diff.setEnabled(False)
+        button_row.addWidget(self._btn_asr_open_diff)
+        self._btn_asr_select_issue = QPushButton()
+        self._btn_asr_select_issue.clicked.connect(self._select_first_asr_issue)
+        button_row.addWidget(self._btn_asr_select_issue)
+        button_row.addStretch()
+        outer.addLayout(button_row)
+
+        self._asr_status = QLabel()
+        self._asr_status.setWordWrap(True)
+        self._asr_status.setStyleSheet(
+            "color: rgba(30,58,138,0.76); font-size: 11px;"
+        )
+        outer.addWidget(self._asr_status)
+        return frame
 
     def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
         """Return a compact form label with a hover help button."""
@@ -1278,6 +1460,11 @@ class SynthesisPage(QWidget):
 
     def _effective_test_voice_label(self, source_voice_id: str) -> str:
         """Return the voice that will actually be used for test synthesis."""
+        return self._effective_test_voice_label_for_chunk({"voice_id": source_voice_id})
+
+    def _effective_test_voice_label_for_chunk(self, chunk: dict) -> str:
+        """Return the voice that will actually be used for a manifest chunk."""
+        source_voice_id = str(chunk.get("voice_id") or "narrator_calm")
         if not self._is_custom_voice_mode():
             return source_voice_id
 
@@ -1293,8 +1480,10 @@ class SynthesisPage(QWidget):
                 )
             return t("synth.no_saved_voices")
 
-        role = _role_for_voice_id(source_voice_id)
-        combo = self._role_voice_combos.get(role)
+        role_key = primary_voice_mapping_key(chunk)
+        combo = self._role_voice_combos.get(role_key)
+        if combo is None:
+            combo = self._role_voice_combos.get(_role_for_voice_id(source_voice_id))
         saved_voice = str(combo.currentData() or "") if combo else ""
         if saved_voice:
             return t(
@@ -1317,9 +1506,9 @@ class SynthesisPage(QWidget):
         frame.setObjectName("clonePanel")
         frame.setStyleSheet(
             "QFrame#clonePanel {"
-            "  background: rgba(16,185,129,0.08);"
-            "  border: 1px solid rgba(45,212,191,0.22);"
-            "  border-radius: 14px;"
+            "  background: rgba(240,253,250,0.82);"
+            "  border: 1px solid rgba(20,184,166,0.22);"
+            "  border-radius: 10px;"
             "  padding: 0px;"
             "}"
         )
@@ -1335,7 +1524,7 @@ class SynthesisPage(QWidget):
 
         self._clone_title = QLabel()
         self._clone_title.setStyleSheet(
-            "font-weight: 800; font-size: 14px; color: #99f6e4;"
+            "font-weight: 800; font-size: 14px; color: #0f766e;"
         )
         header.addWidget(self._clone_title, stretch=1)
         outer.addLayout(header)
@@ -1344,7 +1533,7 @@ class SynthesisPage(QWidget):
         self._clone_desc = QLabel()
         self._clone_desc.setWordWrap(True)
         self._clone_desc.setStyleSheet(
-            "color: rgba(226,232,240,0.58); font-size: 11px; padding: 0 0 4px 0;"
+            "color: rgba(51,65,85,0.62); font-size: 11px; padding: 0 0 4px 0;"
         )
         outer.addWidget(self._clone_desc)
 
@@ -1360,7 +1549,7 @@ class SynthesisPage(QWidget):
         lbl_role = QLabel()
         lbl_role.setObjectName("cloneColRole")
         lbl_role.setStyleSheet(
-            "color: rgba(226,232,240,0.42); font-size: 10px; font-weight: 600;"
+            "color: rgba(51,65,85,0.54); font-size: 10px; font-weight: 600;"
         )
         lbl_role.setMinimumWidth(128)
         lbl_role.setMaximumWidth(180)
@@ -1368,7 +1557,7 @@ class SynthesisPage(QWidget):
         lbl_wav = QLabel()
         lbl_wav.setObjectName("cloneColWav")
         lbl_wav.setStyleSheet(
-            "color: rgba(226,232,240,0.42); font-size: 10px; font-weight: 600;"
+            "color: rgba(51,65,85,0.54); font-size: 10px; font-weight: 600;"
         )
         col_header.addWidget(lbl_wav, stretch=1)
         col_header.addSpacing(72 + 34 + 6)  # WAV btn + remove btn width.
@@ -1377,14 +1566,14 @@ class SynthesisPage(QWidget):
         # Separator.
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: rgba(148,163,184,0.12);")
+        sep.setStyleSheet("color: rgba(91,115,142,0.16);")
         body_layout.addWidget(sep)
 
         # Transcript column hint.
         col_transcript = QLabel()
         col_transcript.setObjectName("cloneColTranscript")
         col_transcript.setStyleSheet(
-            "color: rgba(226,232,240,0.42); font-size: 10px; padding: 0 0 2px 0;"
+            "color: rgba(51,65,85,0.54); font-size: 10px; padding: 0 0 2px 0;"
         )
         body_layout.addWidget(col_transcript)
 
@@ -1400,12 +1589,12 @@ class SynthesisPage(QWidget):
         self._btn_add_clone = QPushButton()
         self._btn_add_clone.setStyleSheet(
             "QPushButton {"
-            "  background: rgba(16,185,129,0.14);"
-            "  color: #99f6e4;"
-            "  border: 1px dashed rgba(45,212,191,0.45);"
+            "  background: rgba(204,251,241,0.60);"
+            "  color: #0f766e;"
+            "  border: 1px dashed rgba(20,184,166,0.45);"
             "  border-radius: 8px; padding: 5px 14px; font-size: 12px;"
             "}"
-            "QPushButton:hover { background: rgba(16,185,129,0.24); }"
+            "QPushButton:hover { background: rgba(153,246,228,0.72); }"
         )
         self._btn_add_clone.clicked.connect(self._add_clone_row)
         add_row.addWidget(self._btn_add_clone)
@@ -1426,7 +1615,7 @@ class SynthesisPage(QWidget):
         lbl = QLabel()
         lbl.setWordWrap(True)
         lbl.setStyleSheet(
-            "color: rgba(255,255,255,0.4); font-size: 11px;"
+            "color: rgba(51,65,85,0.54); font-size: 11px;"
             "background: transparent; border: none; padding: 0 0 4px 0;",
         )
         return lbl
@@ -1438,6 +1627,7 @@ class SynthesisPage(QWidget):
         if not self._manifest_path:
             self._manifest_label.setText(t("synth.no_manifest"))
         self._btn_load.setText(t("synth.load_manifest"))
+        self._btn_load.setToolTip(t("synth.load_manifest_tip"))
         self._mode_tabs.setTabText(0, t("synth.mode_custom_voice"))
         self._mode_tabs.setTabText(1, t("synth.mode_preset_speakers"))
         self._mode_tabs.setTabText(2, t("synth.mode_advanced"))
@@ -1477,9 +1667,11 @@ class SynthesisPage(QWidget):
         self._custom_strategy_label.setText(t("synth.custom_strategy"))
         self._saved_voice_label.setText(t("synth.saved_voice"))
         self._btn_refresh_saved_voices.setText(t("synth.refresh_saved_voices"))
-        self._role_voice_labels["narrator"].setText(t("synth.role_narrator"))
-        self._role_voice_labels["male"].setText(t("synth.role_male"))
-        self._role_voice_labels["female"].setText(t("synth.role_female"))
+        self._manifest_role_entries = [
+            (key, self._role_mapping_label(key, self._manifest_role_counts.get(key, 0)))
+            for key, _label in self._manifest_role_entries
+        ]
+        self._refresh_role_mapping_controls()
         self._sample_audio_label.setText(t("synth.sample_audio"))
         self._btn_sample_audio.setText(t("synth.browse_audio"))
         self._sample_preview_label.setText(t("synth.sample_preview"))
@@ -1489,7 +1681,6 @@ class SynthesisPage(QWidget):
             t("synth.clone_transcript_ph"),
         )
         self._save_voice_label.setText(t("synth.saved_voice_name"))
-        self._btn_save_sample_voice.setText(t("synth.save_local_voice"))
         self._temperature_label.setText(t("synth.temperature"))
         self._top_p_label.setText(t("synth.top_p"))
         self._top_k_label.setText(t("synth.top_k"))
@@ -1516,9 +1707,11 @@ class SynthesisPage(QWidget):
         self._test_chunk_preview.setPlaceholderText(
             t("synth.chunk_editor_placeholder"),
         )
-        self._btn_save_chunk_text.setText(t("synth.chunk_editor_save"))
         self._btn_split_chunk.setText(t("synth.chunk_editor_split"))
+        self._btn_split_chunk.setToolTip(t("synth.chunk_editor_split_tip"))
         self._btn_merge_chunk.setText(t("synth.chunk_editor_merge"))
+        for row in self._clone_rows:
+            row.retranslate()
         self._populate_test_source_combo()
         self._refresh_test_chapter_combo()
         if not self._sample_status.text():
@@ -1526,16 +1719,36 @@ class SynthesisPage(QWidget):
         self._preset_title.setText(t("synth.preset_title"))
         self._preset_desc.setText(t("synth.preset_desc"))
         self._advanced_title.setText(t("synth.advanced_title"))
+        self._apply_action_labels()
         self._advanced_desc.setText(t("synth.advanced_desc"))
+        self._asr_title.setText(t("synth.asr_title"))
+        self._asr_enable_label.setText(t("synth.asr_enable"))
+        self._asr_enable_check.setText(t("synth.asr_enable_check"))
+        self._asr_enable_check.setToolTip(t("synth.asr_enable_help"))
+        self._asr_model_label.setText(t("synth.asr_model"))
+        self._asr_model_combo.setToolTip(t("synth.asr_model_help"))
+        self._asr_device_label.setText(t("synth.asr_device"))
+        self._asr_device_combo.setToolTip(t("synth.asr_device_help"))
+        self._asr_timeout_label.setText(t("synth.asr_timeout"))
+        self._asr_timeout_spin.setToolTip(t("synth.asr_timeout_help"))
+        self._asr_filter_label.setText(t("synth.asr_filter"))
+        self._asr_filter_combo.setToolTip(t("synth.asr_filter_help"))
+        self._btn_asr_run.setText(t("synth.asr_run_now"))
+        self._btn_asr_run.setToolTip(t("synth.asr_run_help"))
+        self._btn_asr_open_report.setText(t("synth.asr_open_report"))
+        self._btn_asr_open_report.setToolTip(t("synth.asr_report_help"))
+        self._btn_asr_open_diff.setText(t("synth.asr_open_diff"))
+        self._btn_asr_open_diff.setToolTip(t("synth.asr_diff_help"))
+        self._btn_asr_select_issue.setText(t("synth.asr_select_issue"))
+        self._btn_asr_select_issue.setToolTip(t("synth.asr_select_issue_help"))
+        if not self._asr_status.text():
+            self._asr_status.setText(t("synth.asr_idle"))
         for btn, help_key in self._help_buttons:
             btn.setToolTip(t(help_key))
             btn.setStatusTip(t(help_key))
 
-        self._btn_test.setText(t("synth.test_start"))
+        self._apply_action_labels()
         self._btn_test.setToolTip(t("synth.test_help"))
-        self._btn_play_test.setText(t("synth.test_play"))
-        self._btn_start.setText(t("synth.start"))
-        self._btn_stop.setText(t("synth.stop"))
         self._status.setText(t("synth.waiting"))
         self._log_edit.setPlaceholderText(t("synth.log_placeholder"))
         self._refresh_chapter_combo()
@@ -1658,6 +1871,93 @@ class SynthesisPage(QWidget):
             self._voice_library_dir_edit.setText(path)
             self._refresh_saved_voices()
 
+    def _refresh_manifest_role_entries(self) -> None:
+        """Build role/persona mapping rows from loaded manifest chunks."""
+        counts: dict[str, int] = {}
+        order: list[str] = []
+        for chunk in self._manifest_chunks:
+            key = primary_voice_mapping_key(chunk)
+            if key not in counts:
+                order.append(key)
+                counts[key] = 0
+            counts[key] += 1
+
+        if not order:
+            order = ["narrator", "male", "female"]
+            counts = {key: 0 for key in order}
+
+        self._manifest_role_counts = counts
+        self._manifest_role_entries = [
+            (key, self._role_mapping_label(key, counts.get(key, 0)))
+            for key in order
+        ]
+        self._refresh_role_mapping_controls()
+
+    def _role_mapping_label(self, key: str, count: int = 0) -> str:
+        """Return a compact UI label for a role/persona mapping key."""
+        if key.startswith("speaker:"):
+            value = key.removeprefix("speaker:")
+            speaker, sep, emotion = value.partition("|emotion:")
+            label = f"{speaker} - {emotion}" if sep else speaker
+        elif key.startswith("section:"):
+            section = key.removeprefix("section:")
+            label = {
+                "annotation": t("voice.role_annotation"),
+                "preface": t("voice.role_preface"),
+                "epilogue": t("voice.role_epilogue"),
+                "chapter_title": t("voice.role_chapter_title"),
+            }.get(section, section.replace("_", " ").title())
+        else:
+            label = {
+                "narrator": t("voice.role_narrator"),
+                "male": t("voice.role_male"),
+                "female": t("voice.role_female"),
+                "unknown": t("voice.role_unknown"),
+                "men": t("voice.role_male"),
+                "women": t("voice.role_female"),
+            }.get(key, key.replace("_", " ").title())
+
+        return f"{label} ({count})" if count else label
+
+    def _refresh_role_mapping_controls(
+        self,
+        current_roles: dict[str, str] | None = None,
+    ) -> None:
+        """Rebuild saved-voice selectors for the manifest's actual roles."""
+        if not hasattr(self, "_role_mapping_layout"):
+            return
+        current_roles = current_roles or {
+            role: combo.currentData() or ""
+            for role, combo in getattr(self, "_role_voice_combos", {}).items()
+        }
+        while self._role_mapping_layout.rowCount():
+            self._role_mapping_layout.removeRow(0)
+        self._role_voice_combos = {}
+        self._role_voice_labels = {}
+
+        entries = self._manifest_role_entries or [
+            ("narrator", self._role_mapping_label("narrator")),
+            ("male", self._role_mapping_label("male")),
+            ("female", self._role_mapping_label("female")),
+        ]
+        for role_key, label_text in entries:
+            combo = QComboBox()
+            _make_combo_compact(combo, min_chars=22)
+            combo.currentIndexChanged.connect(
+                lambda _index, self=self: self._refresh_test_chunk_combo(),
+            )
+            self._populate_saved_voice_combo(
+                combo,
+                str(current_roles.get(role_key) or ""),
+                include_builtin=True,
+            )
+            label = QLabel(label_text)
+            label.setToolTip(role_key)
+            combo.setToolTip(role_key)
+            self._role_voice_combos[role_key] = combo
+            self._role_voice_labels[role_key] = label
+            self._role_mapping_layout.addRow(label, combo)
+
     def _refresh_saved_voices(self) -> None:
         """Reload saved voice metadata from disk and refresh all selectors."""
         current_global = self._saved_voice_combo.currentData() or ""
@@ -1667,12 +1967,7 @@ class SynthesisPage(QWidget):
         }
         self._saved_voices = list_saved_voices(self._voice_library_dir())
         self._populate_saved_voice_combo(self._saved_voice_combo, current_global)
-        for role, combo in self._role_voice_combos.items():
-            self._populate_saved_voice_combo(
-                combo,
-                current_roles.get(role, ""),
-                include_builtin=True,
-            )
+        self._refresh_role_mapping_controls(current_roles)
         self._update_custom_voice_controls()
 
     def _populate_saved_voice_combo(
@@ -1769,13 +2064,13 @@ class SynthesisPage(QWidget):
         path = QFileDialog.getExistingDirectory(
             self,
             t("synth.models_dir"),
-            self._models_dir_edit.text().strip() or str(default_comfyui_models_dir()),
+            self._models_dir_edit.text().strip() or str(effective_comfyui_models_dir()),
         )
         if path:
             self._models_dir_edit.setText(path)
 
     def _selected_models_dir(self) -> Path:
-        text = self._models_dir_edit.text().strip() or str(default_comfyui_models_dir())
+        text = self._models_dir_edit.text().strip() or str(effective_comfyui_models_dir())
         path = _host_path_from_text(text)
         self._models_dir_edit.setText(str(path))
         return path
@@ -1965,6 +2260,7 @@ class SynthesisPage(QWidget):
         self._manifest_label.setText(str(manifest_path))
         self._btn_start.setEnabled(True)
         self._btn_test.setEnabled(True)
+        self._btn_asr_run.setEnabled(True)
         self._load_chapters_from_manifest()
 
     def _browse_manifest(self) -> None:
@@ -1978,6 +2274,7 @@ class SynthesisPage(QWidget):
             self._manifest_label.setText(str(p))
             self._btn_start.setEnabled(True)
             self._btn_test.setEnabled(True)
+            self._btn_asr_run.setEnabled(True)
             self._load_chapters_from_manifest()
 
     def _load_chapters_from_manifest(self) -> None:
@@ -1993,11 +2290,29 @@ class SynthesisPage(QWidget):
                 chapter_chunks[ch] = chapter_chunks.get(ch, 0) + 1
             self._chapter_map = chapter_chunks
             self._manifest_chunks = chunks
+            self._sync_last_asr_report_from_manifest()
+            self._refresh_manifest_role_entries()
             self._refresh_chapter_combo()
             self._refresh_test_chapter_combo()
-        except (json.JSONDecodeError, OSError, TypeError, AttributeError):
+            self._refresh_quality_dashboard(data)
+        except (json.JSONDecodeError, OSError, TypeError, AttributeError, ValueError):
             self._manifest_chunks = []
+            self._refresh_manifest_role_entries()
+            self._refresh_quality_dashboard(None)
             pass
+
+    def _sync_last_asr_report_from_manifest(self) -> None:
+        """Pick up the latest ASR report path from manifest annotations."""
+        for chunk in self._manifest_chunks:
+            asr_block = chunk.get("asr_qa") if isinstance(chunk, dict) else None
+            if not isinstance(asr_block, dict):
+                continue
+            report_path = str(asr_block.get("report_path") or "").strip()
+            if report_path:
+                self._last_asr_report_path = Path(report_path)
+                self._btn_asr_open_report.setEnabled(True)
+                self._btn_asr_open_diff.setEnabled(True)
+                return
 
     def _refresh_chapter_combo(self) -> None:
         """Rebuild the chapter combo from loaded data."""
@@ -2023,6 +2338,69 @@ class SynthesisPage(QWidget):
         else:
             self._chapter_info.setText("")
 
+    def _refresh_quality_dashboard(self, data: object | None = None) -> None:
+        """Refresh green/yellow/red chapter QA counts."""
+        if not hasattr(self, "_quality_table"):
+            return
+        manifest = data
+        if manifest is None and self._manifest_path and self._manifest_path.exists():
+            try:
+                manifest = json.loads(self._manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                manifest = None
+        if not isinstance(manifest, dict):
+            self._quality_table.setRowCount(0)
+            self._quality_summary_label.setText("No manifest loaded.")
+            self._set_quality_buttons(False, False, False)
+            return
+
+        summary = quality_summary_by_chapter(manifest)
+        self._quality_table.setRowCount(len(summary))
+        totals = {"total": 0, "passed": 0, "warning": 0, "failed": 0, "unchecked": 0}
+        has_bad = False
+        all_ready = bool(summary)
+        for row, chapter_index in enumerate(sorted(summary)):
+            counts = summary[chapter_index]
+            for key in totals:
+                totals[key] += int(counts.get(key, 0))
+            status = "green"
+            brush = QBrush(QColor("#dcfce7"))
+            if counts.get("failed", 0):
+                status = "red"
+                brush = QBrush(QColor("#fee2e2"))
+            elif counts.get("warning", 0) or counts.get("unchecked", 0):
+                status = "yellow"
+                brush = QBrush(QColor("#fef9c3"))
+            if status != "green":
+                has_bad = True
+                all_ready = False
+            values = [
+                f"{chapter_index + 1:03d}",
+                status,
+                str(counts.get("passed", 0)),
+                str(counts.get("warning", 0)),
+                str(counts.get("failed", 0)),
+                str(counts.get("unchecked", 0)),
+            ]
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setBackground(brush)
+                self._quality_table.setItem(row, column, item)
+        self._quality_summary_label.setText(
+            "Quality: "
+            f"{totals['passed']} passed, {totals['warning']} warning, "
+            f"{totals['failed']} failed, {totals['unchecked']} unchecked."
+        )
+        self._set_quality_buttons(bool(summary), has_bad, all_ready)
+
+    def _set_quality_buttons(self, has_manifest: bool, has_bad: bool, all_ready: bool) -> None:
+        active = self._phase != "idle"
+        self._btn_quality_run.setEnabled(has_manifest and not active)
+        self._btn_quality_resynth.setEnabled(has_manifest and has_bad and not active)
+        self._btn_quality_open_issue.setEnabled(has_manifest and has_bad and not active)
+        self._btn_quality_open_report.setEnabled(bool(self._last_asr_report_path) and not active)
+        self._btn_quality_master.setEnabled(has_manifest and all_ready and not active)
+
     # ── Synthesis control ─────────────────────────────────────────────────────
 
     def _populate_test_source_combo(self) -> None:
@@ -2039,6 +2417,17 @@ class SynthesisPage(QWidget):
         self._test_source_combo.blockSignals(False)
         self._update_test_source_controls()
 
+    def _asr_filter_accepts(self, chunk: dict) -> bool:
+        if not hasattr(self, "_asr_filter_combo"):
+            return True
+        selected = self._asr_filter_combo.currentData() or "all"
+        if selected == "all":
+            return True
+        status = str((chunk.get("asr_qa") or {}).get("status") or "")
+        if selected == "bad":
+            return status in {"failed", "warning", "error"}
+        return status == selected
+
     def _refresh_test_chapter_combo(self) -> None:
         """Populate the chapter selector used by test preview chunks."""
         if not hasattr(self, "_test_chapter_combo"):
@@ -2047,13 +2436,13 @@ class SynthesisPage(QWidget):
         chapters = sorted({
             int(chunk.get("chapter_index", 0))
             for chunk in self._manifest_chunks
-            if isinstance(chunk, dict)
+            if isinstance(chunk, dict) and self._asr_filter_accepts(chunk)
         })
         counts = {
             chapter: sum(
                 1
                 for chunk in self._manifest_chunks
-                if int(chunk.get("chapter_index", 0)) == chapter
+                if int(chunk.get("chapter_index", 0)) == chapter and self._asr_filter_accepts(chunk)
             )
             for chapter in chapters
         }
@@ -2086,6 +2475,7 @@ class SynthesisPage(QWidget):
                 chunk
                 for chunk in self._manifest_chunks
                 if int(chunk.get("chapter_index", 0)) == chapter_index
+                and self._asr_filter_accepts(chunk)
             ],
             key=lambda chunk: int(chunk.get("chunk_index", 0)),
         )
@@ -2107,8 +2497,7 @@ class SynthesisPage(QWidget):
             for chunk in chunks:
                 chunk_index = int(chunk.get("chunk_index", 0))
                 text = str(chunk.get("text") or "")
-                voice_id = str(chunk.get("voice_id") or "narrator_calm")
-                effective_voice = self._effective_test_voice_label(voice_id)
+                effective_voice = self._effective_test_voice_label_for_chunk(chunk)
                 self._test_chunk_combo.addItem(
                     t(
                         "synth.test_chunk_item",
@@ -2186,14 +2575,16 @@ class SynthesisPage(QWidget):
             data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError, TypeError):
             return
-        if not action(data):
+        try:
+            changed = action(data)
+        except ValueError as exc:
+            self._status.setText(str(exc))
+            return
+        if not changed:
             return
         try:
-            self._manifest_path.write_text(
-                json.dumps(data, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-        except OSError as exc:
+            save_manifest(self._manifest_path, data)
+        except (OSError, ValueError) as exc:
             self._status.setText(str(exc))
             return
         target_chunk = chunk_index if next_chunk_index is None else next_chunk_index
@@ -2307,6 +2698,7 @@ class SynthesisPage(QWidget):
             return
 
         self._run_kind = "full"
+        self._worker_handles_asr = self._asr_enable_check.isChecked()
         self._set_run_buttons_active(True)
         self._progress.reset()
 
@@ -2332,6 +2724,12 @@ class SynthesisPage(QWidget):
             speech_rate=self._speech_rate_value(),
             output_format=str(self._output_format_combo.currentData() or "flac"),
             merge_chapters=self._merge_chapters_check.isChecked(),
+            quality_loop=True,
+            artifact_qa=True,
+            asr_qa_after_synthesis=self._worker_handles_asr,
+            asr_model=self._selected_asr_model(),
+            asr_device=self._selected_asr_device(),
+            max_resynthesis_attempts=2,
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.status.connect(self._on_status)
@@ -2370,10 +2768,12 @@ class SynthesisPage(QWidget):
         self._preview_output_dir = output_dir / "tts_test_preview"
         self._preview_output_dir.mkdir(parents=True, exist_ok=True)
         test_manifest = self._preview_output_dir / "test_manifest.json"
-        test_manifest.write_text(
-            json.dumps(test_chunks, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        preview_manifest = chunks_to_manifest(
+            test_chunks,
+            book_title="tts_test_preview",
+            chunker="gui_test",
         )
+        save_manifest(test_manifest, preview_manifest)
 
         self._last_test_audio_path = None
         self._btn_play_test.setEnabled(False)
@@ -2381,6 +2781,7 @@ class SynthesisPage(QWidget):
         self._test_player.setSource(QUrl())
 
         self._run_kind = "test"
+        self._worker_handles_asr = False
         self._set_run_buttons_active(True)
         self._progress.reset()
 
@@ -2406,6 +2807,9 @@ class SynthesisPage(QWidget):
             speech_rate=self._speech_rate_value(),
             output_format=str(self._output_format_combo.currentData() or "flac"),
             merge_chapters=False,
+            quality_loop=False,
+            artifact_qa=False,
+            asr_qa_after_synthesis=False,
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.status.connect(self._on_status)
@@ -2439,6 +2843,8 @@ class SynthesisPage(QWidget):
         self._output_dir_edit.setEnabled(not active)
         self._btn_output_dir.setEnabled(not active)
         self._btn_install_models.setEnabled(not active)
+        self._btn_asr_run.setEnabled(has_manifest and not active)
+        self._refresh_quality_dashboard()
 
     def _set_model_install_active(self, active: bool) -> None:
         has_manifest = bool(self._manifest_path)
@@ -2449,6 +2855,32 @@ class SynthesisPage(QWidget):
         self._btn_stop.setEnabled(False)
         self._models_dir_edit.setEnabled(not active)
         self._btn_models_dir.setEnabled(not active)
+        self._btn_asr_run.setEnabled(has_manifest and not active)
+        self._refresh_quality_dashboard()
+
+    def _apply_action_labels(self) -> None:
+        """Use short command labels on narrow windows."""
+        if self._compact_mode:
+            self._btn_test.setText(t("synth.compact_test_start"))
+            self._btn_play_test.setText(t("synth.compact_test_play"))
+            self._btn_start.setText(t("synth.compact_start"))
+            self._btn_load.setText(t("synth.compact_load_manifest"))
+            self._btn_save_sample_voice.setText(t("synth.compact_save_local_voice"))
+            self._btn_save_chunk_text.setText(t("synth.compact_chunk_editor_save"))
+            self._btn_merge_chunk.setText(t("synth.compact_chunk_editor_merge"))
+            self._btn_asr_run.setText(t("synth.compact_asr_run_now"))
+            self._btn_stop.setText(t("synth.stop"))
+            return
+
+        self._btn_load.setText(t("synth.load_manifest"))
+        self._btn_test.setText(t("synth.test_start"))
+        self._btn_play_test.setText(t("synth.test_play"))
+        self._btn_start.setText(t("synth.start"))
+        self._btn_save_sample_voice.setText(t("synth.save_local_voice"))
+        self._btn_save_chunk_text.setText(t("synth.chunk_editor_save"))
+        self._btn_merge_chunk.setText(t("synth.chunk_editor_merge"))
+        self._btn_asr_run.setText(t("synth.asr_run_now"))
+        self._btn_stop.setText(t("synth.stop"))
 
     def _toggle_test_playback(self) -> None:
         if not self._last_test_audio_path:
@@ -2463,7 +2895,231 @@ class SynthesisPage(QWidget):
         if state == QMediaPlayer.PlaybackState.PlayingState:
             self._btn_play_test.setText(t("synth.test_pause"))
         else:
-            self._btn_play_test.setText(t("synth.test_play"))
+            self._btn_play_test.setText(
+                t("synth.compact_test_play") if self._compact_mode else t("synth.test_play")
+            )
+
+    # ── ASR QA ────────────────────────────────────────────────────────────────
+
+    def _selected_asr_model(self) -> str:
+        return self._asr_model_combo.currentText().strip() or "small"
+
+    def _selected_asr_device(self) -> str:
+        return str(self._asr_device_combo.currentData() or "auto")
+
+    def _run_asr_qa_now(self) -> None:
+        self._start_asr_qa_worker()
+
+    def _start_failed_resynthesis(self) -> None:
+        """Resynthesize chunks reset or marked bad by QA."""
+        output_dir = self._current_output_dir()
+        if not self._manifest_path or not output_dir:
+            return
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            self._set_output_dir(output_dir)
+            clone_config_path = self._build_temp_sample_voice_config()
+            self._reset_quality_bad_chunks(max_attempts=2)
+        except (OSError, ValueError) as exc:
+            self._status.setText(str(exc))
+            self._progress.set_status(str(exc))
+            return
+
+        self._run_kind = "full"
+        self._worker_handles_asr = self._asr_enable_check.isChecked()
+        self._set_run_buttons_active(True)
+        self._progress.reset()
+        workflow = (
+            self._workflow_path_edit.text().strip()
+            if hasattr(self, "_workflow_path_edit")
+            else ""
+        )
+        self._worker = TTSSynthesisWorker(
+            manifest_path=self._manifest_path,
+            output_dir=output_dir,
+            model=self._model_combo.currentText(),
+            chapter=self._selected_chapter(),
+            batch_size=self._batch_size.value(),
+            resume=True,
+            chunk_timeout=self._chunk_timeout.value(),
+            use_compile=self._compile_check.isChecked(),
+            clone_config=clone_config_path,
+            use_sage_attention=self._sage_check.isChecked(),
+            models_dir=self._models_dir_edit.text().strip(),
+            voice_library_dir=str(self._voice_library_dir()),
+            comfyui_url=self._comfyui_url_edit.text().strip() if hasattr(self, "_comfyui_url_edit") else "http://localhost:8188",
+            workflow_path=workflow,
+            failed_only=True,
+            temperature=self._temperature_spin.value(),
+            top_p=self._top_p_spin.value(),
+            top_k=self._top_k_spin.value(),
+            repetition_penalty=self._repetition_penalty_spin.value(),
+            max_new_tokens=self._max_new_tokens_spin.value(),
+            seed=self._seed_spin.value(),
+            speech_rate=self._speech_rate_value(),
+            output_format=str(self._output_format_combo.currentData() or "flac"),
+            merge_chapters=self._merge_chapters_check.isChecked(),
+            quality_loop=True,
+            artifact_qa=True,
+            asr_qa_after_synthesis=self._worker_handles_asr,
+            asr_model=self._selected_asr_model(),
+            asr_device=self._selected_asr_device(),
+            max_resynthesis_attempts=2,
+        )
+        self._worker.progress.connect(self._on_progress)
+        self._worker.status.connect(self._on_status)
+        self._worker.log_line.connect(self._on_log_line)
+        self._worker.finished.connect(self._on_finished)
+        self._worker.error.connect(self._on_error)
+        self._worker.start()
+        self._status.setText("Resynthesizing failed/warning chunks...")
+
+    def _reset_quality_bad_chunks(self, *, max_attempts: int) -> None:
+        if not self._manifest_path or not self._manifest_path.exists():
+            return
+        from book_normalizer.tts.quality_gate import (
+            chunk_quality_status,
+            reset_chunk_for_resynthesis,
+        )
+
+        data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
+        changed = False
+        for chunk in _iter_manifest_chunks(data):
+            status = chunk_quality_status(chunk)
+            if status not in {"failed", "warning"}:
+                continue
+            reason = str(chunk.get("resynthesis_reason") or f"quality dashboard: {status}")
+            changed = reset_chunk_for_resynthesis(
+                chunk,
+                reason=reason,
+                max_attempts=max_attempts,
+            ) or changed
+        if changed:
+            save_manifest(self._manifest_path, data)
+            self._load_chapters_from_manifest()
+
+    def _start_asr_qa_worker(
+        self,
+        pending_finish: tuple[str, int, int] | None = None,
+    ) -> None:
+        if not self._manifest_path or not self._manifest_path.exists():
+            return
+        self._pending_synthesis_finish = pending_finish
+        self._btn_asr_run.setEnabled(False)
+        self._btn_asr_open_report.setEnabled(False)
+        self._btn_asr_open_diff.setEnabled(False)
+        self._asr_status.setText(t("synth.asr_running"))
+        self._progress.set_busy(t("synth.asr_running"))
+
+        self._asr_worker = AsrQaWorker(
+            self._manifest_path,
+            model=self._selected_asr_model(),
+            device=self._selected_asr_device(),
+            timeout_seconds=float(self._asr_timeout_spin.value()),
+            run_artifact=True,
+        )
+        self._asr_worker.status.connect(self._asr_status.setText)
+        self._asr_worker.log_line.connect(self._on_log_line)
+        self._asr_worker.finished.connect(self._on_asr_finished)
+        self._asr_worker.error.connect(self._on_asr_error)
+        self._asr_worker.start()
+
+    def _on_asr_finished(
+        self,
+        report_path: str,
+        status: str,
+        failed: int,
+        warning: int,
+        error: int,
+    ) -> None:
+        self._last_asr_report_path = Path(report_path)
+        self._btn_asr_run.setEnabled(bool(self._manifest_path))
+        self._btn_asr_open_report.setEnabled(True)
+        self._btn_asr_open_diff.setEnabled(True)
+        message = t(
+            "synth.asr_done",
+            status=status,
+            failed=failed,
+            warning=warning,
+            error=error,
+            path=report_path,
+        )
+        self._asr_status.setText(message)
+        self._progress.set_status(message)
+        self._load_chapters_from_manifest()
+        self._finish_pending_synthesis_after_asr()
+
+    def _on_asr_error(self, msg: str) -> None:
+        self._btn_asr_run.setEnabled(bool(self._manifest_path))
+        self._asr_status.setText(t("synth.asr_error", msg=msg))
+        self._progress.set_status(t("synth.asr_error", msg=msg))
+        self._finish_pending_synthesis_after_asr()
+
+    def _finish_pending_synthesis_after_asr(self) -> None:
+        pending = self._pending_synthesis_finish
+        self._pending_synthesis_finish = None
+        if pending is None:
+            return
+        output_dir, synthesized, skipped = pending
+        self.synthesis_finished.emit(output_dir, synthesized, skipped)
+
+    def _open_asr_report(self) -> None:
+        self._open_local_file(self._last_asr_report_path)
+
+    def _open_asr_diff(self) -> None:
+        diff_path = (
+            self._last_asr_report_path.with_suffix(".diff.txt")
+            if self._last_asr_report_path
+            else None
+        )
+        self._open_local_file(diff_path)
+
+    def _master_passed_chapters(self) -> None:
+        if not self._manifest_path:
+            return
+        output_dir = self._current_output_dir() or self._manifest_path.parent
+        try:
+            from book_normalizer.tts.mastering import master_manifest
+
+            result = master_manifest(
+                self._manifest_path,
+                output_dir=output_dir,
+                output_format=self._selected_master_format(),
+                chapter_filter=self._selected_chapter(),
+            )
+        except Exception as exc:
+            self._status.setText(str(exc))
+            self._progress.set_status(str(exc))
+            return
+        message = f"Mastered {len(result.files)} file(s): {result.output_dir}"
+        self._status.setText(message)
+        self._progress.set_status(message)
+        self._on_log_line(f"Mastering report: {result.report_path}")
+
+    def _selected_master_format(self) -> str:
+        value = str(self._output_format_combo.currentData() or "both").lower()
+        return value if value in {"wav", "mp3", "both"} else "both"
+
+    def _open_local_file(self, path: Path | None) -> None:
+        if path and path.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def _select_first_asr_issue(self) -> None:
+        for chunk in self._manifest_chunks:
+            if not isinstance(chunk, dict):
+                continue
+            status = str((chunk.get("asr_qa") or {}).get("status") or "")
+            if status not in {"failed", "warning", "error"}:
+                continue
+            chapter_index = int(chunk.get("chapter_index", 0))
+            chunk_index = int(chunk.get("chunk_index", 0))
+            bad_idx = self._asr_filter_combo.findData("bad")
+            if bad_idx >= 0:
+                self._asr_filter_combo.setCurrentIndex(bad_idx)
+            self._select_test_chunk(chapter_index, chunk_index)
+            self._status.setText(t("synth.asr_selected_issue"))
+            return
+        self._status.setText(t("synth.asr_no_issues"))
 
     # ── Signal handlers ───────────────────────────────────────────────────────
 
@@ -2476,7 +3132,7 @@ class SynthesisPage(QWidget):
         """Update elapsed time display every second."""
         elapsed = int(time.time() - self._phase_start)
         m, s = divmod(elapsed, 60)
-        time_str = f"{m}:{s:02d}" if m else f"{s} сек"
+        time_str = f"{m}:{s:02d}" if m else t("time.seconds_short", sec=s)
         if self._phase == "loading":
             key = "synth.test_loading_model" if self._run_kind == "test" else "synth.loading_model"
             self._progress.set_busy(t(key) + f"  [{time_str}]")
@@ -2564,13 +3220,22 @@ class SynthesisPage(QWidget):
                 path=output_dir,
             ),
         )
+        self._load_chapters_from_manifest()
+        if self._asr_enable_check.isChecked() and not self._worker_handles_asr:
+            self._start_asr_qa_worker((output_dir, synthesized, skipped))
+            return
+        self._worker_handles_asr = False
+        self.synthesis_finished.emit(output_dir, synthesized, skipped)
 
     def _on_error(self, msg: str) -> None:
         self._tick_timer.stop()
         self._phase = "idle"
         self._run_kind = "idle"
+        self._worker_handles_asr = False
         self._set_run_buttons_active(False)
         self._progress.set_status(f"❌ {msg}")
+
+        self.synthesis_failed.emit(msg)
 
     def _find_test_audio_path(self) -> Path | None:
         if not self._preview_output_dir:

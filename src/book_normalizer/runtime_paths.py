@@ -1,0 +1,150 @@
+"""Runtime path configuration written by the cross-platform installer."""
+
+from __future__ import annotations
+
+import json
+import os
+import platform
+import re
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
+DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434"
+RUNTIME_CONFIG_ENV = "BOOKS_TO_AUDIO_RUNTIME_CONFIG"
+OLLAMA_ENDPOINT_ENV = "BOOKS_TO_AUDIO_OLLAMA_ENDPOINT"
+OLLAMA_BIN_ENV = "BOOKS_TO_AUDIO_OLLAMA_BIN"
+OLLAMA_MODELS_DIR_ENV = "BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR"
+OLLAMA_MODELS_ENV = "OLLAMA_MODELS"
+MODELS_DIR_ENV = "BOOKS_TO_AUDIO_MODELS_DIR"
+HF_HOME_ENV = "HF_HOME"
+TESSERACT_CMD_ENV = "BOOKS_TO_AUDIO_TESSERACT_CMD"
+TESSDATA_DIR_ENV = "BOOKS_TO_AUDIO_TESSDATA_DIR"
+TESSDATA_PREFIX_ENV = "TESSDATA_PREFIX"
+FFMPEG_BIN_ENV = "BOOKS_TO_AUDIO_FFMPEG_BIN"
+
+
+def project_root() -> Path:
+    """Return the editable checkout root when running from this repository."""
+    return Path(__file__).resolve().parents[2]
+
+
+def runtime_config_path() -> Path:
+    """Return the local runtime config path."""
+    configured = os.environ.get(RUNTIME_CONFIG_ENV)
+    if configured:
+        return Path(configured).expanduser()
+    return project_root() / "data" / "local_runtime_paths.json"
+
+
+@lru_cache(maxsize=1)
+def load_runtime_paths() -> dict[str, Any]:
+    """Load installer-written runtime path configuration if present."""
+    path = runtime_config_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def reset_runtime_path_cache() -> None:
+    """Clear cached runtime paths for tests or after rewriting config."""
+    load_runtime_paths.cache_clear()
+
+
+def configured_path(key: str, env_var: str | None = None) -> Path | None:
+    """Return a configured path from env first, then installer config."""
+    if env_var:
+        value = os.environ.get(env_var)
+        if value:
+            return _native_configured_path(str(value))
+    value = load_runtime_paths().get(key)
+    if not value:
+        return None
+    return _native_configured_path(str(value))
+
+
+def _native_configured_path(value: str) -> Path | None:
+    """Convert installer paths written by another host OS when possible."""
+    text = value.strip()
+    if _running_on_windows():
+        converted = _linux_mount_to_windows_path(text)
+        if text.startswith("/") and converted is None and not text.startswith("//"):
+            return None
+        return Path(converted or text).expanduser()
+
+    converted = _windows_path_to_linux_mount(text)
+    return Path(converted or text).expanduser()
+
+
+def _running_on_windows() -> bool:
+    return platform.system() == "Windows"
+
+
+def _linux_mount_to_windows_path(value: str) -> str | None:
+    match = re.match(r"^/mnt/([a-zA-Z])(?:/(.*))?$", value)
+    if not match:
+        return None
+    drive = match.group(1).upper()
+    rest = (match.group(2) or "").replace("/", "\\")
+    return f"{drive}:\\" + rest if rest else f"{drive}:\\"
+
+
+def _windows_path_to_linux_mount(value: str) -> str | None:
+    match = re.match(r"^([a-zA-Z]):[\\/]*(.*)$", value)
+    if not match:
+        return None
+    drive = match.group(1).lower()
+    rest = match.group(2).replace("\\", "/").strip("/")
+    return f"/mnt/{drive}/{rest}" if rest else f"/mnt/{drive}"
+
+
+def configured_models_dir() -> Path | None:
+    """Return configured shared TTS/ComfyUI models directory if set."""
+    return configured_path("models_dir", MODELS_DIR_ENV)
+
+
+def configured_hf_cache_dir() -> Path | None:
+    """Return configured Hugging Face cache directory if set."""
+    return configured_path("hf_cache_dir", HF_HOME_ENV)
+
+
+def configured_ollama_models_dir() -> Path | None:
+    """Return configured Ollama model storage directory if set."""
+    value = os.environ.get(OLLAMA_MODELS_DIR_ENV) or os.environ.get(OLLAMA_MODELS_ENV)
+    if value:
+        return _native_configured_path(value)
+    return configured_path("ollama_models_dir")
+
+
+def configured_tesseract_cmd() -> Path | None:
+    """Return configured Tesseract executable path if set."""
+    return configured_path("tesseract_cmd", TESSERACT_CMD_ENV)
+
+
+def configured_tessdata_dir() -> Path | None:
+    """Return configured Tesseract language data directory if set."""
+    value = os.environ.get(TESSDATA_DIR_ENV) or os.environ.get(TESSDATA_PREFIX_ENV)
+    if value:
+        return _native_configured_path(value)
+    return configured_path("tessdata_dir")
+
+
+def configured_ffmpeg_bin() -> Path | None:
+    """Return configured FFmpeg executable path if set."""
+    return configured_path("ffmpeg_bin", FFMPEG_BIN_ENV)
+
+
+def configured_ollama_endpoint(default: str = DEFAULT_OLLAMA_ENDPOINT) -> str:
+    """Return configured Ollama endpoint from env, config, or default."""
+    value = os.environ.get(OLLAMA_ENDPOINT_ENV) or load_runtime_paths().get("ollama_endpoint")
+    return str(value or default).strip() or default
+
+
+def configured_ollama_bin(default: str = "ollama") -> str:
+    """Return configured native Ollama CLI command/path from env, config, or default."""
+    value = os.environ.get(OLLAMA_BIN_ENV) or load_runtime_paths().get("ollama_bin")
+    return str(value or default).strip() or default

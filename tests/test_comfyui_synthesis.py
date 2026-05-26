@@ -10,7 +10,11 @@ from book_normalizer.comfyui.synthesis import load_manifest, synthesize_manifest
 
 
 class _Builder:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
     def build(self, **kwargs):  # noqa: ANN001, ANN204
+        self.calls.append(kwargs)
         return {"prompt": kwargs}
 
 
@@ -73,6 +77,96 @@ def test_synthesize_manifest_updates_successful_chunk(tmp_path: Path) -> None:
     assert "PROGRESS 1/1" in lines
 
 
+def test_synthesize_manifest_passes_manifest_language_to_workflow(tmp_path: Path) -> None:
+    manifest = _manifest()
+    manifest["language"] = "uz"
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    builder = _Builder()
+
+    synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=_Client(),  # type: ignore[arg-type]
+        builder=builder,  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+    )
+
+    assert builder.calls[0]["language"] == "uz"
+
+
+def test_synthesize_manifest_passes_character_voice_override(tmp_path: Path) -> None:
+    manifest = _manifest()
+    chunk = manifest["chapters"][0]["chunks"][0]
+    chunk.update(
+        {
+            "voice_label": "women",
+            "voice_id": "female_warm",
+            "role": "female",
+            "speaker": "Маргарита",
+            "emotion": "sad",
+        }
+    )
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    builder = _Builder()
+
+    synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=_Client(),  # type: ignore[arg-type]
+        builder=builder,  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+        speaker_overrides={"speaker:Маргарита|emotion:sad": "margarita_sad"},
+    )
+
+    assert builder.calls[0]["speaker_override"] == "margarita_sad"
+
+
+def test_synthesize_manifest_passes_generation_options_and_director(tmp_path: Path) -> None:
+    manifest = _manifest()
+    chunk = manifest["chapters"][0]["chunks"][0]
+    chunk.update(
+        {
+            "speaker": "Alice",
+            "emotion": "tense",
+            "section_kind": "dialogue",
+            "director": {"pace": "slow", "volume": "quiet"},
+            "resynthesis_attempt": 1,
+        }
+    )
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    builder = _Builder()
+
+    synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=_Client(),  # type: ignore[arg-type]
+        builder=builder,  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+        generation_options={
+            "temperature": 0.9,
+            "top_p": 0.75,
+            "top_k": 30,
+            "repetition_penalty": 1.1,
+            "max_new_tokens": 1024,
+            "seed": 77,
+            "speech_rate": 0.98,
+        },
+    )
+
+    call = builder.calls[0]
+    assert call["speaker"] == "Alice"
+    assert call["emotion"] == "tense"
+    assert call["section_kind"] == "dialogue"
+    assert call["director"] == {"pace": "slow", "volume": "quiet"}
+    assert call["resynthesis_attempt"] == 1
+    assert call["generation_options"]["temperature"] == 0.9
+    assert call["generation_options"]["seed"] != 77
+    assert manifest["chapters"][0]["chunks"][0]["last_generation_options"] == call["generation_options"]
+
+
 def test_synthesize_manifest_marks_failed_chunk(tmp_path: Path) -> None:
     manifest = _manifest()
     manifest_path = tmp_path / "chunks_manifest_v2.json"
@@ -109,6 +203,43 @@ def test_synthesize_manifest_failed_only_skips_unfailed_chunks(tmp_path: Path) -
 
     assert summary.synthesized == 0
     assert client.calls == 0
+
+
+def test_synthesize_manifest_skips_deleted_chunks(tmp_path: Path) -> None:
+    manifest = _manifest()
+    chunks = manifest["chapters"][0]["chunks"]
+    chunks.append(
+        {
+            "chapter_index": 0,
+            "chunk_index": 1,
+            "voice_label": "narrator",
+            "voice_tone": "calm",
+            "text": "Deleted publisher boilerplate.",
+            "synthesized": False,
+            "deleted": True,
+            "excluded_from_tts": True,
+        }
+    )
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    client = _Client()
+    lines: list[str] = []
+
+    summary = synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=client,  # type: ignore[arg-type]
+        builder=_Builder(),  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+        progress=lines.append,
+    )
+
+    assert summary.total == 1
+    assert summary.synthesized == 1
+    assert client.calls == 1
+    assert chunks[0]["synthesized"] is True
+    assert chunks[1]["synthesized"] is False
+    assert "PROGRESS 1/1" in lines
 
 
 def test_load_manifest_rejects_v1_list(tmp_path: Path) -> None:

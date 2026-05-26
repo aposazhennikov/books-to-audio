@@ -11,6 +11,7 @@ mocked.  The tests verify:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,6 +23,23 @@ from book_normalizer.normalization.text_validator import (
     _sentence_count,
     _word_count,
 )
+
+_MOJIBAKE_FRAGMENTS = ("Рў", "Рџ", "Рњ", "вЂ", "дЅ", "Т›", "У©")
+
+
+def test_multilingual_llm_normalizer_prompts_are_readable() -> None:
+    from book_normalizer.normalization.llm_normalizer import _system_prompt_for_language
+
+    prompts = {
+        language: _system_prompt_for_language(language)
+        for language in ("ru", "en", "zh", "kk", "uz")
+    }
+
+    assert "Ты" in prompts["ru"]
+    assert "你是" in prompts["zh"]
+    assert "қазақ" in prompts["kk"].lower()
+    for prompt in prompts.values():
+        assert not any(fragment in prompt for fragment in _MOJIBAKE_FRAGMENTS)
 
 # ── TextPreservationValidator ─────────────────────────────────────────────────
 
@@ -176,7 +194,7 @@ class TestLlmNormalizerMocked:
         chapter_text = "Абзац первый.\n\nАбзац второй.\n\nАбзац третий."
         call_count = {"n": 0}
 
-        def mock_query(text: str) -> str:
+        def mock_query(text: str, **_: object) -> str:
             call_count["n"] += 1
             return text  # Return identical text (valid correction).
 
@@ -207,7 +225,7 @@ class TestLlmNormalizerMocked:
         corrected = "Тест кэша!"
         call_count = {"n": 0}
 
-        def mock_query(text: str) -> str:
+        def mock_query(text: str, **_: object) -> str:
             call_count["n"] += 1
             return corrected
 
@@ -217,12 +235,37 @@ class TestLlmNormalizerMocked:
 
         assert call_count["n"] == 1  # LLM called only once; second time uses cache.
 
+    def test_invalid_cache_is_discarded_and_requeried(self, tmp_path: Path) -> None:
+        """Stale cache that loses text must not block a fresh model attempt."""
+        normalizer = self._make_normalizer(tmp_path)
+        original = "Alpha beta gamma."
+        stale = "Alpha beta."
+        cache_path = normalizer._cache_path(0, 0, original)
+        assert cache_path is not None
+        cache_path.parent.mkdir(parents=True)
+        cache_path.write_text(stale, encoding="utf-8")
+        calls: list[str] = []
+
+        def mock_query(text: str, **_: object) -> str:
+            calls.append(text)
+            return original
+
+        with patch.object(normalizer, "_query_llm", side_effect=mock_query):
+            result = normalizer.normalize_paragraph(original, 0, 0)
+
+        assert result.is_valid
+        assert result.accepted_text == original
+        assert calls == [original]
+        assert cache_path.read_text(encoding="utf-8") == original
+        assert normalizer._failures[0].model == "cache"
+        assert "failed text preservation" in normalizer._failures[0].reason
+
     def test_empty_paragraph_skipped(self, tmp_path: Path) -> None:
         """Empty paragraph is returned as-is without LLM call."""
         normalizer = self._make_normalizer(tmp_path)
         call_count = {"n": 0}
 
-        def mock_query(text: str) -> str:
+        def mock_query(text: str, **_: object) -> str:
             call_count["n"] += 1
             return text
 
@@ -255,6 +298,123 @@ class TestLlmNormalizerMocked:
 
         assert not result.is_valid
         assert result.accepted_text == original
+
+    def test_falls_back_to_4b_when_primary_output_fails_validation(self, tmp_path: Path) -> None:
+        from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3_MODEL
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        normalizer = LlmNormalizer(cache_dir=tmp_path / "cache", language="en")
+        original = "Alpha beta gamma."
+        seen_models: list[str] = []
+
+        def fake_query(text: str, *, model: str | None = None) -> str:
+            seen_models.append(str(model))
+            if model == PRIMARY_QWEN3_MODEL:
+                return "Alpha beta."
+            return text
+
+        with patch.object(normalizer, "_query_llm", side_effect=fake_query):
+            result = normalizer.normalize_paragraph(original, 0, 0)
+
+        assert result.is_valid
+        assert result.accepted_text == original
+        assert seen_models == [PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
+
+    def test_writes_review_report_when_all_models_fail_validation(self, tmp_path: Path) -> None:
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        report_path = tmp_path / "review.json"
+        normalizer = LlmNormalizer(
+            cache_dir=tmp_path / "cache",
+            language="en",
+            max_retries=1,
+            review_report_path=report_path,
+        )
+        original = "Alpha beta gamma."
+
+        with patch.object(normalizer, "_query_llm", return_value="Alpha beta."):
+            result = normalizer.normalize_paragraph(original, 0, 0)
+
+        assert not result.is_valid
+        assert result.accepted_text == original
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+        assert payload["requires_human_review"] is True
+        assert payload["language"] == "en"
+        assert len(payload["failures"]) == 2
+        assert payload["failures"][0]["source_preview"] == original
+        assert payload["failures"][0]["output_preview"] == "Alpha beta."
+
+    @pytest.mark.parametrize("language", ["ru", "en", "zh", "kk", "uz"])
+    def test_language_prompt_is_selected_for_supported_languages(self, language: str) -> None:
+        from book_normalizer.normalization.llm_normalizer import _system_prompt_for_language
+
+        prompt = _system_prompt_for_language(language)
+
+        assert "JSON" in prompt
+        if language == "ru":
+            assert "Ё" in prompt
+        else:
+            assert "Ё" not in prompt
+
+    def test_query_llm_sends_quoted_source_as_json_input(self, tmp_path: Path) -> None:
+        from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
+        from book_normalizer.llm.ollama_client import OllamaChatAttempt
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        text = 'Sergey eshikni ochdi. "U yerda kim bor?" deb so\'radi u.'
+        captured: dict = {}
+
+        class _FakeClient:
+            def chat_json_with_fallback(self, **kwargs):
+                captured.update(kwargs)
+                return OllamaChatAttempt(
+                    model=PRIMARY_QWEN3_MODEL,
+                    content=json.dumps({"text": text}),
+                    data={"text": text},
+                )
+
+        normalizer = LlmNormalizer(cache_dir=tmp_path / "cache", language="uz")
+        normalizer._client = _FakeClient()
+
+        result = normalizer._query_llm(text, model=PRIMARY_QWEN3_MODEL)
+
+        assert result == text
+        user_content = captured["messages"][1]["content"]
+        payload = json.loads(user_content.split("INPUT_JSON:\n", 1)[1])
+        assert payload["language"] == "Uzbek"
+        assert payload["text"] == text
+
+    def test_retry_query_tells_model_why_text_preservation_failed(self, tmp_path: Path) -> None:
+        from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
+        from book_normalizer.llm.ollama_client import OllamaChatAttempt
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        text = "Alpha beta gamma."
+        captured: dict = {}
+
+        class _FakeClient:
+            def chat_json_with_fallback(self, **kwargs):
+                captured.update(kwargs)
+                return OllamaChatAttempt(
+                    model=PRIMARY_QWEN3_MODEL,
+                    content=json.dumps({"text": text}),
+                    data={"text": text},
+                )
+
+        normalizer = LlmNormalizer(cache_dir=tmp_path / "cache", language="en")
+        normalizer._client = _FakeClient()
+
+        result = normalizer._query_llm(
+            text,
+            model=PRIMARY_QWEN3_MODEL,
+            previous_issues=["Too many words removed: ratio 0.667 < 0.880"],
+        )
+
+        user_content = captured["messages"][1]["content"]
+        assert result == text
+        assert "PREVIOUS_OUTPUT_FAILED_VALIDATION" in user_content
+        assert "Too many words removed" in user_content
+        assert "Return the original input.text unchanged" in user_content
 
     def test_normalize_book_updates_paragraphs_and_reports_progress(self, tmp_path: Path) -> None:
         from book_normalizer.models.book import Book, Chapter, Paragraph
@@ -398,14 +558,16 @@ class TestLlmChunkerFormat:
         assert [spec.chunk_index for spec in specs] == list(range(len(specs)))
         assert all(len(spec.text) <= 18 for spec in specs)
 
-    def test_chunker_rejects_text_loss_and_falls_back(self, tmp_path: Path) -> None:
-        """LLM chunking must not silently drop source words."""
-        from book_normalizer.chunking.llm_chunker import LlmChunker
+    def test_chunker_rejects_text_loss_and_writes_review_report(self, tmp_path: Path) -> None:
+        """LLM chunking must not silently downgrade when source words are lost."""
+        from book_normalizer.chunking.llm_chunker import LlmChunker, LlmChunkingError
 
+        report_path = tmp_path / "review.json"
         chunker = LlmChunker(
             model="test-model",
             cache_dir=tmp_path / "cache",
             max_retries=1,
+            review_report_path=report_path,
         )
 
         with patch.object(
@@ -413,13 +575,38 @@ class TestLlmChunkerFormat:
             "_query_llm",
             return_value=[{"narrator": "alpha beta", "voice_tone": "calm"}],
         ):
+            with pytest.raises(LlmChunkingError):
+                chunker.chunk_chapter(
+                    chapter_index=0,
+                    chapter_text="alpha beta gamma delta.",
+                )
+
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+        assert payload["requires_human_review"] is True
+        assert payload["language"] == "ru"
+        assert payload["failures"][0]["reason"] == "text_preservation_failed"
+
+    def test_chunker_tries_fallback_model_after_primary_text_loss(self, tmp_path: Path) -> None:
+        from book_normalizer.chunking.llm_chunker import LlmChunker
+        from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3_MODEL
+
+        chunker = LlmChunker(cache_dir=tmp_path / "cache", max_retries=1, language="en")
+        seen_models: list[str] = []
+
+        def fake_query(_: str, __: str, *, model: str | None = None):
+            seen_models.append(str(model))
+            if model == PRIMARY_QWEN3_MODEL:
+                return [{"narrator": "alpha beta", "voice_tone": "calm"}]
+            return [{"narrator": "alpha beta gamma delta.", "voice_tone": "calm"}]
+
+        with patch.object(chunker, "_query_llm", side_effect=fake_query):
             specs = chunker.chunk_chapter(
                 chapter_index=0,
                 chapter_text="alpha beta gamma delta.",
             )
 
+        assert seen_models == [PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
         assert " ".join(spec.text for spec in specs) == "alpha beta gamma delta."
-        assert specs[0].voice_label == "narrator"
 
     def test_chunker_keeps_short_dialogue_chunks(self) -> None:
         """Short replies like 'Да.' are valid chunks and must not be filtered."""
@@ -444,9 +631,62 @@ class TestLlmChunkerFormat:
         assert p1 != p2
         assert p1 != p3
 
-    def test_chunker_fallback_on_empty_llm(self, tmp_path: Path) -> None:
-        """LlmChunker uses heuristic fallback when LLM always returns empty."""
-        chunker = self._make_chunker(tmp_path)
+    @pytest.mark.parametrize(
+        ("language", "expected_name"),
+        [
+            ("ru", "Russian"),
+            ("en", "English"),
+            ("zh", "Chinese"),
+            ("kk", "Kazakh"),
+            ("uz", "Uzbek"),
+        ],
+    )
+    def test_chunker_sends_quoted_source_as_json_input(
+        self,
+        tmp_path: Path,
+        language: str,
+        expected_name: str,
+    ) -> None:
+        from book_normalizer.chunking.llm_chunker import LlmChunker
+        from book_normalizer.llm.ollama_client import OllamaChatAttempt
+
+        text = 'Он вошёл. "Кто там?" — спросил он.'
+        captured: dict = {}
+
+        class _FakeClient:
+            def chat_json_with_fallback(self, **kwargs):
+                captured.update(kwargs)
+                return OllamaChatAttempt(
+                    model="test-model",
+                    content=json.dumps([{"narrator": text, "voice_tone": "calm"}]),
+                    data=[{"narrator": text, "voice_tone": "calm"}],
+                )
+
+        chunker = LlmChunker(
+            model="test-model",
+            cache_dir=tmp_path / "cache",
+            language=language,
+        )
+        chunker._client = _FakeClient()
+
+        items = chunker._query_llm("system prompt", text)
+
+        assert items == [{"narrator": text, "voice_tone": "calm"}]
+        user_content = captured["messages"][1]["content"]
+        payload = json.loads(user_content.split("INPUT_JSON:\n", 1)[1])
+        assert payload["language"] == expected_name
+        assert payload["language_code"] == language
+        assert payload["text"] == text
+
+    def test_chunker_can_use_explicit_heuristic_fallback_on_empty_llm(self, tmp_path: Path) -> None:
+        """Heuristic fallback is available only when explicitly requested."""
+        from book_normalizer.chunking.llm_chunker import LlmChunker
+
+        chunker = LlmChunker(
+            model="test-model",
+            cache_dir=tmp_path / "cache",
+            allow_heuristic_fallback=True,
+        )
 
         with patch.object(chunker, "_query_llm", return_value=""):
             specs = chunker.chunk_chapter(

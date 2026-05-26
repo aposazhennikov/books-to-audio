@@ -1,4 +1,4 @@
-"""Voices page — dialogue detection, voice preview, and interactive assignment."""
+"""Chunk editing page — segment review, role assignment, and TTS chunk export."""
 
 from __future__ import annotations
 
@@ -7,14 +7,17 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -26,10 +29,13 @@ from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.widgets.voice_preview import VoicePreviewPanel
 from book_normalizer.gui.widgets.voice_table import VoiceTableWidget
 from book_normalizer.gui.workers.tts_worker import ExportSegmentsWorker
+from book_normalizer.languages import normalize_book_language
+from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
+from book_normalizer.runtime_paths import configured_ollama_endpoint
 
 
 class VoicesPage(QWidget):
-    """Page for dialogue detection, voice preview, and voice assignment."""
+    """Page for smart segment review, role assignment, and TTS chunk export."""
 
     chunks_built = pyqtSignal(str)
 
@@ -39,6 +45,8 @@ class VoicesPage(QWidget):
         self._output_dir: Path | None = None
         self._manifest_path: Path | None = None
         self._worker: ExportSegmentsWorker | None = None
+        self._ui_scale = 1.0
+        self._compact_mode = False
         self._setup_ui()
 
     # ── UI setup ──
@@ -54,13 +62,18 @@ class VoicesPage(QWidget):
 
         # Left panel: settings + actions.
         left_panel = QWidget()
+        self._settings_panel = left_panel
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
 
-        settings = QFormLayout()
+        settings = QGridLayout()
+        self._settings_layout = settings
         settings.setHorizontalSpacing(16)
         settings.setVerticalSpacing(6)
+        settings.setColumnStretch(0, 3)
+        settings.setColumnStretch(1, 0)
+        settings.setColumnStretch(2, 3)
 
         # Speaker mode.
         self._speaker_mode = QComboBox()
@@ -69,27 +82,35 @@ class VoicesPage(QWidget):
         )
         self._speaker_mode_label = QLabel()
         self._speaker_mode_label.setToolTip(t("voice.speaker_mode_hint"))
-        settings.addRow(self._speaker_mode_label, self._speaker_mode)
+        settings.addWidget(self._speaker_mode_label, 0, 0)
+        settings.addWidget(self._speaker_mode, 1, 0)
 
         self._speaker_mode_hint = QLabel()
         self._speaker_mode_hint.setWordWrap(True)
         self._speaker_mode_hint.setStyleSheet(
-            "color: rgba(226,232,240,0.48); font-size: 10px;"
+            "color: rgba(51,65,85,0.62); font-size: 10px;"
             "padding: 0 0 4px 0;",
         )
-        settings.addRow("", self._speaker_mode_hint)
+        settings.addWidget(self._speaker_mode_hint, 2, 0, 1, 3)
 
         # Max chunk chars.
         self._chunk_size = QSpinBox()
         self._chunk_size.setRange(30, 2000)
         self._chunk_size.setValue(600)
         self._chunk_size.setSingleStep(10)
+        self._chunk_size.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._chunk_size.lineEdit().setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._chunk_size.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self._chunk_size.setFixedWidth(128)
+        self._chunk_size.setFixedHeight(38)
         self._chunk_size_label = QLabel()
-        settings.addRow(self._chunk_size_label, self._chunk_size)
+        settings.addWidget(self._chunk_size_label, 0, 1)
+        settings.addWidget(self._chunk_size, 1, 1)
 
         self._stress_mode = QComboBox()
         self._stress_mode_label = QLabel()
-        settings.addRow(self._stress_mode_label, self._stress_mode)
+        settings.addWidget(self._stress_mode_label, 0, 2)
+        settings.addWidget(self._stress_mode, 1, 2)
 
         left_layout.addLayout(settings)
 
@@ -99,6 +120,10 @@ class VoicesPage(QWidget):
         llm_layout.setContentsMargins(0, 0, 0, 8)
         llm_layout.setHorizontalSpacing(12)
         llm_layout.setVerticalSpacing(6)
+        llm_layout.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow,
+        )
+        llm_layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         self._llm_provider = QComboBox()
         self._llm_provider_label = QLabel()
@@ -108,12 +133,12 @@ class VoicesPage(QWidget):
         llm_layout.addRow(self._llm_provider_label, self._llm_provider)
 
         self._llm_endpoint_label = QLabel()
-        self._llm_endpoint = QLineEdit("http://localhost:11434/v1")
+        self._llm_endpoint = QLineEdit(configured_ollama_endpoint())
         self._llm_endpoint.setMinimumHeight(28)
         llm_layout.addRow(self._llm_endpoint_label, self._llm_endpoint)
 
         self._llm_model_label = QLabel()
-        self._llm_model = QLineEdit("qwen3:8b")
+        self._llm_model = QLineEdit(PRIMARY_QWEN3_MODEL)
         self._llm_model.setMinimumHeight(28)
         llm_layout.addRow(self._llm_model_label, self._llm_model)
 
@@ -128,29 +153,29 @@ class VoicesPage(QWidget):
         left_layout.addWidget(self._llm_panel)
 
         # Action buttons.
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
+        self._action_panel = QWidget()
+        action_row = QHBoxLayout(self._action_panel)
+        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.setSpacing(8)
 
         self._btn_detect = QPushButton()
         self._btn_detect.setObjectName("primaryBtn")
         self._btn_detect.setMinimumHeight(38)
+        self._btn_detect.setMinimumWidth(260)
+        self._btn_detect.setMaximumWidth(360)
         self._btn_detect.clicked.connect(self._run_detection)
         self._btn_detect.setEnabled(False)
-        btn_row.addWidget(self._btn_detect)
+        action_row.addWidget(self._btn_detect)
+        action_row.addStretch(1)
 
         self._btn_load = QPushButton()
         self._btn_load.clicked.connect(self._load_manifest)
-        btn_row.addWidget(self._btn_load)
+        action_row.addWidget(self._btn_load)
 
         self._btn_save = QPushButton()
         self._btn_save.clicked.connect(self._save_manifest)
         self._btn_save.setEnabled(False)
-        btn_row.addWidget(self._btn_save)
-        left_layout.addLayout(btn_row)
-
-        # Build TTS chunks button.
-        btn_row2 = QHBoxLayout()
-        btn_row2.setSpacing(8)
+        action_row.addWidget(self._btn_save)
 
         self._btn_build = QPushButton()
         self._btn_build.setMinimumHeight(34)
@@ -158,24 +183,23 @@ class VoicesPage(QWidget):
         self._btn_build.setEnabled(False)
         self._btn_build.setStyleSheet(
             "QPushButton {"
-            "  background: rgba(16,185,129,0.16);"
-            "  color: #99f6e4;"
-            "  border: 1px solid rgba(45,212,191,0.32);"
+            "  background: rgba(204,251,241,0.78);"
+            "  color: #0f766e;"
+            "  border: 1px solid rgba(20,184,166,0.30);"
             "  border-radius: 8px; font-weight: 700;"
             "  padding: 6px 16px;"
             "}"
             "QPushButton:hover {"
-            "  background: rgba(16,185,129,0.26);"
+            "  background: rgba(153,246,228,0.86);"
             "}"
             "QPushButton:disabled {"
-            "  color: rgba(226,232,240,0.24);"
-            "  background: rgba(15,23,42,0.50);"
-            "  border-color: rgba(148,163,184,0.08);"
+            "  color: rgba(71,85,105,0.42);"
+            "  background: rgba(226,232,240,0.56);"
+            "  border-color: rgba(148,163,184,0.14);"
             "}",
         )
-        btn_row2.addWidget(self._btn_build)
-        btn_row2.addStretch()
-        left_layout.addLayout(btn_row2)
+        action_row.addWidget(self._btn_build)
+        left_layout.addWidget(self._action_panel)
 
         self._progress = ProgressWidget()
         left_layout.addWidget(self._progress)
@@ -184,17 +208,19 @@ class VoicesPage(QWidget):
         self._manifest_label = QLabel("")
         self._manifest_label.setWordWrap(True)
         self._manifest_label.setStyleSheet(
-            "color: rgba(226,232,240,0.52); font-size: 10px;"
+            "color: rgba(51,65,85,0.62); font-size: 10px;"
             "padding: 2px 0;",
         )
         self._manifest_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
+        self._manifest_label.setVisible(False)
         left_layout.addWidget(self._manifest_label)
 
         left_layout.addStretch()
 
-        # Right panel: voice preview (scrollable, vertical only).
+        # Right panel: voice preview. Content remains wheel/touchpad scrollable,
+        # but the visual bar stays hidden to keep the tab clean at high zoom.
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -203,17 +229,18 @@ class VoicesPage(QWidget):
         self._preview_title = QLabel()
         self._preview_title.setStyleSheet(
             "font-weight: 700; font-size: 14px;"
-            "color: rgba(248,250,252,0.86); padding: 4px 0;",
+            "color: rgba(30,41,59,0.86); padding: 4px 0;",
         )
         right_layout.addWidget(self._preview_title)
 
         scroll = QScrollArea()
+        scroll.setObjectName("voicePreviewScroll")
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
         scroll.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
         scroll.setStyleSheet(
             "QScrollArea { border: none; background: transparent; }",
@@ -221,6 +248,11 @@ class VoicesPage(QWidget):
         self._voice_preview = VoicePreviewPanel()
         scroll.setWidget(self._voice_preview)
         right_layout.addWidget(scroll)
+
+        left_panel.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
 
         self._top_tabs.addTab(left_panel, "")
         self._top_tabs.addTab(right_panel, "")
@@ -242,7 +274,7 @@ class VoicesPage(QWidget):
         # Stats.
         self._stats_label = QLabel("")
         self._stats_label.setStyleSheet(
-            "color: rgba(226,232,240,0.64); font-size: 12px;"
+            "color: rgba(51,65,85,0.70); font-size: 12px;"
             "font-weight: 600; padding: 4px 0;",
         )
         layout.addWidget(self._stats_label)
@@ -267,11 +299,13 @@ class VoicesPage(QWidget):
         self._stress_mode.setToolTip(t("voice.stress_mode_hint"))
         self._btn_detect.setText(t("voice.detect"))
         self._btn_load.setText(t("voice.load_manifest"))
+        self._btn_load.setToolTip(t("voice.load_manifest_tip"))
         self._btn_save.setText(t("voice.save_manifest"))
+        self._btn_save.setToolTip(t("voice.save_manifest_tip"))
         self._btn_build.setText(t("voice.build_chunks"))
-        self._preview_title.setText(t("voice.preview_panel"))
-        self._top_tabs.setTabText(0, t("voice.settings_panel"))
-        self._top_tabs.setTabText(1, t("voice.preview_panel"))
+        self._preview_title.setText(t("chunks.preset_panel"))
+        self._top_tabs.setTabText(0, t("chunks.settings_panel"))
+        self._top_tabs.setTabText(1, t("chunks.preset_panel"))
 
         self._llm_provider_label.setText(t("voice.llm_provider"))
         self._llm_provider.clear()
@@ -283,16 +317,96 @@ class VoicesPage(QWidget):
 
         self._voice_table.retranslate()
         self._voice_preview.retranslate()
+        self._sync_compact_mode()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Keep the voice table readable as the page width changes."""
         super().resizeEvent(event)
         self._sync_compact_mode()
+        self._sync_settings_panel_height()
+
+    def set_ui_scale(self, scale: float) -> None:
+        """Keep the settings panel tall enough when global UI zoom changes."""
+        self._ui_scale = max(0.8, min(1.45, scale))
+        self._voice_table.set_ui_scale(self._ui_scale)
+        self._sync_compact_mode()
+        self._sync_settings_panel_height()
+
+    def _sync_settings_panel_height(self) -> None:
+        """Balance the scrollable settings area against the assignment table."""
+        width_compact = self.width() < 960
+        height_compact = self.height() < 580
+        content_needed = self._settings_panel.sizeHint().height()
+        if self._top_tabs.tabBar().isVisible():
+            content_needed += self._top_tabs.tabBar().sizeHint().height()
+        content_needed += round(18 * self._ui_scale)
+        if width_compact:
+            target = max(164, round(105 * self._ui_scale))
+            minimum = 164
+        elif height_compact:
+            target = max(188, round(130 * self._ui_scale))
+            minimum = 188
+        else:
+            target = max(188, round(188 * self._ui_scale))
+            minimum = 188
+        if not width_compact:
+            target = max(target, content_needed)
+        if self.height() > 0:
+            if self.height() < 430:
+                table_reserve = 145
+            elif height_compact:
+                table_reserve = 250
+            else:
+                table_reserve = max(260, round(260 * self._ui_scale))
+            target = min(target, max(minimum, self.height() - table_reserve))
+        self._top_tabs.setMinimumHeight(target)
+        self._top_tabs.setMaximumHeight(target)
 
     def _sync_compact_mode(self) -> None:
         """Switch heavy table controls into compact mode on narrow widths."""
-        compact = self.width() < 960
-        self._voice_table.set_compact_mode(compact)
+        width_compact = self.width() < 960
+        height_compact = self.height() < 580
+        controls_compact = width_compact or height_compact
+        ultra_dense = self.height() < 430
+        dense = ultra_dense or (height_compact and not width_compact)
+        self._compact_mode = controls_compact
+        self._voice_table.set_compact_mode(width_compact)
+        self._voice_table.set_dense_mode(dense, ultra_dense=ultra_dense)
+        self._settings_layout.setVerticalSpacing(12 if controls_compact else 6)
+        self._action_panel.layout().setContentsMargins(0, 4 if controls_compact else 0, 0, 0)
+        self._chunk_size.setFixedHeight(42 if controls_compact else 38)
+        self._chunk_size.setFixedWidth(118 if width_compact else 128)
+        self._progress.setVisible(not controls_compact)
+        for button in (
+            self._btn_detect,
+            self._btn_load,
+            self._btn_save,
+            self._btn_build,
+        ):
+            if controls_compact:
+                button.setFixedHeight(42)
+            else:
+                button.setMaximumHeight(16777215)
+                button.setMinimumHeight(max(38, round(38 * self._ui_scale)))
+        for label in (
+            self._speaker_mode_label,
+            self._chunk_size_label,
+            self._stress_mode_label,
+        ):
+            label.setVisible(not controls_compact)
+        self._speaker_mode_hint.setVisible(not controls_compact)
+        self._stress_mode.setVisible(not controls_compact)
+        self._stats_label.setVisible(not dense)
+        self._btn_detect.setMinimumWidth(0 if width_compact else 260)
+        self._btn_detect.setMaximumWidth(16777215 if width_compact else 360)
+        self._btn_detect.setText(t("voice.compact_detect") if width_compact else t("voice.detect"))
+        self._btn_load.setText(
+            t("voice.compact_load_manifest") if width_compact else t("voice.load_manifest")
+        )
+        self._btn_save.setText(
+            t("voice.compact_save_manifest") if width_compact else t("voice.save_manifest")
+        )
+        self._btn_build.setText(t("voice.compact_build_chunks") if width_compact else t("voice.build_chunks"))
 
     def _current_speaker_mode(self) -> str:
         """Return the internal speaker attribution mode."""
@@ -339,9 +453,9 @@ class VoicesPage(QWidget):
         """Show inline hint for currently selected speaker mode."""
         mode = self._current_speaker_mode()
         hints = {
-            "heuristic": t("voice.speaker_mode_hint").split("\n")[0],
-            "llm": t("voice.speaker_mode_hint").split("\n")[1],
-            "manual": t("voice.speaker_mode_hint").split("\n")[2],
+            "heuristic": t("voice.speaker_mode_hint_inline_heuristic"),
+            "llm": t("voice.speaker_mode_hint_inline_llm"),
+            "manual": t("voice.speaker_mode_hint_inline_manual"),
         }
         self._speaker_mode_hint.setText(hints.get(mode, ""))
 
@@ -352,6 +466,7 @@ class VoicesPage(QWidget):
         mode = self._current_speaker_mode()
         self._llm_panel.setVisible(mode == "llm")
         self._update_speaker_mode_hint()
+        self._refresh_loaded_layout()
 
     def _on_llm_provider_changed(self, _idx: int) -> None:
         """Toggle endpoint vs API key fields based on provider."""
@@ -365,14 +480,39 @@ class VoicesPage(QWidget):
             self._llm_endpoint.setText("https://api.openai.com/v1")
             self._llm_model.setText("gpt-4o-mini")
         else:
-            self._llm_endpoint.setText("http://localhost:11434/v1")
-            self._llm_model.setText("qwen3:8b")
+            self._llm_endpoint.setText(configured_ollama_endpoint())
+            self._llm_model.setText(PRIMARY_QWEN3_MODEL)
+        self._refresh_loaded_layout()
 
     def set_book(self, book: object, output_dir: Path) -> None:
         """Set the book object from normalization page."""
         self._book = book
         self._output_dir = output_dir
+        metadata = getattr(book, "metadata", None)
+        extra = getattr(metadata, "extra", {}) if metadata is not None else {}
+        if isinstance(extra, dict) and extra.get("llm_processing_enabled"):
+            idx = self._speaker_mode.findData("llm")
+            if idx >= 0:
+                self._speaker_mode.setCurrentIndex(idx)
+            candidates = extra.get("llm_model_candidates")
+            if isinstance(candidates, list) and candidates:
+                self._llm_model.setText(str(candidates[0]))
         self._btn_detect.setEnabled(True)
+
+    def load_segments_manifest(self, manifest_path: Path) -> None:
+        """Load an existing segment manifest from the Roles step."""
+        self._manifest_path = manifest_path
+        self._voice_table.load_manifest(self._manifest_path)
+        self._btn_save.setEnabled(True)
+        self._btn_build.setEnabled(True)
+        segments = self._voice_table.get_active_segments()
+        self._update_stats(segments)
+        self._manifest_label.setText(
+            t("voice.manifest_path", path=str(self._manifest_path)),
+        )
+        self._manifest_label.setVisible(True)
+        self._progress.set_status(t("voice.segments_ready", n=len(segments)))
+        self._refresh_loaded_layout()
 
     # ── Detection ──
 
@@ -408,14 +548,16 @@ class VoicesPage(QWidget):
         self._btn_save.setEnabled(True)
         self._btn_build.setEnabled(True)
 
-        segments = self._voice_table.get_segments()
+        segments = self._voice_table.get_active_segments()
         self._update_stats(segments)
         self._manifest_label.setText(
             t("voice.manifest_path", path=str(self._manifest_path)),
         )
+        self._manifest_label.setVisible(True)
         self._progress.set_status(
             t("voice.segments_ready", n=len(segments)),
         )
+        self._refresh_loaded_layout()
 
     def _update_stats(self, segments: list) -> None:
         """Update the stats label with segment distribution."""
@@ -446,7 +588,7 @@ class VoicesPage(QWidget):
             build_chunks_from_segments,
         )
 
-        segments = self._voice_table.get_segments()
+        segments = self._voice_table.get_active_segments()
         if not segments:
             return
 
@@ -464,9 +606,12 @@ class VoicesPage(QWidget):
 
         self._output_dir.mkdir(parents=True, exist_ok=True)
         chunks_path = self._output_dir / "chunks_manifest_v2.json"
+        metadata = getattr(self._book, "metadata", None)
+        language = normalize_book_language(getattr(metadata, "language", "ru"))
         manifest = chunks_to_v2_manifest(
             chunks,
             book_title=self._output_dir.name,
+            language=language,
             chunker="gui",
             max_chunk_chars=self._chunk_size.value(),
         )
@@ -481,7 +626,9 @@ class VoicesPage(QWidget):
         self._manifest_label.setText(
             t("voice.manifest_path", path=str(chunks_path)),
         )
+        self._manifest_label.setVisible(True)
         self.chunks_built.emit(str(chunks_path))
+        self._refresh_loaded_layout()
 
     # ── Load / Save ──
 
@@ -500,6 +647,8 @@ class VoicesPage(QWidget):
             self._manifest_label.setText(
                 t("voice.manifest_path", path=str(self._manifest_path)),
             )
+            self._manifest_label.setVisible(True)
+            self._refresh_loaded_layout()
 
     def _save_manifest(self) -> None:
         if not self._manifest_path:
@@ -520,7 +669,15 @@ class VoicesPage(QWidget):
         self._manifest_label.setText(
             t("voice.manifest_path", path=str(self._manifest_path)),
         )
+        self._manifest_label.setVisible(True)
+        self._refresh_loaded_layout()
 
     def get_manifest_path(self) -> Path | None:
         """Return path to the current manifest file."""
         return self._manifest_path
+
+    def _refresh_loaded_layout(self) -> None:
+        """Recompute compact/dense layout after manifest-dependent widgets appear."""
+        self._sync_compact_mode()
+        self._sync_settings_panel_height()
+        self.updateGeometry()

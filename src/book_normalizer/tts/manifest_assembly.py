@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.chunking.manifest_v2 import chunk_is_excluded, ensure_v2_manifest
+
 
 @dataclass
 class ChapterAssemblyResult:
@@ -27,9 +29,7 @@ def load_manifest_v2(manifest_path: Path) -> dict[str, Any]:
     if not manifest_path.exists():
         raise FileNotFoundError(f"Manifest not found: {manifest_path}")
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("Manifest must be a JSON object.")
-    return data
+    return ensure_v2_manifest(data).to_record()
 
 
 def assemble_from_manifest(
@@ -42,6 +42,7 @@ def assemble_from_manifest(
     strict_missing: bool = False,
 ) -> list[ChapterAssemblyResult]:
     """Assemble synthesized chunks in manifest order."""
+    manifest = ensure_v2_manifest(manifest).to_record()
     out_dir.mkdir(parents=True, exist_ok=True)
     chapters = manifest.get("chapters", [])
     if not chapters:
@@ -58,7 +59,12 @@ def assemble_from_manifest(
 
         chunks = [
             c for c in chapter_entry.get("chunks", [])
-            if isinstance(c, dict) and c.get("synthesized", False) and c.get("audio_file")
+            if (
+                isinstance(c, dict)
+                and not chunk_is_excluded(c)
+                and c.get("synthesized", False)
+                and c.get("audio_file")
+            )
         ]
         if not chunks:
             results.append(

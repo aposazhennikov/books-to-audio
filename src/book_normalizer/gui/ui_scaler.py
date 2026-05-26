@@ -4,18 +4,63 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from pathlib import Path
 
 from PyQt6.QtCore import QEvent, QObject, Qt
-from PyQt6.QtGui import QFont, QGuiApplication
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtGui import QFont, QFontDatabase, QGuiApplication
+from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
+    QApplication,
+    QComboBox,
+    QLineEdit,
+    QPushButton,
+    QToolButton,
+    QWidget,
+)
 
 MIN_UI_SCALE = 0.8
 MAX_UI_SCALE = 1.45
 SCALE_STEP = 0.05
 BASE_FONT_SIZE = 13
+MULTILINGUAL_FONT_FAMILIES = (
+    "Segoe UI",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Noto Sans CJK SC",
+    "Noto Sans CJK",
+    "WenQuanYi Zen Hei",
+    "Noto Sans",
+    "Inter",
+    "Helvetica Neue",
+)
+SYSTEM_FONT_FILES = (
+    "C:/Windows/Fonts/segoeui.ttf",
+    "C:/Windows/Fonts/segoeuib.ttf",
+    "C:/Windows/Fonts/msyh.ttc",
+    "C:/Windows/Fonts/msyhbd.ttc",
+    "C:/Windows/Fonts/simsun.ttc",
+    "C:/Windows/Fonts/arial.ttf",
+    "C:/Windows/Fonts/arialbd.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/System/Library/Fonts/Supplemental/PingFang.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+)
 
 _FONT_SIZE_RE = re.compile(r"(font-size\s*:\s*)(\d+(?:\.\d+)?)(px)", re.IGNORECASE)
 _BASE_STYLESHEET_PROPERTY = "_books_to_audio_base_stylesheet"
+_BASE_MIN_HEIGHT_PROPERTY = "_books_to_audio_base_minimum_height"
+_BASE_MIN_WIDTH_PROPERTY = "_books_to_audio_base_minimum_width"
+_BASE_MAX_WIDTH_PROPERTY = "_books_to_audio_base_maximum_width"
+_BASE_MAX_HEIGHT_PROPERTY = "_books_to_audio_base_maximum_height"
+_QT_UNBOUNDED_SIZE = 16_000_000
+_FONT_LOAD_ATTEMPTED = False
+_LOADED_FONT_FAMILIES: list[str] = []
 
 
 def clamp_scale(scale: float) -> float:
@@ -37,8 +82,155 @@ def scale_stylesheet(stylesheet: str, scale: float) -> str:
     return _FONT_SIZE_RE.sub(repl, stylesheet)
 
 
+def make_app_font(
+    point_size: int,
+    weight: QFont.Weight | None = None,
+) -> QFont:
+    """Create the application font with multilingual fallback families."""
+    ensure_multilingual_fonts_loaded()
+    font = QFont()
+    if hasattr(font, "setFamilies"):
+        font.setFamilies(list(MULTILINGUAL_FONT_FAMILIES))
+    else:  # pragma: no cover - Qt 6 exposes setFamilies
+        font.setFamily(MULTILINGUAL_FONT_FAMILIES[0])
+    font.setPointSize(point_size)
+    if weight is not None:
+        font.setWeight(weight)
+    return font
+
+
+def ensure_multilingual_fonts_loaded() -> None:
+    """Load known system fonts when PyQt wheels expose an empty font database."""
+    global _FONT_LOAD_ATTEMPTED
+    if _FONT_LOAD_ATTEMPTED and _LOADED_FONT_FAMILIES:
+        return
+    if QGuiApplication.instance() is None:
+        return
+    loaded = False
+    for candidate in SYSTEM_FONT_FILES:
+        path = Path(candidate)
+        if path.exists():
+            font_id = QFontDatabase.addApplicationFont(str(path))
+            if font_id >= 0:
+                loaded = True
+                for family in QFontDatabase.applicationFontFamilies(font_id):
+                    if family not in _LOADED_FONT_FAMILIES:
+                        _LOADED_FONT_FAMILIES.append(family)
+    _FONT_LOAD_ATTEMPTED = loaded or bool(QFontDatabase.families())
+
+
+def loaded_multilingual_font_families() -> tuple[str, ...]:
+    """Return application font families loaded by the GUI fallback."""
+    return tuple(_LOADED_FONT_FAMILIES)
+
+
+def apply_widget_scale_metrics(root: QWidget, scale: float) -> None:
+    """Scale fixed widget metrics that Qt stylesheets cannot infer from fonts."""
+
+    scale = clamp_scale(scale)
+    for widget in [root, *root.findChildren(QWidget)]:
+        if isinstance(widget, (QComboBox, QAbstractSpinBox, QLineEdit)):
+            _set_scaled_minimum_height(widget, scale, fallback=32, padding=14)
+            if isinstance(widget, QAbstractSpinBox):
+                widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                try:
+                    line_edit = widget.lineEdit()
+                except RuntimeError:
+                    line_edit = None
+                if line_edit is not None:
+                    line_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            if isinstance(widget, QComboBox) and widget.minimumContentsLength() <= 0:
+                widget.setMinimumContentsLength(14)
+                widget.setSizeAdjustPolicy(
+                    QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
+                )
+            continue
+
+        if isinstance(widget, QPushButton):
+            if widget.property("compactActionButton"):
+                target = max(
+                    round(28 * scale),
+                    widget.fontMetrics().height() + round(4 * scale),
+                )
+                widget.setMinimumHeight(target)
+                widget.setMaximumHeight(target)
+                continue
+            fallback = 38 if widget.objectName() in {"primaryBtn", "successBtn", "dangerBtn"} else 32
+            _set_scaled_minimum_height(widget, scale, fallback=fallback, padding=16)
+            continue
+
+        if isinstance(widget, QToolButton):
+            _set_scaled_minimum_height(widget, scale, fallback=28, padding=10)
+            if widget.property("helpButton"):
+                _set_scaled_minimum_width(widget, scale, fallback=20)
+                _set_scaled_maximum_width(widget, scale)
+                _set_scaled_maximum_height(widget, scale)
+            continue
+
+
+def _remember_int_property(widget: QWidget, property_name: str, current: int, fallback: int) -> int:
+    stored = widget.property(property_name)
+    if stored is None:
+        value = current if current > 0 and current < _QT_UNBOUNDED_SIZE else fallback
+        widget.setProperty(property_name, value)
+        return value
+    try:
+        return int(stored)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _set_scaled_minimum_height(
+    widget: QWidget,
+    scale: float,
+    *,
+    fallback: int,
+    padding: int,
+) -> None:
+    base = _remember_int_property(
+        widget,
+        _BASE_MIN_HEIGHT_PROPERTY,
+        widget.minimumHeight(),
+        fallback,
+    )
+    font_safe_height = widget.fontMetrics().height() + round(padding * scale)
+    widget.setMinimumHeight(max(round(base * scale), font_safe_height))
+
+
+def _set_scaled_minimum_width(widget: QWidget, scale: float, *, fallback: int) -> None:
+    base = _remember_int_property(
+        widget,
+        _BASE_MIN_WIDTH_PROPERTY,
+        widget.minimumWidth(),
+        fallback,
+    )
+    widget.setMinimumWidth(max(1, round(base * scale)))
+
+
+def _set_scaled_maximum_width(widget: QWidget, scale: float) -> None:
+    base = _remember_int_property(
+        widget,
+        _BASE_MAX_WIDTH_PROPERTY,
+        widget.maximumWidth(),
+        0,
+    )
+    if base > 0:
+        widget.setMaximumWidth(max(1, round(base * scale)))
+
+
+def _set_scaled_maximum_height(widget: QWidget, scale: float) -> None:
+    base = _remember_int_property(
+        widget,
+        _BASE_MAX_HEIGHT_PROPERTY,
+        widget.maximumHeight(),
+        0,
+    )
+    if base > 0:
+        widget.setMaximumHeight(max(1, round(base * scale)))
+
+
 class UiScaler(QObject):
-    """Global zoom controller for keyboard, trackpad and wheel gestures."""
+    """Global zoom controller for keyboard shortcuts and touchpad gestures."""
 
     def __init__(
         self,
@@ -51,9 +243,6 @@ class UiScaler(QObject):
         self._app = app
         self._theme_factory = theme_factory
         self._scale = clamp_scale(initial_scale)
-        self._wheel_accumulator = 0
-        self._pinch_accumulator = 0.0
-        self._gesture_accumulator = 0.0
         self._applied_once = False
 
     @property
@@ -73,13 +262,7 @@ class UiScaler(QObject):
         if event.type() == QEvent.Type.KeyPress and self._handle_key_event(event):
             return True
 
-        if event.type() == QEvent.Type.Wheel and self._handle_wheel_event(event):
-            return True
-
-        if event.type() == QEvent.Type.NativeGesture and self._handle_native_gesture(event):
-            return True
-
-        if event.type() == QEvent.Type.Gesture and self._handle_gesture_event(event):
+        if self._handle_pointer_zoom_event(event):
             return True
 
         return super().eventFilter(obj, event)
@@ -100,7 +283,7 @@ class UiScaler(QObject):
 
         old_scale = self._scale
         self._scale = new_scale
-        self._app.setFont(QFont("Segoe UI", max(10, round(BASE_FONT_SIZE * new_scale))))
+        self._app.setFont(make_app_font(max(10, round(BASE_FONT_SIZE * new_scale))))
         self._app.setStyleSheet(self._theme_factory(new_scale))
 
         for widget in self._app.topLevelWidgets():
@@ -108,6 +291,8 @@ class UiScaler(QObject):
             self._scale_widget_styles(widget, new_scale)
             if hasattr(widget, "set_ui_scale"):
                 widget.set_ui_scale(new_scale)
+            if isinstance(widget, QWidget):
+                apply_widget_scale_metrics(widget, new_scale)
 
         if resize_windows:
             self._resize_windows(old_scale, new_scale)
@@ -119,11 +304,12 @@ class UiScaler(QObject):
             return False
 
         key = event.key()
-        if key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal):
+        text = event.text() if hasattr(event, "text") else ""
+        if key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal) or text in {"+", "="}:
             self.zoom_in()
-        elif key in (Qt.Key.Key_Minus, Qt.Key.Key_Underscore):
+        elif key in (Qt.Key.Key_Minus, Qt.Key.Key_Underscore) or text in {"-", "_"}:
             self.zoom_out()
-        elif key == Qt.Key.Key_0:
+        elif key == Qt.Key.Key_0 or text == "0":
             self.reset()
         else:
             return False
@@ -131,50 +317,67 @@ class UiScaler(QObject):
         event.accept()
         return True
 
-    def _handle_wheel_event(self, event: QEvent) -> bool:
-        modifiers = event.modifiers()
-        if not modifiers & Qt.KeyboardModifier.ControlModifier:
-            return False
+    def _handle_pointer_zoom_event(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Wheel:
+            if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                return False
 
-        self._wheel_accumulator += event.angleDelta().y()
-        if abs(self._wheel_accumulator) >= 120:
-            direction = 1 if self._wheel_accumulator > 0 else -1
-            self.apply_scale(self._scale + direction * SCALE_STEP)
-            self._wheel_accumulator = 0
+            steps = self._wheel_zoom_steps(event)
+            if steps:
+                self.apply_scale(self._scale + (SCALE_STEP * steps))
+            event.accept()
+            return True
 
-        event.accept()
-        return True
+        if event.type() == QEvent.Type.NativeGesture:
+            if event.gestureType() != Qt.NativeGestureType.ZoomNativeGesture:
+                return False
 
-    def _handle_native_gesture(self, event: QEvent) -> bool:
-        if event.gestureType() != Qt.NativeGestureType.ZoomNativeGesture:
-            return False
+            value = float(event.value()) if hasattr(event, "value") else 0.0
+            if value:
+                self.apply_scale(self._scale + value)
+            event.accept()
+            return True
 
-        self._pinch_accumulator += event.value()
-        if abs(self._pinch_accumulator) >= 0.18:
-            direction = 1 if self._pinch_accumulator > 0 else -1
-            self.apply_scale(self._scale + direction * SCALE_STEP)
-            self._pinch_accumulator = 0.0
+        if event.type() == QEvent.Type.Gesture:
+            gesture = event.gesture(Qt.GestureType.PinchGesture)
+            if gesture is None:
+                return False
 
-        event.accept()
-        return True
+            scale_factor = (
+                float(gesture.scaleFactor())
+                if hasattr(gesture, "scaleFactor")
+                else 1.0
+            )
+            if scale_factor > 0 and scale_factor != 1.0:
+                self.apply_scale(self._scale * scale_factor)
+            event.accept()
+            return True
 
-    def _handle_gesture_event(self, event: QEvent) -> bool:
-        gesture = event.gesture(Qt.GestureType.PinchGesture)
-        if gesture is None:
-            return False
+        return False
 
-        factor = gesture.scaleFactor()
-        if not factor:
-            return False
+    def _is_pointer_zoom_event(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Wheel:
+            return bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
 
-        self._gesture_accumulator += factor - 1.0
-        if abs(self._gesture_accumulator) >= 0.12:
-            direction = 1 if self._gesture_accumulator > 0 else -1
-            self.apply_scale(self._scale + direction * SCALE_STEP)
-            self._gesture_accumulator = 0.0
+        if event.type() == QEvent.Type.NativeGesture:
+            return event.gestureType() == Qt.NativeGestureType.ZoomNativeGesture
 
-        event.accept()
-        return True
+        if event.type() == QEvent.Type.Gesture:
+            return event.gesture(Qt.GestureType.PinchGesture) is not None
+
+        return False
+
+    @staticmethod
+    def _wheel_zoom_steps(event: QEvent) -> float:
+        angle_delta = event.angleDelta() if hasattr(event, "angleDelta") else None
+        if angle_delta is not None and angle_delta.y():
+            return angle_delta.y() / 120
+
+        pixel_delta = event.pixelDelta() if hasattr(event, "pixelDelta") else None
+        if pixel_delta is not None and pixel_delta.y():
+            return pixel_delta.y() / 120
+
+        return 0.0
 
     def _scale_widget_styles(self, root: QWidget, scale: float) -> None:
         widgets = [root, *root.findChildren(QWidget)]
@@ -206,8 +409,12 @@ class UiScaler(QObject):
             screen = widget.screen() or QGuiApplication.primaryScreen()
             available = screen.availableGeometry() if screen else widget.geometry()
             minimum = widget.minimumSize()
+            max_width = max(320, round(available.width() * 0.96))
+            max_height = max(320, round(available.height() * 0.92))
+            min_width = min(minimum.width(), max_width)
+            min_height = min(minimum.height(), max_height)
             width = round(widget.width() * ratio)
             height = round(widget.height() * ratio)
-            width = max(minimum.width(), min(width, round(available.width() * 0.96)))
-            height = max(minimum.height(), min(height, round(available.height() * 0.92)))
+            width = max(min_width, min(width, max_width))
+            height = max(min_height, min(height, max_height))
             widget.resize(width, height)

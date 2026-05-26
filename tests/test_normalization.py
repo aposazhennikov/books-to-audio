@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from book_normalizer.models.book import Book, Chapter, Paragraph
-from book_normalizer.normalization.cleanup import remove_page_numbers, remove_repeated_headers
+from book_normalizer.normalization.cleanup import (
+    is_likely_publisher_boilerplate,
+    remove_page_numbers,
+    remove_publisher_boilerplate,
+    remove_repeated_headers,
+)
 from book_normalizer.normalization.paragraphs import collapse_empty_lines
 from book_normalizer.normalization.pipeline import NormalizationPipeline
 from book_normalizer.normalization.punctuation import normalize_dashes, normalize_ellipsis, normalize_quotes
@@ -61,6 +66,30 @@ class TestCleanup:
         text = "Заголовок\nТекст.\nЗаголовок\nЕщё.\nЗаголовок\nКонец."
         result = remove_repeated_headers(text, min_occurrences=3)
         assert "Заголовок" not in result
+
+    def test_detect_publisher_boilerplate_urls(self) -> None:
+        text = (
+            "Спасибо, что скачали книгу в бесплатной электронной библиотеке "
+            "Royallib.ru: http://royallib.ru Все книги автора: http://example.test"
+        )
+
+        assert is_likely_publisher_boilerplate(text) is True
+
+    def test_publisher_boilerplate_detector_keeps_narration(self) -> None:
+        text = "Иван вошёл в комнату и остановился у окна. За стеклом шумел дождь."
+
+        assert is_likely_publisher_boilerplate(text) is False
+
+    def test_remove_publisher_boilerplate_keeps_attached_title(self) -> None:
+        text = (
+            "Приятного чтения! МОНОСОВ Борис Моисеевич\n"
+            "Эта же книга в других форматах: http://royallib.ru/example\n"
+            "Глава первая"
+        )
+
+        result = remove_publisher_boilerplate(text)
+
+        assert result == "МОНОСОВ Борис Моисеевич\nГлава первая"
 
 
 class TestCollapseEmptyLines:

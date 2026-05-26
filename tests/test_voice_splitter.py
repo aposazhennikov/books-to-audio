@@ -235,6 +235,37 @@ class TestBuildChunksFromSegments:
 
         assert chunks[0]["role"] == "male"
 
+    def test_character_metadata_prevents_wrong_dialogue_merge(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "voice_id": "female_warm",
+                "intonation": "joyful",
+                "role": "female",
+                "speaker": "Маргарита",
+                "character_description": "Смелая.",
+                "emotion": "joyful",
+                "section_kind": "dialogue",
+                "text": "Я здесь.",
+            },
+            {
+                "chapter_index": 0,
+                "voice_id": "female_warm",
+                "intonation": "joyful",
+                "role": "female",
+                "speaker": "Аннушка",
+                "character_description": "Бытовая и резкая.",
+                "emotion": "joyful",
+                "section_kind": "dialogue",
+                "text": "И я тоже.",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments)
+
+        assert [chunk["speaker"] for chunk in chunks] == ["Маргарита", "Аннушка"]
+        assert [chunk["text"] for chunk in chunks] == ["Я здесь.", "И я тоже."]
+
     def test_paragraph_pause_flushes_same_voice_chunks(self) -> None:
         segments = [
             {

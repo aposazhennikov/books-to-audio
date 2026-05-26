@@ -1,47 +1,35 @@
-"""Background worker for TTS synthesis via WSL subprocess."""
+"""Background workers for v2 TTS synthesis and voice preparation."""
 
 from __future__ import annotations
 
 import json
-import re
-import shlex
-import subprocess
-import sys
+import time
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from book_normalizer.gui.i18n import t
-from book_normalizer.tts.model_download import (
-    MODEL_DOWNLOAD_WARNING,
-    install_tts_models,
-)
-from book_normalizer.tts.model_paths import default_comfyui_models_dir
-from book_normalizer.tts.wsl_runtime import build_wsl_tts_activation_script
+from book_normalizer.languages import normalize_book_language
+from book_normalizer.runtime_paths import configured_ollama_endpoint
+from book_normalizer.comfyui.generation_options import GenerationOptions
+from book_normalizer.tts.model_download import MODEL_DOWNLOAD_WARNING, install_tts_models
+from book_normalizer.tts.synthesis_controller import SynthesisController, SynthesisRequest
 
 
-def _flatten_manifest_chunks(data: object) -> list[dict]:
-    """Return v1-compatible chunk records from v1 or v2 manifest JSON."""
-    if isinstance(data, list):
-        return [item for item in data if isinstance(item, dict)]
-    if not isinstance(data, dict):
-        return []
-
-    chunks: list[dict] = []
-    for chapter in data.get("chapters", []):
-        if not isinstance(chapter, dict):
-            continue
-        chapter_index = chapter.get("chapter_index", 0)
-        for chunk in chapter.get("chunks", []):
-            if isinstance(chunk, dict):
-                chunks.append({"chapter_index": chapter_index, **chunk})
-    return chunks
+def _format_eta(seconds: float) -> str:
+    """Format seconds to human-readable string."""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    m = int(seconds // 60)
+    s = int(seconds % 60)
+    return f"{m}m {s:02d}s"
 
 
 class ExportSegmentsWorker(QThread):
-    """Export voice-annotated segments (line-level) from a processed book."""
+    """Export voice-annotated segments from a processed book."""
 
     progress = pyqtSignal(str)
+    progress_pct = pyqtSignal(int, int, str)
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
 
@@ -60,169 +48,94 @@ class ExportSegmentsWorker(QThread):
         self._book = book
         self._output_dir = output_dir
         self._speaker_mode = speaker_mode
-        self._llm_endpoint = llm_endpoint
+        self._llm_endpoint = llm_endpoint or configured_ollama_endpoint()
         self._llm_model = llm_model
         self._llm_api_key = llm_api_key
         self._stress_mode = stress_mode
 
     def run(self) -> None:
         try:
-            from book_normalizer.chunking.voice_splitter import (
-                extract_segments_book,
-            )
-            from book_normalizer.dialogue.attribution import (
-                SpeakerMode,
-                create_attributor,
-            )
+            from book_normalizer.chunking.llm_segmenter import LlmVoiceSegmenter
+            from book_normalizer.chunking.voice_splitter import extract_segments_book
+            from book_normalizer.dialogue.attribution import SpeakerMode, create_attributor
             from book_normalizer.dialogue.detector import DialogueDetector
-            from book_normalizer.stress.rendering import (
-                render_annotated_chapters_for_tts,
-            )
+            from book_normalizer.stress.rendering import render_annotated_chapters_for_tts
 
-            self.progress.emit(t("voice.detecting_dialogue"))
-            detector = DialogueDetector()
-            annotated = detector.detect_book(self._book)
-
-            if self._speaker_mode != "manual":
-                self.progress.emit(
-                    t("voice.attributing", mode=self._speaker_mode),
-                )
-                attr_mode = SpeakerMode(self._speaker_mode)
-                attributor = create_attributor(
-                    attr_mode,
+            metadata = getattr(self._book, "metadata", None)
+            language = normalize_book_language(getattr(metadata, "language", "ru"))
+            if self._speaker_mode == "llm":
+                self.progress.emit(t("voice.attributing", mode=self._speaker_mode))
+                review_report_path = self._output_dir / "llm_voice_review_report.json"
+                if review_report_path.exists():
+                    review_report_path.unlink()
+                segmenter = LlmVoiceSegmenter(
+                    endpoint=self._llm_endpoint,
+                    model=self._llm_model or "",
+                    api_key=self._llm_api_key or "",
+                    language=language,
                     cache_dir=self._output_dir / "speaker_cache",
-                    llm_endpoint=self._llm_endpoint or "",
-                    llm_model=self._llm_model or "qwen3:8b",
-                    llm_api_key=self._llm_api_key or "",
+                    review_report_path=review_report_path,
+                    max_segment_chars=600,
+                    allow_source_fallback=True,
                 )
-                attributor.attribute(annotated)
+                started_at = time.monotonic()
 
-            render_annotated_chapters_for_tts(
-                annotated,
-                self._book,
-                self._stress_mode,
-            )
-            self.progress.emit(t("voice.extracting_segments"))
-            segments = extract_segments_book(annotated)
+                def report(done: int, total: int, label: str) -> None:
+                    eta = ""
+                    if total > 0 and done > 0:
+                        remaining = max(0, total - done)
+                        elapsed = max(0.0, time.monotonic() - started_at)
+                        eta = _format_eta((elapsed / done) * remaining)
+                    self.progress.emit(f"LLM voice markup: {done}/{total} ({label})")
+                    self.progress_pct.emit(done, total, eta)
 
-            manifest = []
-            for seg in segments:
-                manifest.append({
-                    "segment_index": seg.segment_index,
-                    "chapter_index": seg.chapter_index,
-                    "is_dialogue": seg.is_dialogue,
-                    "role": seg.role.value,
-                    "voice_id": seg.voice_id,
-                    "intonation": seg.intonation,
-                    "text": seg.text,
-                    "pause_after_ms": seg.pause_after_ms,
-                    "boundary_after": seg.boundary_after,
-                })
+                manifest = segmenter.segment_book(self._book, progress_callback=report)
+            else:
+                self.progress.emit(t("voice.detecting_dialogue"))
+                annotated = DialogueDetector().detect_book(self._book)
 
-            self._output_dir.mkdir(parents=True, exist_ok=True)
-            manifest_path = (
-                self._output_dir / "segments_manifest.json"
-            )
-            manifest_path.write_text(
-                json.dumps(manifest, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+                if self._speaker_mode != "manual":
+                    self.progress.emit(t("voice.attributing", mode=self._speaker_mode))
+                    attributor = create_attributor(
+                        SpeakerMode(self._speaker_mode),
+                        cache_dir=self._output_dir / "speaker_cache",
+                        llm_endpoint=self._llm_endpoint,
+                        llm_model=self._llm_model or "",
+                        llm_api_key=self._llm_api_key or "",
+                    )
+                    attributor.attribute(annotated)
 
-            self.progress.emit(
-                t("voice.exported_segments", n=len(manifest)),
-            )
-            self.finished.emit(str(manifest_path))
-
-        except Exception as exc:
-            self.error.emit(str(exc))
-
-
-class ExportChunksWorker(QThread):
-    """Legacy: export voice-annotated chunks from a processed book."""
-
-    progress = pyqtSignal(str)
-    finished = pyqtSignal(str)
-    error = pyqtSignal(str)
-
-    def __init__(
-        self,
-        book: object,
-        output_dir: Path,
-        speaker_mode: str = "heuristic",
-        max_chunk_chars: int = 600,
-        parent=None,
-    ):
-        super().__init__(parent)
-        self._book = book
-        self._output_dir = output_dir
-        self._speaker_mode = speaker_mode
-        self._max_chunk_chars = max_chunk_chars
-
-    def run(self) -> None:
-        try:
-            from book_normalizer.chunking.voice_splitter import (
-                chunk_annotated_book,
-            )
-            from book_normalizer.dialogue.attribution import (
-                SpeakerMode,
-                create_attributor,
-            )
-            from book_normalizer.dialogue.detector import DialogueDetector
-
-            self.progress.emit(t("voice.detecting_dialogue"))
-            detector = DialogueDetector()
-            annotated = detector.detect_book(self._book)
-
-            self.progress.emit(
-                t("voice.attributing", mode=self._speaker_mode),
-            )
-            attr_mode = SpeakerMode(self._speaker_mode)
-            attributor = create_attributor(
-                attr_mode,
-                cache_dir=self._output_dir / "speaker_cache",
-            )
-            attributor.attribute(annotated)
-
-            self.progress.emit(t("voice.chunking"))
-            chunked = chunk_annotated_book(
-                annotated,
-                max_chunk_chars=self._max_chunk_chars,
-            )
-
-            manifest = []
-            for ch_idx in sorted(chunked.keys()):
-                for chunk in chunked[ch_idx]:
-                    manifest.append({
-                        "chapter_index": chunk.chapter_index,
-                        "chunk_index": chunk.index,
-                        "role": chunk.role.value,
-                        "voice_id": chunk.voice_id,
-                        "text": chunk.text,
-                    })
+                render_annotated_chapters_for_tts(annotated, self._book, self._stress_mode)
+                self.progress.emit(t("voice.extracting_segments"))
+                manifest = [
+                    {
+                        "segment_index": segment.segment_index,
+                        "chapter_index": segment.chapter_index,
+                        "language": language,
+                        "is_dialogue": segment.is_dialogue,
+                        "role": segment.role.value,
+                        "voice_id": segment.voice_id,
+                        "intonation": segment.intonation,
+                        "text": segment.text,
+                        "pause_after_ms": segment.pause_after_ms,
+                        "boundary_after": segment.boundary_after,
+                    }
+                    for segment in extract_segments_book(annotated)
+                ]
 
             self._output_dir.mkdir(parents=True, exist_ok=True)
-            manifest_path = self._output_dir / "chunks_manifest.json"
-            manifest_path.write_text(
-                json.dumps(manifest, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-
-            self.progress.emit(
-                t("voice.exported_chunks", n=len(manifest)),
-            )
+            manifest_path = self._output_dir / "segments_manifest.json"
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+            self.progress.emit(t("voice.exported_segments", n=len(manifest)))
             self.finished.emit(str(manifest_path))
-
         except Exception as exc:
             self.error.emit(str(exc))
 
 
 class TTSSynthesisWorker(QThread):
-    """Run TTS synthesis via WSL subprocess and monitor progress."""
+    """Qt adapter for the v2 ComfyUI synthesis controller."""
 
-    progress = pyqtSignal(
-        int, int, str, int,
-        int, float, int, int, int,
-    )
+    progress = pyqtSignal(int, int, str, int, int, float, int, int, int)
     status = pyqtSignal(str)
     log_line = pyqtSignal(str)
     finished = pyqtSignal(str, int, int)
@@ -232,7 +145,7 @@ class TTSSynthesisWorker(QThread):
         self,
         manifest_path: Path,
         output_dir: Path,
-        model: str = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        model: str = "",
         chapter: int | None = None,
         batch_size: int = 1,
         resume: bool = False,
@@ -254,417 +167,223 @@ class TTSSynthesisWorker(QThread):
         speech_rate: float = 1.0,
         output_format: str = "flac",
         merge_chapters: bool = True,
+        quality_loop: bool = False,
+        artifact_qa: bool = True,
+        asr_qa_after_synthesis: bool = False,
+        asr_model: str = "small",
+        asr_device: str = "auto",
+        max_resynthesis_attempts: int = 2,
         parent=None,
     ):
         super().__init__(parent)
         self._manifest_path = manifest_path
         self._output_dir = output_dir
-        self._model = model
         self._chapter = chapter
-        self._batch_size = batch_size
-        self._resume = resume
         self._chunk_timeout = chunk_timeout
-        self._use_compile = use_compile
-        self._clone_config = clone_config
-        self._use_sage_attention = use_sage_attention
-        self._models_dir = models_dir
-        self._voice_library_dir = voice_library_dir
         self._comfyui_url = comfyui_url
         self._workflow_path = workflow_path
         self._failed_only = failed_only
-        self._temperature = temperature
-        self._top_p = top_p
-        self._top_k = top_k
-        self._repetition_penalty = repetition_penalty
-        self._max_new_tokens = max_new_tokens
-        self._seed = seed
-        self._speech_rate = speech_rate
-        self._output_format = output_format
         self._merge_chapters = merge_chapters
-        self._process: subprocess.Popen | None = None
         self._cancelled = False
+        self._clone_config_path = Path(clone_config) if clone_config else None
+        self._generation_options = GenerationOptions(
+            batch_size=batch_size,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
+            max_new_tokens=max_new_tokens,
+            seed=seed,
+            speech_rate=speech_rate,
+            output_format=output_format,
+        )
+        self._quality_loop = quality_loop
+        self._artifact_qa = artifact_qa
+        self._asr_qa_after_synthesis = asr_qa_after_synthesis
+        self._asr_model = asr_model
+        self._asr_device = asr_device or "auto"
+        self._max_resynthesis_attempts = max_resynthesis_attempts
+
+        # Accepted for source compatibility with older GUI/tests. V2 synthesis
+        # is driven by the manifest and ComfyUI workflow, not runner flags.
+        # clone_config is intentionally not here: it is active v2 input.
+        self._unused_runner_options = {
+            "model": model,
+            "resume": resume,
+            "use_compile": use_compile,
+            "use_sage_attention": use_sage_attention,
+            "models_dir": models_dir,
+            "voice_library_dir": voice_library_dir,
+        }
 
     def cancel(self) -> None:
-        """Request cancellation of synthesis."""
+        """Request cancellation before the next controller step."""
         self._cancelled = True
-        if self._process:
-            self._process.terminate()
 
     def run(self) -> None:
         try:
-            runner_manifest_path, manifest = self._prepare_runner_manifest()
-            total = len(manifest)
-            if self._chapter is not None:
-                total = sum(
-                    1 for c in manifest
-                    if c.get("chapter_index") == self._chapter - 1
-                )
-
-            if total == 0:
-                self.error.emit(t("synth.err_no_chunks"))
-                return
-
-            script_path = (
-                Path(__file__).resolve().parent.parent.parent.parent.parent
-                / "scripts" / "tts_runner.py"
-            )
-
-            args = [
-                "python", "-u",
-                self._wsl_path(script_path),
-                "--chunks-json", self._wsl_path(runner_manifest_path),
-                "--out", self._wsl_path(self._output_dir),
-                "--model", self._model,
-                "--batch-size", str(self._batch_size),
-                "--log-file", self._wsl_path(self._output_dir / "synthesis_log.txt"),
-                "--chunk-timeout", str(self._chunk_timeout),
-                "--temperature", str(self._temperature),
-                "--top-p", str(self._top_p),
-                "--top-k", str(self._top_k),
-                "--repetition-penalty", str(self._repetition_penalty),
-                "--max-new-tokens", str(self._max_new_tokens),
-                "--speech-rate", str(self._speech_rate),
-                "--seed", str(self._seed),
-                "--output-format", self._output_format,
-            ]
-            models_dir = self._models_dir.strip() or str(default_comfyui_models_dir())
-            if models_dir:
-                args.extend(["--models-dir", self._wsl_path_text(models_dir)])
-            voice_library_dir = self._voice_library_dir.strip()
-            if voice_library_dir:
-                args.extend([
-                    "--voice-library-dir",
-                    self._wsl_path_text(voice_library_dir),
-                ])
-            if self._chapter is not None:
-                args.extend(["--chapter", str(self._chapter)])
-            if self._resume:
-                args.append("--resume")
-            if self._use_compile:
-                args.append("--compile")
-            clone_config_path = self._prepare_clone_config()
-            if clone_config_path:
-                args.extend([
-                    "--clone-config",
-                    self._wsl_path(clone_config_path),
-                ])
-            if self._use_sage_attention:
-                args.append("--sage-attention")
-            if self._merge_chapters:
-                args.append("--merge-chapters")
-
-            bash_cmd = (
-                build_wsl_tts_activation_script()
-                + "\nPYTHONUNBUFFERED=1 "
-                + " ".join(shlex.quote(arg) for arg in args)
-            )
-            cmd = [
-                "wsl", "-e", "bash", "-c",
-                bash_cmd,
-            ]
-
-            self._process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-
-            self.status.emit("__loading__")
-
-            synthesized = 0
-            skipped = 0
-            last_lines: list[str] = []
-            for line in iter(self._process.stdout.readline, ""):
-                if self._cancelled:
-                    break
-                line = line.strip()
-                if not line:
-                    continue
-
-                self.log_line.emit(line)
-                last_lines.append(line)
-                if len(last_lines) > 50:
-                    last_lines.pop(0)
-
-                if "Model loaded" in line:
-                    self.status.emit("__model_ready__")
-
-                if line.startswith("VOICE_PROMPT "):
-                    try:
-                        kv = dict(re.findall(r"(\w+)=([^\s]+)", line))
-                        event = kv.get("event", "")
-                        done_val = int(kv.get("done", "0"))
-                        total_val = int(kv.get("total", "1"))
-                        if event == "start":
-                            self.status.emit(t("synth.sample_extracting"))
-                        elif event == "done":
-                            sec = float(kv.get("sec", "0"))
-                            self.status.emit(
-                                t(
-                                    "synth.sample_extracted",
-                                    done=done_val,
-                                    total=total_val,
-                                    sec=sec,
-                                ),
-                            )
-                    except (ValueError, TypeError):
-                        pass
-                elif line.startswith("PROGRESS "):
-                    try:
-                        kv = dict(
-                            re.findall(r"(\w+)=([\d.]+)", line),
-                        )
-                        done_val = int(kv.get("done", 0))
-                        total_val = int(kv.get("total", total))
-                        remaining = int(kv.get("remaining", 0))
-                        chunk_chars = int(kv.get("chunk_chars", 0))
-                        chunk_sec = float(kv.get("chunk_sec", 0))
-                        remaining_chars = int(kv.get("remaining_chars", 0))
-                        total_chars = int(kv.get("total_chars", 0))
-                        eta_sec = int(kv.get("eta_sec", 0))
-                        ch_num = int(kv.get("ch", 0))
-                        eta_str = self._format_eta(eta_sec)
-                        self.progress.emit(
-                            done_val, total_val, eta_str, ch_num,
-                            chunk_chars, chunk_sec,
-                            remaining, remaining_chars, total_chars,
-                        )
-                    except (ValueError, KeyError, TypeError):
-                        pass
-                elif line.startswith("["):
-                    try:
-                        parts = line.split("]")[0].replace("[", "").strip()
-                        current, _tot = parts.split("/")
-                        synthesized = int(current)
-                        eta_part = ""
-                        if "ETA:" in line:
-                            eta_part = line.split("ETA:")[1].strip().rstrip(")")
-                        ch_match = re.search(r"\bch(\d+)\b", line)
-                        chapter = int(ch_match.group(1)) if ch_match else 0
-                        self.progress.emit(
-                            synthesized, total, eta_part, chapter,
-                            0, 0.0, total - synthesized, 0, 0,
-                        )
-                    except (ValueError, IndexError):
-                        pass
-
-                if line.startswith("Done:"):
-                    try:
-                        parts = line.split(",")
-                        for p in parts:
-                            p = p.strip()
-                            if "synthesized" in p:
-                                synthesized = int(p.split()[0].replace("Done:", "").strip())
-                            elif "skipped" in p:
-                                skipped = int(p.split()[0])
-                    except (ValueError, IndexError):
-                        pass
-                    self.progress.emit(
-                        total, total, "0s", 0,
-                        0, 0.0, 0, 0, 0,
-                    )
-
-            self._process.wait()
-            rc = self._process.returncode
-
             if self._cancelled:
                 self.error.emit(t("synth.cancelled"))
-            elif rc != 0:
-                tail = "\n".join(last_lines[-10:])
-                self.error.emit(
-                    t("synth.err_exit_code", code=rc) + f"\n{tail}",
-                )
-            else:
-                out_path = str(
-                    self._output_dir / "audio_chunks",
-                )
-                self.finished.emit(out_path, synthesized, skipped)
+                return
 
+            workflow = Path(self._workflow_path) if self._workflow_path else (
+                Path(__file__).resolve().parents[4] / "comfyui_workflows" / "qwen3_tts_template.json"
+            )
+            request = SynthesisRequest(
+                manifest_path=self._manifest_path,
+                output_dir=self._output_dir,
+                workflow_path=workflow,
+                comfyui_url=self._comfyui_url or "http://localhost:8188",
+                chapter=self._chapter,
+                chunk_timeout=float(self._chunk_timeout),
+                failed_only=self._failed_only,
+                merge_chapters=self._merge_chapters,
+                clone_config_path=self._clone_config_path,
+                generation_options=self._generation_options,
+                quality_loop=self._quality_loop,
+                artifact_qa=self._artifact_qa,
+                asr_qa_after_synthesis=self._asr_qa_after_synthesis,
+                asr_model=self._asr_model,
+                asr_device=self._asr_device,
+                max_resynthesis_attempts=self._max_resynthesis_attempts,
+            )
+            controller = SynthesisController(
+                request,
+                progress=self.progress.emit,
+                status=self.status.emit,
+                log=self.log_line.emit,
+            )
+            result = controller.run()
+            if self._cancelled:
+                self.error.emit(t("synth.cancelled"))
+                return
+            self.finished.emit(str(result.audio_dir), result.synthesized, result.skipped)
         except Exception as exc:
             self.error.emit(str(exc))
 
-    def _run_comfyui_v2(self, manifest: dict) -> None:
-        """Run the recommended v2 manifest -> ComfyUI synthesis path."""
-        total = len(_flatten_manifest_chunks(manifest))
-        if self._chapter is not None:
-            total = sum(
-                1
-                for c in _flatten_manifest_chunks(manifest)
-                if c.get("chapter_index") == self._chapter - 1
+
+class AsrQaWorker(QThread):
+    """Run report-first ASR QA without blocking the GUI."""
+
+    status = pyqtSignal(str)
+    log_line = pyqtSignal(str)
+    finished = pyqtSignal(str, str, int, int, int)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        manifest_path: Path,
+        *,
+        model: str = "small",
+        device: str = "auto",
+        timeout_seconds: float = 180.0,
+        max_wer: float = 0.30,
+        max_cer: float = 0.18,
+        min_match_ratio: float = 0.78,
+        mark_failed_on_asr: bool = False,
+        run_artifact: bool = True,
+        reset_bad_chunks: bool = False,
+        max_resynthesis_attempts: int = 2,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._manifest_path = manifest_path
+        self._model = model
+        self._device = device or "auto"
+        self._timeout_seconds = timeout_seconds
+        self._max_wer = max_wer
+        self._max_cer = max_cer
+        self._min_match_ratio = min_match_ratio
+        self._mark_failed_on_asr = mark_failed_on_asr
+        self._run_artifact = run_artifact
+        self._reset_bad_chunks = reset_bad_chunks
+        self._max_resynthesis_attempts = max_resynthesis_attempts
+
+    def run(self) -> None:
+        try:
+            from book_normalizer.chunking.manifest_v2 import save_manifest
+            from book_normalizer.tts.asr_qa import (
+                AsrQaConfig,
+                FasterWhisperBackend,
+                annotate_manifest_with_asr,
+                run_asr_qa,
+                write_asr_diff,
             )
+            from book_normalizer.tts.artifact_qa import (
+                annotate_manifest_with_artifacts,
+                run_artifact_qa,
+                write_artifact_report,
+            )
+            from book_normalizer.tts.audio_qa import run_audio_qa
 
-        if total == 0:
-            self.error.emit(t("synth.err_no_chunks"))
-            return
+            self.status.emit(t("synth.asr_running"))
+            manifest = json.loads(self._manifest_path.read_text(encoding="utf-8"))
+            report_path = self._manifest_path.with_name("asr_qa_report.json")
 
-        done_start = sum(
-            1
-            for c in _flatten_manifest_chunks(manifest)
-            if c.get("synthesized", False)
-            and (self._chapter is None or c.get("chapter_index") == self._chapter - 1)
-        )
-
-        workflow_path = Path(self._workflow_path) if self._workflow_path else (
-            Path(__file__).resolve().parent.parent.parent.parent.parent
-            / "comfyui_workflows"
-            / "qwen3_tts_template.json"
-        )
-        if not workflow_path.exists():
-            self.error.emit(f"ComfyUI workflow not found: {workflow_path}")
-            return
-
-        script_path = (
-            Path(__file__).resolve().parent.parent.parent.parent.parent
-            / "scripts" / "synthesize_comfyui.py"
-        )
-        audio_dir = self._output_dir / "audio_chunks"
-        args = [
-            sys.executable,
-            "-u",
-            str(script_path),
-            "--chunks-json",
-            str(self._manifest_path),
-            "--out",
-            str(audio_dir),
-            "--workflow",
-            str(workflow_path),
-            "--comfyui-url",
-            self._comfyui_url or "http://localhost:8188",
-            "--chunk-timeout",
-            str(self._chunk_timeout),
-        ]
-        if self._chapter is not None:
-            args.extend(["--chapter", str(self._chapter)])
-        if self._failed_only:
-            args.append("--failed-only")
-
-        self._process = subprocess.Popen(
-            args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-
-        self.status.emit("__loading__")
-        current_done = done_start
-        last_lines: list[str] = []
-        for line in iter(self._process.stdout.readline, ""):
-            if self._cancelled:
-                break
-            line = line.strip()
-            if not line:
-                continue
-            self.log_line.emit(line)
-            last_lines.append(line)
-            if len(last_lines) > 50:
-                last_lines.pop(0)
-
-            if "ComfyUI: connected" in line or "Workflow template:" in line:
-                self.status.emit("__model_ready__")
-
-            progress_match = re.match(r"PROGRESS\s+(\d+)/(\d+)", line)
-            if progress_match:
-                current_done = int(progress_match.group(1))
-                total_val = int(progress_match.group(2))
-                self.progress.emit(
-                    current_done, total_val, "", 0,
-                    0, 0.0, max(0, total_val - current_done), 0, 0,
+            audio_result = run_audio_qa(manifest)
+            self.log_line.emit(
+                f"Audio QA: {audio_result.checked_files}/{audio_result.synthesized_chunks} checked, "
+                f"{len(audio_result.issues)} issue(s)."
+            )
+            artifact_result = None
+            if self._run_artifact:
+                artifact_report_path = self._manifest_path.with_name("artifact_qa_report.json")
+                artifact_result = run_artifact_qa(manifest, manifest_path=self._manifest_path)
+                write_artifact_report(artifact_report_path, artifact_result)
+                annotate_manifest_with_artifacts(
+                    manifest,
+                    artifact_result,
+                    report_path=artifact_report_path.resolve(),
+                    reset_bad_chunks=self._reset_bad_chunks,
+                    max_resynthesis_attempts=self._max_resynthesis_attempts,
                 )
-
-        self._process.wait()
-        rc = self._process.returncode
-        if self._cancelled:
-            self.error.emit(t("synth.cancelled"))
-        elif rc != 0:
-            tail = "\n".join(last_lines[-10:])
-            self.error.emit(t("synth.err_exit_code", code=rc) + f"\n{tail}")
-        else:
-            self.progress.emit(total, total, "0s", 0, 0, 0.0, 0, 0, 0)
+                artifact_summary = artifact_result.summary
+                self.log_line.emit(
+                    "Artifact QA: "
+                    f"status={artifact_result.status}, failed={artifact_summary['failed']}, "
+                    f"warnings={artifact_summary['warning']}, errors={artifact_summary['error']}."
+                )
+            asr_result = run_asr_qa(
+                manifest,
+                config=AsrQaConfig(
+                    model=self._model,
+                    device=self._device,
+                    timeout_seconds=self._timeout_seconds,
+                    max_wer=self._max_wer,
+                    max_cer=self._max_cer,
+                    min_match_ratio=self._min_match_ratio,
+                ),
+                backend=FasterWhisperBackend(self._model, device=self._device),
+                manifest_path=self._manifest_path,
+            )
+            payload = {
+                "schema_version": 1,
+                "manifest_path": str(self._manifest_path),
+                "audio_qa": audio_result.to_dict(),
+                "artifact_qa": artifact_result.to_dict() if artifact_result else None,
+                "asr_qa": asr_result.to_dict(),
+            }
+            report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            write_asr_diff(report_path.with_suffix(".diff.txt"), asr_result)
+            annotate_manifest_with_asr(
+                manifest,
+                asr_result,
+                report_path=report_path.resolve(),
+                mark_failed_on_asr=self._mark_failed_on_asr,
+                reset_bad_chunks=self._reset_bad_chunks,
+                max_resynthesis_attempts=self._max_resynthesis_attempts,
+            )
+            save_manifest(self._manifest_path, manifest)
+            summary = asr_result.summary
             self.finished.emit(
-                str(audio_dir),
-                max(0, current_done - done_start),
-                done_start,
+                str(report_path),
+                asr_result.status.value,
+                int(summary["failed"]),
+                int(summary["warning"]),
+                int(summary["error"]),
             )
-
-    def _prepare_runner_manifest(self) -> tuple[Path, list[dict]]:
-        """Load v1/v2 manifest and return a v1-compatible runner path."""
-        data = json.loads(self._manifest_path.read_text(encoding="utf-8"))
-        chunks = _flatten_manifest_chunks(data)
-        if isinstance(data, list):
-            return self._manifest_path, chunks
-
-        self._output_dir.mkdir(parents=True, exist_ok=True)
-        runner_manifest_path = self._output_dir / ".tts_runner_manifest.v1.json"
-        runner_manifest_path.write_text(
-            json.dumps(chunks, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        return runner_manifest_path, chunks
-
-    def _prepare_clone_config(self) -> Path | None:
-        """Write a WSL-readable clone config with converted audio paths."""
-        if not self._clone_config:
-            return None
-
-        src = Path(self._clone_config)
-        data = json.loads(src.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return src
-
-        for cfg in data.values():
-            if isinstance(cfg, dict) and cfg.get("ref_audio"):
-                cfg["ref_audio"] = self._wsl_path_text(str(cfg["ref_audio"]))
-            if isinstance(cfg, dict) and cfg.get("voice_prompt_path"):
-                cfg["voice_prompt_path"] = self._wsl_path_text(
-                    str(cfg["voice_prompt_path"]),
-                )
-            if isinstance(cfg, dict) and cfg.get("voice_path"):
-                cfg["voice_path"] = self._wsl_path_text(str(cfg["voice_path"]))
-
-        self._output_dir.mkdir(parents=True, exist_ok=True)
-        out_path = self._output_dir / ".tts_clone_config.wsl.json"
-        out_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        return out_path
-
-    @staticmethod
-    def _format_eta(seconds: int) -> str:
-        """Format seconds to HH:MM:SS or MmSs."""
-        if seconds <= 0:
-            return "0s"
-        h = seconds // 3600
-        m = (seconds % 3600) // 60
-        s = seconds % 60
-        if h > 0:
-            return f"{h}h{m:02d}m{s:02d}s"
-        if m > 0:
-            return f"{m}m{s:02d}s"
-        return f"{s}s"
-
-    @staticmethod
-    def _wsl_path(path: Path) -> str:
-        """Convert Windows path to WSL path."""
-        p = str(path.resolve()).replace("\\", "/")
-        if len(p) >= 2 and p[1] == ":":
-            drive = p[0].lower()
-            p = f"/mnt/{drive}{p[2:]}"
-        return p
-
-    @staticmethod
-    def _wsl_path_text(path_text: str) -> str:
-        """Convert a user-entered Windows path string to a WSL path."""
-        p = path_text.strip().replace("\\", "/")
-        if len(p) >= 2 and p[1] == ":":
-            drive = p[0].lower()
-            p = f"/mnt/{drive}{p[2:]}"
-        return p
+        except Exception as exc:
+            self.error.emit(str(exc))
 
 
 class TTSModelInstallWorker(QThread):
@@ -675,12 +394,7 @@ class TTSModelInstallWorker(QThread):
     finished = pyqtSignal(str, int, int)
     error = pyqtSignal(str)
 
-    def __init__(
-        self,
-        model_ids: list[str],
-        models_dir: Path,
-        parent=None,
-    ) -> None:
+    def __init__(self, model_ids: list[str], models_dir: Path, parent=None) -> None:
         super().__init__(parent)
         self._model_ids = model_ids
         self._models_dir = models_dir
@@ -689,11 +403,7 @@ class TTSModelInstallWorker(QThread):
         try:
             self.status.emit(MODEL_DOWNLOAD_WARNING)
             self.log_line.emit(MODEL_DOWNLOAD_WARNING)
-            results = install_tts_models(
-                self._model_ids,
-                self._models_dir,
-                progress=self.log_line.emit,
-            )
+            results = install_tts_models(self._model_ids, self._models_dir, progress=self.log_line.emit)
             downloaded = sum(1 for result in results if not result.already_present)
             skipped = sum(1 for result in results if result.already_present)
             self.finished.emit(str(self._models_dir), downloaded, skipped)
@@ -702,7 +412,7 @@ class TTSModelInstallWorker(QThread):
 
 
 class VoicePromptSaveWorker(QThread):
-    """Extract and save a reusable Qwen voice prompt through the WSL runner."""
+    """Save a reusable custom voice through the ComfyUI voice setup workflow."""
 
     status = pyqtSignal(str)
     finished = pyqtSignal(str, str)
@@ -713,106 +423,10 @@ class VoicePromptSaveWorker(QThread):
         audio_path: Path,
         voice_name: str,
         ref_text: str,
-        voice_library_dir: Path,
+        voice_library_dir: Path | None = None,
         models_dir: str = "",
         speech_rate: float = 1.0,
-        device: str = "cuda:0",
-        parent=None,
-    ) -> None:
-        super().__init__(parent)
-        self._audio_path = audio_path
-        self._voice_name = voice_name
-        self._ref_text = ref_text
-        self._voice_library_dir = voice_library_dir
-        self._models_dir = models_dir
-        self._speech_rate = speech_rate
-        self._device = device
-        self._process: subprocess.Popen | None = None
-
-    def run(self) -> None:
-        try:
-            if not self._audio_path.exists():
-                self.error.emit(f"Audio file not found: {self._audio_path}")
-                return
-            if not self._voice_name.strip() or not self._ref_text.strip():
-                self.error.emit(t("synth.saved_voice_missing"))
-                return
-
-            script_path = (
-                Path(__file__).resolve().parent.parent.parent.parent.parent
-                / "scripts" / "tts_runner.py"
-            )
-            args = [
-                "python", "-u",
-                TTSSynthesisWorker._wsl_path(script_path),
-                "--save-voice", self._voice_name.strip(),
-                "--save-ref-audio", TTSSynthesisWorker._wsl_path(self._audio_path),
-                "--save-ref-text", self._ref_text.strip(),
-                "--voice-library-dir",
-                TTSSynthesisWorker._wsl_path(self._voice_library_dir),
-                "--speech-rate", str(self._speech_rate),
-                "--device", self._device,
-            ]
-            models_dir = self._models_dir.strip() or str(default_comfyui_models_dir())
-            if models_dir:
-                args.extend([
-                    "--models-dir",
-                    TTSSynthesisWorker._wsl_path_text(models_dir),
-                ])
-
-            bash_cmd = (
-                build_wsl_tts_activation_script()
-                + "\nPYTHONUNBUFFERED=1 "
-                + " ".join(shlex.quote(arg) for arg in args)
-            )
-            self.status.emit(t("synth.saved_voice_saving", name=self._voice_name.strip()))
-            self._process = subprocess.Popen(
-                ["wsl", "-e", "bash", "-c", bash_cmd],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-
-            last_lines: list[str] = []
-            for line in iter(self._process.stdout.readline, ""):
-                line = line.strip()
-                if not line:
-                    continue
-                last_lines.append(line)
-                if len(last_lines) > 20:
-                    last_lines.pop(0)
-                if line.startswith("VOICE_PROMPT "):
-                    self.status.emit(t("synth.sample_extracting"))
-                elif line.startswith("Saved voice id:"):
-                    self.status.emit(line)
-
-            self._process.wait()
-            if self._process.returncode != 0:
-                self.error.emit("\n".join(last_lines[-10:]))
-                return
-
-            self.finished.emit(
-                self._voice_name.strip(),
-                str(self._voice_library_dir),
-            )
-        except Exception as exc:
-            self.error.emit(str(exc))
-
-
-class ComfyVoiceSaveWorker(QThread):
-    """Save a reusable custom voice through the ComfyUI voice setup workflow."""
-
-    status = pyqtSignal(str)
-    finished = pyqtSignal(str, list)
-    error = pyqtSignal(str)
-
-    def __init__(
-        self,
-        audio_path: Path,
-        voice_name: str,
-        ref_text: str,
+        device: str = "",
         comfyui_url: str = "http://localhost:8188",
         workflow_path: Path | None = None,
         timeout: float = 300.0,
@@ -824,11 +438,15 @@ class ComfyVoiceSaveWorker(QThread):
         self._ref_text = ref_text
         self._comfyui_url = comfyui_url
         self._workflow_path = workflow_path or (
-            Path(__file__).resolve().parent.parent.parent.parent.parent
-            / "comfyui_workflows"
-            / "voice_setup_template.json"
+            Path(__file__).resolve().parents[4] / "comfyui_workflows" / "voice_setup_template.json"
         )
         self._timeout = timeout
+        self._voice_library_dir = voice_library_dir
+        self._unused_options = {
+            "models_dir": models_dir,
+            "speech_rate": speech_rate,
+            "device": device,
+        }
 
     def run(self) -> None:
         try:
@@ -838,8 +456,8 @@ class ComfyVoiceSaveWorker(QThread):
             if not self._audio_path.exists():
                 self.error.emit(f"Audio file not found: {self._audio_path}")
                 return
-            if not self._voice_name.strip():
-                self.error.emit("Voice name is required.")
+            if not self._voice_name.strip() or not self._ref_text.strip():
+                self.error.emit(t("synth.saved_voice_missing"))
                 return
 
             self.status.emit(t("synth.train_connecting"))
@@ -850,18 +468,18 @@ class ComfyVoiceSaveWorker(QThread):
 
             self.status.emit(t("synth.train_uploading", file=self._audio_path.name))
             uploaded_name = client.upload_audio(self._audio_path)
-
-            self.status.emit(t("synth.train_extracting", name=self._voice_name))
-            builder = WorkflowBuilder(self._workflow_path)
-            workflow = builder.build_voice_setup(
+            self.status.emit(t("synth.train_extracting", name=self._voice_name.strip()))
+            workflow = WorkflowBuilder(self._workflow_path).build_voice_setup(
                 audio_filename=uploaded_name,
                 voice_name=self._voice_name.strip(),
                 ref_text=self._ref_text.strip(),
             )
             prompt_id = client.queue_prompt(workflow)
             client.wait_for_execution(prompt_id, timeout=self._timeout)
-
-            speakers = client.list_saved_speakers()
-            self.finished.emit(self._voice_name.strip(), speakers)
+            self.finished.emit(self._voice_name.strip(), str(self._voice_library_dir or "comfyui"))
         except Exception as exc:
             self.error.emit(str(exc))
+
+
+class ComfyVoiceSaveWorker(VoicePromptSaveWorker):
+    """Backward-compatible name for the ComfyUI voice save worker."""

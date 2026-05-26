@@ -106,6 +106,9 @@ are intentionally not committed.
     `python scripts/create_listening_checklist.py --smoke-dir
     output/live_tts_real_book_smoke_after_filter --out
     output/manual_listening_checklist.md`.
+  - After human listening, record the final manual verdict with:
+    `python scripts/record_listening_verdict.py --verdict pass --notes
+    "Accepted post-filter narrator smoke sample."`.
   - Post-run resource check: ComfyUI was stopped, `ollama ps` was empty, and
     GPU memory returned to the low idle range.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.

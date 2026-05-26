@@ -86,3 +86,15 @@ python scripts\create_listening_checklist.py `
 Use the generated checklist while listening to the post-filter WAV. It records
 the exact sample, expected manifest text, objective audio checks, and the final
 PASS/REVIEW/FAIL decision.
+
+After listening, record the human verdict:
+
+```powershell
+python scripts\record_listening_verdict.py `
+  --verdict pass `
+  --notes "Accepted post-filter narrator smoke sample."
+```
+
+Use `--verdict review` when the pipeline works but voice/settings need another
+iteration, or `--verdict fail` when chunking, cleanup, or synthesis must be
+fixed before a longer run.

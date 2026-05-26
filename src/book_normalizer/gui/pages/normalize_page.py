@@ -188,7 +188,6 @@ class NormalizePage(QWidget):
         self._add_setting(settings, 0, 0, self._book_language_label_wrap, self._book_language)
 
         self._ocr_mode = QComboBox()
-        self._ocr_mode.addItems(["auto", "off", "force", "compare"])
         self._ocr_mode.setFixedWidth(180)
         self._ocr_mode.setMinimumHeight(36)
         apply_combo_content_width(self._ocr_mode)
@@ -445,6 +444,7 @@ class NormalizePage(QWidget):
             self._path_label.setText(t("norm.no_file"))
         self._btn_browse.setText(t("norm.browse"))
         self._ocr_mode_label.setText(t("norm.ocr_mode"))
+        self._populate_ocr_mode_combo()
         self._ocr_mode.setToolTip(t("norm.ocr_mode_tip"))
         self._ocr_mode_label.setToolTip(t("norm.ocr_mode_tip"))
         self._ocr_dpi_label.setText(t("norm.ocr_dpi"))
@@ -505,6 +505,18 @@ class NormalizePage(QWidget):
         self._book_language.setCurrentIndex(idx if idx >= 0 else 0)
         self._book_language.blockSignals(False)
         apply_combo_content_width(self._book_language)
+
+    def _populate_ocr_mode_combo(self) -> None:
+        """Populate OCR mode labels while preserving internal mode values."""
+        current = self._ocr_mode.currentData() or self._ocr_mode.currentText() or "auto"
+        self._ocr_mode.blockSignals(True)
+        self._ocr_mode.clear()
+        for mode in ("auto", "off", "force", "compare"):
+            self._ocr_mode.addItem(t(f"norm.ocr_mode_{mode}"), mode)
+        idx = self._ocr_mode.findData(current)
+        self._ocr_mode.setCurrentIndex(idx if idx >= 0 else 0)
+        self._ocr_mode.blockSignals(False)
+        apply_combo_content_width(self._ocr_mode)
 
     def _populate_psm_combo(self) -> None:
         """Populate human-readable Tesseract PSM options."""
@@ -623,7 +635,7 @@ class NormalizePage(QWidget):
 
         self._worker = NormalizeWorker(
             input_path=path,
-            ocr_mode=self._ocr_mode.currentText(),
+            ocr_mode=str(self._ocr_mode.currentData() or "auto"),
             ocr_dpi=self._ocr_dpi.value(),
             ocr_psm=int(self._ocr_psm.currentData() or 6),
             llm_normalize=self._llm_normalize.isChecked(),
@@ -654,7 +666,7 @@ class NormalizePage(QWidget):
         return NormalizationCacheSettings(
             source_format=path.suffix.lower().lstrip(".") or "unknown",
             book_language=language,
-            ocr_mode=self._ocr_mode.currentText() if is_pdf else "off",
+            ocr_mode=str(self._ocr_mode.currentData() or "auto") if is_pdf else "off",
             ocr_dpi=self._ocr_dpi.value() if is_pdf else 0,
             ocr_psm=int(self._ocr_psm.currentData() or 6) if is_pdf else 0,
             llm_normalize=self._llm_normalize.isChecked(),

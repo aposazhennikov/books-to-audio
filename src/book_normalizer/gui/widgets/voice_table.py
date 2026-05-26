@@ -489,6 +489,9 @@ class VoiceTableWidget(QWidget):
         self._apply_toolbar_labels()
         self._update_segment_char_count()
         self._update_full_char_count()
+        if self._segments:
+            self._refresh_chapter_filter()
+            self._populate_table()
 
     def _refresh_voice_combo_labels(self) -> None:
         """Refresh all voice combo labels after language changes."""
@@ -509,6 +512,25 @@ class VoiceTableWidget(QWidget):
             if isinstance(combo, QComboBox):
                 current = combo.currentData() or "narrator_calm"
                 _populate_voice_combo(combo, str(current))
+
+            intonation_combo = self._table.cellWidget(row, 6)
+            if isinstance(intonation_combo, QComboBox):
+                current = intonation_combo.currentData() or "neutral"
+                intonation_combo.blockSignals(True)
+                intonation_combo.clear()
+                for key in INTONATION_KEYS:
+                    intonation_combo.addItem(t(f"inton.{key}"), key)
+                idx = intonation_combo.findData(current)
+                intonation_combo.setCurrentIndex(idx if idx >= 0 else 0)
+                intonation_combo.blockSignals(False)
+                apply_combo_content_width(intonation_combo)
+            else:
+                segment_index = self._segment_index_for_table_row(row)
+                if 0 <= segment_index < len(self._segments):
+                    intonation = str(self._segments[segment_index].get("intonation") or "neutral")
+                    item = self._table.item(row, 6)
+                    if item is not None:
+                        item.setText(_intonation_display(intonation))
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Fallback compact switching when the table is used outside VoicesPage."""

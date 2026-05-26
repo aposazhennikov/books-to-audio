@@ -1280,17 +1280,16 @@ class SynthesisPage(QWidget):
         outer.setContentsMargins(14, 10, 14, 10)
         outer.setSpacing(8)
 
-        title = QLabel("Quality dashboard")
-        title.setStyleSheet("font-weight: 800; font-size: 13px; color: #334155;")
-        outer.addWidget(title)
+        self._quality_title = QLabel()
+        self._quality_title.setStyleSheet("font-weight: 800; font-size: 13px; color: #334155;")
+        outer.addWidget(self._quality_title)
 
-        self._quality_summary_label = QLabel("No manifest loaded.")
+        self._quality_summary_label = QLabel()
         self._quality_summary_label.setWordWrap(True)
         self._quality_summary_label.setStyleSheet("color: rgba(51,65,85,0.72); font-size: 11px;")
         outer.addWidget(self._quality_summary_label)
 
         self._quality_table = QTableWidget(0, 6)
-        self._quality_table.setHorizontalHeaderLabels(["Chapter", "Status", "Passed", "Warn", "Failed", "Unchecked"])
         self._quality_table.verticalHeader().setVisible(False)
         self._quality_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._quality_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -1300,27 +1299,27 @@ class SynthesisPage(QWidget):
 
         button_row = QHBoxLayout()
         button_row.setSpacing(6)
-        self._btn_quality_run = QPushButton("Run full QA")
+        self._btn_quality_run = QPushButton()
         self._btn_quality_run.clicked.connect(self._run_asr_qa_now)
         self._btn_quality_run.setEnabled(False)
         button_row.addWidget(self._btn_quality_run)
 
-        self._btn_quality_resynth = QPushButton("Resynthesize failed/warning")
+        self._btn_quality_resynth = QPushButton()
         self._btn_quality_resynth.clicked.connect(self._start_failed_resynthesis)
         self._btn_quality_resynth.setEnabled(False)
         button_row.addWidget(self._btn_quality_resynth)
 
-        self._btn_quality_open_issue = QPushButton("Open issue")
+        self._btn_quality_open_issue = QPushButton()
         self._btn_quality_open_issue.clicked.connect(self._select_first_asr_issue)
         self._btn_quality_open_issue.setEnabled(False)
         button_row.addWidget(self._btn_quality_open_issue)
 
-        self._btn_quality_open_report = QPushButton("Open report")
+        self._btn_quality_open_report = QPushButton()
         self._btn_quality_open_report.clicked.connect(self._open_asr_report)
         self._btn_quality_open_report.setEnabled(False)
         button_row.addWidget(self._btn_quality_open_report)
 
-        self._btn_quality_master = QPushButton("Master passed chapters")
+        self._btn_quality_master = QPushButton()
         self._btn_quality_master.clicked.connect(self._master_passed_chapters)
         self._btn_quality_master.setEnabled(False)
         button_row.addWidget(self._btn_quality_master)
@@ -1375,9 +1374,6 @@ class SynthesisPage(QWidget):
         )
 
         self._asr_device_combo = QComboBox()
-        self._asr_device_combo.addItem("auto", "auto")
-        self._asr_device_combo.addItem("CPU", "cpu")
-        self._asr_device_combo.addItem("CUDA", "cuda")
         _make_combo_compact(self._asr_device_combo, min_chars=8)
         self._asr_device_label = QLabel()
         form.addRow(
@@ -1398,11 +1394,6 @@ class SynthesisPage(QWidget):
         )
 
         self._asr_filter_combo = QComboBox()
-        self._asr_filter_combo.addItem("all", "all")
-        self._asr_filter_combo.addItem("failed/warning", "bad")
-        self._asr_filter_combo.addItem("failed", "failed")
-        self._asr_filter_combo.addItem("warning", "warning")
-        self._asr_filter_combo.addItem("passed", "passed")
         self._asr_filter_combo.currentIndexChanged.connect(
             self._refresh_test_chapter_combo,
         )
@@ -1796,6 +1787,8 @@ class SynthesisPage(QWidget):
         self._advanced_title.setText(t("synth.advanced_title"))
         self._apply_action_labels()
         self._advanced_desc.setText(t("synth.advanced_desc"))
+        self._apply_quality_labels()
+        self._refresh_quality_dashboard()
         self._asr_title.setText(t("synth.asr_title"))
         self._asr_enable_label.setText(t("synth.asr_enable"))
         self._asr_enable_check.setText(t("synth.asr_enable_check"))
@@ -1803,10 +1796,12 @@ class SynthesisPage(QWidget):
         self._asr_model_label.setText(t("synth.asr_model"))
         self._asr_model_combo.setToolTip(t("synth.asr_model_help"))
         self._asr_device_label.setText(t("synth.asr_device"))
+        self._populate_asr_device_combo()
         self._asr_device_combo.setToolTip(t("synth.asr_device_help"))
         self._asr_timeout_label.setText(t("synth.asr_timeout"))
         self._asr_timeout_spin.setToolTip(t("synth.asr_timeout_help"))
         self._asr_filter_label.setText(t("synth.asr_filter"))
+        self._populate_asr_filter_combo()
         self._asr_filter_combo.setToolTip(t("synth.asr_filter_help"))
         self._btn_asr_run.setText(t("synth.asr_run_now"))
         self._btn_asr_run.setToolTip(t("synth.asr_run_help"))
@@ -1831,6 +1826,54 @@ class SynthesisPage(QWidget):
         self._log_edit.setPlaceholderText(t("synth.log_placeholder"))
         self._sync_mode_tabs_height()
         self._refresh_chapter_combo()
+
+    def _apply_quality_labels(self) -> None:
+        """Refresh chapter QA dashboard labels."""
+        self._quality_title.setText(t("synth.quality_title"))
+        self._quality_table.setHorizontalHeaderLabels([
+            t("synth.quality_col_chapter"),
+            t("synth.quality_col_status"),
+            t("synth.quality_col_passed"),
+            t("synth.quality_col_warning"),
+            t("synth.quality_col_failed"),
+            t("synth.quality_col_unchecked"),
+        ])
+        self._btn_quality_run.setText(t("synth.quality_run_full"))
+        self._btn_quality_resynth.setText(t("synth.quality_resynth"))
+        self._btn_quality_open_issue.setText(t("synth.quality_open_issue"))
+        self._btn_quality_open_report.setText(t("synth.quality_open_report"))
+        self._btn_quality_master.setText(t("synth.quality_master"))
+        if not self._manifest_path:
+            self._quality_summary_label.setText(t("synth.quality_no_manifest"))
+
+    def _populate_asr_device_combo(self) -> None:
+        """Refresh ASR device labels while preserving internal values."""
+        current = self._asr_device_combo.currentData() or "auto"
+        self._asr_device_combo.blockSignals(True)
+        self._asr_device_combo.clear()
+        self._asr_device_combo.addItem(t("synth.asr_device_auto"), "auto")
+        self._asr_device_combo.addItem(t("synth.asr_device_cpu"), "cpu")
+        self._asr_device_combo.addItem(t("synth.asr_device_cuda"), "cuda")
+        idx = self._asr_device_combo.findData(current)
+        self._asr_device_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._asr_device_combo.blockSignals(False)
+
+    def _populate_asr_filter_combo(self) -> None:
+        """Refresh ASR filter labels while preserving internal values."""
+        current = self._asr_filter_combo.currentData() or "all"
+        self._asr_filter_combo.blockSignals(True)
+        self._asr_filter_combo.clear()
+        for key, value in (
+            ("synth.asr_filter_all", "all"),
+            ("synth.asr_filter_bad", "bad"),
+            ("synth.asr_filter_failed", "failed"),
+            ("synth.asr_filter_warning", "warning"),
+            ("synth.asr_filter_passed", "passed"),
+        ):
+            self._asr_filter_combo.addItem(t(key), value)
+        idx = self._asr_filter_combo.findData(current)
+        self._asr_filter_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._asr_filter_combo.blockSignals(False)
 
     # ── Clone panel logic ─────────────────────────────────────────────────────
 
@@ -2436,7 +2479,7 @@ class SynthesisPage(QWidget):
                 manifest = None
         if not isinstance(manifest, dict):
             self._quality_table.setRowCount(0)
-            self._quality_summary_label.setText("No manifest loaded.")
+            self._quality_summary_label.setText(t("synth.quality_no_manifest"))
             self._set_quality_buttons(False, False, False)
             return
 
@@ -2462,7 +2505,7 @@ class SynthesisPage(QWidget):
                 all_ready = False
             values = [
                 f"{chapter_index + 1:03d}",
-                status,
+                t(f"synth.quality_status_{status}"),
                 str(counts.get("passed", 0)),
                 str(counts.get("warning", 0)),
                 str(counts.get("failed", 0)),
@@ -2473,9 +2516,13 @@ class SynthesisPage(QWidget):
                 item.setBackground(brush)
                 self._quality_table.setItem(row, column, item)
         self._quality_summary_label.setText(
-            "Quality: "
-            f"{totals['passed']} passed, {totals['warning']} warning, "
-            f"{totals['failed']} failed, {totals['unchecked']} unchecked."
+            t(
+                "synth.quality_summary",
+                passed=totals["passed"],
+                warning=totals["warning"],
+                failed=totals["failed"],
+                unchecked=totals["unchecked"],
+            )
         )
         self._set_quality_buttons(bool(summary), has_bad, all_ready)
 
@@ -3063,7 +3110,7 @@ class SynthesisPage(QWidget):
         self._worker.error.connect(self._on_error)
         self._worker.start()
         self._show_runtime_feedback(show_log=True)
-        self._status.setText("Resynthesizing failed/warning chunks...")
+        self._status.setText(t("synth.quality_resynthesizing"))
 
     def _reset_quality_bad_chunks(self, *, max_attempts: int) -> None:
         if not self._manifest_path or not self._manifest_path.exists():
@@ -3183,10 +3230,10 @@ class SynthesisPage(QWidget):
             self._status.setText(str(exc))
             self._progress.set_status(str(exc))
             return
-        message = f"Mastered {len(result.files)} file(s): {result.output_dir}"
+        message = t("synth.quality_master_done", n=len(result.files), path=result.output_dir)
         self._status.setText(message)
         self._progress.set_status(message)
-        self._on_log_line(f"Mastering report: {result.report_path}")
+        self._on_log_line(t("synth.quality_master_report", path=result.report_path))
 
     def _selected_master_format(self) -> str:
         value = str(self._output_format_combo.currentData() or "both").lower()

@@ -7,6 +7,8 @@ from pathlib import Path
 from book_normalizer.gui.app import _resolve_theme
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, TRANSLATIONS, set_language, t
 from book_normalizer.gui.main_window import MainWindow
+from book_normalizer.gui.pages.roles_page import RolesPage
+from book_normalizer.gui.widgets.voice_table import VoiceTableWidget
 from tests.gui.helpers import assert_layout_sane, flush_events, qapp
 
 _FORMAT_FIELD_RE = re.compile(r"(?<!\{)\{([^{}]+)\}(?!\})")
@@ -275,6 +277,178 @@ def test_voice_chunk_table_labels_are_polished_for_supported_languages() -> None
         assert "LLM Model" not in t("voice.llm_model")
         assert "演讲" not in t("voice.stats_segments")
         assert "Баяндауыш" not in t("voice.stats_segments")
+
+    set_language("ru")
+
+
+def test_reported_localization_hotspots_are_translated_for_non_english_languages() -> None:
+    expected = {
+        "zh": {
+            "voice.prev_segment": "上一个",
+            "voice.next_segment": "下一个",
+            "synth.asr_title": "ASR 质量门",
+            "synth.asr_filter": "分块筛选：",
+            "synth.asr_filter_bad": "失败/警告",
+            "norm.ocr_mode_auto": "自动",
+            "synth.quality_no_manifest": "尚未加载清单。",
+        },
+        "kk": {
+            "voice.prev_segment": "Алдыңғы",
+            "voice.next_segment": "Келесі",
+            "synth.asr_title": "ASR сапа тексеруі",
+            "synth.asr_filter": "Чанк сүзгісі:",
+            "synth.asr_filter_bad": "қате/ескерту",
+            "norm.ocr_mode_auto": "Авто",
+            "synth.quality_no_manifest": "Манифест жүктелмеген.",
+        },
+        "uz": {
+            "voice.prev_segment": "Oldingi",
+            "voice.next_segment": "Keyingi",
+            "synth.asr_title": "ASR sifat tekshiruvi",
+            "synth.asr_filter": "Bo'lak filtri:",
+            "synth.asr_filter_bad": "xato/ogoh",
+            "norm.ocr_mode_auto": "Avto",
+            "synth.quality_no_manifest": "Manifest yuklanmagan.",
+        },
+    }
+    english_starts = {
+        "synth.asr_timeout_help": "Maximum time",
+        "synth.asr_device_help": "auto lets",
+        "voice.prev_segment_tip": "Select the previous",
+        "voice.next_segment_tip": "Select the next",
+    }
+
+    for code, labels in expected.items():
+        set_language(code)
+        for key, value in labels.items():
+            assert t(key) == value, f"{key}:{code}"
+        for key, english_start in english_starts.items():
+            assert not t(key).startswith(english_start), f"{key}:{code}"
+
+    set_language("ru")
+
+
+def test_roles_page_localizes_generic_inventory_rows(qtbot) -> None:
+    app = qapp()
+    page = RolesPage()
+    qtbot.addWidget(page)
+    inventory = {
+        "total_direct_speech": 3,
+        "total_segments": 4,
+        "roles": [
+            {
+                "display_name": "Male character",
+                "description": "Direct-speech character inferred from local dialogue context.",
+                "direct_speech_count": 3,
+                "segment_count": 4,
+                "emotions": [
+                    {"emotion": "calm", "count": 2},
+                    {"emotion": "tense", "count": 1},
+                ],
+            }
+        ],
+    }
+    expected = {
+        "zh": ("男性角色", "本地对话", "平静: 2", "紧张: 1"),
+        "kk": ("Ер кейіпкер", "Жергілікті", "Тыныш: 2", "Шиеленісті: 1"),
+        "uz": ("Erkak personaj", "Lokal dialog", "Tinch: 2", "Tarang: 1"),
+    }
+
+    set_language("ru")
+    page._populate_table(inventory)
+    for code, (role, description_part, calm, tense) in expected.items():
+        set_language(code)
+        page.retranslate()
+        flush_events(app)
+        assert page._table.item(0, 0).text() == role
+        assert description_part in page._table.item(0, 1).text()
+        emotion_text = page._table.item(0, 3).text()
+        assert calm in emotion_text
+        assert tense in emotion_text
+
+    set_language("ru")
+
+
+def test_voice_table_retranslate_refreshes_loaded_rows_and_controls(qtbot) -> None:
+    app = qapp()
+    table = VoiceTableWidget()
+    qtbot.addWidget(table)
+    table.set_segments(
+        [
+            {
+                "segment_index": 0,
+                "chapter_index": 0,
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "text": "Line",
+                "is_dialogue": False,
+            }
+        ]
+    )
+    table._ensure_row_widgets(0)
+
+    set_language("ru")
+    table.retranslate()
+    flush_events(app)
+    assert table._chapter_filter.itemText(0) == "Все главы"
+    assert table._table.item(0, 1).text() == "Автор"
+    assert table._table.cellWidget(0, 6).currentText() == "Спокойная"
+
+    set_language("zh")
+    table.retranslate()
+    table._ensure_row_widgets(0)
+    flush_events(app)
+    assert table._chapter_filter.itemText(0) == "所有章节"
+    assert table._btn_prev_segment.text() == "上一个"
+    assert table._btn_next_segment.text() == "下一个"
+    assert table._table.item(0, 1).text() == "旁白"
+    assert table._table.cellWidget(0, 6).currentText() == "平静"
+
+    set_language("ru")
+
+
+def test_synthesis_asr_and_quality_panels_are_localized(qtbot) -> None:
+    app = qapp()
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    flush_events(app)
+    window._tabs.setCurrentIndex(3)
+    window._synthesis_page._mode_tabs.setCurrentIndex(2)
+    expected = {
+        "zh": ("ASR 质量门", "全部", "失败/警告", "自动", "质量面板", "尚未加载清单。"),
+        "kk": (
+            "ASR сапа тексеруі",
+            "барлығы",
+            "қате/ескерту",
+            "Авто",
+            "Сапа панелі",
+            "Манифест жүктелмеген.",
+        ),
+        "uz": (
+            "ASR sifat tekshiruvi",
+            "barchasi",
+            "xato/ogoh",
+            "Avto",
+            "Sifat paneli",
+            "Manifest yuklanmagan.",
+        ),
+    }
+
+    for code, labels in expected.items():
+        lang_index = window._lang_combo.findData(code)
+        assert lang_index >= 0
+        window._lang_combo.setCurrentIndex(lang_index)
+        flush_events(app)
+        page = window._synthesis_page
+        assert page._asr_title.text() == labels[0]
+        assert page._asr_filter_combo.itemText(0) == labels[1]
+        assert page._asr_filter_combo.itemText(1) == labels[2]
+        assert page._asr_device_combo.itemText(0) == labels[3]
+        assert page._quality_title.text() == labels[4]
+        assert page._quality_summary_label.text() == labels[5]
+        assert page._btn_quality_run.text() != "Run full QA"
 
     set_language("ru")
 

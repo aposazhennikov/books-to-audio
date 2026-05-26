@@ -42,6 +42,43 @@ from book_normalizer.runtime_paths import configured_ollama_endpoint
 logger = logging.getLogger(__name__)
 
 
+_ROLE_NAME_KEYS = {
+    "Narrator": "voice.role_narrator",
+    "Male character": "voice.role_male",
+    "Female character": "voice.role_female",
+    "Annotation": "voice.role_annotation",
+    "Preface": "voice.role_preface",
+    "Epilogue": "voice.role_epilogue",
+    "Chapter title": "voice.role_chapter_title",
+}
+
+_ROLE_DESCRIPTION_KEYS = {
+    "Direct-speech role detected in the book.": "roles.desc_direct_speech",
+    "Direct-speech character inferred from local dialogue context.": "roles.desc_direct_speech_inferred",
+    "Narrator and authorial prose.": "roles.desc_narrator",
+}
+
+
+def _localized_role_name(name: str) -> str:
+    key = _ROLE_NAME_KEYS.get(name)
+    return t(key) if key else name
+
+
+def _localized_role_description(description: str, display_name: str) -> str:
+    key = _ROLE_DESCRIPTION_KEYS.get(description)
+    if key:
+        return t(key)
+    if description == f"System narration block for {display_name.lower()}.":
+        return t("roles.desc_system", name=_localized_role_name(display_name))
+    return description
+
+
+def _localized_emotion_label(emotion: str) -> str:
+    key = f"inton.{emotion.strip().lower().replace(' ', '_')}"
+    label = t(key)
+    return label if label != key else emotion
+
+
 class RolesPage(QWidget):
     """Extract character roles and emotion variants before chunk editing."""
 
@@ -56,6 +93,7 @@ class RolesPage(QWidget):
         self._roles_path: Path | None = None
         self._worker: ExportSegmentsWorker | None = None
         self._compact_mode = False
+        self._current_inventory: dict[str, object] | None = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -135,7 +173,9 @@ class RolesPage(QWidget):
         self._llm_model.setPlaceholderText(t("roles.llm_model"))
         self._btn_extract.setText(t("roles.extract"))
         self._apply_table_headers()
-        if self._table.rowCount() == 0:
+        if self._current_inventory is not None:
+            self._populate_table(self._current_inventory)
+        elif self._table.rowCount() == 0:
             self._summary.setText(t("roles.empty"))
 
     def _apply_control_layout(self) -> None:
@@ -419,19 +459,22 @@ class RolesPage(QWidget):
         return inventory
 
     def _populate_table(self, inventory: dict[str, object]) -> None:
+        self._current_inventory = inventory
         roles = list(inventory.get("roles", []))
         self._table.setRowCount(len(roles))
         for row, raw_role in enumerate(roles):
             role = raw_role if isinstance(raw_role, dict) else {}
             emotions = role.get("emotions", [])
             emotion_text = ", ".join(
-                f"{item.get('emotion')}: {item.get('count')}"
+                f"{_localized_emotion_label(str(item.get('emotion') or ''))}: {item.get('count')}"
                 for item in emotions
                 if isinstance(item, dict)
             )
+            display_name = str(role.get("display_name") or "")
+            description = str(role.get("description") or "")
             values = [
-                str(role.get("display_name") or ""),
-                str(role.get("description") or ""),
+                _localized_role_name(display_name),
+                _localized_role_description(description, display_name),
                 str(role.get("direct_speech_count") or 0),
                 emotion_text,
                 str(role.get("segment_count") or 0),

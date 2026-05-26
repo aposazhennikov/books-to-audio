@@ -43,8 +43,6 @@ class NormalizationCacheSettings:
             "llm_normalize": bool(self.llm_normalize),
             "llm_endpoint": llm_endpoint,
             "llm_model": llm_model,
-            "tesseract_available": self.tesseract_available,
-            "tesseract_language_available": self.tesseract_language_available,
         }
 
 
@@ -65,7 +63,11 @@ def find_cached_normalization(
     """Return a cache entry for the source/settings pair when one exists."""
     path = cache_path_for(source_path, settings, cache_root=cache_root)
     if not path.exists():
-        return None
+        return _find_compatible_cached_normalization(
+            source_path,
+            settings,
+            cache_root=cache_root,
+        )
     return CachedNormalization(key=path.stem, path=path)
 
 
@@ -146,6 +148,57 @@ def _file_sha1(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _find_compatible_cached_normalization(
+    source_path: Path,
+    settings: NormalizationCacheSettings,
+    *,
+    cache_root: Path | None = None,
+) -> CachedNormalization | None:
+    """Find compatible legacy cache entries that used older key material."""
+    root = cache_root or CACHE_ROOT
+    if not root.exists():
+        return None
+
+    source_digest = _file_sha1(source_path)
+    settings_record = settings.to_key_record()
+    for candidate in sorted(root.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if payload.get("schema_version") != CACHE_SCHEMA_VERSION:
+            continue
+        source = payload.get("source")
+        if not isinstance(source, dict) or source.get("sha1") != source_digest:
+            continue
+        if _payload_settings_record(payload.get("settings")) != settings_record:
+            continue
+        cache_key = payload.get("cache_key")
+        if not isinstance(cache_key, str) or not cache_key:
+            continue
+        return CachedNormalization(key=cache_key, path=candidate)
+    return None
+
+
+def _payload_settings_record(raw_settings: object) -> dict[str, Any] | None:
+    """Normalize persisted settings for compatibility checks."""
+    if not isinstance(raw_settings, dict):
+        return None
+    try:
+        return NormalizationCacheSettings(
+            source_format=str(raw_settings.get("source_format", "")),
+            book_language=str(raw_settings.get("book_language", "")),
+            ocr_mode=str(raw_settings.get("ocr_mode", "")),
+            ocr_dpi=int(raw_settings.get("ocr_dpi") or 0),
+            ocr_psm=int(raw_settings.get("ocr_psm") or 0),
+            llm_normalize=bool(raw_settings.get("llm_normalize")),
+            llm_endpoint=str(raw_settings.get("llm_endpoint", "")),
+            llm_model=str(raw_settings.get("llm_model", "")),
+        ).to_key_record()
+    except (TypeError, ValueError):
+        return None
 
 
 def _normalize_endpoint(endpoint: str) -> str:

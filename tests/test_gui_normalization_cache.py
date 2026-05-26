@@ -97,6 +97,74 @@ def test_normalization_cache_normalizes_llm_endpoint_suffix(tmp_path: Path) -> N
     assert path_with_v1 == path_without_v1
 
 
+def test_normalization_cache_ignores_host_ocr_availability_in_key(tmp_path: Path) -> None:
+    source = tmp_path / "book.pdf"
+    source.write_text("source text", encoding="utf-8")
+    cache_root = tmp_path / "cache"
+
+    available = cache_path_for(
+        source,
+        _settings(
+            source_format="pdf",
+            ocr_mode="auto",
+            ocr_dpi=600,
+            ocr_psm=3,
+            tesseract_available=True,
+            tesseract_language_available=True,
+        ),
+        cache_root=cache_root,
+    )
+    unchecked = cache_path_for(
+        source,
+        _settings(
+            source_format="pdf",
+            ocr_mode="auto",
+            ocr_dpi=600,
+            ocr_psm=3,
+            tesseract_available=None,
+            tesseract_language_available=None,
+        ),
+        cache_root=cache_root,
+    )
+
+    assert available == unchecked
+
+
+def test_normalization_cache_finds_legacy_entry_with_compatible_settings(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "book.pdf"
+    source.write_text("source text", encoding="utf-8")
+    cache_root = tmp_path / "cache"
+    settings = _settings(
+        source_format="pdf",
+        ocr_mode="auto",
+        ocr_dpi=600,
+        ocr_psm=3,
+        tesseract_available=True,
+        tesseract_language_available=True,
+    )
+    entry = save_cached_book(_book(), source, settings, cache_root=cache_root)
+    legacy_path = cache_root / "legacy-environment-sensitive-key.json"
+    entry.path.rename(legacy_path)
+
+    found = find_cached_normalization(
+        source,
+        _settings(
+            source_format="pdf",
+            ocr_mode="auto",
+            ocr_dpi=600,
+            ocr_psm=3,
+            tesseract_available=False,
+            tesseract_language_available=False,
+        ),
+        cache_root=cache_root,
+    )
+
+    assert found == CachedNormalization(key=entry.key, path=legacy_path)
+    assert load_cached_book(found).metadata.title == "Cached"
+
+
 def test_normalization_cache_rejects_corrupt_envelope(tmp_path: Path) -> None:
     path = tmp_path / "bad.json"
     path.write_text(json.dumps({"schema_version": 999, "cache_key": "bad"}), encoding="utf-8")

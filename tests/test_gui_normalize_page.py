@@ -360,6 +360,63 @@ def test_normalize_page_restores_completed_book_from_cache(qapp, qtbot, tmp_path
     set_language("ru")
 
 
+def test_normalize_page_prompts_for_cache_when_ocr_probe_changes(
+    qapp,
+    qtbot,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    class _UnexpectedWorker:
+        def __init__(self, **_kwargs):
+            raise AssertionError("worker should not start when cache is restored")
+
+    book_path = tmp_path / "book.pdf"
+    book_path.write_text("Cached source.", encoding="utf-8")
+    page = NormalizePage()
+    qtbot.addWidget(page)
+    page._selected_path = str(book_path)
+    page._path_label.setText(str(book_path))
+    page._btn_run.setEnabled(True)
+    page._ocr_mode.setCurrentIndex(page._ocr_mode.findText("auto"))
+    page._ocr_dpi.setValue(600)
+    page._ocr_psm.setCurrentIndex(page._ocr_psm.findData(3))
+    page._tesseract_available = True
+    page._tesseract_language_available["rus"] = True
+    cached_book = Book(
+        metadata=Metadata(title="Cached", language="ru", source_format="pdf"),
+        chapters=[
+            Chapter(
+                index=0,
+                paragraphs=[
+                    Paragraph(raw_text="Cached source.", normalized_text="Cached result."),
+                ],
+            ),
+        ],
+    )
+    normalization_cache.save_cached_book(
+        cached_book,
+        book_path,
+        page._normalization_cache_settings(book_path),
+    )
+    page._tesseract_available = False
+    page._tesseract_language_available.clear()
+    prompts: list[object] = []
+    monkeypatch.setattr(
+        page,
+        "_ask_cached_normalization",
+        lambda path: prompts.append(path) or "restore",
+    )
+    monkeypatch.setattr(normalize_page, "NormalizeWorker", _UnexpectedWorker)
+
+    page._run_normalization()
+
+    assert prompts == [book_path]
+    assert page._book is not None
+    assert page._norm_text.toPlainText() == "Cached result."
+    assert page._progress._status.text() == t("norm.cache_restored", n=1)
+    page.deleteLater()
+
+
 def test_normalize_page_can_run_from_scratch_when_cache_exists(qapp, qtbot, tmp_path, monkeypatch) -> None:
     started: list[bool] = []
 

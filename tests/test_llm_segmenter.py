@@ -11,6 +11,8 @@ from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3
 from book_normalizer.llm.ollama_client import OllamaChatAttempt
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 
+_MOJIBAKE_FRAGMENTS = ("Рў", "Рџ", "Рњ", "вЂ", "дЅ", "Т›", "У©")
+
 
 class _FakeClient:
     def __init__(self, responses: dict[str, Any]) -> None:
@@ -25,6 +27,8 @@ class _FakeClient:
         self.calls.append(model)
         self.messages.append(kwargs["messages"])
         response = self.responses[model]
+        if isinstance(response, list):
+            response = response.pop(0)
         if isinstance(response, Exception):
             raise response
         return OllamaChatAttempt(model=model, content=json.dumps(response), data=response)
@@ -47,6 +51,34 @@ def _book(text: str, language: str = "ru") -> Book:
             ),
         ],
     )
+
+
+def test_llm_voice_segmenter_prompts_are_readable_and_retry_is_strict() -> None:
+    from book_normalizer.chunking.llm_segmenter import (
+        _system_prompt_for_language,
+        _user_prompt_for_window,
+    )
+
+    prompts = {
+        language: _system_prompt_for_language(language)
+        for language in ("ru", "en", "zh", "kk", "uz")
+    }
+
+    assert "режиссёр" in prompts["ru"]
+    assert "中文" in prompts["zh"]
+    assert "қазақ" in prompts["kk"].lower()
+    for prompt in prompts.values():
+        assert not any(fragment in prompt for fragment in _MOJIBAKE_FRAGMENTS)
+
+    retry_prompt = _user_prompt_for_window(
+        language="ru",
+        chapter_index=0,
+        window_index=0,
+        window_text="— Привет.",
+        previous_issues=["text_preservation_failed"],
+    )
+    assert "PREVIOUS_OUTPUT_FAILED_VALIDATION" in retry_prompt
+    assert "preserve input.text exactly" in retry_prompt
 
 
 @pytest.mark.parametrize(
@@ -118,8 +150,29 @@ def test_llm_voice_segmenter_falls_back_when_primary_loses_text() -> None:
     rows = segmenter.segment_book(_book(text, language="en"))
 
     assert " ".join(row["text"] for row in rows) == text
-    assert fake.calls == [PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
+    assert fake.calls == [PRIMARY_QWEN3_MODEL, PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
     assert PRIMARY_QWEN3_MODEL in fake.unloaded
+
+
+def test_llm_voice_segmenter_retries_primary_before_fallback_on_text_loss() -> None:
+    text = "Alpha beta gamma."
+    segmenter = LlmVoiceSegmenter(language="en")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: [
+            {"segments": [{"role": "narrator", "text": "Alpha beta.", "intonation": "calm"}]},
+            {"segments": [{"role": "narrator", "text": text, "intonation": "calm"}]},
+        ],
+        FALLBACK_QWEN3_MODEL: {
+            "segments": [{"role": "narrator", "text": text, "intonation": "calm"}],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="en"))
+
+    assert " ".join(row["text"] for row in rows) == text
+    assert fake.calls == [PRIMARY_QWEN3_MODEL, PRIMARY_QWEN3_MODEL]
+    assert "PREVIOUS_OUTPUT_FAILED_VALIDATION" in fake.messages[1][1]["content"]
 
 
 def test_llm_voice_segmenter_restores_source_quotes_from_model_boundaries() -> None:
@@ -397,4 +450,10 @@ def test_llm_voice_segmenter_writes_review_report_when_all_models_fail(tmp_path:
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["requires_human_review"] is True
     assert report["models"] == [PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
-    assert len(report["failures"]) == 2
+    assert len(report["failures"]) == 4
+    assert fake.calls == [
+        PRIMARY_QWEN3_MODEL,
+        PRIMARY_QWEN3_MODEL,
+        FALLBACK_QWEN3_MODEL,
+        FALLBACK_QWEN3_MODEL,
+    ]

@@ -24,6 +24,23 @@ from book_normalizer.normalization.text_validator import (
     _word_count,
 )
 
+_MOJIBAKE_FRAGMENTS = ("Рў", "Рџ", "Рњ", "вЂ", "дЅ", "Т›", "У©")
+
+
+def test_multilingual_llm_normalizer_prompts_are_readable() -> None:
+    from book_normalizer.normalization.llm_normalizer import _system_prompt_for_language
+
+    prompts = {
+        language: _system_prompt_for_language(language)
+        for language in ("ru", "en", "zh", "kk", "uz")
+    }
+
+    assert "Ты" in prompts["ru"]
+    assert "你是" in prompts["zh"]
+    assert "қазақ" in prompts["kk"].lower()
+    for prompt in prompts.values():
+        assert not any(fragment in prompt for fragment in _MOJIBAKE_FRAGMENTS)
+
 # ── TextPreservationValidator ─────────────────────────────────────────────────
 
 

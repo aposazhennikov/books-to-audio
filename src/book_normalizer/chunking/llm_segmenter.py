@@ -25,7 +25,7 @@ from book_normalizer.llm.ollama_client import OllamaChatClient
 logger = logging.getLogger(__name__)
 
 DEFAULT_WINDOW_CHARS = 900
-_CACHE_VERSION = "llm-segmenter-v3-multilingual-dialogue-repair"
+_CACHE_VERSION = "llm-segmenter-v4-preservation-retry"
 
 ROLE_TO_VOICE_ID = {
     "narrator": "narrator_calm",
@@ -353,6 +353,7 @@ class LlmVoiceSegmenter:
         window_chars: int = DEFAULT_WINDOW_CHARS,
         max_segment_chars: int = DEFAULT_MAX_CHUNK_CHARS,
         lightweight: bool = False,
+        max_retries: int = 2,
     ) -> None:
         self._language = normalize_book_language(language)
         self._model_plan = model_plan_for_language(
@@ -372,6 +373,7 @@ class LlmVoiceSegmenter:
         self._review_report_path = review_report_path
         self._window_chars = max(600, window_chars)
         self._max_segment_chars = max(80, max_segment_chars)
+        self._max_retries = max(1, max_retries)
         self._failures: list[SegmentationFailure] = []
 
     @property
@@ -500,65 +502,66 @@ class LlmVoiceSegmenter:
             return cached
 
         last_error = ""
+        previous_issues: list[str] = []
         for model in self._model_plan.candidates:
-            try:
-                attempt = self._client.chat_json_with_fallback(
-                    models=[model],
-                    messages=[
-                        {"role": "system", "content": _system_prompt_for_language(self._language)},
-                        {
-                            "role": "user",
-                            "content": (
-                                "Input is JSON. Segment only input.text. "
-                                "Preserve quoted dialogue, apostrophes, punctuation, and word order.\n"
-                                "INPUT_JSON:\n"
-                                + json.dumps(
-                                    {
-                                        "language": get_book_language(self._language).english_name,
-                                        "chapter": chapter_index + 1,
-                                        "window": window_index + 1,
-                                        "text": window_text,
-                                    },
-                                    ensure_ascii=False,
-                                )
-                            ),
-                        },
-                    ],
-                    schema=_SEGMENT_SCHEMA,
-                    temperature=0.1,
-                )
-                segments = _normalise_segments(attempt.data)
-                if not segments:
-                    raise ValueError("empty segments")
-                reconciled = _reconcile_segments_to_source(window_text, segments)
-                if reconciled is not None:
-                    segments = reconciled
-                if not _segments_preserve_source(window_text, segments):
-                    failure = SegmentationFailure(
-                        chapter_index,
-                        window_index,
-                        model,
-                        "text_preservation_failed",
-                        window_text[:500],
-                        " ".join(seg["text"] for seg in segments)[:500],
+            for attempt_index in range(1, self._max_retries + 1):
+                try:
+                    attempt = self._client.chat_json_with_fallback(
+                        models=[model],
+                        messages=[
+                            {"role": "system", "content": _system_prompt_for_language(self._language)},
+                            {
+                                "role": "user",
+                                "content": _user_prompt_for_window(
+                                    language=self._language,
+                                    chapter_index=chapter_index,
+                                    window_index=window_index,
+                                    window_text=window_text,
+                                    previous_issues=previous_issues,
+                                ),
+                            },
+                        ],
+                        schema=_SEGMENT_SCHEMA,
+                        temperature=0.1,
                     )
-                    self._failures.append(failure)
-                    last_error = failure.reason
+                    segments = _normalise_segments(attempt.data)
+                    if not segments:
+                        raise ValueError("empty segments")
+                    reconciled = _reconcile_segments_to_source(window_text, segments)
+                    if reconciled is not None:
+                        segments = reconciled
+                    if not _segments_preserve_source(window_text, segments):
+                        failure = SegmentationFailure(
+                            chapter_index,
+                            window_index,
+                            model,
+                            "text_preservation_failed",
+                            window_text[:500],
+                            " ".join(seg["text"] for seg in segments)[:500],
+                        )
+                        self._failures.append(failure)
+                        last_error = failure.reason
+                        previous_issues = [
+                            "The previous segment list did not preserve input.text exactly.",
+                            "Return fewer segments if needed, but do not change, drop, or add text.",
+                        ]
+                        self._client.unload_model(model)
+                        continue
+                    self._save_cache(chapter_index, window_index, window_text, segments)
+                    return segments
+                except Exception as exc:  # noqa: BLE001
+                    last_error = f"{type(exc).__name__}: {exc}"
+                    previous_issues = [last_error]
+                    self._failures.append(
+                        SegmentationFailure(
+                            chapter_index,
+                            window_index,
+                            model,
+                            f"attempt {attempt_index}/{self._max_retries}: {last_error}",
+                            window_text[:500],
+                        )
+                    )
                     self._client.unload_model(model)
-                    continue
-                self._save_cache(chapter_index, window_index, window_text, segments)
-                return segments
-            except Exception as exc:  # noqa: BLE001
-                last_error = f"{type(exc).__name__}: {exc}"
-                self._failures.append(
-                    SegmentationFailure(
-                        chapter_index,
-                        window_index,
-                        model,
-                        last_error,
-                        window_text[:500],
-                    )
-                )
 
         self._write_review_report()
         raise LlmSegmentationError(
@@ -1046,6 +1049,41 @@ def _canonical_for_preservation(text: str) -> str:
 def _system_prompt_for_language(language: str | None) -> str:
     code = normalize_book_language(language)
     return _SYSTEM_PROMPTS.get(code, _SYSTEM_PROMPTS["ru"])
+
+
+def _user_prompt_for_window(
+    *,
+    language: str,
+    chapter_index: int,
+    window_index: int,
+    window_text: str,
+    previous_issues: list[str] | None = None,
+) -> str:
+    retry_guard = ""
+    if previous_issues:
+        retry_guard = (
+            "\nPREVIOUS_OUTPUT_FAILED_VALIDATION:\n"
+            + json.dumps({"issues": previous_issues[:6]}, ensure_ascii=False)
+            + "\nThe next answer must preserve input.text exactly. "
+            "If dialogue boundaries are uncertain, return fewer larger segments."
+        )
+    return (
+        "Input is JSON. Segment only input.text. "
+        "Preserve quoted dialogue, apostrophes, punctuation, and word order. "
+        "The ordered concatenation of all segment.text values must reproduce "
+        "input.text exactly after whitespace normalization.\n"
+        "INPUT_JSON:\n"
+        + json.dumps(
+            {
+                "language": get_book_language(language).english_name,
+                "chapter": chapter_index + 1,
+                "window": window_index + 1,
+                "text": window_text,
+            },
+            ensure_ascii=False,
+        )
+        + retry_guard
+    )
 
 
 def apply_paragraph_boundary_pauses(rows: list[dict[str, Any]]) -> None:

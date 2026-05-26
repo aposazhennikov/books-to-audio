@@ -56,9 +56,9 @@ _PROMPTS: dict[str, str] = {
     "ru": """\
 Ты — корректор русского текста. Твоя задача — минимальная правка:
 
-1. Исправь явные опечатки и орфографические ошибки.
-2. Улучши пунктуацию: расставь запятые, точки, тире там, где они нужны.
-3. Восстанови букву «Ё» там, где она необходима (йо-фикация).
+1. Исправь явные опечатки, OCR-артефакты и орфографические ошибки.
+2. Улучши пунктуацию: запятые, точки и тире только там, где это безопасно.
+3. Восстанови букву «Ё» там, где она необходима.
 
 СТРОГО ЗАПРЕЩЕНО:
 - Менять сюжет, события, имена персонажей или топонимы.
@@ -66,6 +66,7 @@ _PROMPTS: dict[str, str] = {
 - Перефразировать или менять стиль автора.
 - Добавлять пояснения, комментарии или заголовки.
 
+Если безопасная правка невозможна, верни исходный текст без изменений.
 Верни JSON строго такого вида: {"text": "исправленный текст"}.
 """,
     "en": """\
@@ -75,6 +76,7 @@ You are a careful English literary proofreader. Make only minimal corrections:
 2. Preserve the author's wording, sentence order, names, places, and style.
 3. Do not summarize, rewrite, add explanations, remove sentences, or translate.
 
+If a safe minimal correction is impossible, return the input text unchanged.
 Return strict JSON only: {"text": "corrected text"}.
 """,
     "zh": """\
@@ -84,6 +86,7 @@ Return strict JSON only: {"text": "corrected text"}.
 2. 保留原文内容、人物、地名、句子顺序和作者风格。
 3. 不要改写、扩写、删句、解释或翻译。
 
+如果不能安全修改，请原样返回输入文本。
 只返回严格 JSON：{"text": "校对后的文本"}。
 """,
     "kk": """\
@@ -93,6 +96,7 @@ Return strict JSON only: {"text": "corrected text"}.
 2. Автор стилін, сөйлем тәртібін, есімдерді және жер атауларын сақта.
 3. Қайта жазба, қысқартпа, жаңа сөйлем қоспа, түсініктеме берме және аударма.
 
+Қауіпсіз түзету жасау мүмкін болмаса, бастапқы мәтінді өзгертпей қайтар.
 Тек қатаң JSON қайтар: {"text": "түзетілген мәтін"}.
 """,
     "uz": """\
@@ -102,6 +106,7 @@ Siz o'zbek adabiy matnini ehtiyotkor tahrir qiluvchi muharrirsiz. Faqat minimal 
 2. Muallif uslubi, gap tartibi, ismlar va joy nomlarini saqlang.
 3. Qayta yozmang, qisqartirmang, yangi gap qo'shmang, izoh bermang va tarjima qilmang.
 
+Agar xavfsiz minimal tuzatish imkonsiz bo'lsa, kirish matnini o'zgarishsiz qaytaring.
 Faqat qat'iy JSON qaytaring: {"text": "tuzatilgan matn"}.
 """,
 }

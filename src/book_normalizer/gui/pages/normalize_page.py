@@ -147,7 +147,7 @@ class NormalizePage(QWidget):
         self._book = None
         self._worker: NormalizeWorker | None = None
         self._selected_path: str = ""
-        self._help_buttons: dict[str, object] = {}
+        self._help_buttons: dict[str, list[object]] = {}
         self._compact_mode = False
         self._ui_scale = 1.0
         self._tesseract_available: bool | None = None
@@ -604,13 +604,14 @@ class NormalizePage(QWidget):
         """Create a form label with a reusable help button."""
         label.setWordWrap(True)
         wrap, button = label_with_help(label, t(help_key))
-        self._help_buttons[help_key] = button
+        self._help_buttons.setdefault(help_key, []).append(button)
         return wrap
 
     def _update_help_buttons(self) -> None:
         """Refresh tooltip text after language changes."""
-        for help_key, button in self._help_buttons.items():
-            set_help_text(button, t(help_key))
+        for help_key, buttons in self._help_buttons.items():
+            for button in buttons:
+                set_help_text(button, t(help_key))
 
     def _browse_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

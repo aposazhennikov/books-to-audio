@@ -126,7 +126,11 @@ def test_cached_restore_statuses_retranslate_after_language_switch(qtbot) -> Non
     roles_page._cache_restored_roles = 90
     roles_page._progress.set_status(t("roles.cache_restored", n=90))
     normalize_page.retranslate()
-    assert normalize_page._help_buttons["norm.llm_tip"].toolTip() == t("norm.llm_tip")
+    assert len(normalize_page._help_buttons["norm.llm_tip"]) == 3
+    assert all(
+        button.toolTip() == t("norm.llm_tip")
+        for button in normalize_page._help_buttons["norm.llm_tip"]
+    )
 
     set_language("zh")
     normalize_page.retranslate()
@@ -137,7 +141,10 @@ def test_cached_restore_statuses_retranslate_after_language_switch(qtbot) -> Non
     assert roles_page._progress._status.text() == t("roles.cache_restored", n=90)
     assert "Восстановлено" not in normalize_page._progress._status.text()
     assert "Роли восстановлены" not in roles_page._progress._status.text()
-    assert normalize_page._help_buttons["norm.llm_tip"].toolTip() == t("norm.llm_tip")
+    assert all(
+        button.toolTip() == t("norm.llm_tip")
+        for button in normalize_page._help_buttons["norm.llm_tip"]
+    )
 
     set_language("ru")
 

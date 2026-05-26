@@ -857,7 +857,7 @@ def test_normalize_page_pdf_controls_stay_compact_and_help_centered(qapp) -> Non
     assert page._ocr_psm.maximumWidth() == 360
     assert page._ocr_psm_field.maximumWidth() == 380
 
-    dpi_help = page._help_buttons["norm.ocr_dpi_tip"]
+    [dpi_help] = page._help_buttons["norm.ocr_dpi_tip"]
     label_center = page._ocr_dpi_label.mapTo(page, page._ocr_dpi_label.rect().center()).y()
     help_center = dpi_help.mapTo(page, dpi_help.rect().center()).y()
     assert abs(label_center - help_center) <= 3

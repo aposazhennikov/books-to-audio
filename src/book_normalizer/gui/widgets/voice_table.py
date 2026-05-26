@@ -663,7 +663,7 @@ class VoiceTableWidget(QWidget):
 
     def _apply_table_layout(self) -> None:
         """Apply column visibility and widget widths for the current mode."""
-        hidden_cols = {0, 1, 2, 6, 7, 8} if self._compact_mode else set()
+        hidden_cols = {0, 1, 2, 6, 7, 8, 9} if self._compact_mode else set()
         for col in range(self._table.columnCount()):
             self._table.setColumnHidden(col, col in hidden_cols)
 
@@ -672,8 +672,8 @@ class VoiceTableWidget(QWidget):
         if self._compact_mode:
             self._table.setMinimumHeight(108)
             apply_combo_content_width(self._quick_combo)
-            self._table.setColumnWidth(4, 150)
-            self._table.setColumnWidth(5, 170)
+            self._table.setColumnWidth(4, 170)
+            self._table.setColumnWidth(5, 260)
             self._table.setColumnWidth(7, 68)
             self._table.setColumnWidth(8, 72)
             self._table.setColumnWidth(9, 76)

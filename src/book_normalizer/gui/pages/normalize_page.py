@@ -135,6 +135,7 @@ class NormalizePage(QWidget):
         self._selected_path: str = ""
         self._help_buttons: dict[str, object] = {}
         self._compact_mode = False
+        self._ui_scale = 1.0
         self._tesseract_available: bool | None = None
         self._tesseract_language_available: dict[str, bool] = {}
         self._setup_ui()
@@ -169,6 +170,7 @@ class NormalizePage(QWidget):
         settings = QGridLayout()
         settings.setHorizontalSpacing(14)
         settings.setVerticalSpacing(8)
+        self._settings_grid = settings
         for column in range(3):
             settings.setColumnStretch(column, 1)
 
@@ -403,6 +405,11 @@ class NormalizePage(QWidget):
         """Keep action labels readable when the window is narrow or zoomed."""
         super().resizeEvent(event)
         self._sync_compact_mode()
+
+    def set_ui_scale(self, scale: float) -> None:
+        """Keep control spacing stable under high-DPI UI zoom."""
+        self._ui_scale = max(0.8, min(1.45, scale))
+        self._settings_grid.setVerticalSpacing(max(8, round(12 * self._ui_scale)))
 
     def _sync_compact_mode(self) -> None:
         compact = self.width() < 900

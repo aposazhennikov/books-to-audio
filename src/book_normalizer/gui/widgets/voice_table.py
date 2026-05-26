@@ -309,8 +309,8 @@ class VoiceTableWidget(QWidget):
         """Build the focused editor for the currently selected segment."""
         panel = QWidget()
         outer = QVBoxLayout(panel)
-        outer.setContentsMargins(10, 8, 10, 10)
-        outer.setSpacing(6)
+        outer.setContentsMargins(8, 6, 8, 6)
+        outer.setSpacing(4)
 
         header = QHBoxLayout()
         header.setSpacing(8)
@@ -377,8 +377,8 @@ class VoiceTableWidget(QWidget):
         """Build the full-text editor that can rewrite the segment list."""
         panel = QWidget()
         outer = QVBoxLayout(panel)
-        outer.setContentsMargins(10, 8, 10, 10)
-        outer.setSpacing(6)
+        outer.setContentsMargins(8, 6, 8, 6)
+        outer.setSpacing(4)
 
         header = QHBoxLayout()
         header.setSpacing(8)

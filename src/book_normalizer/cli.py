@@ -638,6 +638,62 @@ def audio_qa_command(
         click.echo(f"Report: {report}")
 
 
+@main.command(name="analyze-characters")
+@click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--out",
+    "out_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Character bible JSON path. Defaults to character_bible.json next to the input.",
+)
+@click.option("--book-title", default="", help="Optional book title for the report.")
+@click.option("--language", default="ru", show_default=True, help="Book language code.")
+@click.option(
+    "--write-manifest",
+    is_flag=True,
+    default=False,
+    help="When input is chunks_manifest_v2.json, annotate it with character ids.",
+)
+def analyze_characters_command(
+    manifest_path: Path,
+    out_path: Path | None,
+    book_title: str,
+    language: str,
+    write_manifest: bool,
+) -> None:
+    """Build a character bible from segments_manifest.json or chunks_manifest_v2.json."""
+    from book_normalizer.chunking.manifest_v2 import save_manifest
+    from book_normalizer.production.character_bible import (
+        DEFAULT_CHARACTER_BIBLE_NAME,
+        apply_character_bible_to_manifest,
+        build_character_bible,
+        load_manifest_rows,
+        write_character_bible,
+    )
+
+    rows = load_manifest_rows(manifest_path)
+    bible = build_character_bible(
+        rows,
+        book_title=book_title or manifest_path.parent.name,
+        language=language,
+    )
+    target = out_path or manifest_path.with_name(DEFAULT_CHARACTER_BIBLE_NAME)
+    write_character_bible(target, bible)
+    click.echo(
+        "Character bible: "
+        f"{bible['total_characters']} character(s), "
+        f"{bible['summary']['unresolved_dialogue']} unresolved dialogue row(s)."
+    )
+    click.echo(f"Report: {target}")
+
+    if write_manifest:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        annotated = apply_character_bible_to_manifest(raw, bible)
+        save_manifest(manifest_path, annotated)
+        click.echo(f"Manifest character metadata updated: {manifest_path}")
+
+
 @main.command(name="master")
 @click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
 @click.option(

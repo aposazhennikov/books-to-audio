@@ -73,6 +73,13 @@ class ManifestChunkV2(BaseModel):
     asr_qa: dict[str, Any] | None = None
     artifact_qa: dict[str, Any] | None = None
     director: dict[str, Any] | None = None
+    character_id: str = ""
+    canonical_speaker: str = ""
+    character_confidence: float = 0.0
+    cast_voice_id: str = ""
+    voice_strategy: str = ""
+    qa_status: str = ""
+    perceptual_qa: dict[str, Any] | None = None
     resynthesis_attempt: int = 0
     resynthesis_reason: str = ""
     resynthesis_split_count: int = 0
@@ -317,6 +324,17 @@ def chunks_to_manifest(
                     else None
                 ),
                 director=raw_chunk.get("director") if isinstance(raw_chunk.get("director"), dict) else None,
+                character_id=str(raw_chunk.get("character_id") or ""),
+                canonical_speaker=str(raw_chunk.get("canonical_speaker") or ""),
+                character_confidence=float(raw_chunk.get("character_confidence") or 0.0),
+                cast_voice_id=str(raw_chunk.get("cast_voice_id") or ""),
+                voice_strategy=str(raw_chunk.get("voice_strategy") or ""),
+                qa_status=str(raw_chunk.get("qa_status") or ""),
+                perceptual_qa=(
+                    raw_chunk.get("perceptual_qa")
+                    if isinstance(raw_chunk.get("perceptual_qa"), dict)
+                    else None
+                ),
                 resynthesis_attempt=int(raw_chunk.get("resynthesis_attempt") or 0),
                 resynthesis_reason=str(raw_chunk.get("resynthesis_reason") or ""),
                 resynthesis_split_count=int(raw_chunk.get("resynthesis_split_count") or 0),

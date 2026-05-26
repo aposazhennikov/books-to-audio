@@ -4,6 +4,7 @@
 Usage (with the local Qwen3-TTS Python environment activated):
     python scripts/generate_voice_previews.py --out voice_previews/
     python scripts/generate_voice_previews.py --out voice_previews/ --ids narrator_calm,male_young
+    python scripts/generate_voice_previews.py --out voice_previews/ --language kk
 
 Creates one short WAV per voice preset so users can audition voices in the GUI.
 Emits machine-readable progress lines for the GUI to parse.
@@ -19,7 +20,28 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from book_normalizer.languages import normalize_book_language, qwen_tts_language
 from book_normalizer.tts.model_paths import default_comfyui_models_dir, describe_model_resolution
+
+DEFAULT_PREVIEW_TEXT_BY_LANGUAGE = {
+    "ru": (
+        "Сергей сидел за столом и пил чай с малиновым вареньем. "
+        "Состояние было весьма тоскливым."
+    ),
+    "en": (
+        "Sergey sat at the table drinking tea with raspberry jam. "
+        "His mood was rather melancholic."
+    ),
+    "zh": "谢尔盖坐在桌边喝着覆盆子果酱茶。他的心情颇为忧郁。",
+    "kk": (
+        "Сергей үстел басында таңқурай тосабы қосылған шай ішіп отырды. "
+        "Көңіл күйі біршама жабырқау еді."
+    ),
+    "uz": (
+        "Sergey stolda malinali murabbo bilan choy ichib o'tirdi. "
+        "Uning kayfiyati juda g'amgin edi."
+    ),
+}
 
 PRESETS_JSON = [
     {"id": "narrator_calm", "speaker": "Aiden",
@@ -88,15 +110,19 @@ def main() -> None:
         help="Preview text to synthesize.",
     )
     parser.add_argument(
+        "--language",
+        default="ru",
+        help="Preview language code: ru, en, zh, kk, uz.",
+    )
+    parser.add_argument(
         "--ids", default=None,
         help="Comma-separated voice IDs to generate (default: all).",
     )
     args = parser.parse_args()
 
-    preview_text = args.text or (
-        "Сергей сидел за столом и пил чай с малиновым вареньем. "
-        "Состояние было весьма тоскливым."
-    )
+    language_code = normalize_book_language(args.language)
+    preview_text = args.text or DEFAULT_PREVIEW_TEXT_BY_LANGUAGE[language_code]
+    tts_language = qwen_tts_language(language_code)
 
     if args.ids:
         selected_ids = [x.strip() for x in args.ids.split(",") if x.strip()]
@@ -112,7 +138,12 @@ def main() -> None:
     import torch
     from qwen_tts import Qwen3TTSModel
 
-    out_dir = Path(args.out)
+    base_out_dir = Path(args.out)
+    out_dir = (
+        base_out_dir
+        if base_out_dir.name == language_code
+        else base_out_dir / language_code
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -161,7 +192,7 @@ def main() -> None:
         try:
             wavs, sr = model.generate_custom_voice(
                 text=preview_text,
-                language="Russian",
+                language=tts_language,
                 speaker=preset["speaker"],
                 instruct=preset["instruct"],
             )

@@ -21,12 +21,14 @@ from PyQt6.QtWidgets import (
 )
 
 from book_normalizer.gui.i18n import (
+    get_language,
     t,
     voice_category_label,
     voice_preset_description,
     voice_preset_label,
 )
 from book_normalizer.gui.voice_presets import PRESET_BY_ID, VOICE_PRESETS, VoicePreset
+from book_normalizer.languages import normalize_book_language, qwen_tts_language
 from book_normalizer.tts.local_runtime import check_tts_python
 from book_normalizer.tts.model_paths import (
     default_comfyui_models_dir,
@@ -56,6 +58,25 @@ _STYLE_STATUS_ERR = (
 )
 
 
+def _language_preview_dir(base_dir: Path, language: str) -> Path:
+    """Return the per-language directory used for preview WAVs."""
+    lang = normalize_book_language(language)
+    if base_dir.name == lang:
+        return base_dir
+    return base_dir / lang
+
+
+def _preview_wav_path(base_dir: Path, voice_id: str, language: str) -> Path:
+    """Return preview WAV path, preserving legacy Russian previews in root."""
+    lang = normalize_book_language(language)
+    path = _language_preview_dir(base_dir, lang) / f"{voice_id}.wav"
+    if lang == "ru":
+        legacy_path = base_dir / f"{voice_id}.wav"
+        if legacy_path.exists() and not path.exists():
+            return legacy_path
+    return path
+
+
 class GeneratePreviewsWorker(QThread):
     """Background worker: generates local TTS previews inside this app process."""
 
@@ -72,12 +93,14 @@ class GeneratePreviewsWorker(QThread):
         text: str,
         voice_ids: list[str],
         model: str = "",
+        language: str = "ru",
         parent=None,
     ):
         super().__init__(parent)
         self._out_dir = out_dir
         self._text = text
         self._voice_ids = voice_ids
+        self._language = normalize_book_language(language)
         self._model = model or "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 
     def run(self) -> None:
@@ -125,6 +148,7 @@ class GeneratePreviewsWorker(QThread):
             total = len(presets)
             generated = 0
             started = time.time()
+            tts_language = qwen_tts_language(self._language)
             for index, preset in enumerate(presets, start=1):
                 out_path = self._out_dir / f"{preset.id}.wav"
                 elapsed = time.time() - started
@@ -136,7 +160,7 @@ class GeneratePreviewsWorker(QThread):
                 try:
                     wavs, sample_rate = model.generate_custom_voice(
                         text=self._text,
-                        language="Russian",
+                        language=tts_language,
                         speaker=preset.speaker,
                         instruct=preset.instruct,
                     )
@@ -205,6 +229,7 @@ class VoiceCard(QWidget):
         super().__init__(parent)
         self.preset = preset
         self._preview_dir = preview_dir
+        self._language = normalize_book_language(get_language())
         self._player: QMediaPlayer | None = None
         self._audio_output: QAudioOutput | None = None
         self.setAutoFillBackground(False)
@@ -323,9 +348,13 @@ class VoiceCard(QWidget):
         """Update the directory where preview WAVs are stored."""
         self._preview_dir = d
 
+    def set_language(self, language: str) -> None:
+        """Update the preview language used for WAV lookup."""
+        self._language = normalize_book_language(language)
+
     def refresh_status(self) -> None:
         """Update badge and play button based on WAV existence."""
-        wav = self._preview_dir / f"{self.preset.id}.wav"
+        wav = self._preview_path()
         exists = wav.exists()
         self._btn_play.setEnabled(exists)
         if exists:
@@ -357,7 +386,7 @@ class VoiceCard(QWidget):
 
     def _play(self) -> None:
         """Play the preview audio file."""
-        wav_path = self._preview_dir / f"{self.preset.id}.wav"
+        wav_path = self._preview_path()
         if not wav_path.exists():
             return
 
@@ -381,6 +410,10 @@ class VoiceCard(QWidget):
         self._player.setSource(QUrl.fromLocalFile(str(wav_path)))
         self._player.play()
         self._btn_play.setText("\u25A0")
+
+    def _preview_path(self) -> Path:
+        """Return the language-specific preview WAV path for this card."""
+        return _preview_wav_path(self._preview_dir, self.preset.id, self._language)
 
     def _on_state_changed(self, state) -> None:
         if state == QMediaPlayer.PlaybackState.StoppedState:
@@ -410,6 +443,7 @@ class VoicePreviewPanel(QWidget):
         self._card_by_id: dict[str, VoiceCard] = {}
         self._worker: GeneratePreviewsWorker | None = None
         self._preview_dir: Path = _DEFAULT_PREVIEW_DIR
+        self._language = normalize_book_language(get_language())
         self._setup_ui()
         self._refresh_all()
 
@@ -536,6 +570,7 @@ class VoicePreviewPanel(QWidget):
 
     def retranslate(self) -> None:
         """Update all translatable strings."""
+        self._language = normalize_book_language(get_language())
         self._btn_generate.setText(t("voice.generate_previews"))
         self._btn_refresh.setText(t("voice.refresh_previews"))
         self._btn_select_all.setText(t("voice.select_all"))
@@ -549,7 +584,9 @@ class VoicePreviewPanel(QWidget):
             cat_label.setText(voice_category_label(cat_id))
 
         for card in self._cards:
+            card.set_language(self._language)
             card.retranslate()
+        self._refresh_all()
 
     def _select_all(self) -> None:
         for card in self._cards:
@@ -575,6 +612,7 @@ class VoicePreviewPanel(QWidget):
         ready = 0
         for card in self._cards:
             card.set_preview_dir(d)
+            card.set_language(self._language)
             card.refresh_status()
             if card._btn_play.isEnabled():
                 ready += 1
@@ -622,8 +660,10 @@ class VoicePreviewPanel(QWidget):
         self._status_label.setStyleSheet(_STYLE_STATUS_ACTIVE)
         self._status_label.setText(t("voice.gen_loading"))
 
+        language_dir = _language_preview_dir(out_dir, self._language)
+
         self._worker = GeneratePreviewsWorker(
-            out_dir, phrase, selected,
+            language_dir, phrase, selected, language=self._language,
         )
         self._worker.progress_line.connect(self._on_progress_line)
         self._worker.progress_pct.connect(self._on_progress_pct)

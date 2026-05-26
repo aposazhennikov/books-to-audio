@@ -13,6 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 QtCore = pytest.importorskip("PyQt6.QtCore")
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 voice_preview = pytest.importorskip("book_normalizer.gui.widgets.voice_preview")
+set_language = pytest.importorskip("book_normalizer.gui.i18n").set_language
 GeneratePreviewsWorker = voice_preview.GeneratePreviewsWorker
 VoicePreviewPanel = voice_preview.VoicePreviewPanel
 
@@ -116,9 +117,31 @@ def test_voice_preview_worker_generates_inside_app_process(
     assert captured["from_pretrained"]["kwargs"]["device_map"] == "cpu"
     generated = captured["generated"][0]
     assert generated["text"] == "Preview text."
+    assert generated["language"] == "Russian"
     assert generated["speaker"] == "Aiden"
     assert "Спокойный" in generated["instruct"]
     assert any("1/1" in line for line in progress)
+
+
+def test_voice_preview_worker_uses_selected_tts_language(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = _install_fake_tts_modules(monkeypatch, tmp_path)
+    worker = GeneratePreviewsWorker(
+        tmp_path / "previews",
+        "你好，今天的天气很好。",
+        ["narrator_calm"],
+        language="zh",
+    )
+    errors: list[str] = []
+    worker.error.connect(errors.append)
+
+    worker.run()
+
+    assert errors == []
+    assert captured["generated"][0]["text"] == "你好，今天的天气很好。"
+    assert captured["generated"][0]["language"] == "Chinese"
 
 
 def test_voice_preview_worker_reports_missing_runtime(tmp_path: Path, monkeypatch) -> None:
@@ -145,13 +168,22 @@ def test_voice_preview_panel_generate_button_starts_worker(
     captured: dict = {}
 
     class _FakeWorker:
-        def __init__(self, out_dir, text, voice_ids, model="", parent=None):  # noqa: ANN001
+        def __init__(  # noqa: ANN001
+            self,
+            out_dir,
+            text,
+            voice_ids,
+            model="",
+            language="ru",
+            parent=None,
+        ):
             captured.update(
                 {
                     "out_dir": out_dir,
                     "text": text,
                     "voice_ids": voice_ids,
                     "model": model,
+                    "language": language,
                     "parent": parent,
                 }
             )
@@ -166,17 +198,22 @@ def test_voice_preview_panel_generate_button_starts_worker(
             self.finished_ok.emit(1, 1, "0s")
 
     monkeypatch.setattr(voice_preview, "GeneratePreviewsWorker", _FakeWorker)
-    panel = VoicePreviewPanel()
-    qtbot.addWidget(panel)
-    panel._dir_input.setText(str(tmp_path / "previews"))
-    panel._phrase_input.setPlainText("Hello preview.")
-    for card in panel._cards:
-        card._checkbox.setChecked(False)
-    panel._cards[0]._checkbox.setChecked(True)
+    set_language("kk")
+    try:
+        panel = VoicePreviewPanel()
+        qtbot.addWidget(panel)
+        panel._dir_input.setText(str(tmp_path / "previews"))
+        panel._phrase_input.setPlainText("")
+        for card in panel._cards:
+            card._checkbox.setChecked(False)
+        panel._cards[0]._checkbox.setChecked(True)
 
-    qtbot.mouseClick(panel._btn_generate, QtCore.Qt.MouseButton.LeftButton)
+        qtbot.mouseClick(panel._btn_generate, QtCore.Qt.MouseButton.LeftButton)
 
-    assert captured["out_dir"] == tmp_path / "previews"
-    assert captured["text"] == "Hello preview."
-    assert captured["voice_ids"] == [panel._cards[0].preset.id]
-    assert panel._btn_generate.isEnabled()
+        assert captured["out_dir"] == tmp_path / "previews" / "kk"
+        assert captured["text"] == voice_preview.t("voice.default_phrase")
+        assert captured["voice_ids"] == [panel._cards[0].preset.id]
+        assert captured["language"] == "kk"
+        assert panel._btn_generate.isEnabled()
+    finally:
+        set_language("ru")

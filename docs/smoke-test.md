@@ -108,7 +108,8 @@ After listening, record the human verdict:
 ```powershell
 python scripts\record_listening_verdict.py `
   --verdict pass `
-  --notes "Accepted post-filter narrator smoke sample."
+  --notes "Accepted post-filter narrator smoke sample." `
+  --refresh-readiness
 ```
 
 Use `--verdict review` when the pipeline works but voice/settings need another

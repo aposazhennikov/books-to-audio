@@ -37,6 +37,11 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=Path("output/manual_listening_verdict.json"),
     )
+    parser.add_argument(
+        "--refresh-readiness",
+        action="store_true",
+        help="Rebuild the final readiness report after writing the verdict.",
+    )
     args = parser.parse_args(argv)
 
     record = build_verdict_record(
@@ -48,6 +53,13 @@ def main(argv: list[str] | None = None) -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Listening verdict: {args.out}")
+    if args.refresh_readiness:
+        report = refresh_readiness_report(args.readiness_report, verdict_report=args.out)
+        print(
+            "Final readiness: "
+            f"{report.get('estimated_completion_percent')}% "
+            f"(manual={report.get('manual_verdict_status')})"
+        )
     return 0 if args.verdict == "pass" else 1
 
 
@@ -85,6 +97,23 @@ def _load_optional_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def refresh_readiness_report(readiness_report: Path, *, verdict_report: Path) -> dict[str, Any]:
+    """Regenerate the final readiness report with the freshly written verdict."""
+    script_dir = Path(__file__).resolve().parent
+    if str(script_dir) not in sys.path:
+        sys.path.insert(0, str(script_dir))
+    from final_readiness_check import build_readiness_report  # noqa: PLC0415
+
+    report = build_readiness_report(
+        Path("output/live_tts_real_book_smoke_after_filter"),
+        Path("docs/quality-status.md"),
+        verdict_report,
+    )
+    readiness_report.parent.mkdir(parents=True, exist_ok=True)
+    readiness_report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return report
 
 
 if __name__ == "__main__":

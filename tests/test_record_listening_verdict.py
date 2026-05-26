@@ -73,3 +73,36 @@ def test_main_returns_nonzero_for_review(tmp_path: Path) -> None:
     assert result == 1
     data = json.loads(out.read_text(encoding="utf-8"))
     assert data["requires_review"] is True
+
+
+def test_main_can_refresh_readiness_report(tmp_path: Path, monkeypatch) -> None:
+    module = _load_verdict_module()
+    out = tmp_path / "verdict.json"
+    readiness = tmp_path / "readiness.json"
+
+    monkeypatch.setattr(
+        module,
+        "refresh_readiness_report",
+        lambda readiness_report, *, verdict_report: {
+            "estimated_completion_percent": 100.0,
+            "manual_verdict_status": "pass",
+            "readiness_report": str(readiness_report),
+            "verdict_report": str(verdict_report),
+        },
+    )
+
+    result = module.main([
+        "--verdict",
+        "pass",
+        "--notes",
+        "Accepted.",
+        "--out",
+        str(out),
+        "--readiness-report",
+        str(readiness),
+        "--refresh-readiness",
+    ])
+
+    assert result == 0
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["passed"] is True

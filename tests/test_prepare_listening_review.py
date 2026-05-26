@@ -51,6 +51,7 @@ def test_build_review_payload_returns_exact_next_commands(tmp_path: Path) -> Non
     assert payload["checklist"] == str(checklist)
     assert payload["remaining_percent"] == 0.05
     assert "--verdict pass" in payload["record_pass_command"]
+    assert "--refresh-readiness" in payload["record_pass_command"]
     assert "--verdict review" in payload["record_review_command"]
     assert "--verdict fail" in payload["record_fail_command"]
 

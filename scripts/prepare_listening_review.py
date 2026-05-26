@@ -65,7 +65,7 @@ def build_review_payload(readiness_report: Path, checklist: Path) -> dict[str, A
         "remaining_percent": readiness.get("remaining_percent"),
         "record_pass_command": (
             "python scripts/record_listening_verdict.py --verdict pass "
-            '--notes "Accepted post-filter narrator smoke sample."'
+            '--notes "Accepted post-filter narrator smoke sample." --refresh-readiness'
         ),
         "record_review_command": (
             "python scripts/record_listening_verdict.py --verdict review "

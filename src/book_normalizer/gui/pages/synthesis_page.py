@@ -1206,7 +1206,9 @@ class SynthesisPage(QWidget):
         self._asr_title.setStyleSheet(
             "font-weight: 800; font-size: 13px; color: #1e3a8a;"
         )
-        outer.addWidget(self._asr_title)
+        outer.addWidget(
+            self._label_with_help(self._asr_title, "synth.asr_overview_help")
+        )
 
         form = QFormLayout()
         form.setHorizontalSpacing(14)
@@ -1216,14 +1218,20 @@ class SynthesisPage(QWidget):
 
         self._asr_enable_check = QCheckBox()
         self._asr_enable_label = QLabel()
-        form.addRow(self._asr_enable_label, self._asr_enable_check)
+        form.addRow(
+            self._label_with_help(self._asr_enable_label, "synth.asr_enable_help"),
+            self._asr_enable_check,
+        )
 
         self._asr_model_combo = QComboBox()
         self._asr_model_combo.setEditable(True)
         self._asr_model_combo.addItems(["small", "medium", "large-v3", "base", "tiny"])
         _make_combo_compact(self._asr_model_combo, min_chars=12)
         self._asr_model_label = QLabel()
-        form.addRow(self._asr_model_label, self._asr_model_combo)
+        form.addRow(
+            self._label_with_help(self._asr_model_label, "synth.asr_model_help"),
+            self._asr_model_combo,
+        )
 
         self._asr_device_combo = QComboBox()
         self._asr_device_combo.addItem("auto", "auto")
@@ -1231,7 +1239,10 @@ class SynthesisPage(QWidget):
         self._asr_device_combo.addItem("CUDA", "cuda")
         _make_combo_compact(self._asr_device_combo, min_chars=8)
         self._asr_device_label = QLabel()
-        form.addRow(self._asr_device_label, self._asr_device_combo)
+        form.addRow(
+            self._label_with_help(self._asr_device_label, "synth.asr_device_help"),
+            self._asr_device_combo,
+        )
 
         self._asr_timeout_spin = QSpinBox()
         self._asr_timeout_spin.setRange(30, 3600)
@@ -1240,7 +1251,10 @@ class SynthesisPage(QWidget):
         self._asr_timeout_spin.setSuffix(" s")
         self._asr_timeout_spin.setMaximumWidth(150)
         self._asr_timeout_label = QLabel()
-        form.addRow(self._asr_timeout_label, self._asr_timeout_spin)
+        form.addRow(
+            self._label_with_help(self._asr_timeout_label, "synth.asr_timeout_help"),
+            self._asr_timeout_spin,
+        )
 
         self._asr_filter_combo = QComboBox()
         self._asr_filter_combo.addItem("all", "all")
@@ -1253,7 +1267,10 @@ class SynthesisPage(QWidget):
         )
         _make_combo_compact(self._asr_filter_combo, min_chars=14)
         self._asr_filter_label = QLabel()
-        form.addRow(self._asr_filter_label, self._asr_filter_combo)
+        form.addRow(
+            self._label_with_help(self._asr_filter_label, "synth.asr_filter_help"),
+            self._asr_filter_combo,
+        )
 
         outer.addLayout(form)
 
@@ -1637,14 +1654,23 @@ class SynthesisPage(QWidget):
         self._asr_title.setText(t("synth.asr_title"))
         self._asr_enable_label.setText(t("synth.asr_enable"))
         self._asr_enable_check.setText(t("synth.asr_enable_check"))
+        self._asr_enable_check.setToolTip(t("synth.asr_enable_help"))
         self._asr_model_label.setText(t("synth.asr_model"))
+        self._asr_model_combo.setToolTip(t("synth.asr_model_help"))
         self._asr_device_label.setText(t("synth.asr_device"))
+        self._asr_device_combo.setToolTip(t("synth.asr_device_help"))
         self._asr_timeout_label.setText(t("synth.asr_timeout"))
+        self._asr_timeout_spin.setToolTip(t("synth.asr_timeout_help"))
         self._asr_filter_label.setText(t("synth.asr_filter"))
+        self._asr_filter_combo.setToolTip(t("synth.asr_filter_help"))
         self._btn_asr_run.setText(t("synth.asr_run_now"))
+        self._btn_asr_run.setToolTip(t("synth.asr_run_help"))
         self._btn_asr_open_report.setText(t("synth.asr_open_report"))
+        self._btn_asr_open_report.setToolTip(t("synth.asr_report_help"))
         self._btn_asr_open_diff.setText(t("synth.asr_open_diff"))
+        self._btn_asr_open_diff.setToolTip(t("synth.asr_diff_help"))
         self._btn_asr_select_issue.setText(t("synth.asr_select_issue"))
+        self._btn_asr_select_issue.setToolTip(t("synth.asr_select_issue_help"))
         if not self._asr_status.text():
             self._asr_status.setText(t("synth.asr_idle"))
         for btn, help_key in self._help_buttons:

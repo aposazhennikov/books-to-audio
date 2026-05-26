@@ -3301,6 +3301,133 @@ def _install_extra_translations() -> None:
                 "en": "No ASR warning or failed chunks found.",
                 "ru": "ASR чанков с предупреждениями или ошибками не найдено.",
             },
+            "synth.asr_overview_help": {
+                "en": (
+                    "ASR means automatic speech recognition. Here it is used as a local quality gate: "
+                    "the app listens to each synthesized chunk with faster-whisper, turns the audio back "
+                    "into text, then compares that transcript with the expected chunk text. It checks "
+                    "missing words, extra words, repeated text, WER, CER, language, low confidence, empty "
+                    "transcripts, timeouts, and ASR errors. It does not judge acting, emotion, accent, "
+                    "speaker artistry, or voice similarity, and it does not resynthesize automatically."
+                ),
+                "ru": (
+                    "ASR - это автоматическое распознавание речи. Здесь это локальная проверка качества: "
+                    "приложение прослушивает каждый синтезированный чанк через faster-whisper, превращает "
+                    "аудио обратно в текст и сравнивает распознанный текст с ожидаемым текстом чанка. "
+                    "Проверяются пропущенные слова, лишние слова, повторы, WER, CER, язык, низкая "
+                    "уверенность, пустой transcript, timeout и ошибки ASR. Это не оценка актерской игры, "
+                    "эмоций, акцента, художественности, похожести голоса и не автоматический пересинтез."
+                ),
+            },
+            "synth.asr_enable_help": {
+                "en": (
+                    "When enabled, ASR QA runs after TTS synthesis and before chapter assembly. It writes "
+                    "a full JSON report and compact manifest annotations. The generated audio stays in "
+                    "place, so failed chunks are left for manual review or retry."
+                ),
+                "ru": (
+                    "Если включено, ASR QA запускается после TTS-синтеза и до сборки глав. Она пишет "
+                    "полный JSON-отчет и компактные аннотации в manifest. Готовое аудио не меняется: "
+                    "проблемные чанки остаются для ручной проверки или повтора."
+                ),
+            },
+            "synth.asr_model_help": {
+                "en": (
+                    "Choose the faster-whisper model. tiny/base are fastest and least accurate, useful for "
+                    "quick smoke checks. small is the recommended default for normal QA. medium is slower "
+                    "but usually catches more mistakes. large-v3 is the most accurate listed option and is "
+                    "best for final QA, but it needs much more VRAM/RAM and time. For Chinese and other "
+                    "languages without spaces, prefer CER-heavy judgment because WER/match ratio are less stable."
+                ),
+                "ru": (
+                    "Выберите модель faster-whisper. tiny/base самые быстрые и менее точные, подходят для "
+                    "быстрой проверки. small - рекомендуемый вариант по умолчанию. medium медленнее, но "
+                    "обычно лучше ловит ошибки. large-v3 самая точная из списка и лучше для финальной QA, "
+                    "но требует намного больше VRAM/RAM и времени. Для китайского и языков без пробелов "
+                    "лучше сильнее смотреть на CER, потому что WER/match ratio менее стабильны."
+                ),
+            },
+            "synth.asr_device_help": {
+                "en": (
+                    "auto lets faster-whisper choose the best available device and is safest for most users. "
+                    "cpu works everywhere and avoids GPU setup problems, but is slower, especially with "
+                    "medium or large-v3. cuda uses an NVIDIA GPU and is best for long books or large models "
+                    "when CUDA drivers and enough VRAM are installed. If CUDA fails, switch back to auto or cpu."
+                ),
+                "ru": (
+                    "auto позволяет faster-whisper выбрать лучшее доступное устройство и обычно безопаснее "
+                    "для большинства пользователей. cpu работает почти везде и не требует настройки GPU, "
+                    "но медленнее, особенно с medium или large-v3. cuda использует NVIDIA GPU и лучше для "
+                    "длинных книг или больших моделей, если установлены CUDA-драйверы и хватает VRAM. "
+                    "Если cuda падает, вернитесь на auto или cpu."
+                ),
+            },
+            "synth.asr_timeout_help": {
+                "en": (
+                    "Maximum time for recognizing one chunk. Keep it around 180 seconds for normal chunks. "
+                    "Increase it for very long chunks, CPU mode, or large-v3. If a chunk times out, the book "
+                    "continues and that chunk is marked with a timeout issue in the report."
+                ),
+                "ru": (
+                    "Максимальное время распознавания одного чанка. Для обычных чанков оставьте около "
+                    "180 секунд. Увеличивайте для очень длинных чанков, CPU-режима или large-v3. Если "
+                    "чанк превысит timeout, книга продолжит проверяться, а этот чанк получит issue timeout."
+                ),
+            },
+            "synth.asr_filter_help": {
+                "en": (
+                    "Filters the chunk selector after an ASR report is written. failed/warning shows chunks "
+                    "that need attention. failed means hard metric or language/empty transcript problems. "
+                    "warning means suspicious but not necessarily broken, such as low confidence or partial "
+                    "word mismatch. passed shows chunks with no ASR issues."
+                ),
+                "ru": (
+                    "Фильтрует список чанков после записи ASR-отчета. failed/warning показывает то, что "
+                    "нужно проверить. failed - серьезные проблемы по метрикам, языку или пустому transcript. "
+                    "warning - подозрительно, но не обязательно сломано: например, низкая уверенность или "
+                    "частичное несовпадение слов. passed показывает чанки без ASR-проблем."
+                ),
+            },
+            "synth.asr_run_help": {
+                "en": (
+                    "Run ASR QA immediately for the loaded manifest. This first keeps the existing WAV checks, "
+                    "then runs faster-whisper only for active chunks that have audio files."
+                ),
+                "ru": (
+                    "Запускает ASR QA сразу для загруженного manifest. Сначала выполняются существующие "
+                    "WAV-проверки, затем faster-whisper запускается только для активных чанков с аудио."
+                ),
+            },
+            "synth.asr_report_help": {
+                "en": (
+                    "Opens the full JSON report: expected text, ASR transcript, normalized text, metrics, "
+                    "missing and extra word spans, issue summary, backend, model, language, and timings."
+                ),
+                "ru": (
+                    "Открывает полный JSON-отчет: ожидаемый текст, ASR transcript, нормализованный текст, "
+                    "метрики, пропущенные и лишние spans слов, summary issues, backend, модель, язык и время."
+                ),
+            },
+            "synth.asr_diff_help": {
+                "en": (
+                    "Opens a readable text diff for chunks with ASR warnings or failures. Use it to decide "
+                    "whether to manually retry, edit text, or ignore a harmless ASR mismatch."
+                ),
+                "ru": (
+                    "Открывает читаемый text diff для чанков с ASR warning/failure. По нему удобно решить, "
+                    "нужен ли ручной повтор, правка текста или можно игнорировать безвредное несовпадение ASR."
+                ),
+            },
+            "synth.asr_select_issue_help": {
+                "en": (
+                    "Jumps to the first failed, warning, or error chunk from the ASR annotations so you can "
+                    "listen, inspect the text, and choose a manual retry."
+                ),
+                "ru": (
+                    "Переходит к первому chunk с failed, warning или error из ASR-аннотаций, чтобы можно "
+                    "было прослушать, проверить текст и выбрать ручной повтор."
+                ),
+            },
         }
     )
     for key, entry in TRANSLATIONS.items():

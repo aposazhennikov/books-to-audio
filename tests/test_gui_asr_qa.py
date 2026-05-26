@@ -9,11 +9,13 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from tests.gui.helpers import assert_layout_sane, render_widget
 from tests.gui.helpers import qapp as make_qapp
 
 pytest.importorskip("PyQt6.QtCore")
 pytest.importorskip("PyQt6.QtWidgets")
 
+from book_normalizer.gui.i18n import set_language, t
 from book_normalizer.gui.pages.synthesis_page import SynthesisPage
 from book_normalizer.gui.workers.tts_worker import AsrQaWorker
 from book_normalizer.tts.asr_qa import AsrTranscript
@@ -144,3 +146,37 @@ def test_synthesis_page_filters_asr_warning_chunks(qapp, tmp_path: Path) -> None
     assert page._test_chunk_combo.currentData() == (0, 1)
     page.close()
     page.deleteLater()
+
+
+def test_synthesis_page_asr_help_tooltips_are_explanatory_and_layout_safe(qapp) -> None:
+    set_language("en")
+    page = SynthesisPage()
+    page._mode_tabs.setCurrentIndex(2)
+    render_widget(page, 760, 520, scale=1.45)
+
+    help_by_key = {key: button.toolTip() for button, key in page._help_buttons}
+
+    assert "synth.asr_overview_help" in help_by_key
+    assert "automatic speech recognition" in help_by_key["synth.asr_overview_help"]
+    assert "does not resynthesize automatically" in help_by_key["synth.asr_overview_help"]
+
+    model_help = help_by_key["synth.asr_model_help"]
+    assert "small" in model_help
+    assert "medium" in model_help
+    assert "large-v3" in model_help
+    assert "tiny/base" in model_help
+
+    device_help = help_by_key["synth.asr_device_help"]
+    assert "auto" in device_help
+    assert "cpu" in device_help
+    assert "cuda" in device_help
+
+    assert page._asr_model_combo.toolTip() == t("synth.asr_model_help")
+    assert page._asr_device_combo.toolTip() == t("synth.asr_device_help")
+    assert page._btn_asr_open_report.toolTip() == t("synth.asr_report_help")
+    assert page._btn_asr_open_diff.toolTip() == t("synth.asr_diff_help")
+    assert_layout_sane(page)
+
+    page.close()
+    page.deleteLater()
+    set_language("ru")

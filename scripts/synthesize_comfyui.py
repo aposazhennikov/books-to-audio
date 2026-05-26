@@ -44,9 +44,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from book_normalizer.comfyui.client import ComfyUIClient, ComfyUIError
 from book_normalizer.comfyui.generation_options import GenerationOptions
-from book_normalizer.comfyui.synthesis import collect_pending_chunks
+from book_normalizer.comfyui.synthesis import collect_pending_chunks, save_manifest, synthesize_manifest
 from book_normalizer.comfyui.synthesis import load_manifest as load_manifest_v2
-from book_normalizer.comfyui.synthesis import save_manifest, synthesize_manifest
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder, WorkflowBuilderError
 from book_normalizer.tts.artifact_qa import (
     DEFAULT_ARTIFACT_REPORT_NAME,
@@ -89,32 +88,6 @@ def load_manifest(path: Path) -> dict:
         print(f"WARNING: Unknown manifest version {version}, attempting to process anyway.")
 
     return data
-
-
-def save_manifest(path: Path, data: dict) -> None:
-    """Atomically write manifest data back to disk."""
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
-
-
-def collect_pending_chunks(
-    manifest: dict,
-    chapter_filter: int | None,
-) -> list[tuple[dict, dict]]:
-    """Return list of (chapter_entry, chunk_entry) tuples that need synthesis.
-
-    Skips chunks where ``synthesized`` is True.
-    """
-    pending: list[tuple[dict, dict]] = []
-    for chapter in manifest.get("chapters", []):
-        ch_idx = chapter.get("chapter_index", 0)
-        if chapter_filter is not None and ch_idx != chapter_filter - 1:
-            continue
-        for chunk in chapter.get("chunks", []):
-            if not chunk.get("synthesized", False):
-                pending.append((chapter, chunk))
-    return pending
 
 
 def count_total_chunks(manifest: dict, chapter_filter: int | None) -> int:

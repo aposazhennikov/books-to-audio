@@ -622,13 +622,15 @@ def audio_qa_command(
             )
             save_manifest(manifest_path, manifest)
             click.echo(f"Manifest ASR annotations updated: {manifest_path}")
+        artifact_payload = report_payload.get("artifact_qa") if report_payload else None
         report_payload = {
             "schema_version": 1,
             "manifest_path": str(manifest_path),
             "audio_qa": result.to_dict(),
-            **({"artifact_qa": report_payload["artifact_qa"]} if report_payload and "artifact_qa" in report_payload else {}),
             "asr_qa": asr_result.to_dict(),
         }
+        if artifact_payload is not None:
+            report_payload["artifact_qa"] = artifact_payload
 
     if report:
         payload = report_payload if report_payload is not None else result.to_dict()

@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from book_normalizer.chunking.manifest_v2 import flatten_manifest, load_manifest
-from book_normalizer.comfyui.generation_options import GenerationOptions
 from book_normalizer.comfyui.client import ComfyUIClient
+from book_normalizer.comfyui.generation_options import GenerationOptions
 from book_normalizer.comfyui.synthesis import (
     collect_pending_chunks,
     count_done_chunks,

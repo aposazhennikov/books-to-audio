@@ -8,10 +8,10 @@ from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from book_normalizer.comfyui.generation_options import GenerationOptions
 from book_normalizer.gui.i18n import t
 from book_normalizer.languages import normalize_book_language
 from book_normalizer.runtime_paths import configured_ollama_endpoint
-from book_normalizer.comfyui.generation_options import GenerationOptions
 from book_normalizer.tts.model_download import MODEL_DOWNLOAD_WARNING, install_tts_models
 from book_normalizer.tts.synthesis_controller import SynthesisController, SynthesisRequest
 
@@ -302,17 +302,17 @@ class AsrQaWorker(QThread):
     def run(self) -> None:
         try:
             from book_normalizer.chunking.manifest_v2 import save_manifest
+            from book_normalizer.tts.artifact_qa import (
+                annotate_manifest_with_artifacts,
+                run_artifact_qa,
+                write_artifact_report,
+            )
             from book_normalizer.tts.asr_qa import (
                 AsrQaConfig,
                 FasterWhisperBackend,
                 annotate_manifest_with_asr,
                 run_asr_qa,
                 write_asr_diff,
-            )
-            from book_normalizer.tts.artifact_qa import (
-                annotate_manifest_with_artifacts,
-                run_artifact_qa,
-                write_artifact_report,
             )
             from book_normalizer.tts.audio_qa import run_audio_qa
 

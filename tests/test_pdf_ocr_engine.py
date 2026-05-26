@@ -18,6 +18,7 @@ def _isolate_runtime_config(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("BOOKS_TO_AUDIO_TESSERACT_CMD", raising=False)
     monkeypatch.delenv("BOOKS_TO_AUDIO_TESSDATA_DIR", raising=False)
     monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
+    monkeypatch.setattr(pdf_ocr_engine, "project_root", lambda: tmp_path / "project")
     reset_runtime_path_cache()
 
 

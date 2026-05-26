@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -86,6 +87,80 @@ def test_tesseract_available_uses_configured_native_binary(monkeypatch, tmp_path
 
     assert tesseract_available() is True
     assert calls == [[str(configured), "--version"]]
+
+
+def test_tesseract_available_ignores_stale_wsl_config_on_windows(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Windows GUI must not get stuck on a runtime config written by WSL."""
+    _isolate_runtime_config(monkeypatch, tmp_path)
+    config_path = tmp_path / "local_runtime_paths.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "tesseract_cmd": "/usr/bin/tesseract",
+                "tessdata_dir": "/mnt/c/Users/LENOVO/project/data/tessdata",
+            }
+        ),
+        encoding="utf-8",
+    )
+    native = tmp_path / "Program Files" / "Tesseract-OCR" / "tesseract.exe"
+    calls: list[list[str]] = []
+
+    def fake_import(name, *args, **kwargs):  # noqa: ANN001
+        if name == "pytesseract":
+            raise ImportError("missing")
+        return real_import(name, *args, **kwargs)
+
+    def fake_run(args, *_args, **_kwargs):  # noqa: ANN001
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0)
+
+    real_import = __import__
+    monkeypatch.setenv("BOOKS_TO_AUDIO_RUNTIME_CONFIG", str(config_path))
+    monkeypatch.setattr(pdf_ocr_engine.platform, "system", lambda: "Windows")
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    monkeypatch.setattr(pdf_ocr_engine.shutil, "which", lambda name: str(native))
+    monkeypatch.setattr(pdf_ocr_engine.subprocess, "run", fake_run)
+    reset_runtime_path_cache()
+
+    assert tesseract_available() is True
+    assert calls == [[str(native), "--version"]]
+    reset_runtime_path_cache()
+
+
+def test_tesseract_available_finds_standard_windows_install_when_path_is_stale(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _isolate_runtime_config(monkeypatch, tmp_path)
+    program_files = tmp_path / "Program Files"
+    native = program_files / "Tesseract-OCR" / "tesseract.exe"
+    native.parent.mkdir(parents=True)
+    native.write_text("", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_import(name, *args, **kwargs):  # noqa: ANN001
+        if name == "pytesseract":
+            raise ImportError("missing")
+        return real_import(name, *args, **kwargs)
+
+    def fake_run(args, *_args, **_kwargs):  # noqa: ANN001
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0)
+
+    real_import = __import__
+    monkeypatch.setattr(pdf_ocr_engine.platform, "system", lambda: "Windows")
+    monkeypatch.setenv("ProgramFiles", str(program_files))
+    monkeypatch.delenv("ProgramFiles(x86)", raising=False)
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    monkeypatch.setattr(pdf_ocr_engine.shutil, "which", lambda name: None)
+    monkeypatch.setattr(pdf_ocr_engine.subprocess, "run", fake_run)
+
+    assert tesseract_available() is True
+    assert calls == [[str(native), "--version"]]
+    reset_runtime_path_cache()
 
 
 def test_tesseract_available_sets_configured_pytesseract_paths(monkeypatch, tmp_path) -> None:

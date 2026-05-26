@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from book_normalizer import runtime_paths
 from book_normalizer.llm.ollama_client import _normalise_endpoint
 from book_normalizer.runtime_paths import (
     configured_ffmpeg_bin,
@@ -95,5 +96,46 @@ def test_runtime_env_overrides_config(tmp_path: Path, monkeypatch) -> None:
     assert configured_tesseract_cmd() == tmp_path / "env-tesseract"
     assert configured_tessdata_dir() == tmp_path / "env-tessdata"
     assert _normalise_endpoint(None) == "http://localhost:11500"
+
+    reset_runtime_path_cache()
+
+
+def test_runtime_paths_translate_wsl_mounts_for_windows(monkeypatch) -> None:
+    monkeypatch.setattr(runtime_paths.platform, "system", lambda: "Windows")
+    monkeypatch.setenv(
+        "BOOKS_TO_AUDIO_TESSDATA_DIR",
+        "/mnt/c/Users/LENOVO/Desktop/OwnProjects/books-to-audio/data/tessdata",
+    )
+    reset_runtime_path_cache()
+
+    assert (
+        str(configured_tessdata_dir())
+        == r"C:\Users\LENOVO\Desktop\OwnProjects\books-to-audio\data\tessdata"
+    )
+
+    reset_runtime_path_cache()
+
+
+def test_runtime_paths_ignore_non_mount_posix_paths_for_windows(monkeypatch) -> None:
+    monkeypatch.setattr(runtime_paths.platform, "system", lambda: "Windows")
+    monkeypatch.setenv("BOOKS_TO_AUDIO_TESSERACT_CMD", "/usr/bin/tesseract")
+    reset_runtime_path_cache()
+
+    assert configured_tesseract_cmd() is None
+
+    reset_runtime_path_cache()
+
+
+def test_runtime_paths_translate_windows_paths_for_wsl(monkeypatch) -> None:
+    monkeypatch.setattr(runtime_paths.platform, "system", lambda: "Linux")
+    monkeypatch.setenv(
+        "BOOKS_TO_AUDIO_TESSERACT_CMD",
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    )
+    reset_runtime_path_cache()
+
+    assert configured_tesseract_cmd() == Path(
+        "/mnt/c/Program Files/Tesseract-OCR/tesseract.exe"
+    )
 
     reset_runtime_path_cache()

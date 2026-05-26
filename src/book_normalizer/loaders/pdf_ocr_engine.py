@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -91,9 +92,48 @@ def tesseract_book_language_available(language: str | None) -> bool:
 
 def _tesseract_command() -> Path | str | None:
     configured = configured_tesseract_cmd()
-    if configured:
+    if configured and _native_command_path_exists(configured):
         return configured
-    return shutil.which("tesseract")
+    discovered = shutil.which("tesseract")
+    if discovered:
+        return discovered
+    for candidate in _common_windows_tesseract_paths():
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _native_command_path_exists(path: Path) -> bool:
+    """Return true only for paths usable by the current native OS."""
+    text = str(path)
+    if platform.system() == "Windows" and text.startswith("/") and not text.startswith("//"):
+        return False
+    return path.exists()
+
+
+def _common_windows_tesseract_paths() -> tuple[Path, ...]:
+    """Return standard Windows install locations when PATH is stale."""
+    if platform.system() != "Windows":
+        return ()
+
+    roots = [
+        os.environ.get("ProgramFiles"),
+        os.environ.get("ProgramFiles(x86)"),
+        "C:/Program Files",
+        "C:/Program Files (x86)",
+    ]
+    paths: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        if not root:
+            continue
+        candidate = Path(root) / "Tesseract-OCR" / "tesseract.exe"
+        key = str(candidate).lower()
+        if key in seen:
+            continue
+        paths.append(candidate)
+        seen.add(key)
+    return tuple(paths)
 
 
 def ocr_image_via_tesseract_cli(img_bytes: bytes, lang: str, psm: int = 6) -> str:

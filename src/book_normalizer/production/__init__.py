@@ -6,4 +6,5 @@ __all__ = [
     "casting",
     "character_bible",
     "director",
+    "quality",
 ]

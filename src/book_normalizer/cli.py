@@ -843,6 +843,71 @@ def score_director_command(
         click.echo(f"Manifest director metadata updated: {manifest_path}")
 
 
+@main.command(name="production-qa")
+@click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--out",
+    "out_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Production QA report path. Defaults to production_qa_report.json next to the manifest.",
+)
+@click.option(
+    "--write-manifest",
+    is_flag=True,
+    default=False,
+    help="Annotate chunks_manifest_v2.json with perceptual QA status.",
+)
+@click.option(
+    "--reset-bad-chunks",
+    is_flag=True,
+    default=False,
+    help="Reset chunks marked for resynthesis by production QA.",
+)
+@click.option("--min-pass-score", type=int, default=82, show_default=True, help="Minimum score for passed status.")
+def production_qa_command(
+    manifest_path: Path,
+    out_path: Path | None,
+    write_manifest: bool,
+    reset_bad_chunks: bool,
+    min_pass_score: int,
+) -> None:
+    """Run production readiness QA over a v2 manifest."""
+    from book_normalizer.chunking.manifest_v2 import save_manifest
+    from book_normalizer.production.quality import (
+        DEFAULT_PRODUCTION_QA_REPORT_NAME,
+        ProductionQaConfig,
+        annotate_manifest_with_production_qa,
+        run_production_qa,
+        write_production_qa_report,
+    )
+
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    config = ProductionQaConfig(min_pass_score=min_pass_score)
+    report = run_production_qa(raw, config=config)
+    target = out_path or manifest_path.with_name(DEFAULT_PRODUCTION_QA_REPORT_NAME)
+    write_production_qa_report(target, report)
+    summary = report["summary"]
+    click.echo(
+        "Production QA: "
+        f"status={report['status']}, "
+        f"passed={summary['passed']}, "
+        f"review={summary['review']}, "
+        f"resynthesize={summary['resynthesize']}."
+    )
+    click.echo(f"Report: {target}")
+
+    if write_manifest or reset_bad_chunks:
+        annotate_manifest_with_production_qa(
+            raw,
+            report,
+            report_path=target,
+            reset_bad_chunks=reset_bad_chunks,
+        )
+        save_manifest(manifest_path, raw)
+        click.echo(f"Manifest production QA metadata updated: {manifest_path}")
+
+
 @main.command(name="master")
 @click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
 @click.option(

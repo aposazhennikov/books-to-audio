@@ -13,8 +13,13 @@ from typing import Any
 from book_normalizer.comfyui.client import ComfyUIClient
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder, WorkflowBuilderError
 from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3_MODEL
+from book_normalizer.loaders.pdf_ocr_engine import available_tesseract_languages, tesseract_available
 from book_normalizer.tts.local_runtime import check_tts_python
 from book_normalizer.tts.model_paths import default_comfyui_models_dir
+
+WINDOWS_OCR_INSTALL_HINT = "install.bat --interactive --install-system-tools --download-tessdata"
+POSIX_OCR_INSTALL_HINT = "./install.sh --interactive --install-system-tools --download-tessdata"
+REQUIRED_TESSERACT_LANGS = ("eng", "rus", "chi_sim", "kaz", "uzb")
 
 
 @dataclass
@@ -72,15 +77,47 @@ def _check_python() -> DoctorCheck:
 
 def _check_tesseract() -> DoctorCheck:
     try:
-        import pytesseract
-
-        version = pytesseract.get_tesseract_version()
-        return DoctorCheck("Tesseract", "ok", f"Available via pytesseract: {version}")
+        available = tesseract_available()
     except Exception as exc:
-        exe = shutil.which("tesseract")
-        if exe:
-            return DoctorCheck("Tesseract", "warn", f"Binary found at {exe}, pytesseract check failed: {exc}")
-        return DoctorCheck("Tesseract", "warn", "Not found. OCR for scanned PDFs will be unavailable.")
+        return DoctorCheck(
+            "Tesseract",
+            "warn",
+            f"Runtime check failed: {exc}. Install native OCR tools: {_ocr_install_hint()}",
+        )
+    if not available:
+        return DoctorCheck(
+            "Tesseract",
+            "warn",
+            (
+                "Not found in this OS. OCR for scanned PDFs is unavailable. "
+                f"Install native OCR tools: {_ocr_install_hint()}"
+            ),
+        )
+
+    languages = available_tesseract_languages()
+    if not languages:
+        return DoctorCheck(
+            "Tesseract",
+            "warn",
+            f"Available, but language data could not be listed. Verify tessdata with: {_ocr_install_hint()}",
+        )
+
+    missing = [lang for lang in REQUIRED_TESSERACT_LANGS if lang not in languages]
+    if missing:
+        return DoctorCheck(
+            "Tesseract",
+            "warn",
+            (
+                f"Available, but missing OCR language data: {', '.join(missing)}. "
+                f"Install/update tessdata: {_ocr_install_hint()}"
+            ),
+        )
+
+    return DoctorCheck("Tesseract", "ok", f"Available with OCR languages: {', '.join(REQUIRED_TESSERACT_LANGS)}")
+
+
+def _ocr_install_hint() -> str:
+    return f"`{WINDOWS_OCR_INSTALL_HINT}` on Windows or `{POSIX_OCR_INSTALL_HINT}` on Linux/macOS"
 
 
 def _check_tts_python() -> DoctorCheck:
@@ -203,7 +240,18 @@ def _missing_default_ollama_models(model_names: list[str]) -> list[str]:
 def _check_comfyui(url: str) -> list[DoctorCheck]:
     client = ComfyUIClient(url)
     if not client.is_reachable():
-        return [DoctorCheck("ComfyUI", "warn", f"{url} is not reachable.")]
+        return [
+            DoctorCheck(
+                "ComfyUI",
+                "warn",
+                (
+                    f"{url} is not reachable. Start ComfyUI, then run "
+                    f"`python scripts/live_tts_smoke.py --comfyui-url {url} "
+                    "--workflow comfyui_workflows/qwen3_tts_template.json` "
+                    "to verify one small synthesis before a full book run."
+                ),
+            )
+        ]
     checks = [DoctorCheck("ComfyUI", "ok", url)]
     speakers = client.list_saved_speakers()
     if speakers:

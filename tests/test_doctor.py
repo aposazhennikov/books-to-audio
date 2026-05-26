@@ -5,7 +5,8 @@ from typing import Any
 
 import pytest
 
-from book_normalizer.diagnostics.doctor import _check_llm_endpoint
+from book_normalizer.diagnostics import doctor
+from book_normalizer.diagnostics.doctor import _check_comfyui, _check_llm_endpoint, _check_tesseract
 from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3_MODEL
 
 
@@ -94,3 +95,61 @@ def test_doctor_ollama_warning_points_to_native_start(monkeypatch: pytest.Monkey
     assert "Ollama Desktop on Windows" in result.detail
     assert "native Linux/macOS terminal" in result.detail
     assert "wsl" not in result.detail.lower()
+
+
+def test_doctor_tesseract_warning_points_to_native_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(doctor, "tesseract_available", lambda: False)
+
+    result = _check_tesseract()
+
+    assert result.status == "warn"
+    assert "scanned PDFs" in result.detail
+    assert "install.bat --interactive --install-system-tools --download-tessdata" in result.detail
+    assert "./install.sh --interactive --install-system-tools --download-tessdata" in result.detail
+
+
+def test_doctor_tesseract_warns_when_multilingual_tessdata_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(doctor, "tesseract_available", lambda: True)
+    monkeypatch.setattr(doctor, "available_tesseract_languages", lambda: {"eng", "rus"})
+
+    result = _check_tesseract()
+
+    assert result.status == "warn"
+    assert "missing OCR language data" in result.detail
+    assert "chi_sim" in result.detail
+    assert "kaz" in result.detail
+    assert "uzb" in result.detail
+
+
+def test_doctor_tesseract_accepts_required_book_languages(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(doctor, "tesseract_available", lambda: True)
+    monkeypatch.setattr(
+        doctor,
+        "available_tesseract_languages",
+        lambda: {"eng", "rus", "chi_sim", "kaz", "uzb", "osd"},
+    )
+
+    result = _check_tesseract()
+
+    assert result.status == "ok"
+    assert "eng, rus, chi_sim, kaz, uzb" in result.detail
+
+
+def test_doctor_comfyui_warning_includes_live_tts_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeComfyClient:
+        def __init__(self, url: str) -> None:
+            self.url = url
+
+        def is_reachable(self) -> bool:
+            return False
+
+    monkeypatch.setattr(doctor, "ComfyUIClient", _FakeComfyClient)
+
+    [result] = _check_comfyui("http://127.0.0.1:8188")
+
+    assert result.status == "warn"
+    assert "scripts/live_tts_smoke.py" in result.detail
+    assert "--comfyui-url http://127.0.0.1:8188" in result.detail
+    assert "qwen3_tts_template.json" in result.detail

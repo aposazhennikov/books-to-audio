@@ -77,10 +77,17 @@ def build_readiness_report(
     verdict_status = _manual_verdict_status(verdict)
     manual_listening_passed = verdict_status == "pass"
     manual_remaining = _manual_remaining_for_verdict(verdict_status)
+    completion_percent = _estimated_completion_percent(
+        automated_gates_ok=automated_gates_ok,
+        verdict_status=verdict_status,
+    )
     return {
         "automated_gates_ok": automated_gates_ok,
         "complete_without_human_review": False,
         "complete_with_human_review": automated_gates_ok and manual_listening_passed,
+        "estimated_completion_percent": completion_percent,
+        "remaining_percent": round(100.0 - completion_percent, 2),
+        "next_action": _next_action_for_verdict(verdict_status),
         "tts_smoke_audit": tts_audit,
         "quality_doc": str(quality_doc),
         "missing_quality_markers": missing_quality_markers,
@@ -90,6 +97,35 @@ def build_readiness_report(
         "manual_verdict": verdict,
         "manual_remaining": manual_remaining,
     }
+
+
+def _estimated_completion_percent(*, automated_gates_ok: bool, verdict_status: str) -> float:
+    if not automated_gates_ok:
+        return 95.0
+    if verdict_status == "pass":
+        return 100.0
+    if verdict_status == "missing":
+        return 99.95
+    if verdict_status == "review":
+        return 99.7
+    if verdict_status == "fail":
+        return 98.0
+    return 99.8
+
+
+def _next_action_for_verdict(status: str) -> str:
+    if status == "pass":
+        return "Optional: schedule a full-length real-book LLM+TTS acceptance run."
+    if status == "review":
+        return "Resolve manual listening review notes, regenerate if needed, then record a pass verdict."
+    if status == "fail":
+        return "Fix the failed listening sample before any longer acceptance run."
+    if status == "invalid":
+        return "Replace invalid manual listening verdict with pass, review, or fail."
+    return (
+        "Listen to output/live_tts_real_book_smoke_after_filter/chapter_001.wav "
+        "and record pass/review/fail with scripts/record_listening_verdict.py."
+    )
 
 
 def _manual_verdict_status(verdict: dict[str, Any]) -> str:

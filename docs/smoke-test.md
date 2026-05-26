@@ -77,7 +77,9 @@ post-filter audio sample.
 
 If `output\manual_listening_verdict.json` exists and contains a `pass` verdict,
 the readiness report also sets `complete_with_human_review=true`. `review` and
-`fail` verdicts keep the final acceptance open.
+`fail` verdicts keep the final acceptance open. The report includes
+`estimated_completion_percent`, `remaining_percent`, and `next_action` so the
+current state can be inspected without reading the whole log.
 
 Manual listening checklist:
 

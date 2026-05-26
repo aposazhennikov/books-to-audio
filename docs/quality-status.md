@@ -104,7 +104,8 @@ are intentionally not committed.
     listen-through and optional full-length acceptance synthesis.
     When `output/manual_listening_verdict.json` contains a `pass` verdict, the
     same readiness check reports `complete_with_human_review=true`; `review` or
-    `fail` keep acceptance open.
+    `fail` keep acceptance open. It also emits `estimated_completion_percent`,
+    `remaining_percent`, and `next_action` for the current sign-off state.
   - Manual listening checklist can be generated with:
     `python scripts/create_listening_checklist.py --smoke-dir
     output/live_tts_real_book_smoke_after_filter --out

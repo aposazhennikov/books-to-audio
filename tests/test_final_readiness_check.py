@@ -75,6 +75,9 @@ def test_final_readiness_reports_automated_gates_ok(tmp_path: Path) -> None:
     assert report["complete_without_human_review"] is False
     assert report["complete_with_human_review"] is False
     assert report["manual_verdict_status"] == "missing"
+    assert report["estimated_completion_percent"] == 99.95
+    assert report["remaining_percent"] == 0.05
+    assert report["next_action"].startswith("Listen to output/")
     assert report["manual_remaining"]
 
 
@@ -88,6 +91,7 @@ def test_final_readiness_reports_missing_quality_markers(tmp_path: Path) -> None
     report = module.build_readiness_report(smoke_dir, quality_doc)
 
     assert report["automated_gates_ok"] is False
+    assert report["estimated_completion_percent"] == 95.0
     assert report["missing_quality_markers"] == ["`ollama ps` was empty"]
 
 
@@ -109,6 +113,9 @@ def test_final_readiness_accepts_pass_verdict(tmp_path: Path) -> None:
     assert report["manual_verdict_status"] == "pass"
     assert report["manual_listening_passed"] is True
     assert report["complete_with_human_review"] is True
+    assert report["estimated_completion_percent"] == 100.0
+    assert report["remaining_percent"] == 0.0
+    assert report["next_action"].startswith("Optional:")
     assert report["manual_remaining"] == [
         "Optional full-length real-book LLM+TTS acceptance run in an explicit long-running window.",
     ]
@@ -131,4 +138,6 @@ def test_final_readiness_review_verdict_keeps_acceptance_open(tmp_path: Path) ->
     assert report["manual_verdict_status"] == "review"
     assert report["manual_listening_passed"] is False
     assert report["complete_with_human_review"] is False
+    assert report["estimated_completion_percent"] == 99.7
+    assert report["next_action"].startswith("Resolve manual listening review notes")
     assert "Resolve manual listening review notes" in report["manual_remaining"][0]

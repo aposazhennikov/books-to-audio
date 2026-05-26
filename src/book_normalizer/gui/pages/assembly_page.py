@@ -83,11 +83,62 @@ class AssemblyWorker(QThread):
             self.error.emit(str(exc))
 
 
+class ProductionPreflightWorker(QThread):
+    """Background worker for production metadata and packaging preflight."""
+
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        manifest_path: Path,
+        output_dir: Path,
+        *,
+        package_outputs: bool = False,
+        chapter_audio_dir: Path | None = None,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._manifest_path = manifest_path
+        self._output_dir = output_dir
+        self._package_outputs = package_outputs
+        self._chapter_audio_dir = chapter_audio_dir
+
+    def run(self) -> None:
+        try:
+            self.progress.emit(t("asm.production_running"))
+            from book_normalizer.production.pipeline import run_production_preflight
+
+            result = run_production_preflight(
+                self._manifest_path,
+                output_dir=self._output_dir / "production",
+                package=self._package_outputs,
+                chapter_audio_dir=self._chapter_audio_dir,
+                dry_run_package=True,
+                allow_review_package=True,
+            )
+            if result.package_report_path:
+                self.finished.emit(
+                    t(
+                        "asm.production_package_done",
+                        run=result.run_report_path,
+                        package=result.package_report_path,
+                    )
+                )
+            else:
+                self.finished.emit(t("asm.production_done", path=result.run_report_path))
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
 class AssemblyPage(QWidget):
     """Page for assembling audio chunks into full chapter/book files."""
 
     assembly_finished = pyqtSignal(str)
     assembly_failed = pyqtSignal(str)
+    production_finished = pyqtSignal(str)
+    production_failed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -95,6 +146,7 @@ class AssemblyPage(QWidget):
         self._manifest_path: Path | None = None
         self._output_dir: Path | None = None
         self._worker: AssemblyWorker | None = None
+        self._production_worker: ProductionPreflightWorker | None = None
         self._help_buttons: dict[str, object] = {}
         self._setup_ui()
 
@@ -166,6 +218,28 @@ class AssemblyPage(QWidget):
         self._btn_run.setEnabled(False)
         layout.addWidget(self._btn_run)
 
+        self._production_title = QLabel()
+        self._production_title.setStyleSheet("font-weight: 800; font-size: 13px; color: #334155;")
+        layout.addWidget(self._production_title)
+
+        self._production_desc = QLabel()
+        self._production_desc.setWordWrap(True)
+        self._production_desc.setStyleSheet("color: rgba(51,65,85,0.72); font-size: 12px;")
+        layout.addWidget(self._production_desc)
+
+        production_row = QHBoxLayout()
+        production_row.setSpacing(8)
+        self._btn_production_preflight = QPushButton()
+        self._btn_production_preflight.clicked.connect(self._run_production_preflight)
+        self._btn_production_preflight.setEnabled(False)
+        production_row.addWidget(self._btn_production_preflight)
+
+        self._btn_production_package = QPushButton()
+        self._btn_production_package.clicked.connect(self._run_production_package)
+        self._btn_production_package.setEnabled(False)
+        production_row.addWidget(self._btn_production_package)
+        layout.addLayout(production_row)
+
         # ── Progress ──
         self._progress = ProgressWidget()
         layout.addWidget(self._progress)
@@ -192,6 +266,10 @@ class AssemblyPage(QWidget):
         self._pause_change.setToolTip(t("asm.pause_change_help"))
         self._update_help_buttons()
         self._btn_run.setText(t("asm.run"))
+        self._production_title.setText(t("asm.production_title"))
+        self._production_desc.setText(t("asm.production_desc"))
+        self._btn_production_preflight.setText(t("asm.production_preflight"))
+        self._btn_production_package.setText(t("asm.production_package"))
 
     def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
         """Create a form label with a reusable help button."""
@@ -211,6 +289,7 @@ class AssemblyPage(QWidget):
         self._output_dir = output_dir
         self._dir_label.setText(str(audio_dir))
         self._btn_run.setEnabled(True)
+        self._update_production_buttons()
 
     def set_manifest(self, manifest_path: Path, output_dir: Path) -> None:
         """Set a v2 manifest for manifest-ordered assembly."""
@@ -219,6 +298,7 @@ class AssemblyPage(QWidget):
         self._output_dir = output_dir
         self._dir_label.setText(str(manifest_path))
         self._btn_run.setEnabled(True)
+        self._update_production_buttons()
 
     def _browse_dir(self) -> None:
         d = QFileDialog.getExistingDirectory(self, t("asm.select_dir"))
@@ -228,6 +308,7 @@ class AssemblyPage(QWidget):
             self._output_dir = Path(d).parent
             self._dir_label.setText(d)
             self._btn_run.setEnabled(True)
+            self._update_production_buttons()
 
     def _run_assembly(self) -> None:
         if not self._audio_dir or not self._output_dir:
@@ -263,6 +344,45 @@ class AssemblyPage(QWidget):
         self._progress.set_status(f"❌ {msg}")
 
         self.assembly_failed.emit(msg)
+
+    def _update_production_buttons(self) -> None:
+        enabled = bool(self._manifest_path and self._output_dir)
+        self._btn_production_preflight.setEnabled(enabled)
+        self._btn_production_package.setEnabled(enabled)
+
+    def _run_production_preflight(self) -> None:
+        self._start_production_preflight(package_outputs=False)
+
+    def _run_production_package(self) -> None:
+        self._start_production_preflight(package_outputs=True)
+
+    def _start_production_preflight(self, *, package_outputs: bool) -> None:
+        if not self._manifest_path or not self._output_dir:
+            return
+        self._btn_production_preflight.setEnabled(False)
+        self._btn_production_package.setEnabled(False)
+        self._progress.set_status(t("asm.production_running"))
+        self._production_worker = ProductionPreflightWorker(
+            self._manifest_path,
+            self._output_dir,
+            package_outputs=package_outputs,
+            chapter_audio_dir=self._output_dir,
+        )
+        self._production_worker.progress.connect(self._progress.set_status)
+        self._production_worker.finished.connect(self._on_production_finished)
+        self._production_worker.error.connect(self._on_production_error)
+        self._production_worker.start()
+
+    def _on_production_finished(self, output: str) -> None:
+        self._update_production_buttons()
+        self._progress.set_status(t("asm.production_complete"))
+        self._output_label.setText(output)
+        self.production_finished.emit(output)
+
+    def _on_production_error(self, msg: str) -> None:
+        self._update_production_buttons()
+        self._progress.set_status(f"вќЊ {msg}")
+        self.production_failed.emit(msg)
 
     @staticmethod
     def _translate_output(text: str) -> str:

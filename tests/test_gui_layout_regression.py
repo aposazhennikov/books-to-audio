@@ -157,6 +157,27 @@ def test_zoom_does_not_force_window_larger_than_viewport(size: tuple[int, int]) 
     window.deleteLater()
 
 
+def test_fullscreen_only_mode_locks_window_to_available_screen() -> None:
+    app = qapp()
+    window = MainWindow()
+    window.enable_fullscreen_only()
+    gui_helpers.flush_events(app)
+
+    available = app.primaryScreen().availableGeometry().size()
+    assert window.isMaximized()
+    assert window.minimumSize() == available
+    assert window.maximumSize() == available
+
+    window.showNormal()
+    gui_helpers.flush_events(app)
+    assert window.isMaximized()
+    assert window.minimumSize() == available
+    assert window.maximumSize() == available
+
+    window.close()
+    window.deleteLater()
+
+
 def test_zoomed_voice_controls_keep_enough_text_height() -> None:
     app = qapp()
     _ = app
@@ -496,7 +517,6 @@ def test_dropdowns_use_content_width_instead_of_full_rows() -> None:
             window._normalize_page._book_language,
             window._normalize_page._ocr_mode,
             window._voices_page._speaker_mode,
-            window._voices_page._llm_provider,
             window._synthesis_page._output_format_combo,
             window._synthesis_page._chapter_combo,
             window._synthesis_page._asr_model_combo,
@@ -517,6 +537,8 @@ def test_dropdowns_use_content_width_instead_of_full_rows() -> None:
         assert window._synthesis_page._asr_device_combo.maximumWidth() < 140
         assert window._synthesis_page._asr_model_combo.maximumWidth() < 170
         assert window._normalize_page._book_language.maximumWidth() < 220
+        assert window._voices_page._llm_provider.minimumWidth() >= 220
+        assert window._voices_page._llm_provider.maximumWidth() >= 360
     finally:
         window.close()
         window.deleteLater()
@@ -619,7 +641,7 @@ def test_loaded_chunk_page_does_not_overlap_in_height_constrained_viewports(
         assert page._voice_table._preset_toolbar_panel.isVisible()
         assert page._voice_table._quick_apply_panel.isVisible()
         assert page._stats_label.isHidden()
-        assert page._voice_table._compact_mode is False
+        assert page._voice_table._compact_mode is True
 
     siblings = [page._top_tabs, page._voice_table]
     if page._stats_label.isVisible():
@@ -700,6 +722,31 @@ def test_loaded_llm_chunk_page_keeps_settings_controls_inside_panel() -> None:
 
     assert page._llm_panel.isVisible()
     assert page._top_tabs.height() > 188
+
+    window.close()
+    window.deleteLater()
+
+
+def test_loaded_llm_chunk_page_keeps_full_layout_at_high_dpi_fullscreen_width() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    _populate_loaded_chunk_page(window, speaker_mode="llm")
+    render_widget(window, 1366, 1100, scale=1.45)
+
+    page = window._voices_page
+    assert page._compact_mode is False
+    assert page._llm_layout_compact is False
+    assert page._voice_table._compact_mode is True
+    assert page._speaker_mode_label.isVisible()
+    assert page._stress_mode_label.isVisible()
+    assert page._stress_mode.isVisible()
+    assert page._llm_provider.width() >= 220
+    _assert_no_visual_overlap(
+        window,
+        [page._llm_provider, page._llm_endpoint, page._llm_model],
+    )
 
     window.close()
     window.deleteLater()

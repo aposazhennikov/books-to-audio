@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -417,6 +418,57 @@ def test_normalize_page_prompts_for_cache_when_ocr_probe_changes(
     page.deleteLater()
 
 
+def test_normalize_page_prompts_for_same_source_cache_when_ocr_settings_change(
+    qapp,
+    qtbot,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    class _UnexpectedWorker:
+        def __init__(self, **_kwargs):
+            raise AssertionError("worker should not start when cache is restored")
+
+    book_path = tmp_path / "book.pdf"
+    book_path.write_text("Cached source.", encoding="utf-8")
+    page = NormalizePage()
+    qtbot.addWidget(page)
+    page._selected_path = str(book_path)
+    page._path_label.setText(str(book_path))
+    page._btn_run.setEnabled(True)
+    page._ocr_mode.setCurrentIndex(page._ocr_mode.findData("auto"))
+    page._ocr_dpi.setValue(600)
+    cached_book = Book(
+        metadata=Metadata(title="Cached", language="ru", source_format="pdf"),
+        chapters=[
+            Chapter(
+                index=0,
+                paragraphs=[Paragraph(raw_text="Cached source.", normalized_text="Cached result.")],
+            ),
+        ],
+    )
+    normalization_cache.save_cached_book(
+        cached_book,
+        book_path,
+        page._normalization_cache_settings(book_path),
+    )
+    page._ocr_dpi.setValue(400)
+    prompts: list[tuple[Path, bool]] = []
+    monkeypatch.setattr(
+        page,
+        "_ask_cached_normalization",
+        lambda path, *, settings_mismatch=False: prompts.append((path, settings_mismatch)) or "restore",
+    )
+    monkeypatch.setattr(normalize_page, "NormalizeWorker", _UnexpectedWorker)
+
+    page._run_normalization()
+
+    assert prompts == [(book_path, True)]
+    assert page._book is not None
+    assert page._norm_text.toPlainText() == "Cached result."
+    assert page._progress._status.text() == t("norm.cache_restored", n=1)
+    page.deleteLater()
+
+
 def test_normalize_page_auto_restore_uses_any_source_cache(
     qapp,
     qtbot,
@@ -461,6 +513,34 @@ def test_normalize_page_auto_restore_uses_any_source_cache(
     assert page._norm_text.toPlainText() == "Cached result."
     assert page._progress._status.text() == t("norm.cache_restored", n=1)
     set_language("ru")
+    page.deleteLater()
+
+
+def test_normalize_page_cache_settings_mark_native_pdf_variant(qapp, qtbot, tmp_path) -> None:
+    book_path = tmp_path / "book.pdf"
+    book_path.write_text("Cached source.", encoding="utf-8")
+    page = NormalizePage()
+    qtbot.addWidget(page)
+    page._selected_path = str(book_path)
+    page._path_label.setText(str(book_path))
+    page._ocr_mode.setCurrentIndex(page._ocr_mode.findData("auto"))
+    page._ocr_dpi.setValue(600)
+    book = Book(
+        metadata=Metadata(
+            source_format="pdf",
+            extra={"pdf_text_variant": "native"},
+        ),
+    )
+
+    settings = page._normalization_cache_settings(book_path, book=book)
+    page._ocr_dpi.setValue(400)
+    changed_dpi_settings = page._normalization_cache_settings(book_path, book=book)
+
+    assert settings.pdf_text_variant == "native"
+    assert normalization_cache.cache_path_for(book_path, settings) == normalization_cache.cache_path_for(
+        book_path,
+        changed_dpi_settings,
+    )
     page.deleteLater()
 
 

@@ -60,6 +60,7 @@ class VoicesPage(QWidget):
         # small screens and high DPI scaling.
         self._top_tabs = QTabWidget()
         self._top_tabs.setObjectName("voiceTopTabs")
+        self._top_tabs.currentChanged.connect(self._on_top_tab_changed)
 
         # Left panel: settings + actions.
         left_panel = QWidget()
@@ -131,6 +132,9 @@ class VoicesPage(QWidget):
             self._on_llm_provider_changed,
         )
         self._llm_provider.setMinimumHeight(28)
+        self._llm_provider.setMinimumWidth(220)
+        self._llm_provider.setMaximumWidth(420)
+        self._llm_provider.setProperty("skipContentWidth", True)
 
         self._llm_endpoint_label = QLabel()
         self._llm_endpoint = QLineEdit(configured_ollama_endpoint())
@@ -283,6 +287,7 @@ class VoicesPage(QWidget):
 
         self.retranslate()
         self._sync_compact_mode()
+        self._sync_chunk_review_visibility()
 
     # ── Translations ──
 
@@ -313,7 +318,7 @@ class VoicesPage(QWidget):
         self._llm_provider.clear()
         self._llm_provider.addItem(t("voice.llm_local"), "local")
         self._llm_provider.addItem(t("voice.llm_openai"), "openai")
-        apply_combo_content_width(self._llm_provider)
+        self._sync_llm_provider_width()
         self._llm_endpoint_label.setText(t("voice.llm_endpoint"))
         self._llm_model_label.setText(t("voice.llm_model"))
         self._llm_api_key_label.setText(t("voice.llm_api_key"))
@@ -339,7 +344,12 @@ class VoicesPage(QWidget):
 
     def _sync_settings_panel_height(self) -> None:
         """Balance the scrollable settings area against the assignment table."""
-        width_compact = self.width() < round(960 * self._ui_scale)
+        if self._top_tabs.currentIndex() == 1:
+            self._top_tabs.setMinimumHeight(max(320, round(280 * self._ui_scale)))
+            self._top_tabs.setMaximumHeight(16777215)
+            return
+
+        width_compact = self._is_width_compact()
         height_compact = self.height() < 760
         ultra_dense = self.height() < 430
         content_needed = self._settings_panel.sizeHint().height()
@@ -366,7 +376,7 @@ class VoicesPage(QWidget):
             elif editor_visible and height_compact:
                 table_reserve = max(330, round(280 * self._ui_scale))
             elif editor_visible:
-                table_reserve = max(430, round(380 * self._ui_scale))
+                table_reserve = max(430, round(300 * self._ui_scale))
             elif height_compact:
                 table_reserve = 360
             else:
@@ -375,16 +385,36 @@ class VoicesPage(QWidget):
         self._top_tabs.setMinimumHeight(target)
         self._top_tabs.setMaximumHeight(target)
 
+    def _on_top_tab_changed(self, _index: int) -> None:
+        """Show chunk review widgets only inside the review subtab."""
+        if not hasattr(self, "_voice_table"):
+            return
+        self._sync_chunk_review_visibility()
+        self._refresh_loaded_layout()
+        if self._top_tabs.currentIndex() == 1 and hasattr(self, "_voice_preview"):
+            self._voice_preview.refresh_library()
+
+    def _sync_chunk_review_visibility(self) -> None:
+        """Keep the preset library free from chunk-review controls."""
+        if not hasattr(self, "_voice_table") or not hasattr(self, "_stats_label"):
+            return
+        review_visible = self._top_tabs.currentIndex() == 0
+        self._voice_table.setVisible(review_visible)
+        self._stats_label.setVisible(review_visible and not self._compact_mode and not self._voice_table._dense_mode)
+
     def _sync_compact_mode(self) -> None:
         """Switch heavy table controls into compact mode on narrow widths."""
-        width_compact = self.width() < round(960 * self._ui_scale)
+        width_compact = self._is_width_compact()
         height_compact = self.height() < 760
         editor_dense = self.height() < 600
         controls_compact = width_compact or height_compact
         ultra_dense = self.height() < 430
         dense = ultra_dense or (editor_dense and not width_compact)
+        table_width = self._voice_table.width() if self._voice_table.width() > 0 else self.width()
+        table_compact_threshold = max(960, round(1060 * self._ui_scale * self._ui_scale))
+        table_width_compact = table_width < table_compact_threshold
         self._compact_mode = controls_compact
-        self._voice_table.set_compact_mode(width_compact)
+        self._voice_table.set_compact_mode(table_width_compact)
         self._voice_table.set_dense_mode(dense, ultra_dense=ultra_dense)
         self._apply_llm_layout(compact=controls_compact)
         self._llm_panel.setVisible(self._current_speaker_mode() == "llm" and not ultra_dense)
@@ -392,9 +422,13 @@ class VoicesPage(QWidget):
         self._action_panel.layout().setContentsMargins(0, 4 if controls_compact else 0, 0, 0)
         self._chunk_size.setFixedHeight(42 if controls_compact else 38)
         self._chunk_size.setFixedWidth(118 if width_compact else 128)
-        self._progress.setVisible(not controls_compact)
+        has_loaded_segments = bool(self._voice_table.get_segments())
+        show_secondary_status = not controls_compact and (
+            self._worker is not None or not has_loaded_segments
+        )
+        self._progress.setVisible(show_secondary_status)
         self._manifest_label.setVisible(
-            bool(self._manifest_label.text()) and not controls_compact,
+            bool(self._manifest_label.text()) and show_secondary_status,
         )
         for button in (
             self._btn_detect,
@@ -415,7 +449,9 @@ class VoicesPage(QWidget):
             label.setVisible(not controls_compact)
         self._speaker_mode_hint.setVisible(not controls_compact)
         self._stress_mode.setVisible(not controls_compact)
-        self._stats_label.setVisible(not controls_compact and not dense)
+        self._stats_label.setVisible(
+            self._top_tabs.currentIndex() == 0 and not controls_compact and not dense
+        )
         self._btn_detect.setMinimumWidth(0 if width_compact else 260)
         self._btn_detect.setMaximumWidth(16777215 if width_compact else 360)
         self._btn_detect.setText(t("voice.compact_detect") if width_compact else t("voice.detect"))
@@ -427,6 +463,10 @@ class VoicesPage(QWidget):
         )
         self._btn_build.setText(t("voice.compact_build_chunks") if width_compact else t("voice.build_chunks"))
         self._sync_llm_field_visibility()
+
+    def _is_width_compact(self) -> bool:
+        """Return true for truly narrow logical widths, independent of DPI scale."""
+        return self.width() < 960
 
     def _llm_rows(self) -> tuple[tuple[QLabel, QWidget], ...]:
         """Return LLM config rows in stable visual order."""
@@ -446,6 +486,8 @@ class VoicesPage(QWidget):
             self._llm_layout.takeAt(0)
         self._llm_layout.setColumnStretch(0, 1 if compact else 0)
         self._llm_layout.setColumnStretch(1, 1)
+        self._sync_llm_provider_width()
+        self._sync_llm_field_metrics()
         for row, (label, field) in enumerate(self._llm_rows()):
             if compact:
                 self._llm_layout.addWidget(field, row, 0, 1, 2)
@@ -455,6 +497,40 @@ class VoicesPage(QWidget):
                 self._llm_layout.addWidget(field, row, 1)
         self._update_llm_placeholders()
         self._sync_llm_field_visibility()
+
+    def _sync_llm_field_metrics(self) -> None:
+        """Reserve enough row height for styled fields at high DPI."""
+        if not hasattr(self, "_llm_provider"):
+            return
+        fields = [field for _label, field in self._llm_rows()]
+        height = max(
+            34,
+            round(34 * self._ui_scale),
+            *(field.sizeHint().height() for field in fields),
+        )
+        for field in fields:
+            field.setMinimumHeight(height)
+        self._llm_layout.setVerticalSpacing(max(12, round(12 * self._ui_scale)))
+
+    def _sync_llm_provider_width(self) -> None:
+        """Keep the provider selector readable without stretching like a text field."""
+        if not hasattr(self, "_llm_provider"):
+            return
+        minimum = max(220, round(220 * min(self._ui_scale, 1.15)))
+        if self._llm_layout_compact:
+            self._llm_provider.setMinimumWidth(minimum)
+            self._llm_provider.setMaximumWidth(16777215)
+            self._llm_provider.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+            return
+        self._llm_provider.setMinimumWidth(minimum)
+        self._llm_provider.setMaximumWidth(max(420, round(360 * self._ui_scale)))
+        self._llm_provider.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed,
+        )
 
     def _sync_llm_field_visibility(self) -> None:
         """Show provider-specific LLM fields without reviving hidden compact labels."""

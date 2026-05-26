@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import QEvent, QTimer
+from PyQt6.QtGui import QFont, QGuiApplication
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -42,6 +42,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Books to Audio")
         self._ui_scale = 1.0
+        self._fullscreen_only = False
+        self._enforcing_fullscreen = False
         self.setMinimumSize(760, 520)
         self.resize(1180, 760)
         self.setWindowIcon(application_icon())
@@ -122,10 +124,13 @@ class MainWindow(QMainWindow):
         """Apply global UI scale to window-specific sizing."""
 
         self._ui_scale = scale
-        self.setMinimumSize(
-            max(700, round(760 * min(scale, 1.0))),
-            max(480, round(520 * min(scale, 1.0))),
-        )
+        if self._fullscreen_only:
+            self._apply_fullscreen_only_geometry()
+        else:
+            self.setMinimumSize(
+                max(700, round(760 * min(scale, 1.0))),
+                max(480, round(520 * min(scale, 1.0))),
+            )
         self._title.setFont(make_app_font(max(16, round(22 * scale)), QFont.Weight.Bold))
         self._lang_combo.setMinimumWidth(max(148, round(164 * scale)))
         self._lang_combo.setMaximumWidth(max(190, round(240 * scale)))
@@ -134,11 +139,67 @@ class MainWindow(QMainWindow):
                 child.set_ui_scale(scale)
         apply_widget_scale_metrics(self, scale)
         self._sync_tab_labels()
+        if self._fullscreen_only:
+            self._schedule_fullscreen_enforcement()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Use shorter tab titles on narrow windows."""
         super().resizeEvent(event)
         self._sync_tab_labels()
+        if getattr(self, "_fullscreen_only", False) and not self.isMinimized():
+            self._schedule_fullscreen_enforcement()
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        """Return the app to fullscreen-only mode if the OS restores it."""
+        super().changeEvent(event)
+        if (
+            getattr(self, "_fullscreen_only", False)
+            and event.type() == QEvent.Type.WindowStateChange
+            and not self.isMinimized()
+        ):
+            self._schedule_fullscreen_enforcement()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        """Make first paint use the available screen geometry."""
+        super().showEvent(event)
+        if getattr(self, "_fullscreen_only", False):
+            self._schedule_fullscreen_enforcement()
+
+    def enable_fullscreen_only(self) -> None:
+        """Force the desktop app to stay maximized at the current screen size."""
+        self._fullscreen_only = True
+        self._apply_fullscreen_only_geometry()
+        self.showMaximized()
+        self._schedule_fullscreen_enforcement()
+
+    def _available_screen_size(self):
+        """Return available screen size for the current or primary display."""
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            return None
+        return screen.availableGeometry().size()
+
+    def _apply_fullscreen_only_geometry(self) -> None:
+        """Lock min/max size to screen so restored window mode is unusable."""
+        size = self._available_screen_size()
+        if size is None or size.isEmpty():
+            return
+        self.setMinimumSize(size)
+        self.setMaximumSize(size)
+
+    def _schedule_fullscreen_enforcement(self) -> None:
+        if self._enforcing_fullscreen:
+            return
+        self._enforcing_fullscreen = True
+        QTimer.singleShot(0, self._enforce_fullscreen_only)
+
+    def _enforce_fullscreen_only(self) -> None:
+        self._enforcing_fullscreen = False
+        if not self._fullscreen_only or self.isMinimized():
+            return
+        self._apply_fullscreen_only_geometry()
+        if not self.isMaximized():
+            self.showMaximized()
 
     def _connect_signals(self) -> None:
         """Wire up page transitions."""
@@ -161,6 +222,8 @@ class MainWindow(QMainWindow):
         self._synthesis_page.synthesis_failed.connect(self._on_auto_pipeline_failed)
         self._assembly_page.assembly_finished.connect(self._on_assembly_done)
         self._assembly_page.assembly_failed.connect(self._on_auto_pipeline_failed)
+        self._assembly_page.production_finished.connect(self._on_production_done)
+        self._assembly_page.production_failed.connect(self._on_auto_pipeline_failed)
 
     def _on_language_changed(self, _index: int) -> None:
         """Handle language combo change."""
@@ -352,6 +415,14 @@ class MainWindow(QMainWindow):
 
     def _on_assembly_done(self, _output: str) -> None:
         """Finish an active auto pipeline after assembly."""
+        if not self._auto_pipeline_active:
+            return
+        self._tabs.setCurrentIndex(4)
+        self._statusbar.showMessage(t("auto.production"))
+        QTimer.singleShot(0, self._assembly_page._run_production_preflight)
+
+    def _on_production_done(self, _output: str) -> None:
+        """Finish an active auto pipeline after production preflight."""
         if not self._auto_pipeline_active:
             return
         self._auto_pipeline_active = False

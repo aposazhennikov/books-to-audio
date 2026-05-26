@@ -449,6 +449,9 @@ class NormalizeWorker(QThread):
                     source_format="pdf",
                     language=self._book_language,
                 )
+                metadata.extra["pdf_text_variant"] = chosen.kind
+                metadata.extra["pdf_text_stats"] = dict(stats)
+                metadata.extra["pdf_document_type"] = chosen.document_type
                 book = Book(metadata=metadata, chapters=[chapter])
             else:
                 factory = LoaderFactory.default()

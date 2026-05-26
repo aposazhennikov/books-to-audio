@@ -14,6 +14,7 @@ QtCore = pytest.importorskip("PyQt6.QtCore")
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 voice_preview = pytest.importorskip("book_normalizer.gui.widgets.voice_preview")
 set_language = pytest.importorskip("book_normalizer.gui.i18n").set_language
+voice_library = pytest.importorskip("book_normalizer.tts.voice_library")
 GeneratePreviewsWorker = voice_preview.GeneratePreviewsWorker
 VoicePreviewPanel = voice_preview.VoicePreviewPanel
 
@@ -217,3 +218,24 @@ def test_voice_preview_panel_generate_button_starts_worker(
         assert panel._btn_generate.isEnabled()
     finally:
         set_language("ru")
+
+
+def test_voice_preview_panel_lists_saved_custom_voice(qapp, qtbot, tmp_path, monkeypatch) -> None:
+    library_dir = tmp_path / "voices"
+    sample = tmp_path / "sample.wav"
+    sample.write_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt ")
+    voice_library.save_comfyui_voice_metadata(
+        library_dir=library_dir,
+        name="Margarita Sad",
+        ref_audio=str(sample),
+        ref_text="Soft, sad character voice.",
+    )
+    monkeypatch.setattr(voice_preview, "default_voice_library_dir", lambda: library_dir)
+
+    panel = VoicePreviewPanel()
+    qtbot.addWidget(panel)
+
+    assert "margarita_sad" in panel._saved_card_by_id
+    card = panel._saved_card_by_id["margarita_sad"]
+    assert card._label.text() == "Margarita Sad"
+    assert card._btn_play.isEnabled()

@@ -29,21 +29,33 @@ class NormalizationCacheSettings:
     llm_model: str
     tesseract_available: bool | None = None
     tesseract_language_available: bool | None = None
+    pdf_text_variant: str | None = None
 
     def to_key_record(self) -> dict[str, Any]:
         """Return a normalized settings record suitable for cache keys."""
+        source_format = self.source_format.lower().strip(".")
+        ocr_mode = self.ocr_mode
+        ocr_dpi = int(self.ocr_dpi)
+        ocr_psm = int(self.ocr_psm)
+        pdf_text_variant = (self.pdf_text_variant or "").strip().lower()
+        if source_format == "pdf" and pdf_text_variant == "native":
+            ocr_dpi = 0
+            ocr_psm = 0
         llm_endpoint = _normalize_endpoint(self.llm_endpoint) if self.llm_normalize else ""
         llm_model = self.llm_model.strip() if self.llm_normalize else ""
-        return {
-            "source_format": self.source_format.lower().strip("."),
+        record = {
+            "source_format": source_format,
             "book_language": self.book_language,
-            "ocr_mode": self.ocr_mode,
-            "ocr_dpi": int(self.ocr_dpi),
-            "ocr_psm": int(self.ocr_psm),
+            "ocr_mode": ocr_mode,
+            "ocr_dpi": ocr_dpi,
+            "ocr_psm": ocr_psm,
             "llm_normalize": bool(self.llm_normalize),
             "llm_endpoint": llm_endpoint,
             "llm_model": llm_model,
         }
+        if source_format == "pdf":
+            record["pdf_text_variant"] = pdf_text_variant
+        return record
 
 
 @dataclass(frozen=True)
@@ -201,7 +213,11 @@ def _find_compatible_cached_normalization(
         source = payload.get("source")
         if not isinstance(source, dict) or source.get("sha1") != source_digest:
             continue
-        if _payload_settings_record(payload.get("settings")) != settings_record:
+        payload_settings = _payload_settings_record(payload.get("settings"))
+        if payload_settings is None or not _settings_records_compatible(
+            payload_settings,
+            settings_record,
+        ):
             continue
         cache_key = payload.get("cache_key")
         if not isinstance(cache_key, str) or not cache_key:
@@ -224,9 +240,45 @@ def _payload_settings_record(raw_settings: object) -> dict[str, Any] | None:
             llm_normalize=bool(raw_settings.get("llm_normalize")),
             llm_endpoint=str(raw_settings.get("llm_endpoint", "")),
             llm_model=str(raw_settings.get("llm_model", "")),
+            pdf_text_variant=str(raw_settings.get("pdf_text_variant") or ""),
         ).to_key_record()
     except (TypeError, ValueError):
         return None
+
+
+def _settings_records_compatible(
+    cached_record: dict[str, Any],
+    current_record: dict[str, Any],
+) -> bool:
+    """Return true when records produce the same normalized text."""
+    if cached_record == current_record:
+        return True
+
+    if (
+        cached_record.get("source_format") == "pdf"
+        and current_record.get("source_format") == "pdf"
+        and cached_record.get("pdf_text_variant")
+        and not current_record.get("pdf_text_variant")
+    ):
+        cached_without_variant = dict(cached_record)
+        cached_without_variant["pdf_text_variant"] = ""
+        if cached_without_variant == current_record:
+            return True
+
+    if (
+        cached_record.get("source_format") == "pdf"
+        and current_record.get("source_format") == "pdf"
+        and cached_record.get("pdf_text_variant") == "native"
+    ):
+        cached_neutral = dict(cached_record)
+        current_neutral = dict(current_record)
+        for record in (cached_neutral, current_neutral):
+            record["ocr_dpi"] = 0
+            record["ocr_psm"] = 0
+            record["pdf_text_variant"] = "native"
+        return cached_neutral == current_neutral
+
+    return False
 
 
 def _normalize_endpoint(endpoint: str) -> str:

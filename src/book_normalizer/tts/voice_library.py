@@ -29,6 +29,11 @@ class SavedVoice:
     ref_audio: str = ""
     ref_audio_sha256: str = ""
     speech_rate: float = 1.0
+    description: str = ""
+    ref_text: str = ""
+    preview_audio: str = ""
+    source: str = "local"
+    comfyui_speaker: str = ""
 
 
 def default_voice_library_dir() -> Path:
@@ -110,6 +115,56 @@ def build_voice_metadata(
     return metadata
 
 
+def save_comfyui_voice_metadata(
+    *,
+    library_dir: Path,
+    name: str,
+    ref_audio: str,
+    ref_text: str,
+    model: str = "",
+    speech_rate: float = 1.0,
+    description: str = "",
+    overwrite: bool = True,
+) -> SavedVoice:
+    """Persist metadata for a ComfyUI-saved voice in the shared library."""
+    library_dir = normalize_voice_library_dir(library_dir)
+    voice_id = sanitize_voice_id(name)
+    metadata_path = library_dir / f"{voice_id}{META_FILE_SUFFIX}"
+    if metadata_path.exists() and not overwrite:
+        raise FileExistsError(
+            f"Saved voice '{voice_id}' already exists in {library_dir}."
+        )
+
+    library_dir.mkdir(parents=True, exist_ok=True)
+    ref_audio_path = Path(ref_audio)
+    metadata: dict[str, Any] = {
+        "version": VOICE_LIBRARY_VERSION,
+        "id": voice_id,
+        "name": name.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "model": model,
+        "source": "comfyui",
+        "comfyui_speaker": name.strip(),
+        "ref_audio": ref_audio,
+        "preview_audio": ref_audio,
+        "ref_audio_sha256": (
+            _hash_file(ref_audio_path) if ref_audio_path.exists() else ""
+        ),
+        "ref_text": ref_text,
+        "description": description or ref_text.strip(),
+        "speech_rate": speech_rate,
+    }
+    metadata_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return _saved_voice_from_metadata(
+        metadata,
+        metadata_path,
+        library_dir / f"{voice_id}{VOICE_FILE_SUFFIX}",
+    )
+
+
 def save_voice_prompt(
     prompt: Any,
     *,
@@ -156,6 +211,11 @@ def save_voice_prompt(
         ref_audio=str(metadata.get("ref_audio") or ""),
         ref_audio_sha256=str(metadata.get("ref_audio_sha256") or ""),
         speech_rate=float(metadata.get("speech_rate") or 1.0),
+        description=str(metadata.get("description") or ""),
+        ref_text=str(metadata.get("ref_text") or ""),
+        preview_audio=str(metadata.get("preview_audio") or metadata.get("ref_audio") or ""),
+        source=str(metadata.get("source") or "local"),
+        comfyui_speaker=str(metadata.get("comfyui_speaker") or ""),
     )
 
 
@@ -188,31 +248,57 @@ def list_saved_voices(library_dir: Path) -> list[SavedVoice]:
         if not isinstance(metadata, dict):
             continue
 
-        voice_id = sanitize_voice_id(str(metadata.get("id") or metadata_path.stem))
-        prompt_file = str(metadata.get("prompt_file") or f"{voice_id}{VOICE_FILE_SUFFIX}")
-        prompt_path = library_dir / prompt_file
+        voice_id = sanitize_voice_id(
+            str(metadata.get("id") or metadata_path.stem.removesuffix(".voice"))
+        )
+        prompt_file = str(metadata.get("prompt_file") or "")
+        prompt_path = library_dir / (prompt_file or f"{voice_id}{VOICE_FILE_SUFFIX}")
         if not prompt_path.exists():
             fallback = metadata_path.with_suffix("").with_suffix(VOICE_FILE_SUFFIX)
             if fallback.exists():
                 prompt_path = fallback
                 voice_id = sanitize_voice_id(fallback.name.removesuffix(VOICE_FILE_SUFFIX))
-            else:
+            elif not _metadata_is_comfyui_voice(metadata):
                 continue
 
-        voices.append(
-            SavedVoice(
-                voice_id=voice_id,
-                name=str(metadata.get("name") or voice_id),
-                prompt_path=prompt_path,
-                metadata_path=metadata_path,
-                created_at=str(metadata.get("created_at") or ""),
-                model=str(metadata.get("model") or ""),
-                ref_audio=str(metadata.get("ref_audio") or ""),
-                ref_audio_sha256=str(metadata.get("ref_audio_sha256") or ""),
-                speech_rate=float(metadata.get("speech_rate") or 1.0),
-            )
-        )
+        metadata["id"] = voice_id
+        voices.append(_saved_voice_from_metadata(metadata, metadata_path, prompt_path))
     return sorted(voices, key=lambda item: item.name.lower())
+
+
+def _metadata_is_comfyui_voice(metadata: dict[str, Any]) -> bool:
+    """Return true for metadata that points to a ComfyUI saved speaker."""
+    return (
+        str(metadata.get("source") or "").strip().lower() == "comfyui"
+        or bool(str(metadata.get("comfyui_speaker") or "").strip())
+    )
+
+
+def _saved_voice_from_metadata(
+    metadata: dict[str, Any],
+    metadata_path: Path,
+    prompt_path: Path,
+) -> SavedVoice:
+    """Convert one sidecar JSON dict into a SavedVoice object."""
+    voice_id = sanitize_voice_id(str(metadata.get("id") or metadata_path.stem))
+    ref_audio = str(metadata.get("ref_audio") or "")
+    preview_audio = str(metadata.get("preview_audio") or ref_audio)
+    return SavedVoice(
+        voice_id=voice_id,
+        name=str(metadata.get("name") or voice_id),
+        prompt_path=prompt_path,
+        metadata_path=metadata_path,
+        created_at=str(metadata.get("created_at") or ""),
+        model=str(metadata.get("model") or ""),
+        ref_audio=ref_audio,
+        ref_audio_sha256=str(metadata.get("ref_audio_sha256") or ""),
+        speech_rate=float(metadata.get("speech_rate") or 1.0),
+        description=str(metadata.get("description") or ""),
+        ref_text=str(metadata.get("ref_text") or ""),
+        preview_audio=preview_audio,
+        source=str(metadata.get("source") or ("comfyui" if _metadata_is_comfyui_voice(metadata) else "local")),
+        comfyui_speaker=str(metadata.get("comfyui_speaker") or ""),
+    )
 
 
 def resolve_saved_voice_path(name_or_path: str, library_dir: Path) -> Path:
@@ -233,7 +319,9 @@ def resolve_saved_voice_path(name_or_path: str, library_dir: Path) -> Path:
 
     for voice in list_saved_voices(library_dir):
         if value in {voice.voice_id, voice.name}:
-            return voice.prompt_path
+            if voice.prompt_path.exists():
+                return voice.prompt_path
+            break
     raise FileNotFoundError(
         f"Saved voice '{value}' not found in {library_dir}."
     )

@@ -34,6 +34,7 @@ from book_normalizer.tts.model_paths import (
     default_comfyui_models_dir,
     describe_model_resolution,
 )
+from book_normalizer.tts.voice_library import SavedVoice, default_voice_library_dir, list_saved_voices
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _DEFAULT_PREVIEW_DIR = _PROJECT_ROOT / "voice_previews"
@@ -75,6 +76,20 @@ def _preview_wav_path(base_dir: Path, voice_id: str, language: str) -> Path:
         if legacy_path.exists() and not path.exists():
             return legacy_path
     return path
+
+
+def _saved_voice_preview_path(voice: SavedVoice) -> Path | None:
+    """Return the best available audio sample path for a saved custom voice."""
+    raw = (voice.preview_audio or voice.ref_audio or "").strip()
+    return Path(raw) if raw else None
+
+
+def _saved_voice_description(voice: SavedVoice) -> str:
+    """Return a compact human description for a saved custom voice."""
+    text = (voice.description or voice.ref_text or "").strip()
+    if not text:
+        return t("voice.saved_custom_desc")
+    return text[:137].rstrip() + "..." if len(text) > 140 else text
 
 
 class GeneratePreviewsWorker(QThread):
@@ -431,6 +446,163 @@ class VoiceCard(QWidget):
         super().closeEvent(event)
 
 
+class SavedVoiceCard(QWidget):
+    """Single saved CustomVoice card with metadata and sample playback."""
+
+    def __init__(self, voice: SavedVoice, parent=None):
+        super().__init__(parent)
+        self.voice = voice
+        self._player: QMediaPlayer | None = None
+        self._audio_output: QAudioOutput | None = None
+        self.setAutoFillBackground(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._setup_ui()
+        self.refresh_status()
+
+    def _setup_ui(self) -> None:
+        self.setObjectName("savedVoiceCard")
+        self.setStyleSheet(
+            "#savedVoiceCard {"
+            "  background: rgba(240,253,250,0.70);"
+            "  border: 1px solid rgba(20,184,166,0.20);"
+            "  border-radius: 8px; padding: 4px;"
+            "}"
+            "#savedVoiceCard:hover {"
+            "  background: rgba(204,251,241,0.72);"
+            "  border-color: rgba(20,184,166,0.36);"
+            "}"
+        )
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(8)
+
+        info = QVBoxLayout()
+        info.setSpacing(1)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(6)
+        self._label = QLabel(self.voice.name)
+        self._label.setStyleSheet(
+            "font-size: 13px; font-weight: 800; color: #0f172a;"
+            "background: transparent; border: none;"
+        )
+        top_row.addWidget(self._label)
+
+        self._status_badge = QLabel()
+        self._status_badge.setStyleSheet(
+            "font-size: 10px; font-weight: 700;"
+            "padding: 1px 6px; border-radius: 4px;"
+            "background: transparent; border: none;"
+        )
+        top_row.addWidget(self._status_badge)
+        top_row.addStretch()
+        info.addLayout(top_row)
+
+        self._desc = QLabel(_saved_voice_description(self.voice))
+        self._desc.setWordWrap(True)
+        self._desc.setStyleSheet(
+            "color: rgba(51,65,85,0.64); font-size: 10px;"
+            "background: transparent; border: none;"
+        )
+        info.addWidget(self._desc)
+
+        self._speaker_lbl = QLabel()
+        self._speaker_lbl.setStyleSheet(
+            "color: rgba(15,118,110,0.80); font-size: 9px;"
+            "font-weight: 700; background: transparent; border: none;"
+        )
+        info.addWidget(self._speaker_lbl)
+
+        layout.addLayout(info, stretch=1)
+
+        self._btn_play = QPushButton("\u25B6")
+        self._btn_play.setMinimumSize(32, 32)
+        self._btn_play.setMaximumSize(40, 40)
+        self._btn_play.setObjectName("savedPlayBtn")
+        self._btn_play.setStyleSheet(
+            "#savedPlayBtn {"
+            "  font-size: 14px; border-radius: 16px;"
+            "  background: rgba(204,251,241,0.88); color: #0f766e;"
+            "  border: 1px solid rgba(20,184,166,0.30);"
+            "}"
+            "#savedPlayBtn:hover {"
+            "  background: rgba(153,246,228,0.92); color: #0f172a;"
+            "}"
+            "#savedPlayBtn:disabled {"
+            "  background: rgba(226,232,240,0.42);"
+            "  color: rgba(71,85,105,0.32);"
+            "  border-color: rgba(148,163,184,0.12);"
+            "}"
+        )
+        self._btn_play.clicked.connect(self._play)
+        layout.addWidget(self._btn_play)
+        self.retranslate()
+
+    def retranslate(self) -> None:
+        """Refresh localized saved-voice labels."""
+        self._label.setText(self.voice.name)
+        self._desc.setText(_saved_voice_description(self.voice))
+        self._speaker_lbl.setText(t("voice.saved_custom_speaker", voice=self.voice.voice_id))
+
+    def refresh_status(self) -> None:
+        """Update the play button based on the saved sample path."""
+        path = _saved_voice_preview_path(self.voice)
+        exists = bool(path and path.exists())
+        self._btn_play.setEnabled(exists)
+        if exists:
+            self._status_badge.setText("\u2713")
+            self._status_badge.setStyleSheet(
+                "font-size: 10px; font-weight: 700;"
+                "padding: 1px 6px; border-radius: 4px;"
+                "background: rgba(16,185,129,0.16);"
+                "color: #047857; border: none;"
+            )
+        else:
+            self._status_badge.setText("\u2014")
+            self._status_badge.setStyleSheet(
+                "font-size: 10px; font-weight: 700;"
+                "padding: 1px 6px; border-radius: 4px;"
+                "background: rgba(148,163,184,0.08);"
+                "color: rgba(71,85,105,0.46); border: none;"
+            )
+
+    def _play(self) -> None:
+        """Play the saved voice reference fragment."""
+        path = _saved_voice_preview_path(self.voice)
+        if path is None or not path.exists():
+            return
+        if self._player is None:
+            self._audio_output = QAudioOutput(self)
+            self._player = QMediaPlayer(self)
+            self._player.setAudioOutput(self._audio_output)
+            self._player.playbackStateChanged.connect(self._on_state_changed)
+
+        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._player.stop()
+            self._btn_play.setText("\u25B6")
+            return
+
+        self._player.setSource(QUrl.fromLocalFile(str(path)))
+        self._player.play()
+        self._btn_play.setText("\u25A0")
+
+    def _on_state_changed(self, state) -> None:
+        if state == QMediaPlayer.PlaybackState.StoppedState:
+            self._btn_play.setText("\u25B6")
+
+    def release_player(self) -> None:
+        """Stop playback before Qt tears widgets down."""
+        if self._player is not None:
+            self._player.stop()
+            self._player.setSource(QUrl())
+        self._btn_play.setText("\u25B6")
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self.release_player()
+        super().closeEvent(event)
+
+
 class VoicePreviewPanel(QWidget):
     """Panel showing all voice presets with checkboxes, Play buttons,
     dir chooser, custom phrase input, and live generation progress."""
@@ -441,8 +613,11 @@ class VoicePreviewPanel(QWidget):
         super().__init__(parent)
         self._cards: list[VoiceCard] = []
         self._card_by_id: dict[str, VoiceCard] = {}
+        self._saved_cards: list[SavedVoiceCard] = []
+        self._saved_card_by_id: dict[str, SavedVoiceCard] = {}
         self._worker: GeneratePreviewsWorker | None = None
         self._preview_dir: Path = _DEFAULT_PREVIEW_DIR
+        self._voice_library_dir: Path = default_voice_library_dir()
         self._language = normalize_book_language(get_language())
         self._setup_ui()
         self._refresh_all()
@@ -565,6 +740,22 @@ class VoicePreviewPanel(QWidget):
                 self._cards.append(card)
                 self._card_by_id[preset.id] = card
 
+        self._saved_section_label = QLabel()
+        self._saved_section_label.setStyleSheet(
+            "font-weight: 700; font-size: 11px;"
+            "color: rgba(15,118,110,0.82);"
+            "background: transparent; border: none;"
+            "padding: 4px 0 1px 0;"
+            "text-transform: uppercase;"
+        )
+        layout.addWidget(self._saved_section_label)
+
+        self._saved_cards_widget = QWidget()
+        self._saved_cards_layout = QVBoxLayout(self._saved_cards_widget)
+        self._saved_cards_layout.setContentsMargins(0, 0, 0, 0)
+        self._saved_cards_layout.setSpacing(6)
+        layout.addWidget(self._saved_cards_widget)
+
         layout.addStretch()
         self.retranslate()
 
@@ -582,9 +773,12 @@ class VoicePreviewPanel(QWidget):
 
         for cat_id, cat_label in self._cat_labels:
             cat_label.setText(voice_category_label(cat_id))
+        self._saved_section_label.setText(voice_category_label("custom"))
 
         for card in self._cards:
             card.set_language(self._language)
+            card.retranslate()
+        for card in self._saved_cards:
             card.retranslate()
         self._refresh_all()
 
@@ -616,18 +810,53 @@ class VoicePreviewPanel(QWidget):
             card.refresh_status()
             if card._btn_play.isEnabled():
                 ready += 1
+        self._reload_saved_voice_cards()
+        for card in self._saved_cards:
+            card.refresh_status()
+            if card._btn_play.isEnabled():
+                ready += 1
 
         self._status_label.setStyleSheet(_STYLE_STATUS_NORMAL)
+        total = len(self._cards) + len(self._saved_cards)
         if ready == 0:
             self._status_label.setText(t("voice.no_previews"))
         else:
             self._status_label.setText(
                 t("voice.previews_ready", count=ready,
-                  total=len(self._cards))
+                  total=total)
             )
+
+    def refresh_library(self) -> None:
+        """Reload saved custom voices from the shared library."""
+        self._refresh_all()
+
+    def _reload_saved_voice_cards(self) -> None:
+        """Rebuild CustomVoice cards from saved voice metadata."""
+        while self._saved_cards_layout.count():
+            item = self._saved_cards_layout.takeAt(0)
+            widget = item.widget()
+            if isinstance(widget, SavedVoiceCard):
+                widget.release_player()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        self._saved_cards = []
+        self._saved_card_by_id = {}
+
+        saved_voices = list_saved_voices(self._voice_library_dir)
+        for voice in saved_voices:
+            card = SavedVoiceCard(voice)
+            self._saved_cards_layout.addWidget(card)
+            self._saved_cards.append(card)
+            self._saved_card_by_id[voice.voice_id] = card
+        has_saved = bool(self._saved_cards)
+        self._saved_section_label.setVisible(has_saved)
+        self._saved_cards_widget.setVisible(has_saved)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         for card in self._cards:
+            card.release_player()
+        for card in self._saved_cards:
             card.release_player()
         super().closeEvent(event)
 

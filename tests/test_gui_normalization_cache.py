@@ -146,6 +146,89 @@ def test_normalization_cache_ignores_host_ocr_availability_in_key(tmp_path: Path
     assert available == unchecked
 
 
+def test_normalization_cache_ignores_pdf_ocr_dpi_for_native_text_layer(tmp_path: Path) -> None:
+    source = tmp_path / "book.pdf"
+    source.write_text("source text", encoding="utf-8")
+    cache_root = tmp_path / "cache"
+    native_600 = _settings(
+        source_format="pdf",
+        ocr_mode="auto",
+        ocr_dpi=600,
+        ocr_psm=3,
+        pdf_text_variant="native",
+    )
+    native_400 = _settings(
+        source_format="pdf",
+        ocr_mode="auto",
+        ocr_dpi=400,
+        ocr_psm=11,
+        pdf_text_variant="native",
+    )
+
+    entry = save_cached_book(_book(), source, native_600, cache_root=cache_root)
+    found = find_cached_normalization(
+        source,
+        _settings(
+            source_format="pdf",
+            ocr_mode="auto",
+            ocr_dpi=400,
+            ocr_psm=11,
+        ),
+        cache_root=cache_root,
+    )
+
+    assert cache_path_for(source, native_600, cache_root=cache_root) == cache_path_for(
+        source,
+        native_400,
+        cache_root=cache_root,
+    )
+    assert found == entry
+
+
+def test_normalization_cache_keeps_pdf_ocr_dpi_for_ocr_text(tmp_path: Path) -> None:
+    source = tmp_path / "book.pdf"
+    source.write_text("source text", encoding="utf-8")
+    cache_root = tmp_path / "cache"
+    ocr_settings = _settings(
+        source_format="pdf",
+        ocr_mode="auto",
+        ocr_dpi=400,
+        ocr_psm=3,
+        pdf_text_variant="ocr",
+    )
+
+    first = cache_path_for(
+        source,
+        _settings(
+            source_format="pdf",
+            ocr_mode="auto",
+            ocr_dpi=600,
+            ocr_psm=3,
+            pdf_text_variant="ocr",
+        ),
+        cache_root=cache_root,
+    )
+    second = cache_path_for(
+        source,
+        ocr_settings,
+        cache_root=cache_root,
+    )
+    entry = save_cached_book(_book(), source, ocr_settings, cache_root=cache_root)
+    found = find_cached_normalization(
+        source,
+        _settings(
+            source_format="pdf",
+            ocr_mode="auto",
+            ocr_dpi=400,
+            ocr_psm=3,
+        ),
+        cache_root=cache_root,
+    )
+
+    assert first != second
+    assert found == entry
+
+
 def test_normalization_cache_finds_legacy_entry_with_compatible_settings(
     tmp_path: Path,
 ) -> None:

@@ -17,6 +17,8 @@ QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 QtCore = pytest.importorskip("PyQt6.QtCore")
 QApplication = QtWidgets.QApplication
 voices_page = pytest.importorskip("book_normalizer.gui.pages.voices_page")
+voice_table = pytest.importorskip("book_normalizer.gui.widgets.voice_table")
+voice_library = pytest.importorskip("book_normalizer.tts.voice_library")
 VoicesPage = voices_page.VoicesPage
 
 
@@ -350,6 +352,42 @@ def test_voice_preview_tab_hides_scrollbar_but_keeps_content_scrollable(qapp) ->
     page.deleteLater()
 
 
+def test_voice_preview_tab_hides_chunk_review_table(qapp) -> None:
+    page = VoicesPage()
+    render_widget(page, 1180, 760, scale=1.0)
+
+    page._top_tabs.setCurrentIndex(1)
+
+    assert page._voice_table.isHidden()
+    assert page._stats_label.isHidden()
+    assert page._top_tabs.maximumHeight() == 16777215
+
+    page._top_tabs.setCurrentIndex(0)
+
+    assert page._voice_table.isVisible()
+
+    page.deleteLater()
+
+
+def test_voice_table_lists_saved_custom_voices(qapp, tmp_path, monkeypatch) -> None:
+    library_dir = tmp_path / "voices"
+    sample = tmp_path / "sample.wav"
+    sample.write_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt ")
+    voice_library.save_comfyui_voice_metadata(
+        library_dir=library_dir,
+        name="Margarita Sad",
+        ref_audio=str(sample),
+        ref_text="Soft, sad character voice.",
+    )
+    monkeypatch.setattr(voice_table, "default_voice_library_dir", lambda: library_dir)
+
+    page = VoicesPage()
+
+    assert page._voice_table._quick_combo.findData("saved:margarita_sad") >= 0
+
+    page.deleteLater()
+
+
 def test_voice_table_filters_chapters_and_restores_deleted_segments(qapp, qtbot) -> None:
     page = VoicesPage()
     qtbot.addWidget(page)
@@ -390,6 +428,49 @@ def test_voice_table_filters_chapters_and_restores_deleted_segments(qapp, qtbot)
 
     qtbot.mouseClick(page._voice_table._btn_segment_restore, QtCore.Qt.MouseButton.LeftButton)
     assert page._voice_table.get_segments()[1]["deleted"] is False
+    assert len(page._voice_table.get_active_segments()) == 2
+
+    page.deleteLater()
+
+
+def test_voice_table_row_delete_button_excludes_and_restores_chunk(qapp, qtbot) -> None:
+    page = VoicesPage()
+    qtbot.addWidget(page)
+    page._voice_table.set_segments(
+        [
+            {
+                "segment_index": 0,
+                "chapter_index": 0,
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "text": "Keep me.",
+            },
+            {
+                "segment_index": 1,
+                "chapter_index": 0,
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "text": "Cut me.",
+            },
+        ]
+    )
+
+    delete_button = page._voice_table._table.cellWidget(1, 9)
+    assert isinstance(delete_button, QtWidgets.QPushButton)
+    qtbot.mouseClick(delete_button, QtCore.Qt.MouseButton.LeftButton)
+
+    assert page._voice_table.get_segments()[1]["deleted"] is True
+    assert page._voice_table.get_segments()[1]["excluded_from_tts"] is True
+    assert [seg["text"] for seg in page._voice_table.get_active_segments()] == ["Keep me."]
+
+    restore_button = page._voice_table._table.cellWidget(1, 9)
+    assert isinstance(restore_button, QtWidgets.QPushButton)
+    qtbot.mouseClick(restore_button, QtCore.Qt.MouseButton.LeftButton)
+
+    assert page._voice_table.get_segments()[1]["deleted"] is False
+    assert page._voice_table.get_segments()[1]["excluded_from_tts"] is False
     assert len(page._voice_table.get_active_segments()) == 2
 
     page.deleteLater()

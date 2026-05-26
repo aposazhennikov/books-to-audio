@@ -223,6 +223,7 @@ def test_main_window_auto_pipeline_runs_all_steps_with_quality_settings(
     captured_roles: dict = {}
     captured_tts: dict = {}
     captured_assembly: dict = {}
+    captured_production: dict = {}
 
     class _FakeNormalizeWorker:
         def __init__(self, **kwargs):
@@ -335,10 +336,27 @@ def test_main_window_auto_pipeline_runs_all_steps_with_quality_settings(
         def start(self) -> None:
             self.finished.emit("Chapter 001: 1 chunks -> 1.0s")
 
+    class _FakeProductionWorker:
+        def __init__(self, manifest_path, output_dir, **kwargs):  # noqa: ANN001
+            captured_production.update(
+                {
+                    "manifest_path": manifest_path,
+                    "output_dir": output_dir,
+                    **kwargs,
+                }
+            )
+            self.progress = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            self.finished.emit("Production report: done")
+
     monkeypatch.setattr(normalize_page, "NormalizeWorker", _FakeNormalizeWorker)
     monkeypatch.setattr(roles_page, "ExportSegmentsWorker", _FakeExportSegmentsWorker)
     monkeypatch.setattr(synthesis_page, "TTSSynthesisWorker", _FakeTTSWorker)
     monkeypatch.setattr(assembly_page, "AssemblyWorker", _FakeAssemblyWorker)
+    monkeypatch.setattr(assembly_page, "ProductionPreflightWorker", _FakeProductionWorker)
     monkeypatch.setattr(cli, "_build_output_dir", lambda *_args, **_kwargs: output_dir)
 
     window = MainWindow()
@@ -377,6 +395,10 @@ def test_main_window_auto_pipeline_runs_all_steps_with_quality_settings(
     assert captured_assembly["output_dir"] == output_dir
     assert captured_assembly["pause_same"] == 300
     assert captured_assembly["pause_change"] == 600
+    assert captured_production["manifest_path"] == output_dir / "chunks_manifest_v2.json"
+    assert captured_production["output_dir"] == output_dir
+    assert captured_production["package_outputs"] is False
+    assert captured_production["chapter_audio_dir"] == output_dir
     assert window._tabs.currentIndex() == 4
     assert window._btn_auto_pipeline.isEnabled()
     assert window.statusBar().currentMessage() == t("auto.complete")
@@ -441,6 +463,7 @@ def test_main_window_auto_pipeline_reuses_cached_chunks_manifest(
         encoding="utf-8",
     )
     captured_assembly: dict = {}
+    captured_production: dict = {}
 
     class _FakeAssemblyWorker:
         def __init__(
@@ -469,7 +492,24 @@ def test_main_window_auto_pipeline_reuses_cached_chunks_manifest(
         def start(self) -> None:
             self.finished.emit("Chapter 001: 1 chunks -> 1.0s")
 
+    class _FakeProductionWorker:
+        def __init__(self, manifest_path, output_dir, **kwargs):  # noqa: ANN001
+            captured_production.update(
+                {
+                    "manifest_path": manifest_path,
+                    "output_dir": output_dir,
+                    **kwargs,
+                }
+            )
+            self.progress = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            self.finished.emit("Production report: done")
+
     monkeypatch.setattr(assembly_page, "AssemblyWorker", _FakeAssemblyWorker)
+    monkeypatch.setattr(assembly_page, "ProductionPreflightWorker", _FakeProductionWorker)
 
     window = MainWindow()
     qtbot.addWidget(window)
@@ -492,6 +532,9 @@ def test_main_window_auto_pipeline_reuses_cached_chunks_manifest(
 
     assert captured_assembly["manifest_path"] == chunks_path
     assert captured_assembly["output_dir"] == output_dir
+    assert captured_production["manifest_path"] == chunks_path
+    assert captured_production["output_dir"] == output_dir
+    assert captured_production["package_outputs"] is False
     assert window.statusBar().currentMessage() == t("auto.complete")
     cached_manifest = json.loads(chunks_path.read_text(encoding="utf-8"))
     assert cached_manifest["chapters"][0]["chunks"][0]["audio_file"] == str(audio_path)

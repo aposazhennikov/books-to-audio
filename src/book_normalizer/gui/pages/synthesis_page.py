@@ -713,8 +713,12 @@ class SynthesisPage(QWidget):
             self._sync_mode_tabs_height()
             return
         has_sample = bool(self._sample_audio_edit.text().strip())
-        has_saved_voice = bool(self._selected_saved_voice())
-        if not has_sample and not has_saved_voice:
+        strategy = self._custom_strategy_combo.currentData() or "sample_all"
+        has_saved_all = strategy == "saved_all" and bool(self._selected_saved_voice())
+        has_saved_roles = strategy == "saved_roles" and any(
+            combo.currentData() for combo in self._role_voice_combos.values()
+        )
+        if not has_sample and not has_saved_all and not has_saved_roles:
             self._mode_tabs.setCurrentIndex(1)
         else:
             self._sync_mode_tabs_height()
@@ -1557,6 +1561,12 @@ class SynthesisPage(QWidget):
     def _effective_test_voice_label_for_chunk(self, chunk: dict) -> str:
         """Return the voice that will actually be used for a manifest chunk."""
         source_voice_id = str(chunk.get("voice_id") or "narrator_calm")
+        manifest_saved_voice = self._saved_voice_from_manifest_id(source_voice_id)
+        if manifest_saved_voice:
+            return t(
+                "synth.test_voice_saved",
+                voice=self._saved_voice_display_name(manifest_saved_voice),
+            )
         if not self._is_custom_voice_mode():
             return source_voice_id
 
@@ -2181,6 +2191,44 @@ class SynthesisPage(QWidget):
         """Return the globally selected saved voice id."""
         return str(self._saved_voice_combo.currentData() or "")
 
+    def _saved_voice_ids(self) -> set[str]:
+        """Return saved voice ids currently known to the page."""
+        return {voice.voice_id for voice in self._saved_voices}
+
+    def _saved_voice_from_manifest_id(self, voice_id: object) -> str:
+        """Resolve a manifest voice_id into a saved CustomVoice id."""
+        value = str(voice_id or "").strip()
+        if value.startswith("saved:"):
+            return value.removeprefix("saved:").strip()
+        saved_ids = self._saved_voice_ids()
+        if value in saved_ids and value not in VOICE_IDS:
+            return value
+        return ""
+
+    def _manifest_saved_voice_config(self, include_speech_rate: bool = True) -> dict[str, dict[str, object]]:
+        """Build clone config entries from saved voices assigned in the manifest."""
+        cfg: dict[str, dict[str, object]] = {}
+        for chunk in self._manifest_chunks:
+            saved_voice = self._saved_voice_from_manifest_id(chunk.get("voice_id"))
+            if not saved_voice:
+                continue
+            key = primary_voice_mapping_key(chunk)
+            cfg[key] = {"saved_voice": saved_voice}
+            if include_speech_rate:
+                rate = self._saved_voice_rate(saved_voice)
+                if rate:
+                    cfg[key]["speech_rate"] = rate
+        return cfg
+
+    def _write_temp_clone_config(self, cfg: dict[str, dict[str, object]]) -> str:
+        """Write a transient clone config and return its path."""
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8",
+        )
+        json.dump(cfg, tmp, ensure_ascii=False, indent=2)
+        tmp.close()
+        return tmp.name
+
     def _save_sample_voice(self) -> None:
         """Save the current sample as a reusable local voice prompt."""
         audio = self._sample_audio_edit.text().strip()
@@ -2353,7 +2401,8 @@ class SynthesisPage(QWidget):
     def _build_temp_sample_voice_config(self, include_speech_rate: bool = True) -> str:
         """Serialize the selected Custom Voice strategy as a clone config."""
         if not self._is_custom_voice_mode():
-            return ""
+            manifest_cfg = self._manifest_saved_voice_config(include_speech_rate)
+            return self._write_temp_clone_config(manifest_cfg) if manifest_cfg else ""
 
         strategy = self._custom_strategy_combo.currentData() or "sample_all"
         if strategy == "sample_all":
@@ -2397,12 +2446,7 @@ class SynthesisPage(QWidget):
             if not cfg:
                 raise ValueError(t("synth.saved_voice_missing"))
 
-        tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8",
-        )
-        json.dump(cfg, tmp, ensure_ascii=False, indent=2)
-        tmp.close()
-        return tmp.name
+        return self._write_temp_clone_config(cfg)
 
     def _is_custom_voice_mode(self) -> bool:
         return self._voice_mode == "custom"

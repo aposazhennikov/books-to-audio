@@ -149,7 +149,8 @@ def apply_widget_scale_metrics(root: QWidget, scale: float) -> None:
                     line_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
             if isinstance(widget, QComboBox):
                 _sync_combo_line_edit_metrics(widget)
-                apply_combo_content_width(widget)
+                if not widget.property("skipContentWidth"):
+                    apply_combo_content_width(widget)
             continue
 
         if isinstance(widget, QPushButton):

@@ -11,6 +11,7 @@ from book_normalizer.tts.voice_library import (
     normalize_voice_library_dir,
     resolve_saved_voice_path,
     sanitize_voice_id,
+    save_comfyui_voice_metadata,
     voice_paths,
 )
 
@@ -84,3 +85,24 @@ def test_list_saved_voices_falls_back_to_sidecar_prompt(tmp_path) -> None:  # no
     assert len(voices) == 1
     assert voices[0].voice_id == "actual"
     assert voices[0].prompt_path == prompt_path
+
+
+def test_comfyui_saved_voice_metadata_is_listed_without_prompt_file(tmp_path) -> None:  # noqa: ANN001
+    ref_audio = tmp_path / "sample.wav"
+    ref_audio.write_bytes(b"fake wav")
+
+    saved = save_comfyui_voice_metadata(
+        library_dir=tmp_path,
+        name="Margarita Sad",
+        ref_audio=str(ref_audio),
+        ref_text="Exact reference transcript.",
+        speech_rate=0.92,
+    )
+    voices = list_saved_voices(tmp_path)
+
+    assert saved.voice_id == "margarita_sad"
+    assert len(voices) == 1
+    assert voices[0].source == "comfyui"
+    assert voices[0].preview_audio == str(ref_audio)
+    assert voices[0].ref_text == "Exact reference transcript."
+    assert voices[0].speech_rate == 0.92

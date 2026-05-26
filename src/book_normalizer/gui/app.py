@@ -551,7 +551,7 @@ def main() -> None:
     app._ui_scaler = scaler  # Keep the event filter alive for the app lifetime.
     scaler.install()
 
-    window.show()
+    window.enable_fullscreen_only()
     sys.exit(app.exec())
 
 

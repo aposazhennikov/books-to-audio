@@ -98,6 +98,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "kk": "\u0410\u0432\u0442\u043e\u0436\u0438\u043d\u0430\u0443: \u0434\u0430\u0439\u044b\u043d \u0430\u0443\u0434\u0438\u043e\u043a\u0456\u0442\u0430\u043f \u0436\u0438\u043d\u0430\u043b\u0443\u0434\u0430.",
         "uz": "Avtoyig'ish: yakuniy audiokitob yig'ilmoqda.",
     },
+    "auto.production": {
+        "en": "Automatic build: running production preflight.",
+        "ru": "Автосборка: выполняем production preflight.",
+        "zh": "Automatic build: running production preflight.",
+        "kk": "Automatic build: running production preflight.",
+        "uz": "Automatic build: running production preflight.",
+    },
     "auto.complete": {
         "en": "Automatic audiobook build complete.",
         "ru": "\u0410\u0432\u0442\u043e\u0441\u0431\u043e\u0440\u043a\u0430 \u0430\u0443\u0434\u0438\u043e\u043a\u043d\u0438\u0433\u0438 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0430.",
@@ -455,6 +462,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "kk": "«{name}» үшін ағымдағы баптаулармен кеш нәтижесі бар.",
         "uz": "“{name}” uchun joriy sozlamalar bilan kesh natijasi bor.",
     },
+    "norm.cache_dialog_text_mismatch": {
+        "en": "A cached result exists for “{name}”, but its settings differ from the current ones.",
+        "ru": "Для «{name}» найден кеш, но его настройки отличаются от текущих.",
+        "zh": "“{name}” 有缓存结果，但它的设置与当前设置不同。",
+        "kk": "«{name}» үшін кеш нәтижесі бар, бірақ оның баптаулары ағымдағы баптаулардан өзгеше.",
+        "uz": "“{name}” uchun kesh natijasi bor, lekin uning sozlamalari joriy sozlamalardan farq qiladi.",
+    },
     "norm.cache_dialog_informative": {
         "en": (
             "Restore it to continue immediately with chapters and role extraction. "
@@ -472,6 +486,25 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "uz": (
             "Keshdan tiklasangiz, boblar va rollar bilan darhol davom etasiz. "
             "Manba fayl, OCR va LLM bosqichlarini qayta bajarishni istasangizgina “Qayta ishga tushirish”ni tanlang."
+        ),
+    },
+    "norm.cache_dialog_informative_mismatch": {
+        "en": (
+            "Restoring uses the cached result as it was built before. "
+            "Choose “Run from scratch” to apply the current OCR, DPI, PSM, or LLM settings."
+        ),
+        "ru": (
+            "Восстановление возьмет уже собранный результат из кеша. "
+            "Выберите «Запустить заново», чтобы применить текущие OCR, DPI, PSM или LLM-настройки."
+        ),
+        "zh": "恢复会使用之前生成的缓存结果。选择“重新运行”以应用当前 OCR、DPI、PSM 或 LLM 设置。",
+        "kk": (
+            "Қалпына келтіру бұрын жасалған кеш нәтижесін пайдаланады. "
+            "Ағымдағы OCR, DPI, PSM немесе LLM баптауларын қолдану үшін «Қайта іске қосу» таңдаңыз."
+        ),
+        "uz": (
+            "Tiklash avval yaratilgan kesh natijasidan foydalanadi. "
+            "Joriy OCR, DPI, PSM yoki LLM sozlamalarini qo'llash uchun “Qayta ishga tushirish”ni tanlang."
         ),
     },
     "norm.cache_restore_button": {
@@ -1105,8 +1138,29 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "voice.col_audio": {"en": "Audio", "ru": "Аудио"},
     "voice.col_retry": {"en": "Retry", "ru": "Повтор"},
+    "voice.col_action": {
+        "en": "Action",
+        "ru": "\u0423\u0434\u0430\u043b\u0438\u0442\u044c",
+        "zh": "\u64cd\u4f5c",
+        "kk": "\u04d8\u0440\u0435\u043a\u0435\u0442",
+        "uz": "Amal",
+    },
     "voice.play_audio": {"en": "Play", "ru": "Play"},
     "voice.mark_retry": {"en": "Retry", "ru": "Повтор"},
+    "voice.row_delete_tip": {
+        "en": "Exclude this chunk from TTS output.",
+        "ru": "\u0418\u0441\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u044d\u0442\u043e\u0442 \u0447\u0430\u043d\u043a \u0438\u0437 TTS-\u0441\u0431\u043e\u0440\u043a\u0438.",
+        "zh": "\u4ece TTS \u8f93\u51fa\u4e2d\u6392\u9664\u6b64\u5206\u5757\u3002",
+        "kk": "\u0411\u04b1\u043b \u0447\u0430\u043d\u043a\u0442\u044b TTS \u0436\u0438\u043d\u0430\u0443\u044b\u043d\u0430\u043d \u0430\u043b\u044b\u043f \u0442\u0430\u0441\u0442\u0430\u0443.",
+        "uz": "Bu bo'lakni TTS chiqishidan chiqarish.",
+    },
+    "voice.row_restore_tip": {
+        "en": "Include this chunk in TTS output again.",
+        "ru": "\u0421\u043d\u043e\u0432\u0430 \u0432\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u044d\u0442\u043e\u0442 \u0447\u0430\u043d\u043a \u0432 TTS-\u0441\u0431\u043e\u0440\u043a\u0443.",
+        "zh": "\u91cd\u65b0\u5c06\u6b64\u5206\u5757\u52a0\u5165 TTS \u8f93\u51fa\u3002",
+        "kk": "\u0411\u04b1\u043b \u0447\u0430\u043d\u043a\u0442\u044b TTS \u0436\u0438\u043d\u0430\u0443\u044b\u043d\u0430 \u049b\u0430\u0439\u0442\u0430 \u049b\u043e\u0441\u0443.",
+        "uz": "Bu bo'lakni TTS chiqishiga qayta qo'shish.",
+    },
     "voice.editor_segment_tab": {
         "en": "Segment Editor",
         "ru": "\u0421\u0435\u0433\u043c\u0435\u043d\u0442",
@@ -1336,6 +1390,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "voice.previews_ready": {
         "en": "{count}/{total} voice previews ready",
         "ru": "{count}/{total} \u043f\u0440\u0435\u0432\u044c\u044e \u0433\u043e\u0442\u043e\u0432\u044b",
+    },
+    "voice.saved_custom_desc": {
+        "en": "Reusable CustomVoice saved in the voice library.",
+        "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u0451\u043d\u043d\u044b\u0439 CustomVoice \u0438\u0437 \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0438 \u0433\u043e\u043b\u043e\u0441\u043e\u0432.",
+        "zh": "保存在声音库中的可复用 CustomVoice。",
+        "kk": "Дауыс кітапханасында сақталған қайта қолданылатын CustomVoice.",
+        "uz": "Ovoz kutubxonasida saqlangan qayta ishlatiladigan CustomVoice.",
+    },
+    "voice.saved_custom_speaker": {
+        "en": "saved: {voice}",
+        "ru": "\u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d: {voice}",
+        "zh": "已保存：{voice}",
+        "kk": "сақталған: {voice}",
+        "uz": "saqlandi: {voice}",
     },
     "voice.generating_previews": {
         "en": "Generating previews locally (this takes a few minutes)\u2026",
@@ -2453,6 +2521,63 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
 
     # ── Progress widget ──
+    "asm.production_title": {
+        "en": "Production preflight",
+        "ru": "Production-проверка",
+        "zh": "制作预检",
+        "kk": "Production алдын ала тексеру",
+        "uz": "Production tekshiruvi",
+    },
+    "asm.production_desc": {
+        "en": "Build character bible, casting plan, director score, production QA, and optional package metadata from the current v2 manifest.",
+        "ru": "Создаёт character bible, кастинг, режиссёрскую партитуру, production QA и метаданные пакета из текущего v2-манифеста.",
+        "zh": "从当前 v2 清单生成角色档案、配音方案、导演标注、制作 QA 和可选包元数据。",
+        "kk": "Ағымдағы v2 манифестінен character bible, кастинг жоспарын, режиссерлік партитураны, production QA және пакет метадеректерін жасайды.",
+        "uz": "Joriy v2 manifestdan character bible, kasting rejasi, rejissyor partiturasi, production QA va ixtiyoriy paket metama'lumotlarini yaratadi.",
+    },
+    "asm.production_preflight": {
+        "en": "Run production preflight",
+        "ru": "Запустить production preflight",
+        "zh": "运行制作预检",
+        "kk": "Production preflight іске қосу",
+        "uz": "Production preflight ishga tushirish",
+    },
+    "asm.production_package": {
+        "en": "Prepare package",
+        "ru": "Подготовить пакет",
+        "zh": "准备包",
+        "kk": "Пакетті дайындау",
+        "uz": "Paketni tayyorlash",
+    },
+    "asm.production_running": {
+        "en": "Running production preflight...",
+        "ru": "Выполняется production preflight...",
+        "zh": "正在运行制作预检...",
+        "kk": "Production preflight орындалуда...",
+        "uz": "Production preflight bajarilmoqda...",
+    },
+    "asm.production_complete": {
+        "en": "Production preflight complete.",
+        "ru": "Production preflight завершён.",
+        "zh": "制作预检完成。",
+        "kk": "Production preflight аяқталды.",
+        "uz": "Production preflight tugadi.",
+    },
+    "asm.production_done": {
+        "en": "Production report: {path}",
+        "ru": "Production-отчёт: {path}",
+        "zh": "制作报告：{path}",
+        "kk": "Production есебі: {path}",
+        "uz": "Production hisoboti: {path}",
+    },
+    "asm.production_package_done": {
+        "en": "Production report: {run}\nPackage report: {package}",
+        "ru": "Production-отчёт: {run}\nОтчёт пакета: {package}",
+        "zh": "制作报告：{run}\n包报告：{package}",
+        "kk": "Production есебі: {run}\nПакет есебі: {package}",
+        "uz": "Production hisoboti: {run}\nPaket hisoboti: {package}",
+    },
+
     "progress.ready": {"en": "Ready", "ru": "\u0413\u043e\u0442\u043e\u0432\u043e"},
     "progress.eta": {"en": "ETA: {eta}", "ru": "\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {eta}"},
     "progress.remaining_chunks": {
@@ -2582,6 +2707,13 @@ _VOICE_CATEGORY_LABELS: dict[str, dict[str, str]] = {
         "zh": "女声",
         "kk": "Әйел дауыстар",
         "uz": "Ayol ovozlari",
+    },
+    "custom": {
+        "en": "Custom voices",
+        "ru": "\u041a\u0430\u0441\u0442\u043e\u043c\u043d\u044b\u0435 \u0433\u043e\u043b\u043e\u0441\u0430",
+        "zh": "Custom voices",
+        "kk": "Custom voices",
+        "uz": "Custom voices",
     },
 }
 

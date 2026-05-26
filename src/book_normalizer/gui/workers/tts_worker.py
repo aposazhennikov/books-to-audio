@@ -442,16 +442,15 @@ class VoicePromptSaveWorker(QThread):
         )
         self._timeout = timeout
         self._voice_library_dir = voice_library_dir
-        self._unused_options = {
-            "models_dir": models_dir,
-            "speech_rate": speech_rate,
-            "device": device,
-        }
+        self._models_dir = models_dir
+        self._speech_rate = speech_rate
+        self._device = device
 
     def run(self) -> None:
         try:
             from book_normalizer.comfyui.client import ComfyUIClient
             from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
+            from book_normalizer.tts.voice_library import save_comfyui_voice_metadata
 
             if not self._audio_path.exists():
                 self.error.emit(f"Audio file not found: {self._audio_path}")
@@ -476,6 +475,15 @@ class VoicePromptSaveWorker(QThread):
             )
             prompt_id = client.queue_prompt(workflow)
             client.wait_for_execution(prompt_id, timeout=self._timeout)
+            if self._voice_library_dir is not None:
+                save_comfyui_voice_metadata(
+                    library_dir=self._voice_library_dir,
+                    name=self._voice_name.strip(),
+                    ref_audio=str(self._audio_path),
+                    ref_text=self._ref_text.strip(),
+                    model=self._models_dir,
+                    speech_rate=self._speech_rate,
+                )
             self.finished.emit(self._voice_name.strip(), str(self._voice_library_dir or "comfyui"))
         except Exception as exc:
             self.error.emit(str(exc))

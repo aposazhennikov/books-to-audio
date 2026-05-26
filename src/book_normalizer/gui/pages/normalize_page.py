@@ -125,6 +125,18 @@ def _book_preview_lines(book: object, limit: int | None = None) -> tuple[list[st
     return raw_lines, norm_lines
 
 
+def _book_pdf_text_variant(book: object | None) -> str | None:
+    """Return the PDF extraction variant persisted by the normalization worker."""
+    metadata = getattr(book, "metadata", None)
+    extra = getattr(metadata, "extra", None)
+    if not isinstance(extra, dict):
+        return None
+    variant = str(extra.get("pdf_text_variant") or "").strip().lower()
+    if variant in {"native", "ocr"}:
+        return variant
+    return None
+
+
 class NormalizePage(QWidget):
     """Page for book loading and text normalization."""
 
@@ -625,10 +637,17 @@ class NormalizePage(QWidget):
         self._cache_restored_chapters = None
         settings = self._normalization_cache_settings(path)
         cached = self._find_cached_normalization(path, settings)
-        if cached is None and cache_choice == "restore":
+        settings_mismatch = False
+        if cached is None:
             cached = self._find_any_cached_normalization(path)
+            settings_mismatch = cached is not None
         if cached is not None:
-            choice = cache_choice or self._ask_cached_normalization(path)
+            if cache_choice:
+                choice = cache_choice
+            elif settings_mismatch:
+                choice = self._ask_cached_normalization(path, settings_mismatch=True)
+            else:
+                choice = self._ask_cached_normalization(path)
             if choice == "restore":
                 self._restore_cached_normalization(path, cached)
                 return
@@ -661,7 +680,12 @@ class NormalizePage(QWidget):
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
-    def _normalization_cache_settings(self, path: Path) -> NormalizationCacheSettings:
+    def _normalization_cache_settings(
+        self,
+        path: Path,
+        *,
+        book: object | None = None,
+    ) -> NormalizationCacheSettings:
         """Return the settings that define a reusable completed normalization result."""
         is_pdf = path.suffix.lower() in _PDF_EXTENSIONS
         language = str(self._book_language.currentData() or DEFAULT_BOOK_LANGUAGE)
@@ -683,6 +707,7 @@ class NormalizePage(QWidget):
             llm_model=self._llm_model.text().strip() or PRIMARY_QWEN3_MODEL,
             tesseract_available=tesseract_ok,
             tesseract_language_available=tesseract_lang_ok,
+            pdf_text_variant=_book_pdf_text_variant(book) if is_pdf else None,
         )
 
     def _find_cached_normalization(
@@ -705,14 +730,25 @@ class NormalizePage(QWidget):
             logger.debug("Could not inspect normalization cache for %s: %s", path, exc)
             return None
 
-    def _ask_cached_normalization(self, path: Path) -> str:
+    def _ask_cached_normalization(
+        self,
+        path: Path,
+        *,
+        settings_mismatch: bool = False,
+    ) -> str:
         """Ask whether to restore a cached completed normalization or run again."""
         box = QMessageBox(self)
         apply_readable_message_box_style(box)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle(t("norm.cache_dialog_title"))
-        box.setText(t("norm.cache_dialog_text", name=path.name))
-        box.setInformativeText(t("norm.cache_dialog_informative"))
+        text_key = "norm.cache_dialog_text_mismatch" if settings_mismatch else "norm.cache_dialog_text"
+        info_key = (
+            "norm.cache_dialog_informative_mismatch"
+            if settings_mismatch
+            else "norm.cache_dialog_informative"
+        )
+        box.setText(t(text_key, name=path.name))
+        box.setInformativeText(t(info_key))
         restore_button = box.addButton(
             t("norm.cache_restore_button"),
             QMessageBox.ButtonRole.AcceptRole,
@@ -769,7 +805,7 @@ class NormalizePage(QWidget):
         if not path.exists():
             return
         try:
-            settings = self._normalization_cache_settings(path)
+            settings = self._normalization_cache_settings(path, book=book)
             save_cached_book(book, path, settings)
         except (OSError, ValueError, TypeError) as exc:
             logger.debug("Could not save normalization cache for %s: %s", path, exc)

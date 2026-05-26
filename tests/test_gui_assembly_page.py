@@ -17,6 +17,7 @@ QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 assembly_page = pytest.importorskip("book_normalizer.gui.pages.assembly_page")
 AssemblyPage = assembly_page.AssemblyPage
 AssemblyWorker = assembly_page.AssemblyWorker
+ProductionPreflightWorker = assembly_page.ProductionPreflightWorker
 
 
 @pytest.fixture
@@ -42,6 +43,18 @@ def _run_worker(worker: object) -> tuple[list[str], list[str], list[str]]:
     worker.error.connect(errors.append)
     worker.run()
     return progress, finished, errors
+
+
+class _Signal:
+    def __init__(self) -> None:
+        self._callbacks = []
+
+    def connect(self, callback) -> None:  # noqa: ANN001
+        self._callbacks.append(callback)
+
+    def emit(self, *args) -> None:  # noqa: ANN002
+        for callback in list(self._callbacks):
+            callback(*args)
 
 
 def test_assembly_worker_uses_manifest_api_without_subprocess(tmp_path: Path) -> None:
@@ -144,6 +157,76 @@ def test_assembly_worker_reports_no_wav_for_empty_legacy_folder(tmp_path: Path) 
 
     assert errors == []
     assert finished == [f"No WAV chunks in {output_dir / 'audio_chunks'}"]
+
+
+def test_production_preflight_worker_runs_pipeline(monkeypatch, tmp_path: Path) -> None:  # noqa: ANN001
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    captured: dict = {}
+
+    class _Result:
+        run_report_path = tmp_path / "production" / "production_run_report.json"
+        package_report_path = None
+
+    def fake_run_production_preflight(manifest_path_arg, **kwargs):  # noqa: ANN001
+        captured["manifest_path"] = manifest_path_arg
+        captured.update(kwargs)
+        return _Result()
+
+    monkeypatch.setattr(
+        "book_normalizer.production.pipeline.run_production_preflight",
+        fake_run_production_preflight,
+    )
+    worker = ProductionPreflightWorker(
+        manifest_path,
+        tmp_path,
+        package_outputs=True,
+        chapter_audio_dir=tmp_path,
+    )
+
+    progress, finished, errors = _run_worker(worker)
+
+    assert errors == []
+    assert progress
+    assert len(finished) == 1
+    assert captured["manifest_path"] == manifest_path
+    assert captured["output_dir"] == tmp_path / "production"
+    assert captured["package"] is True
+    assert captured["dry_run_package"] is True
+    assert captured["allow_review_package"] is True
+
+
+def test_assembly_page_exposes_production_preflight_controls(qapp, qtbot, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    captured: dict = {}
+
+    class _FakeProductionWorker:
+        def __init__(self, manifest_path, output_dir, **kwargs):  # noqa: ANN001
+            captured["manifest_path"] = manifest_path
+            captured["output_dir"] = output_dir
+            captured.update(kwargs)
+            self.progress = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            self.finished.emit("Production report: done")
+
+    monkeypatch.setattr(assembly_page, "ProductionPreflightWorker", _FakeProductionWorker)
+    page = AssemblyPage()
+    qtbot.addWidget(page)
+    page.set_manifest(manifest_path, tmp_path)
+
+    assert page._btn_production_preflight.isEnabled()
+    assert page._btn_production_package.isEnabled()
+    qtbot.mouseClick(page._btn_production_preflight, QtCore.Qt.MouseButton.LeftButton)
+
+    assert captured["manifest_path"] == manifest_path
+    assert captured["output_dir"] == tmp_path
+    assert captured["package_outputs"] is False
+    assert page._btn_production_preflight.isEnabled()
+    assert "Production report" in page._output_label.text()
 
 
 def test_assembly_page_uses_light_compact_numeric_controls(qapp) -> None:

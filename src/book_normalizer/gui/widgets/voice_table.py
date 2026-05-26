@@ -34,11 +34,13 @@ from book_normalizer.chunking.manifest import chunks_to_v2_manifest, flatten_v2_
 from book_normalizer.gui.i18n import t, voice_category_label, voice_preset_label
 from book_normalizer.gui.ui_scaler import apply_combo_content_width
 from book_normalizer.gui.voice_presets import VOICE_PRESETS
+from book_normalizer.tts.voice_library import default_voice_library_dir, list_saved_voices
 from book_normalizer.tts.voice_mapping import segment_speaker
 
 INTONATION_KEYS = [
     "neutral", "calm", "excited", "joyful", "sad", "angry", "whisper",
 ]
+SAVED_VOICE_PREFIX = "saved:"
 
 _DIALOGUE_BG = QColor(14, 165, 233, 28)
 
@@ -73,6 +75,8 @@ def _editor_style() -> str:
 def _role_from_voice_id(voice_id: str, fallback: str = "narrator") -> str:
     """Infer canonical role from a GUI voice preset id."""
     normalized = (voice_id or "").strip().lower()
+    if normalized.startswith(SAVED_VOICE_PREFIX):
+        return fallback if fallback in {"narrator", "male", "female", "unknown"} else "narrator"
     if normalized == "male" or normalized.startswith("male_"):
         return "male"
     if normalized == "female" or normalized.startswith("female_"):
@@ -119,6 +123,17 @@ def _populate_voice_combo(combo: QComboBox, current: str = "narrator_calm") -> N
         for p in presets:
             combo.addItem(f"  {voice_preset_label(p)}", p.id)
 
+    saved_voices = list_saved_voices(default_voice_library_dir())
+    if saved_voices:
+        combo.addItem(f"--- {voice_category_label('custom')} ---", "")
+        idx = combo.count() - 1
+        model = combo.model()
+        item = model.item(idx)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+        item.setForeground(QBrush(QColor(15, 118, 110, 190)))
+        for voice in saved_voices:
+            combo.addItem(f"  {voice.name}", f"{SAVED_VOICE_PREFIX}{voice.voice_id}")
+
     for i in range(combo.count()):
         if combo.itemData(i) == current:
             combo.setCurrentIndex(i)
@@ -129,6 +144,12 @@ def _populate_voice_combo(combo: QComboBox, current: str = "narrator_calm") -> N
 
 def _voice_display(voice_id: str) -> str:
     """Return the visible label for a voice preset id."""
+    if voice_id.startswith(SAVED_VOICE_PREFIX):
+        saved_id = voice_id.removeprefix(SAVED_VOICE_PREFIX)
+        for voice in list_saved_voices(default_voice_library_dir()):
+            if voice.voice_id == saved_id:
+                return voice.name
+        return saved_id
     for preset in VOICE_PRESETS:
         if preset.id == voice_id:
             return voice_preset_label(preset)
@@ -275,7 +296,7 @@ class VoiceTableWidget(QWidget):
         # Table.
         self._table = QTableWidget()
         self._table.setMinimumHeight(108)
-        self._table.setColumnCount(9)
+        self._table.setColumnCount(10)
         self._table.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeMode.Stretch,
         )
@@ -287,6 +308,7 @@ class VoiceTableWidget(QWidget):
         self._table.setColumnWidth(6, 145)
         self._table.setColumnWidth(7, 104)
         self._table.setColumnWidth(8, 112)
+        self._table.setColumnWidth(9, 104)
         self._table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows,
         )
@@ -468,6 +490,7 @@ class VoiceTableWidget(QWidget):
             t("voice.col_intonation"),
             t("voice.col_audio"),
             t("voice.col_retry"),
+            t("voice.col_action"),
         ])
         self._chapter_filter_label.setText(t("voice.chapter_filter"))
         self._btn_prev_segment.setText(t("voice.prev_segment"))
@@ -566,10 +589,13 @@ class VoiceTableWidget(QWidget):
                 alignment=Qt.AlignmentFlag.AlignCenter,
             )
 
+        self._refresh_row_action_item(row, segment)
+
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Fallback compact switching when the table is used outside VoicesPage."""
         super().resizeEvent(event)
-        self.set_compact_mode(self.width() < round(960 * self._ui_scale))
+        threshold = max(960, round(1060 * self._ui_scale * self._ui_scale))
+        self.set_compact_mode(self.width() < threshold)
         self._sync_visible_row_widgets()
         self._sync_splitter_layout()
 
@@ -650,6 +676,7 @@ class VoiceTableWidget(QWidget):
             self._table.setColumnWidth(5, 170)
             self._table.setColumnWidth(7, 68)
             self._table.setColumnWidth(8, 72)
+            self._table.setColumnWidth(9, 76)
             self._table.verticalHeader().setDefaultSectionSize(
                 self._scaled_table_row_height(32),
             )
@@ -664,6 +691,7 @@ class VoiceTableWidget(QWidget):
             self._table.setColumnWidth(6, 145)
             self._table.setColumnWidth(7, 104)
             self._table.setColumnWidth(8, 112)
+            self._table.setColumnWidth(9, 104)
             self._table.verticalHeader().setDefaultSectionSize(
                 self._scaled_table_row_height(34),
             )
@@ -880,6 +908,40 @@ class VoiceTableWidget(QWidget):
         self._set_readonly_item(row, 6, _intonation_display(intonation))
         self._set_readonly_item(row, 7, t("voice.play_audio"), alignment=Qt.AlignmentFlag.AlignCenter)
         self._set_readonly_item(row, 8, t("voice.mark_retry"), alignment=Qt.AlignmentFlag.AlignCenter)
+        self._refresh_row_action_item(row, seg)
+
+    def _row_delete_label(self, seg: dict[str, Any]) -> str:
+        """Return the action label for a row-level TTS exclusion button."""
+        return (
+            t("voice.editor_restore")
+            if seg.get("deleted") or seg.get("excluded_from_tts")
+            else t("voice.editor_delete")
+        )
+
+    def _row_delete_tip(self, seg: dict[str, Any]) -> str:
+        """Return the tooltip for a row-level TTS exclusion button."""
+        return (
+            t("voice.row_restore_tip")
+            if seg.get("deleted") or seg.get("excluded_from_tts")
+            else t("voice.row_delete_tip")
+        )
+
+    def _refresh_row_action_item(self, row: int, seg: dict[str, Any]) -> None:
+        """Refresh the delete/restore action for one row."""
+        label = self._row_delete_label(seg)
+        tip = self._row_delete_tip(seg)
+        button = self._table.cellWidget(row, 9)
+        if isinstance(button, QPushButton):
+            button.setText(label)
+            button.setToolTip(tip)
+            return
+        item = self._set_readonly_item(
+            row,
+            9,
+            label,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
+        item.setToolTip(tip)
 
     def _refresh_row_type_item(self, row: int, seg: dict[str, Any]) -> None:
         """Refresh the translated type cell and its visual state."""
@@ -981,6 +1043,15 @@ class VoiceTableWidget(QWidget):
             retry_btn.setEnabled(self._manifest_is_v2)
             retry_btn.clicked.connect(lambda _checked=False, r=segment_index: self._mark_retry(r))
             self._table.setCellWidget(row, 8, retry_btn)
+
+        if self._table.cellWidget(row, 9) is None:
+            delete_btn = QPushButton()
+            delete_btn.setObjectName("dangerBtn")
+            delete_btn.clicked.connect(
+                lambda _checked=False, r=segment_index: self._toggle_segment_deleted(r),
+            )
+            self._table.setCellWidget(row, 9, delete_btn)
+        self._refresh_row_action_item(row, seg)
 
     def _visible_viewport_rows(self) -> set[int]:
         """Return rows near the current viewport that should have live widgets."""
@@ -1302,6 +1373,18 @@ class VoiceTableWidget(QWidget):
         self._segments[row]["error"] = "Marked for retry in GUI."
         self.data_changed.emit()
 
+    def _toggle_segment_deleted(self, row: int) -> None:
+        """Toggle whether a segment is excluded from TTS output."""
+        if not 0 <= row < len(self._segments):
+            return
+        self._set_segment_deleted(
+            row,
+            not (
+                self._segments[row].get("deleted")
+                or self._segments[row].get("excluded_from_tts")
+            ),
+        )
+
     # ── Bulk operations ──
 
     def _split_selected_segment(self) -> None:
@@ -1371,18 +1454,19 @@ class VoiceTableWidget(QWidget):
         row = self._current_row()
         if row < 0:
             return
-        self._segments[row]["deleted"] = True
-        self._segments[row]["excluded_from_tts"] = True
-        self._populate_table()
-        self._select_segment_index(row)
-        self.data_changed.emit()
+        self._set_segment_deleted(row, True)
 
     def _restore_selected_segment(self) -> None:
         row = self._current_row()
         if row < 0:
             return
-        self._segments[row]["deleted"] = False
-        self._segments[row]["excluded_from_tts"] = False
+        self._set_segment_deleted(row, False)
+
+    def _set_segment_deleted(self, row: int, deleted: bool) -> None:
+        if not 0 <= row < len(self._segments):
+            return
+        self._segments[row]["deleted"] = deleted
+        self._segments[row]["excluded_from_tts"] = deleted
         self._populate_table()
         self._select_segment_index(row)
         self.data_changed.emit()

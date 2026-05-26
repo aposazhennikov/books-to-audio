@@ -306,6 +306,63 @@ def test_synthesis_page_maps_saved_voices_to_llm_character_roles(
     assert "Margarita Sad" in page._test_chunk_combo.itemText(0)
 
 
+def test_synthesis_page_uses_saved_voice_ids_from_manifest_in_preset_mode(
+    tmp_path: Path,
+) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    _ = app
+    library_dir = tmp_path / "voices"
+    prompt_path, metadata_path, voice_id = voice_paths(library_dir, "Margarita Sad")
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_bytes(b"fake prompt")
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "id": voice_id,
+                "name": "Margarita Sad",
+                "prompt_file": prompt_path.name,
+                "speech_rate": 0.94,
+            },
+        ),
+        encoding="utf-8",
+    )
+    manifest = {
+        "version": 2,
+        "chapters": [
+            {
+                "chapter_index": 0,
+                "chunks": [
+                    {
+                        "chapter_index": 0,
+                        "chunk_index": 0,
+                        "voice_label": "women",
+                        "voice_id": f"saved:{voice_id}",
+                        "role": "female",
+                        "speaker": "Margarita",
+                        "text": "I will return.",
+                    }
+                ],
+            }
+        ],
+    }
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+    page = SynthesisPage()
+    page._voice_library_dir_edit.setText(str(library_dir))
+    page._refresh_saved_voices()
+    page.set_manifest(manifest_path, tmp_path / "out")
+
+    assert page._mode_tabs.currentIndex() == 1
+    clone_config = json.loads(Path(page._build_temp_sample_voice_config()).read_text(encoding="utf-8"))
+    assert clone_config["speaker:Margarita"]["saved_voice"] == voice_id
+    assert clone_config["speaker:Margarita"]["speech_rate"] == 0.94
+    page.deleteLater()
+
+
 def test_synthesis_page_test_synthesis_uses_persisted_speech_rate(
     tmp_path: Path,
     monkeypatch,

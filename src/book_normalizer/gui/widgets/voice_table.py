@@ -32,6 +32,7 @@ except ImportError:  # pragma: no cover - depends on local PyQt6 multimedia buil
 
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest, flatten_v2_manifest
 from book_normalizer.gui.i18n import t, voice_category_label, voice_preset_label
+from book_normalizer.gui.ui_scaler import apply_combo_content_width
 from book_normalizer.gui.voice_presets import VOICE_PRESETS
 from book_normalizer.tts.voice_mapping import segment_speaker
 
@@ -96,9 +97,7 @@ def _segment_role_display(segment: dict[str, Any]) -> str:
 def _make_voice_combo(current: str = "narrator_calm") -> QComboBox:
     """Create a QComboBox with all voice presets, grouped by category."""
     combo = QComboBox()
-    combo.setMinimumWidth(160)
     _populate_voice_combo(combo, current)
-    combo.view().setMinimumWidth(230)
     return combo
 
 
@@ -125,6 +124,7 @@ def _populate_voice_combo(combo: QComboBox, current: str = "narrator_calm") -> N
             combo.setCurrentIndex(i)
             break
     combo.blockSignals(False)
+    apply_combo_content_width(combo)
 
 
 def _voice_display(voice_id: str) -> str:
@@ -144,7 +144,6 @@ def _intonation_display(key: str) -> str:
 def _make_intonation_combo(current: str = "neutral") -> QComboBox:
     """Create a QComboBox with translated intonation options."""
     combo = QComboBox()
-    combo.setMinimumWidth(118)
 
     for key in INTONATION_KEYS:
         combo.addItem(t(f"inton.{key}"), key)
@@ -154,6 +153,7 @@ def _make_intonation_combo(current: str = "neutral") -> QComboBox:
             combo.setCurrentIndex(i)
             break
 
+    apply_combo_content_width(combo)
     return combo
 
 
@@ -246,7 +246,6 @@ class VoiceTableWidget(QWidget):
         toolbar2.setSpacing(4)
 
         self._quick_combo = _make_voice_combo("narrator_calm")
-        self._quick_combo.setMinimumWidth(190)
         toolbar2.addWidget(self._quick_combo)
 
         self._btn_apply_all = QPushButton()
@@ -588,7 +587,7 @@ class VoiceTableWidget(QWidget):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         if self._compact_mode:
             self._table.setMinimumHeight(108)
-            self._quick_combo.setMinimumWidth(150)
+            apply_combo_content_width(self._quick_combo)
             self._table.setColumnWidth(4, 150)
             self._table.setColumnWidth(5, 170)
             self._table.setColumnWidth(7, 68)
@@ -598,7 +597,7 @@ class VoiceTableWidget(QWidget):
             )
         else:
             self._table.setMinimumHeight(112)
-            self._quick_combo.setMinimumWidth(190)
+            apply_combo_content_width(self._quick_combo)
             self._table.setColumnWidth(0, 42)
             self._table.setColumnWidth(1, 72)
             self._table.setColumnWidth(2, 72)
@@ -614,15 +613,13 @@ class VoiceTableWidget(QWidget):
         for row in range(self._table.rowCount()):
             role_combo = self._table.cellWidget(row, 4)
             if isinstance(role_combo, QComboBox):
-                role_combo.setMinimumWidth(126 if self._compact_mode else 150)
-                role_combo.view().setMinimumWidth(190 if self._compact_mode else 230)
+                apply_combo_content_width(role_combo)
             voice_combo = self._table.cellWidget(row, 5)
             if isinstance(voice_combo, QComboBox):
-                voice_combo.setMinimumWidth(132 if self._compact_mode else 160)
-                voice_combo.view().setMinimumWidth(210 if self._compact_mode else 230)
+                apply_combo_content_width(voice_combo)
             intonation_combo = self._table.cellWidget(row, 6)
             if isinstance(intonation_combo, QComboBox):
-                intonation_combo.setMinimumWidth(96 if self._compact_mode else 118)
+                apply_combo_content_width(intonation_combo)
 
     def _sync_editor_visibility(self) -> None:
         """Hide the chunk editor until there is something meaningful to edit."""
@@ -1132,6 +1129,7 @@ class VoiceTableWidget(QWidget):
         idx = combo.findText(current) if current else -1
         combo.setCurrentIndex(idx if idx >= 0 else 0)
         combo.blockSignals(False)
+        apply_combo_content_width(combo)
 
     def _on_role_changed(self, row: int, data: object, text: str) -> None:
         """Update role/speaker metadata from the editable role selector."""

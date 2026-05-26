@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QToolButton,
     QWidget,
 )
@@ -58,7 +59,11 @@ _BASE_MIN_HEIGHT_PROPERTY = "_books_to_audio_base_minimum_height"
 _BASE_MIN_WIDTH_PROPERTY = "_books_to_audio_base_minimum_width"
 _BASE_MAX_WIDTH_PROPERTY = "_books_to_audio_base_maximum_width"
 _BASE_MAX_HEIGHT_PROPERTY = "_books_to_audio_base_maximum_height"
+_COMBO_CONTENT_WIDTH_INSTALLED_PROPERTY = "_books_to_audio_combo_content_width_installed"
+_COMBO_CONTENT_WIDTH_EMPTY_CHARS_PROPERTY = "_books_to_audio_combo_content_width_empty_chars"
 _QT_UNBOUNDED_SIZE = 16_000_000
+_COMBO_MIN_PIXEL_WIDTH = 72
+_COMBO_HORIZONTAL_CHROME = 56
 _FONT_LOAD_ATTEMPTED = False
 _LOADED_FONT_FAMILIES: list[str] = []
 
@@ -139,11 +144,8 @@ def apply_widget_scale_metrics(root: QWidget, scale: float) -> None:
                     line_edit = None
                 if line_edit is not None:
                     line_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            if isinstance(widget, QComboBox) and widget.minimumContentsLength() <= 0:
-                widget.setMinimumContentsLength(14)
-                widget.setSizeAdjustPolicy(
-                    QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
-                )
+            if isinstance(widget, QComboBox):
+                apply_combo_content_width(widget)
             continue
 
         if isinstance(widget, QPushButton):
@@ -166,6 +168,87 @@ def apply_widget_scale_metrics(root: QWidget, scale: float) -> None:
                 _set_scaled_maximum_width(widget, scale)
                 _set_scaled_maximum_height(widget, scale)
             continue
+
+
+def apply_combo_content_width(
+    combo: QComboBox,
+    *,
+    empty_min_chars: int | None = None,
+) -> None:
+    """Use the longest current item as the combo box width standard.
+
+    ``empty_min_chars`` is only a placeholder width before dynamic lists are
+    populated; once items exist, the longest visible item is the source of truth.
+    """
+
+    if empty_min_chars is not None:
+        combo.setProperty(
+            _COMBO_CONTENT_WIDTH_EMPTY_CHARS_PROPERTY,
+            max(0, int(empty_min_chars)),
+        )
+    elif combo.property(_COMBO_CONTENT_WIDTH_EMPTY_CHARS_PROPERTY) is None:
+        combo.setProperty(_COMBO_CONTENT_WIDTH_EMPTY_CHARS_PROPERTY, 0)
+
+    _install_combo_content_width_policy(combo)
+    _refresh_combo_content_width(combo)
+
+
+def _install_combo_content_width_policy(combo: QComboBox) -> None:
+    if combo.property(_COMBO_CONTENT_WIDTH_INSTALLED_PROPERTY):
+        return
+
+    model = combo.model()
+    model.rowsInserted.connect(lambda *_args, c=combo: _refresh_combo_content_width(c))
+    model.rowsRemoved.connect(lambda *_args, c=combo: _refresh_combo_content_width(c))
+    model.modelReset.connect(lambda c=combo: _refresh_combo_content_width(c))
+    model.dataChanged.connect(lambda *_args, c=combo: _refresh_combo_content_width(c))
+    combo.setProperty(_COMBO_CONTENT_WIDTH_INSTALLED_PROPERTY, True)
+
+
+def _refresh_combo_content_width(combo: QComboBox) -> None:
+    try:
+        width, chars = _combo_content_width(combo)
+    except RuntimeError:
+        return
+
+    combo.setMinimumContentsLength(max(1, chars))
+    combo.setSizeAdjustPolicy(
+        QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
+    )
+    combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    combo.setMinimumWidth(width)
+    combo.setMaximumWidth(width)
+    view = combo.view()
+    if view is not None:
+        view.setMinimumWidth(width)
+    combo.updateGeometry()
+
+
+def _combo_content_width(combo: QComboBox) -> tuple[int, int]:
+    texts = [combo.itemText(index) for index in range(combo.count())]
+    current = combo.currentText()
+    if current:
+        texts.append(current)
+    texts = [text for text in texts if text]
+
+    if texts:
+        longest = max(texts, key=len)
+        chars = max(1, len(longest))
+        content_width = combo.fontMetrics().horizontalAdvance(longest)
+    else:
+        empty_chars = combo.property(_COMBO_CONTENT_WIDTH_EMPTY_CHARS_PROPERTY)
+        try:
+            chars = max(1, int(empty_chars))
+        except (TypeError, ValueError):
+            chars = 1
+        content_width = combo.fontMetrics().horizontalAdvance("M" * chars)
+
+    width = max(
+        _COMBO_MIN_PIXEL_WIDTH,
+        content_width + _COMBO_HORIZONTAL_CHROME,
+        combo.fontMetrics().height() + _COMBO_HORIZONTAL_CHROME,
+    )
+    return width, chars
 
 
 def _remember_int_property(widget: QWidget, property_name: str, current: int, fallback: int) -> int:

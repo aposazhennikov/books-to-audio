@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 
 from book_normalizer.gui.dialog_styles import apply_readable_message_box_style
 from book_normalizer.gui.i18n import t
+from book_normalizer.gui.ui_scaler import apply_combo_content_width
 from book_normalizer.gui.normalization_cache import (
     CachedNormalization,
     NormalizationCacheSettings,
@@ -190,6 +191,7 @@ class NormalizePage(QWidget):
         self._ocr_mode.addItems(["auto", "off", "force", "compare"])
         self._ocr_mode.setFixedWidth(180)
         self._ocr_mode.setMinimumHeight(36)
+        apply_combo_content_width(self._ocr_mode)
         self._ocr_mode_label = QLabel()
         self._ocr_mode_label_wrap = self._label_with_help(
             self._ocr_mode_label, "norm.ocr_mode_tip"
@@ -502,6 +504,7 @@ class NormalizePage(QWidget):
             idx = self._book_language.findData(DEFAULT_BOOK_LANGUAGE)
         self._book_language.setCurrentIndex(idx if idx >= 0 else 0)
         self._book_language.blockSignals(False)
+        apply_combo_content_width(self._book_language)
 
     def _populate_psm_combo(self) -> None:
         """Populate human-readable Tesseract PSM options."""
@@ -516,6 +519,7 @@ class NormalizePage(QWidget):
             idx = self._ocr_psm.findData(6)
         self._ocr_psm.setCurrentIndex(idx if idx >= 0 else 0)
         self._ocr_psm.blockSignals(False)
+        apply_combo_content_width(self._ocr_psm)
         self._update_psm_summary()
 
     def _update_psm_summary(self) -> None:

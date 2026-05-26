@@ -51,6 +51,7 @@ from book_normalizer.chunking.manifest_v2 import (
     update_chunk_text,
 )
 from book_normalizer.gui.i18n import t
+from book_normalizer.gui.ui_scaler import apply_combo_content_width
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.tts_worker import (
     AsrQaWorker,
@@ -117,12 +118,8 @@ def _host_path_from_text(path_text: str | Path) -> Path:
 
 
 def _make_combo_compact(combo: QComboBox, min_chars: int = 18) -> None:
-    """Keep long combo entries from increasing the whole page width."""
-    combo.setMinimumContentsLength(min_chars)
-    combo.setSizeAdjustPolicy(
-        QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
-    )
-    combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    """Keep combo width tied to its own items instead of the parent row."""
+    apply_combo_content_width(combo, empty_min_chars=min_chars)
 
 
 def _make_text_edit_compact(edit: QPlainTextEdit) -> None:

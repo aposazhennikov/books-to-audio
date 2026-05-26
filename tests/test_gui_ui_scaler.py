@@ -6,6 +6,7 @@ from book_normalizer.gui.ui_scaler import (
     MULTILINGUAL_FONT_FAMILIES,
     SCALE_STEP,
     UiScaler,
+    apply_combo_content_width,
     apply_widget_scale_metrics,
     clamp_scale,
     ensure_multilingual_fonts_loaded,
@@ -127,6 +128,51 @@ def test_apply_widget_scale_metrics_centers_numeric_fields() -> None:
         return
     assert line_edit.alignment() & Qt.AlignmentFlag.AlignHCenter
     assert line_edit.alignment() & Qt.AlignmentFlag.AlignVCenter
+
+
+def test_combo_content_width_uses_longest_item_not_row_width() -> None:
+    from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QSizePolicy, QWidget
+
+    from tests.gui.helpers import qapp, render_widget
+
+    _ = qapp()
+
+    root = QWidget()
+    layout = QHBoxLayout(root)
+    combo = QComboBox()
+    combo.addItems(["FLAC", "WAV"])
+    layout.addWidget(combo, stretch=1)
+    layout.addStretch(4)
+
+    apply_combo_content_width(combo)
+    render_widget(root, 900, 80)
+
+    assert combo.minimumContentsLength() == 4
+    assert combo.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+    assert combo.minimumWidth() == combo.maximumWidth()
+    assert combo.width() == combo.maximumWidth()
+    assert combo.width() < 140
+
+
+def test_combo_content_width_refreshes_when_items_change() -> None:
+    from PyQt6.QtWidgets import QComboBox
+
+    from tests.gui.helpers import qapp
+
+    _ = qapp()
+
+    combo = QComboBox()
+    apply_combo_content_width(combo, empty_min_chars=12)
+    empty_width = combo.maximumWidth()
+
+    combo.addItem("tiny")
+    tiny_width = combo.maximumWidth()
+    combo.addItem("LLM: роли и сцены")
+    long_width = combo.maximumWidth()
+
+    assert combo.minimumContentsLength() == len("LLM: роли и сцены")
+    assert tiny_width < empty_width
+    assert long_width > tiny_width
 
 
 def test_gui_test_harness_uses_runtime_multilingual_font() -> None:

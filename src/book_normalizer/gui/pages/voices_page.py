@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 
 from book_normalizer.gui.i18n import t
+from book_normalizer.gui.ui_scaler import apply_combo_content_width
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.widgets.voice_preview import VoicePreviewPanel
 from book_normalizer.gui.widgets.voice_table import VoiceTableWidget
@@ -315,6 +316,7 @@ class VoicesPage(QWidget):
         self._llm_provider.clear()
         self._llm_provider.addItem(t("voice.llm_local"), "local")
         self._llm_provider.addItem(t("voice.llm_openai"), "openai")
+        apply_combo_content_width(self._llm_provider)
         self._llm_endpoint_label.setText(t("voice.llm_endpoint"))
         self._llm_model_label.setText(t("voice.llm_model"))
         self._llm_api_key_label.setText(t("voice.llm_api_key"))
@@ -442,6 +444,7 @@ class VoicesPage(QWidget):
         idx = self._speaker_mode.findData(selected_mode)
         self._speaker_mode.setCurrentIndex(idx if idx >= 0 else 0)
         self._speaker_mode.blockSignals(False)
+        apply_combo_content_width(self._speaker_mode)
 
     def _populate_stress_mode_combo(self, selected_mode: str) -> None:
         """Populate stress rendering choices with localized labels."""
@@ -456,6 +459,7 @@ class VoicesPage(QWidget):
         idx = self._stress_mode.findData(selected_mode)
         self._stress_mode.setCurrentIndex(idx if idx >= 0 else 0)
         self._stress_mode.blockSignals(False)
+        apply_combo_content_width(self._stress_mode)
 
     def _update_speaker_mode_hint(self) -> None:
         """Show inline hint for currently selected speaker mode."""

@@ -432,6 +432,44 @@ def test_synthesis_page_actions_are_visible_without_settings_scrollbar() -> None
     window.deleteLater()
 
 
+def test_dropdowns_use_content_width_instead_of_full_rows() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    try:
+        window._tabs.setCurrentIndex(3)
+        render_widget(window, 2048, 715, scale=1.0)
+
+        checked = [
+            window._normalize_page._book_language,
+            window._normalize_page._ocr_mode,
+            window._voices_page._speaker_mode,
+            window._voices_page._llm_provider,
+            window._synthesis_page._output_format_combo,
+            window._synthesis_page._chapter_combo,
+            window._synthesis_page._asr_model_combo,
+            window._synthesis_page._asr_device_combo,
+            window._synthesis_page._test_source_combo,
+            window._synthesis_page._test_voice_combo,
+        ]
+
+        for combo in checked:
+            longest = max(
+                [len(combo.itemText(index)) for index in range(combo.count())] or [1],
+            )
+            assert combo.minimumContentsLength() == longest
+            assert combo.minimumWidth() == combo.maximumWidth()
+            assert combo.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Fixed
+
+        assert window._synthesis_page._output_format_combo.maximumWidth() < 140
+        assert window._synthesis_page._asr_device_combo.maximumWidth() < 140
+        assert window._synthesis_page._asr_model_combo.maximumWidth() < 170
+        assert window._normalize_page._book_language.maximumWidth() < 220
+    finally:
+        window.close()
+        window.deleteLater()
+
+
 def test_zoomed_normalization_controls_do_not_overlap() -> None:
     app = qapp()
     _ = app

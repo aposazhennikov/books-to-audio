@@ -93,6 +93,16 @@ Use the generated checklist while listening to the post-filter WAV. It records
 the exact sample, expected manifest text, objective audio checks, and the final
 PASS/REVIEW/FAIL decision.
 
+Prepare or open the listening review:
+
+```powershell
+python scripts\prepare_listening_review.py
+python scripts\prepare_listening_review.py --open
+```
+
+The first command prints the audio/checklist paths and exact verdict commands.
+The `--open` variant opens the audio and checklist with the OS defaults.
+
 After listening, record the human verdict:
 
 ```powershell

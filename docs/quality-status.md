@@ -110,6 +110,9 @@ are intentionally not committed.
     `python scripts/create_listening_checklist.py --smoke-dir
     output/live_tts_real_book_smoke_after_filter --out
     output/manual_listening_checklist.md`.
+  - Manual review can be prepared with:
+    `python scripts/prepare_listening_review.py`; add `--open` to open the
+    WAV and checklist with the OS defaults.
   - After human listening, record the final manual verdict with:
     `python scripts/record_listening_verdict.py --verdict pass --notes
     "Accepted post-filter narrator smoke sample."`.

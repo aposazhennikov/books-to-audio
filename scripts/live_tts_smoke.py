@@ -31,6 +31,10 @@ from book_normalizer.comfyui.workflow_builder import (  # noqa: E402
 )
 from book_normalizer.languages import normalize_book_language  # noqa: E402
 from book_normalizer.loaders.factory import LoaderFactory  # noqa: E402
+from book_normalizer.normalization.cleanup import (  # noqa: E402
+    is_likely_publisher_boilerplate,
+    remove_publisher_boilerplate,
+)
 from book_normalizer.tts.audio_qa import run_audio_qa  # noqa: E402
 from book_normalizer.tts.manifest_assembly import assemble_from_manifest  # noqa: E402
 
@@ -271,6 +275,11 @@ def _bounded_book_text(book: object, *, max_book_chars: int) -> str:
                 or ""
             ).strip()
             if not source:
+                continue
+            source = remove_publisher_boilerplate(source)
+            if not source:
+                continue
+            if is_likely_publisher_boilerplate(source):
                 continue
             if len(source) > remaining:
                 source = source[:remaining].rsplit(" ", 1)[0].strip() or source[:remaining]

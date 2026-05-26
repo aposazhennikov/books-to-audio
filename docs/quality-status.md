@@ -73,6 +73,10 @@ are intentionally not committed.
     `output/live_tts_real_book_smoke/chapter_001.wav` was assembled.
   - WAV verification: chunk files and assembled chapter are PCM WAV,
     16-bit mono, 24 kHz.
+  - Follow-up fix: the smoke runner and normalization pipeline now remove
+    likely publisher/library boilerplate before choosing chunks. The old
+    generated artifact should be rerun before final subjective listening if it
+    still contains Royallib/front-matter text.
   - Post-run resource check: ComfyUI was stopped, `ollama ps` was empty, and
     GPU memory returned to the low idle range.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.

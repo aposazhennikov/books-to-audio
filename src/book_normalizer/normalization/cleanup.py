@@ -4,6 +4,60 @@ from __future__ import annotations
 
 import re
 
+_URL_RE = re.compile(r"\b(?:https?://|www\.)\S+", re.IGNORECASE)
+_PUBLISHER_BOILERPLATE_PHRASES = (
+    "скачали книгу",
+    "бесплатной электронной библиотеке",
+    "все книги автора",
+    "эта же книга в других форматах",
+    "приятного чтения",
+    "книга подготовлена",
+    "литературного агентства",
+    "royallib",
+    "sesame",
+)
+_LEADING_BOILERPLATE_RE = re.compile(
+    r"^\s*(?:приятного\s+чтения|спасибо,\s+что\s+скачали\s+книгу)[.!…:;,\s]*",
+    re.IGNORECASE,
+)
+
+
+def is_likely_publisher_boilerplate(text: str) -> bool:
+    """Return true for library/publisher boilerplate that should not be voiced."""
+    normalized = re.sub(r"\s+", " ", text.strip().casefold())
+    if not normalized:
+        return False
+
+    phrase_hits = sum(
+        1 for phrase in _PUBLISHER_BOILERPLATE_PHRASES if phrase in normalized
+    )
+    has_url = bool(_URL_RE.search(normalized))
+    if has_url and phrase_hits:
+        return True
+    if phrase_hits >= 2:
+        return True
+
+    url_chars = sum(len(match.group(0)) for match in _URL_RE.finditer(normalized))
+    return has_url and url_chars / max(len(normalized), 1) > 0.35
+
+
+def remove_publisher_boilerplate(text: str) -> str:
+    """Remove library/publisher front matter that should not be voiced."""
+    cleaned_lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            cleaned_lines.append("")
+            continue
+        if is_likely_publisher_boilerplate(stripped):
+            continue
+
+        stripped = _LEADING_BOILERPLATE_RE.sub("", stripped).strip()
+        if stripped and not is_likely_publisher_boilerplate(stripped):
+            cleaned_lines.append(stripped)
+
+    return "\n".join(cleaned_lines).strip()
+
 
 def remove_page_numbers(text: str) -> str:
     """

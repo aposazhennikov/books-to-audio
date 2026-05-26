@@ -95,6 +95,9 @@ def test_live_tts_smoke_can_use_real_book_excerpt(monkeypatch, tmp_path: Path) -
     book_path = tmp_path / "book.txt"
     book_path.write_text(
         (
+            "Спасибо, что скачали книгу в бесплатной электронной библиотеке "
+            "Royallib.ru: http://royallib.ru\n\n"
+            "Эта же книга в других форматах: http://royallib.ru/example\n\n"
             "Глава первая\n\n"
             "Иван вошёл в комнату и остановился у окна. За стеклом шумел дождь.\n\n"
             "Мария тихо сказала, что чай уже готов. Иван улыбнулся и сел за стол."
@@ -122,5 +125,8 @@ def test_live_tts_smoke_can_use_real_book_excerpt(monkeypatch, tmp_path: Path) -
     assert manifest["chunker"] == "real-book-live-tts-smoke"
     assert manifest["language"] == "ru"
     assert len(chunks) == 2
-    assert "Иван вошёл" in " ".join(chunk["text"] for chunk in chunks)
+    manifest_text = " ".join(chunk["text"] for chunk in chunks)
+    assert "Иван вошёл" in manifest_text
+    assert "royallib" not in manifest_text.casefold()
+    assert "http://" not in manifest_text.casefold()
     assert Path(report["assembled_chapter"]).exists()

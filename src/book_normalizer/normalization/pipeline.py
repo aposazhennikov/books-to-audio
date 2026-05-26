@@ -9,7 +9,12 @@ from collections.abc import Callable
 from book_normalizer.languages import is_russian_language
 from book_normalizer.models.book import Book
 from book_normalizer.normalization.abbreviations import expand_abbreviations
-from book_normalizer.normalization.cleanup import remove_inline_footnotes, remove_page_numbers, remove_repeated_headers
+from book_normalizer.normalization.cleanup import (
+    remove_inline_footnotes,
+    remove_page_numbers,
+    remove_publisher_boilerplate,
+    remove_repeated_headers,
+)
 from book_normalizer.normalization.encoding import fix_common_mojibake, normalize_encoding_artifacts
 from book_normalizer.normalization.numbers import expand_numbers
 from book_normalizer.normalization.ocr_fixes import fix_mixed_script, fix_ocr_artifacts
@@ -41,6 +46,7 @@ DEFAULT_STAGES: list[tuple[str, TextTransform]] = [
     ("repair_hyphenated_words", repair_hyphenated_words),
     ("repair_broken_lines", repair_broken_lines),
     ("remove_page_numbers", remove_page_numbers),
+    ("remove_publisher_boilerplate", remove_publisher_boilerplate),
     ("remove_inline_footnotes", remove_inline_footnotes),
     ("remove_repeated_headers", remove_repeated_headers),
     ("collapse_empty_lines", collapse_empty_lines),
@@ -62,6 +68,7 @@ LANGUAGE_NEUTRAL_STAGES: list[tuple[str, TextTransform]] = [
     ("repair_hyphenated_words", repair_hyphenated_words),
     ("repair_broken_lines", repair_broken_lines),
     ("remove_page_numbers", remove_page_numbers),
+    ("remove_publisher_boilerplate", remove_publisher_boilerplate),
     ("remove_inline_footnotes", remove_inline_footnotes),
     ("remove_repeated_headers", remove_repeated_headers),
     ("collapse_empty_lines", collapse_empty_lines),

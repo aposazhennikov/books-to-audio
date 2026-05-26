@@ -207,7 +207,8 @@ class RolesPage(QWidget):
             return
 
         self._btn_extract.setEnabled(False)
-        self._progress.set_status(t("roles.extracting"))
+        self._progress.reset()
+        self._progress.set_busy(t("roles.extracting"))
         self._worker = ExportSegmentsWorker(
             book=self._book,
             output_dir=self._output_dir,
@@ -216,7 +217,10 @@ class RolesPage(QWidget):
             llm_model=self._llm_model.text().strip() or PRIMARY_QWEN3_MODEL,
             stress_mode="double_vowel",
         )
-        self._worker.progress.connect(self._progress.set_status)
+        self._worker.progress.connect(self._progress.set_busy)
+        progress_pct = getattr(self._worker, "progress_pct", None)
+        if progress_pct is not None:
+            progress_pct.connect(self._progress.set_progress)
         self._worker.finished.connect(self._on_segments_ready)
         self._worker.error.connect(self._on_error)
         self._worker.start()

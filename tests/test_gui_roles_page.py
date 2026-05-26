@@ -112,6 +112,45 @@ def test_roles_page_runs_llm_segments_and_writes_inventory(
     page.deleteLater()
 
 
+def test_roles_page_shows_busy_feedback_before_first_llm_window(
+    qapp,
+    qtbot,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    class _FakeWorker:
+        def __init__(self, **_kwargs):
+            self.progress = _Signal()
+            self.progress_pct = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            return
+
+    monkeypatch.setattr(roles_page, "ExportSegmentsWorker", _FakeWorker)
+    page = RolesPage()
+    qtbot.addWidget(page)
+    page.set_book(_sample_book(), tmp_path)
+
+    qtbot.mouseClick(page._btn_extract, QtCore.Qt.MouseButton.LeftButton)
+
+    assert not page._btn_extract.isEnabled()
+    assert page._progress._status.text() == roles_page.t("roles.extracting")
+    assert page._progress._bar.maximum() == 0
+
+    page._worker.progress.emit("Waiting for local LLM")
+    assert page._progress._status.text() == "Waiting for local LLM"
+    assert page._progress._bar.maximum() == 0
+
+    page._worker.progress_pct.emit(2, 10, "1m 20s")
+    assert page._progress._bar.maximum() == 10
+    assert page._progress._bar.value() == 2
+    assert "1m 20s" in page._progress._eta.text()
+
+    page.deleteLater()
+
+
 def test_roles_page_labels_llm_fields_and_shows_endpoint_start(qapp) -> None:
     page = RolesPage()
 

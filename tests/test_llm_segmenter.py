@@ -114,6 +114,32 @@ def test_llm_voice_segmenter_outputs_manifest_for_all_languages(language: str, t
     assert fake.unloaded_batches == [(PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL)]
 
 
+def test_llm_voice_segmenter_reports_progress_before_first_model_call() -> None:
+    text = "First paragraph."
+    events: list[tuple[int, int, str]] = []
+
+    class _ProgressAwareClient(_FakeClient):
+        def chat_json_with_fallback(self, **kwargs: Any) -> OllamaChatAttempt:
+            assert events == [(0, 1, "1:1/1")]
+            return super().chat_json_with_fallback(**kwargs)
+
+    segmenter = LlmVoiceSegmenter(language="en")
+    segmenter._client = _ProgressAwareClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "text": text, "intonation": "calm"},
+            ],
+        },
+    })
+
+    segmenter.segment_book(
+        _book(text, language="en"),
+        progress_callback=lambda done, total, label: events.append((done, total, label)),
+    )
+
+    assert events == [(0, 1, "1:1/1"), (1, 1, "1:1/1")]
+
+
 def test_llm_voice_segmenter_sends_quoted_source_as_json_input() -> None:
     text = 'Sergey eshikni ochdi. "U yerda kim bor?" deb so\'radi u.'
     segmenter = LlmVoiceSegmenter(language="uz")

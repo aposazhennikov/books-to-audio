@@ -414,6 +414,9 @@ class LlmVoiceSegmenter:
             chapter_text = _chapter_text(chapter)
             windows = _build_windows(chapter_text, self._window_chars)
             for window_index, window_text in enumerate(windows):
+                progress_label = f"{chapter_index + 1}:{window_index + 1}/{len(windows)}"
+                if progress_callback is not None:
+                    progress_callback(done_windows, total_windows, progress_label)
                 raw_segments = self._segment_window(chapter_index, window_index, window_text)
                 for raw in raw_segments:
                     for text_part in chunk_text(
@@ -480,7 +483,7 @@ class LlmVoiceSegmenter:
                     progress_callback(
                         done_windows,
                         total_windows,
-                        f"{chapter_index + 1}:{window_index + 1}/{len(windows)}",
+                        progress_label,
                     )
 
         if rows:

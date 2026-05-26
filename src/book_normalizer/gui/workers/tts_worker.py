@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -14,10 +15,20 @@ from book_normalizer.tts.model_download import MODEL_DOWNLOAD_WARNING, install_t
 from book_normalizer.tts.synthesis_controller import SynthesisController, SynthesisRequest
 
 
+def _format_eta(seconds: float) -> str:
+    """Format seconds to human-readable string."""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    m = int(seconds // 60)
+    s = int(seconds % 60)
+    return f"{m}m {s:02d}s"
+
+
 class ExportSegmentsWorker(QThread):
     """Export voice-annotated segments from a processed book."""
 
     progress = pyqtSignal(str)
+    progress_pct = pyqtSignal(int, int, str)
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
 
@@ -62,9 +73,16 @@ class ExportSegmentsWorker(QThread):
                     review_report_path=self._output_dir / "llm_voice_review_report.json",
                     max_segment_chars=600,
                 )
+                started_at = time.monotonic()
 
                 def report(done: int, total: int, label: str) -> None:
+                    eta = ""
+                    if total > 0 and done > 0:
+                        remaining = max(0, total - done)
+                        elapsed = max(0.0, time.monotonic() - started_at)
+                        eta = _format_eta((elapsed / done) * remaining)
                     self.progress.emit(f"LLM voice markup: {done}/{total} ({label})")
+                    self.progress_pct.emit(done, total, eta)
 
                 manifest = segmenter.segment_book(self._book, progress_callback=report)
             else:

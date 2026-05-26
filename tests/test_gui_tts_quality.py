@@ -174,12 +174,17 @@ def test_export_segments_llm_mode_uses_smart_segmenter_directly(
     )
     finished: list[str] = []
     errors: list[str] = []
+    progress_pct: list[tuple[int, int, str]] = []
     worker.finished.connect(finished.append)
     worker.error.connect(errors.append)
+    worker.progress_pct.connect(
+        lambda done, total, eta: progress_pct.append((done, total, eta))
+    )
 
     worker.run()
 
     assert errors == []
+    assert progress_pct == [(1, 1, "0s")]
     assert captured["language"] == "en"
     assert captured["endpoint"] == "http://localhost:11434"
     assert captured["model"] == ""

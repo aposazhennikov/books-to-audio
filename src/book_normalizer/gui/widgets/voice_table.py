@@ -173,6 +173,7 @@ class VoiceTableWidget(QWidget):
         self._ui_scale = 1.0
         self._row_to_segment_index: list[int] = []
         self._cached_role_options: list[tuple[str, str]] = []
+        self._language_dirty_rows: set[int] = set()
         self._populating = False
         self._loading_editor = False
         self._player = QSoundEffect(self) if QSoundEffect is not None else None
@@ -455,7 +456,7 @@ class VoiceTableWidget(QWidget):
 
     def retranslate(self) -> None:
         """Update translatable strings."""
-        self._refresh_voice_combo_labels()
+        self._cached_role_options = self._role_options()
 
         self._table.setHorizontalHeaderLabels([
             t("voice.col_num"),
@@ -492,46 +493,78 @@ class VoiceTableWidget(QWidget):
         self._update_full_char_count()
         if self._segments:
             self._refresh_chapter_filter()
-            self._populate_table()
+            self._language_dirty_rows = set(range(self._table.rowCount()))
+            self._refresh_voice_combo_labels()
+            self._sync_visible_row_widgets()
 
     def _refresh_voice_combo_labels(self) -> None:
         """Refresh all voice combo labels after language changes."""
         quick_current = self._quick_combo.currentData() or "narrator_calm"
         _populate_voice_combo(self._quick_combo, str(quick_current))
-        role_options = self._role_options()
-        for row in range(self._table.rowCount()):
-            if self._table.isRowHidden(row):
-                continue
-            role_combo = self._table.cellWidget(row, 4)
-            if isinstance(role_combo, QComboBox):
-                segment_index = self._segment_index_for_table_row(row)
-                if 0 <= segment_index < len(self._segments):
-                    current = _segment_role_display(self._segments[segment_index])
-                    self._populate_role_combo(role_combo, current, role_options)
+        self._cached_role_options = self._role_options()
+        for row in self._visible_viewport_rows():
+            self._refresh_row_language(row)
+            self._language_dirty_rows.discard(row)
 
-            combo = self._table.cellWidget(row, 5)
-            if isinstance(combo, QComboBox):
-                current = combo.currentData() or "narrator_calm"
-                _populate_voice_combo(combo, str(current))
+    def _refresh_row_language(self, row: int) -> None:
+        """Refresh translated labels for one table row without rebuilding it."""
+        segment_index = self._segment_index_for_table_row(row)
+        if not 0 <= segment_index < len(self._segments):
+            return
+        segment = self._segments[segment_index]
+        self._refresh_row_type_item(row, segment)
 
-            intonation_combo = self._table.cellWidget(row, 6)
-            if isinstance(intonation_combo, QComboBox):
-                current = intonation_combo.currentData() or "neutral"
-                intonation_combo.blockSignals(True)
-                intonation_combo.clear()
-                for key in INTONATION_KEYS:
-                    intonation_combo.addItem(t(f"inton.{key}"), key)
-                idx = intonation_combo.findData(current)
-                intonation_combo.setCurrentIndex(idx if idx >= 0 else 0)
-                intonation_combo.blockSignals(False)
-                apply_combo_content_width(intonation_combo)
-            else:
-                segment_index = self._segment_index_for_table_row(row)
-                if 0 <= segment_index < len(self._segments):
-                    intonation = str(self._segments[segment_index].get("intonation") or "neutral")
-                    item = self._table.item(row, 6)
-                    if item is not None:
-                        item.setText(_intonation_display(intonation))
+        role_combo = self._table.cellWidget(row, 4)
+        if isinstance(role_combo, QComboBox):
+            current = _segment_role_display(segment)
+            self._populate_role_combo(role_combo, current, self._cached_role_options)
+        else:
+            self._set_readonly_item(row, 4, _segment_role_display(segment))
+
+        combo = self._table.cellWidget(row, 5)
+        if isinstance(combo, QComboBox):
+            current = combo.currentData() or "narrator_calm"
+            _populate_voice_combo(combo, str(current))
+        else:
+            voice_id = str(segment.get("voice_id") or "narrator_calm")
+            self._set_readonly_item(row, 5, _voice_display(voice_id))
+
+        intonation_combo = self._table.cellWidget(row, 6)
+        if isinstance(intonation_combo, QComboBox):
+            current = intonation_combo.currentData() or "neutral"
+            intonation_combo.blockSignals(True)
+            intonation_combo.clear()
+            for key in INTONATION_KEYS:
+                intonation_combo.addItem(t(f"inton.{key}"), key)
+            idx = intonation_combo.findData(current)
+            intonation_combo.setCurrentIndex(idx if idx >= 0 else 0)
+            intonation_combo.blockSignals(False)
+            apply_combo_content_width(intonation_combo)
+        else:
+            intonation = str(segment.get("intonation") or "neutral")
+            self._set_readonly_item(row, 6, _intonation_display(intonation))
+
+        play_btn = self._table.cellWidget(row, 7)
+        if isinstance(play_btn, QPushButton):
+            play_btn.setText(t("voice.play_audio"))
+        else:
+            self._set_readonly_item(
+                row,
+                7,
+                t("voice.play_audio"),
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
+
+        retry_btn = self._table.cellWidget(row, 8)
+        if isinstance(retry_btn, QPushButton):
+            retry_btn.setText(t("voice.mark_retry"))
+        else:
+            self._set_readonly_item(
+                row,
+                8,
+                t("voice.mark_retry"),
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Fallback compact switching when the table is used outside VoicesPage."""
@@ -848,6 +881,34 @@ class VoiceTableWidget(QWidget):
         self._set_readonly_item(row, 7, t("voice.play_audio"), alignment=Qt.AlignmentFlag.AlignCenter)
         self._set_readonly_item(row, 8, t("voice.mark_retry"), alignment=Qt.AlignmentFlag.AlignCenter)
 
+    def _refresh_row_type_item(self, row: int, seg: dict[str, Any]) -> None:
+        """Refresh the translated type cell and its visual state."""
+        is_dialogue = bool(seg.get("is_dialogue", False))
+        role = seg.get("role", "narrator")
+        is_speech = is_dialogue or role in ("male", "female")
+        is_deleted = bool(seg.get("deleted"))
+        type_text = (
+            t("voice.type_deleted")
+            if is_deleted
+            else t("voice.type_speech")
+            if is_speech
+            else t("voice.type_narrator")
+        )
+        type_item = self._set_readonly_item(
+            row,
+            1,
+            type_text,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
+        type_item.setBackground(QBrush())
+        type_item.setForeground(QBrush(QColor(71, 85, 105, 150)))
+        if is_deleted:
+            type_item.setBackground(QColor(248, 113, 113, 34))
+            type_item.setForeground(QBrush(QColor(185, 28, 28, 210)))
+        elif is_speech:
+            type_item.setBackground(_DIALOGUE_BG)
+            type_item.setForeground(QBrush(QColor(2, 132, 199, 210)))
+
     def _select_combo_data(self, combo: QComboBox, value: str) -> None:
         for index in range(combo.count()):
             if combo.itemData(index) == value:
@@ -957,6 +1018,9 @@ class VoiceTableWidget(QWidget):
         rows = self._visible_viewport_rows()
         for row in rows:
             self._ensure_row_widgets(row)
+            if row in self._language_dirty_rows:
+                self._refresh_row_language(row)
+                self._language_dirty_rows.discard(row)
         if rows:
             self._apply_table_layout()
 
@@ -986,32 +1050,7 @@ class VoiceTableWidget(QWidget):
             self._table.setItem(row, 0, idx_item)
 
             # Column 1: segment type.
-            type_text = (
-                t("voice.type_deleted")
-                if is_deleted
-                else
-                t("voice.type_speech")
-                if is_speech
-                else t("voice.type_narrator")
-            )
-            type_item = QTableWidgetItem(type_text)
-            type_item.setFlags(
-                type_item.flags() & ~Qt.ItemFlag.ItemIsEditable,
-            )
-            type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if is_deleted:
-                type_item.setBackground(QColor(248, 113, 113, 34))
-                type_item.setForeground(QBrush(QColor(185, 28, 28, 210)))
-            elif is_speech:
-                type_item.setBackground(QColor(14, 165, 233, 28))
-                type_item.setForeground(
-                    QBrush(QColor(2, 132, 199, 210)),
-                )
-            else:
-                type_item.setForeground(
-                    QBrush(QColor(71, 85, 105, 150)),
-                )
-            self._table.setItem(row, 1, type_item)
+            self._refresh_row_type_item(row, seg)
 
             # Column 2: chapter number.
             ch_item = QTableWidgetItem(
@@ -1037,6 +1076,7 @@ class VoiceTableWidget(QWidget):
             self._refresh_row_display_items(row, seg)
 
         self._populating = False
+        self._language_dirty_rows.clear()
         self._apply_table_layout()
         self._sync_full_text_from_segments()
         self._apply_chapter_filter(selected_segment_index)

@@ -813,6 +813,63 @@ def test_loaded_llm_chunk_page_keeps_editor_and_scroll_controls_usable() -> None
     window.deleteLater()
 
 
+def test_language_switch_does_not_rebuild_loaded_chunk_table(monkeypatch) -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    segments = [
+        {
+            "segment_index": index,
+            "chapter_index": index // 50,
+            "role": "male" if index % 5 == 0 else "narrator",
+            "speaker": "Диктор" if index % 5 else "Персонаж",
+            "is_dialogue": index % 5 == 0,
+            "voice_id": "male_confident" if index % 5 == 0 else "narrator_calm",
+            "intonation": "calm",
+            "text": f"Сегмент {index}.",
+        }
+        for index in range(1500)
+    ]
+    table = window._voices_page._voice_table
+    table.set_segments(segments)
+    render_widget(window, 1180, 760, scale=1.0)
+
+    rebuilds = 0
+    original_populate = table._populate_table
+
+    def counted_populate() -> None:
+        nonlocal rebuilds
+        rebuilds += 1
+        original_populate()
+
+    monkeypatch.setattr(table, "_populate_table", counted_populate)
+    live_voice_controls_before = sum(
+        1
+        for row in range(table._table.rowCount())
+        if table._table.cellWidget(row, 5) is not None
+    )
+
+    target_code = "en" if window._lang_combo.currentData() != "en" else "ru"
+    target = window._lang_combo.findData(target_code)
+    assert target >= 0
+    window._lang_combo.setCurrentIndex(target)
+    render_widget(window, 1180, 760, scale=1.0)
+
+    live_voice_controls_after = sum(
+        1
+        for row in range(table._table.rowCount())
+        if table._table.cellWidget(row, 5) is not None
+    )
+    assert rebuilds == 0
+    assert table._table.rowCount() == len(segments)
+    assert 0 < live_voice_controls_after < len(segments) // 2
+    assert live_voice_controls_after <= live_voice_controls_before + 8
+
+    window.close()
+    window.deleteLater()
+
+
 def test_zoomed_chunk_actions_keep_breathing_room() -> None:
     app = qapp()
     _ = app

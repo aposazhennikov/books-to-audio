@@ -41,6 +41,13 @@ are intentionally not committed.
   - Report: `output/quality_reports/quality_report_20260526T034602Z.*`
   - Sources: `books/monosov/monosov1.epub`, `.fb2`, `.pdf`, `.txt`
   - Result: 4/4 cases `offline_checked`; text preserved through chunks.
+- Full local real-book extraction/chunking pass completed without GPU.
+  - Report: `output/quality_reports/quality_report_20260526T065337Z.*`
+  - Source: `books/monosov/monosov1.txt`
+  - Result: 185,301 characters, 372 paragraphs, 339 chunks,
+    `offline_checked`; text preserved through chunks.
+  - Post-run resource check: `ollama ps` was empty, so no model remained
+    resident in memory.
 - Local audiobook E2E smoke passed without external TTS services.
   - Test: `tests/test_end_to_end_smoke.py::test_role_chunks_voice_assignment_audio_qa_and_assembly_skip_deleted_text`
   - Covered path: role inventory -> active chunks -> v2 manifest -> voice
@@ -102,5 +109,9 @@ are intentionally not committed.
   project-local fallback is verified.
 - Listen to the generated live smoke chapter and/or one real-book short
   chapter for subjective voice-quality sign-off.
+- Run a full-length real-book LLM+TTS pass only when there is an explicit
+  long-running acceptance window; the safe full-book text/chunk pass is
+  complete, but full synthesis of a long book is intentionally not run by
+  default on an 8 GB VRAM / 16 GB RAM machine.
 - Keep `ollama ps` empty after benchmark runs so only one model is resident at a
   time on an 8 GB VRAM / 16 GB RAM machine.

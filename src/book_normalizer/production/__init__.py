@@ -3,5 +3,6 @@
 from __future__ import annotations
 
 __all__ = [
+    "casting",
     "character_bible",
 ]

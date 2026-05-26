@@ -694,6 +694,108 @@ def analyze_characters_command(
         click.echo(f"Manifest character metadata updated: {manifest_path}")
 
 
+@main.command(name="cast-voices")
+@click.argument("character_bible_path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--manifest",
+    "manifest_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Optional chunks_manifest_v2.json to annotate with cast metadata.",
+)
+@click.option(
+    "--out",
+    "out_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Casting plan JSON path. Defaults to casting_plan.json next to the bible.",
+)
+@click.option(
+    "--voice-overrides",
+    "overrides_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="ComfyUI voice override JSON path. Defaults to voice_overrides.json next to the bible.",
+)
+@click.option(
+    "--voice-library",
+    "voice_library_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Directory with saved CustomVoice prompts.",
+)
+@click.option(
+    "--preset-json",
+    "preset_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Built-in voice preset metadata JSON.",
+)
+@click.option(
+    "--min-design-lines",
+    type=int,
+    default=3,
+    show_default=True,
+    help="Minimum direct-speech lines before a character gets a voice-design request.",
+)
+@click.option("--no-design", is_flag=True, default=False, help="Disable synthetic voice-design recommendations.")
+@click.option("--no-saved", is_flag=True, default=False, help="Ignore saved voice library matches.")
+def cast_voices_command(
+    character_bible_path: Path,
+    manifest_path: Path | None,
+    out_path: Path | None,
+    overrides_path: Path | None,
+    voice_library_dir: Path | None,
+    preset_path: Path | None,
+    min_design_lines: int,
+    no_design: bool,
+    no_saved: bool,
+) -> None:
+    """Build a stable automatic voice casting plan from a character bible."""
+    from book_normalizer.chunking.manifest_v2 import save_manifest
+    from book_normalizer.production.casting import (
+        DEFAULT_CASTING_PLAN_NAME,
+        DEFAULT_VOICE_OVERRIDES_NAME,
+        apply_casting_plan_to_manifest,
+        build_casting_plan,
+        casting_voice_overrides,
+        write_casting_plan,
+        write_voice_overrides,
+    )
+
+    bible = json.loads(character_bible_path.read_text(encoding="utf-8"))
+    plan = build_casting_plan(
+        bible,
+        voice_library_dir=voice_library_dir,
+        preset_path=preset_path,
+        prefer_saved=not no_saved,
+        design_important=not no_design,
+        min_design_lines=min_design_lines,
+    )
+    plan_path = out_path or character_bible_path.with_name(DEFAULT_CASTING_PLAN_NAME)
+    overrides = casting_voice_overrides(plan)
+    overrides_target = overrides_path or character_bible_path.with_name(DEFAULT_VOICE_OVERRIDES_NAME)
+    write_casting_plan(plan_path, plan)
+    write_voice_overrides(overrides_target, overrides)
+
+    summary = plan["summary"]
+    click.echo(
+        "Casting plan: "
+        f"{plan['total_characters']} character(s), "
+        f"saved={summary['saved']}, "
+        f"designed={summary['designed']}, "
+        f"builtin={summary['builtin']}."
+    )
+    click.echo(f"Plan: {plan_path}")
+    click.echo(f"Voice overrides: {overrides_target}")
+
+    if manifest_path:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        annotated = apply_casting_plan_to_manifest(raw, plan)
+        save_manifest(manifest_path, annotated)
+        click.echo(f"Manifest casting metadata updated: {manifest_path}")
+
+
 @main.command(name="master")
 @click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
 @click.option(

@@ -66,10 +66,12 @@ are intentionally not committed.
 
 - Native Windows Tesseract is still not installed.
   - `winget list -e --id UB-Mannheim.TesseractOCR` found no installed package.
-  - One noninteractive install attempt reached the package installer but Windows
-    returned `0x800704c7` (`operation canceled by the user`), which usually
-    means the UAC/installer confirmation was dismissed or unavailable to the
-    background WSL session.
+  - Noninteractive install attempts reached the UB-Mannheim package installer,
+    but Windows returned `0x800704c7` (`operation canceled by the user`). This
+    usually means the UAC/installer confirmation was dismissed or unavailable
+    to the background WSL session.
+  - Latest attempted command:
+    `install.bat --yes --install-system-tools --download-tessdata --venv .venv-windows`.
   - The GUI now handles this correctly: stale WSL runtime paths are ignored on
     Windows, standard `C:\Program Files\Tesseract-OCR\tesseract.exe` is probed
     even when `PATH` is stale, and the OCR install prompt points to the native

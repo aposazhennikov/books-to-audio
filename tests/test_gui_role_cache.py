@@ -9,6 +9,7 @@ from book_normalizer.gui.role_cache import (
     CachedRoleExtraction,
     RoleCacheSettings,
     cache_path_for,
+    cached_role_entry_from_output_dir,
     find_cached_roles,
     restore_role_cache,
     save_role_cache,
@@ -156,6 +157,36 @@ def test_role_cache_normalizes_llm_endpoint_suffix(tmp_path: Path) -> None:
     )
 
     assert with_v1 == without_v1
+
+
+def test_role_cache_finds_compatible_legacy_entry(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    segments_path, roles_path = _write_manifests(source_dir)
+    cache_root = tmp_path / "cache"
+    entry = save_role_cache(
+        _book(),
+        _settings(),
+        segments_path,
+        roles_path,
+        cache_root=cache_root,
+    )
+    legacy_path = cache_root / "legacy-role-cache-key"
+    entry.path.rename(legacy_path)
+
+    found = find_cached_roles(_book(), _settings(), cache_root=cache_root)
+
+    assert found == CachedRoleExtraction(key=entry.key, path=legacy_path)
+
+
+def test_role_cache_detects_completed_output_manifests(tmp_path: Path) -> None:
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    _write_manifests(output_dir)
+
+    entry = cached_role_entry_from_output_dir(output_dir)
+
+    assert entry == CachedRoleExtraction(key=output_dir.name, path=output_dir)
 
 
 def test_role_cache_restores_absent_review_report_by_removing_stale_file(tmp_path: Path) -> None:

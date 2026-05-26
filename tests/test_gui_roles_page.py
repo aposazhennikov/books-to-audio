@@ -214,6 +214,43 @@ def test_roles_page_restores_completed_roles_from_cache(
     page.deleteLater()
 
 
+def test_roles_page_offers_existing_output_manifests_as_cache(
+    qapp,
+    qtbot,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    class _UnexpectedWorker:
+        def __init__(self, **_kwargs):
+            raise AssertionError("worker should not start when output manifests are restored")
+
+    book = _sample_book()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    segments_path, roles_path = _write_cached_role_inputs(output_dir)
+    prompts: list[str] = []
+    page = RolesPage()
+    qtbot.addWidget(page)
+    page.set_book(book, output_dir)
+    monkeypatch.setattr(
+        page,
+        "_ask_cached_roles",
+        lambda: prompts.append("prompted") or "restore",
+    )
+    monkeypatch.setattr(roles_page, "ExportSegmentsWorker", _UnexpectedWorker)
+
+    emitted: list[tuple[str, str]] = []
+    page.segments_ready.connect(lambda segments, roles: emitted.append((segments, roles)))
+    page._run_role_extraction()
+
+    assert prompts == ["prompted"]
+    assert page._table.item(0, 0).text() == "Cached Alice"
+    assert page._progress._status.text() == t("roles.cache_restored", n=1)
+    assert emitted == [(str(segments_path), str(roles_path))]
+    assert role_cache.find_cached_roles(book, page._role_cache_settings()) is not None
+    page.deleteLater()
+
+
 def test_roles_page_can_extract_again_when_role_cache_exists(
     qapp,
     qtbot,

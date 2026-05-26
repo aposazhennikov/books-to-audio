@@ -68,6 +68,14 @@ def find_cached_roles(
     entry = CachedRoleExtraction(key=path.name, path=path)
     if entry.segments_path.exists() and entry.roles_path.exists():
         return entry
+    return _find_compatible_cached_roles(book, settings, cache_root=cache_root)
+
+
+def cached_role_entry_from_output_dir(output_dir: Path) -> CachedRoleExtraction | None:
+    """Return an entry for already-written manifests in an output directory."""
+    entry = CachedRoleExtraction(key=Path(output_dir).name, path=Path(output_dir))
+    if entry.segments_path.exists() and entry.roles_path.exists():
+        return entry
     return None
 
 
@@ -205,6 +213,59 @@ def _book_sha1(book: object) -> str:
 
 def _load_json(path: Path) -> Any:
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _find_compatible_cached_roles(
+    book: object,
+    settings: RoleCacheSettings,
+    *,
+    cache_root: Path | None = None,
+) -> CachedRoleExtraction | None:
+    """Find compatible legacy cache entries when the exact key is missing."""
+    root = cache_root or CACHE_ROOT
+    if not root.exists():
+        return None
+
+    book_digest = _book_sha1(book)
+    settings_record = settings.to_key_record()
+    for metadata_path in sorted(
+        root.glob("*/metadata.json"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    ):
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if metadata.get("schema_version") != CACHE_SCHEMA_VERSION:
+            continue
+        if metadata.get("book_sha1") != book_digest:
+            continue
+        if _metadata_settings_record(metadata.get("settings")) != settings_record:
+            continue
+        entry = CachedRoleExtraction(
+            key=str(metadata.get("cache_key") or metadata_path.parent.name),
+            path=metadata_path.parent,
+        )
+        if entry.segments_path.exists() and entry.roles_path.exists():
+            return entry
+    return None
+
+
+def _metadata_settings_record(raw_settings: object) -> dict[str, Any] | None:
+    """Normalize persisted role settings for compatibility checks."""
+    if not isinstance(raw_settings, dict):
+        return None
+    try:
+        return RoleCacheSettings(
+            book_language=str(raw_settings.get("book_language", "")),
+            speaker_mode=str(raw_settings.get("speaker_mode", "")),
+            llm_endpoint=str(raw_settings.get("llm_endpoint", "")),
+            llm_model=str(raw_settings.get("llm_model", "")),
+            stress_mode=str(raw_settings.get("stress_mode", "")),
+        ).to_key_record()
+    except (TypeError, ValueError):
+        return None
 
 
 def _normalize_endpoint(endpoint: str) -> str:

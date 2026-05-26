@@ -28,6 +28,7 @@ from book_normalizer.gui.i18n import t
 from book_normalizer.gui.role_cache import (
     CachedRoleExtraction,
     RoleCacheSettings,
+    cached_role_entry_from_output_dir,
     find_cached_roles,
     restore_role_cache,
     save_role_cache,
@@ -285,10 +286,19 @@ class RolesPage(QWidget):
     ) -> CachedRoleExtraction | None:
         """Find a completed role cache entry, ignoring unreadable cache state."""
         try:
-            return find_cached_roles(self._book, settings)
+            cached = find_cached_roles(self._book, settings)
         except (OSError, ValueError, TypeError) as exc:
             logger.debug("Could not inspect role cache: %s", exc)
+            cached = None
+        if cached is not None:
+            return cached
+        try:
+            if self._output_dir is not None:
+                return cached_role_entry_from_output_dir(self._output_dir)
+        except (OSError, ValueError, TypeError) as exc:
+            logger.debug("Could not inspect output role manifests: %s", exc)
             return None
+        return None
 
     def _ask_cached_roles(self) -> str:
         """Ask whether to restore cached completed roles or extract again."""
@@ -336,6 +346,7 @@ class RolesPage(QWidget):
 
         role_count = len(list(inventory.get("roles", [])))
         self._btn_extract.setEnabled(True)
+        self._save_current_role_cache()
         self._progress.set_status(t("roles.cache_restored", n=role_count))
         if self._segments_path and self._roles_path:
             self.segments_ready.emit(str(self._segments_path), str(self._roles_path))

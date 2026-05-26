@@ -326,6 +326,9 @@ def test_roles_page_cache_prompt_uses_localized_copy(
             seen["buttons"] = []
             self._buttons: dict[str, object] = {}
 
+        def setStyleSheet(self, stylesheet):  # noqa: ANN001, N802
+            seen["stylesheet"] = stylesheet
+
         def setIcon(self, icon):  # noqa: ANN001, N802
             seen["icon"] = icon
 
@@ -365,6 +368,9 @@ def test_roles_page_cache_prompt_uses_localized_copy(
     assert seen["title"] == t("roles.cache_dialog_title")
     assert seen["text"] == t("roles.cache_dialog_text")
     assert seen["informative"] == t("roles.cache_dialog_informative")
+    assert "QMessageBox QLabel" in str(seen["stylesheet"])
+    assert "#0f172a" in str(seen["stylesheet"])
+    assert "#f8fafc" in str(seen["stylesheet"])
     assert {text for text, _role in seen["buttons"]} == {
         t("roles.cache_restore_button"),
         t("roles.cache_run_fresh_button"),

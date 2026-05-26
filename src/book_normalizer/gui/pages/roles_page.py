@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from book_normalizer.chunking.role_inventory import build_role_inventory
+from book_normalizer.gui.dialog_styles import apply_readable_message_box_style
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.role_cache import (
     CachedRoleExtraction,
@@ -292,6 +293,7 @@ class RolesPage(QWidget):
     def _ask_cached_roles(self) -> str:
         """Ask whether to restore cached completed roles or extract again."""
         box = QMessageBox(self)
+        apply_readable_message_box_style(box)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle(t("roles.cache_dialog_title"))
         box.setText(t("roles.cache_dialog_text"))

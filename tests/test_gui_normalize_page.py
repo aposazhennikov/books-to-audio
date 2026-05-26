@@ -538,6 +538,9 @@ def test_normalize_page_cache_prompt_uses_localized_copy(
             seen["buttons"] = []
             self._buttons: dict[str, object] = {}
 
+        def setStyleSheet(self, stylesheet):  # noqa: ANN001, N802
+            seen["stylesheet"] = stylesheet
+
         def setIcon(self, icon):  # noqa: ANN001, N802
             seen["icon"] = icon
 
@@ -578,6 +581,9 @@ def test_normalize_page_cache_prompt_uses_localized_copy(
     assert seen["title"] == t("norm.cache_dialog_title")
     assert seen["text"] == t("norm.cache_dialog_text", name=path.name)
     assert seen["informative"] == t("norm.cache_dialog_informative")
+    assert "QMessageBox QLabel" in str(seen["stylesheet"])
+    assert "#0f172a" in str(seen["stylesheet"])
+    assert "#f8fafc" in str(seen["stylesheet"])
     assert {text for text, _role in seen["buttons"]} == {
         t("norm.cache_restore_button"),
         t("norm.cache_run_fresh_button"),

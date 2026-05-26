@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from book_normalizer.gui.dialog_styles import apply_readable_message_box_style
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.normalization_cache import (
     CachedNormalization,
@@ -667,6 +668,7 @@ class NormalizePage(QWidget):
     def _ask_cached_normalization(self, path: Path) -> str:
         """Ask whether to restore a cached completed normalization or run again."""
         box = QMessageBox(self)
+        apply_readable_message_box_style(box)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle(t("norm.cache_dialog_title"))
         box.setText(t("norm.cache_dialog_text", name=path.name))

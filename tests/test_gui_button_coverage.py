@@ -10,7 +10,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from book_normalizer.gui import normalization_cache
+from book_normalizer.gui import normalization_cache, role_cache
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 from tests.gui.helpers import qapp as make_qapp
 from tests.gui.helpers import render_widget
@@ -45,6 +45,7 @@ def qapp():
 @pytest.fixture(autouse=True)
 def isolate_normalization_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(normalization_cache, "CACHE_ROOT", tmp_path / "normalization_cache")
+    monkeypatch.setattr(role_cache, "CACHE_ROOT", tmp_path / "role_cache")
 
 
 class _Signal:

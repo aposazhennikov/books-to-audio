@@ -336,7 +336,10 @@ class RolesPage(QWidget):
             return
         self._progress.reset()
         try:
-            segments_path, roles_path = restore_role_cache(cached, self._output_dir)
+            if cached.path.resolve() == self._output_dir.resolve():
+                segments_path, roles_path = cached.segments_path, cached.roles_path
+            else:
+                segments_path, roles_path = restore_role_cache(cached, self._output_dir)
             inventory = self._load_role_inventory(segments_path, roles_path)
         except (OSError, ValueError, TypeError) as exc:
             self._progress.set_status(t("roles.cache_restore_failed", msg=str(exc)))
@@ -346,7 +349,8 @@ class RolesPage(QWidget):
 
         role_count = len(list(inventory.get("roles", [])))
         self._btn_extract.setEnabled(True)
-        self._save_current_role_cache()
+        if cached.path.resolve() == self._output_dir.resolve():
+            self._save_current_role_cache()
         self._progress.set_status(t("roles.cache_restored", n=role_count))
         if self._segments_path and self._roles_path:
             self.segments_ready.emit(str(self._segments_path), str(self._roles_path))

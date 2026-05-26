@@ -238,6 +238,13 @@ def test_roles_page_offers_existing_output_manifests_as_cache(
         lambda: prompts.append("prompted") or "restore",
     )
     monkeypatch.setattr(roles_page, "ExportSegmentsWorker", _UnexpectedWorker)
+    monkeypatch.setattr(
+        roles_page,
+        "restore_role_cache",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("current output manifests should not be copied onto themselves")
+        ),
+    )
 
     emitted: list[tuple[str, str]] = []
     page.segments_ready.connect(lambda segments, roles: emitted.append((segments, roles)))

@@ -417,6 +417,36 @@ def test_voice_table_chapter_filter_reuses_existing_rows(qapp, qtbot) -> None:
     page.deleteLater()
 
 
+def test_voice_table_large_manifest_lazily_builds_visible_controls(qapp, qtbot) -> None:
+    page = VoicesPage()
+    qtbot.addWidget(page)
+    segments = [
+        {
+            "segment_index": index,
+            "chapter_index": index // 50,
+            "role": "male" if index % 5 == 0 else "narrator",
+            "speaker": f"Character {index % 20}" if index % 5 == 0 else "",
+            "is_dialogue": index % 5 == 0,
+            "voice_id": "male_confident" if index % 5 == 0 else "narrator_calm",
+            "intonation": "calm",
+            "text": f"Segment {index}.",
+        }
+        for index in range(300)
+    ]
+
+    page._voice_table.set_segments(segments)
+
+    live_voice_controls = sum(
+        1
+        for row in range(page._voice_table._table.rowCount())
+        if page._voice_table._table.cellWidget(row, 5) is not None
+    )
+    assert page._voice_table._table.rowCount() == len(segments)
+    assert 0 < live_voice_controls < len(segments) // 2
+
+    page.deleteLater()
+
+
 def test_voices_page_builds_chunks_without_deleted_segments(qapp, qtbot, tmp_path) -> None:
     page = VoicesPage()
     qtbot.addWidget(page)

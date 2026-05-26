@@ -247,7 +247,7 @@ def _check_comfyui(url: str) -> list[DoctorCheck]:
                     "ok",
                     (
                         f"{url} is reachable from the Windows host. "
-                        "From WSL, run live smoke with `.venv-windows/Scripts/python.exe "
+                        "Run live smoke with `.venv-windows/Scripts/python.exe "
                         "scripts/live_tts_smoke.py --comfyui-url "
                         f"{url} --workflow comfyui_workflows/qwen3_tts_template.json`."
                     ),

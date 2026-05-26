@@ -42,7 +42,7 @@ def test_start_comfyui_uses_detached_cmd_with_log_redirects(
         def __init__(self, args: list[str], **_kwargs: Any) -> None:
             calls.append(args)
 
-    monkeypatch.setattr(module, "_running_under_wsl", lambda: True)
+    monkeypatch.setattr(module, "_running_on_linux_windows_host", lambda: True)
     monkeypatch.setattr(module, "_cmd_exe_available", lambda: True)
     monkeypatch.setattr(module.subprocess, "Popen", _FakePopen)
 
@@ -84,7 +84,7 @@ def test_probe_url_can_fallback_to_windows_curl(monkeypatch) -> None:
         stdout = b"{\"system\": {}}"
 
     monkeypatch.setattr(module.urllib.request, "urlopen", fake_urlopen)
-    monkeypatch.setattr(module, "_running_under_wsl", lambda: True)
+    monkeypatch.setattr(module, "_running_on_linux_windows_host", lambda: True)
     monkeypatch.setattr(module, "_cmd_exe_available", lambda: True)
     monkeypatch.setattr(module.subprocess, "run", lambda *_args, **_kwargs: _FakeRun())
 

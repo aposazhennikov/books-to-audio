@@ -89,7 +89,7 @@ def start_comfyui(
     """Start ComfyUI detached through Windows cmd when available."""
     python_exe = root / "python_embeded" / "python.exe"
     main_py = root / "ComfyUI" / "main.py"
-    if _running_under_wsl() and _cmd_exe_available():
+    if _running_on_linux_windows_host() and _cmd_exe_available():
         command = _powershell_start_process_command(
             python_exe=_windows_path(python_exe),
             main_py=_windows_path(main_py),
@@ -148,7 +148,7 @@ def probe_url(url: str) -> bool:
     except Exception:
         pass
 
-    if _running_under_wsl() and _cmd_exe_available():
+    if _running_on_linux_windows_host() and _cmd_exe_available():
         try:
             result = subprocess.run(
                 ["cmd.exe", "/c", "curl", "-sS", "-m", "2", url],
@@ -166,7 +166,7 @@ def _looks_like_portable_comfyui(root: Path) -> bool:
     return (root / "python_embeded" / "python.exe").exists() and (root / "ComfyUI" / "main.py").exists()
 
 
-def _running_under_wsl() -> bool:
+def _running_on_linux_windows_host() -> bool:
     try:
         return "microsoft" in Path("/proc/sys/kernel/osrelease").read_text(encoding="utf-8").lower()
     except OSError:

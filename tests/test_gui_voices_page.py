@@ -210,9 +210,9 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     assert table._preset_toolbar_panel.isHidden()
     assert table._quick_apply_panel.isHidden()
     assert table._table.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    assert table._table.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    assert table._segment_editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    assert table._full_text_editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert table._table.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    assert table._segment_editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    assert table._full_text_editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
     for column in (0, 1, 2, 6, 7, 8):
         assert table._table.isColumnHidden(column)
 
@@ -235,7 +235,10 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     assert table._chapter_nav_panel.isVisible()
     assert table._preset_toolbar_panel.isVisible()
     assert table._quick_apply_panel.isVisible()
-    assert not table._table.verticalScrollBar().isVisible()
+    assert table._table.verticalScrollBar().maximum() > 0
+    assert table._table.verticalScrollBar().isVisible()
+    assert table._btn_prev_segment.isVisible()
+    assert table._btn_next_segment.isVisible()
     assert table._table.viewport().height() >= table._table.verticalHeader().defaultSectionSize()
     role_combo = table._table.cellWidget(0, 4)
     voice_combo = table._table.cellWidget(0, 5)

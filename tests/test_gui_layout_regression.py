@@ -486,6 +486,10 @@ def test_zoomed_chunk_markup_controls_do_not_overlap() -> None:
     assert page._voice_table._preset_toolbar_panel.isHidden()
     assert page._voice_table._quick_apply_panel.isHidden()
     assert page._voice_table._table.horizontalScrollBar().maximum() == 0
+    assert (
+        page._voice_table._table.verticalScrollBarPolicy()
+        == QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
 
     window.close()
     window.deleteLater()
@@ -606,6 +610,41 @@ def test_loaded_llm_chunk_page_keeps_settings_controls_inside_panel() -> None:
 
     assert page._llm_panel.isVisible()
     assert page._top_tabs.height() > 188
+
+    window.close()
+    window.deleteLater()
+
+
+def test_loaded_llm_chunk_page_keeps_editor_and_scroll_controls_usable() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    _populate_loaded_chunk_page(window, speaker_mode="llm")
+    render_widget(window, 2048, 873, scale=1.0)
+
+    page = window._voices_page
+    assert page._progress.isHidden()
+    assert page._manifest_label.isHidden()
+    assert page._voice_table._editor_tabs.isVisible()
+    assert page._voice_table._btn_prev_segment.isVisible()
+    assert page._voice_table._btn_next_segment.isVisible()
+    assert page._voice_table._table.verticalScrollBar().maximum() > 0
+    assert page._voice_table._table.verticalScrollBar().isVisible()
+    assert (
+        page._voice_table._segment_editor.verticalScrollBarPolicy()
+        == QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
+
+    top_tabs_rect = _rect_in_window(window, page._top_tabs)
+    table_panel_rect = _rect_in_window(window, page._voice_table)
+    editor_tabs_rect = _rect_in_window(window, page._voice_table._editor_tabs)
+    segment_editor_rect = _rect_in_window(window, page._voice_table._segment_editor)
+
+    assert top_tabs_rect.bottom() <= table_panel_rect.top()
+    assert editor_tabs_rect.bottom() <= table_panel_rect.bottom()
+    assert segment_editor_rect.bottom() <= editor_tabs_rect.bottom()
+    assert page._voice_table._table.horizontalScrollBar().maximum() == 0
 
     window.close()
     window.deleteLater()

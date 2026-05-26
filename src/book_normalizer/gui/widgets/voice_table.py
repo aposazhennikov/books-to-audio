@@ -168,7 +168,7 @@ class VoiceTableWidget(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
 
         # Chapter navigation.
         self._chapter_nav_panel = QWidget()
@@ -180,6 +180,14 @@ class VoiceTableWidget(QWidget):
         self._chapter_filter = QComboBox()
         self._chapter_filter.currentIndexChanged.connect(lambda _idx: self._populate_table())
         nav.addWidget(self._chapter_filter)
+        self._btn_prev_segment = QPushButton()
+        self._btn_prev_segment.setProperty("compactActionButton", True)
+        self._btn_prev_segment.clicked.connect(lambda: self._select_visible_row(-1))
+        nav.addWidget(self._btn_prev_segment)
+        self._btn_next_segment = QPushButton()
+        self._btn_next_segment.setProperty("compactActionButton", True)
+        self._btn_next_segment.clicked.connect(lambda: self._select_visible_row(1))
+        nav.addWidget(self._btn_next_segment)
         nav.addStretch()
         layout.addWidget(self._chapter_nav_panel)
 
@@ -266,7 +274,8 @@ class VoiceTableWidget(QWidget):
         )
         self._table.setAlternatingRowColors(True)
         self._table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._table.verticalHeader().setVisible(False)
         self._table.itemChanged.connect(self._on_table_item_changed)
         self._table.itemSelectionChanged.connect(
@@ -276,7 +285,7 @@ class VoiceTableWidget(QWidget):
 
         self._editor_tabs = QTabWidget()
         self._editor_tabs.setObjectName("voiceTextEditorTabs")
-        self._editor_tabs.setMinimumHeight(132)
+        self._editor_tabs.setMinimumHeight(148)
         self._editor_tabs.setStyleSheet(
         "QTabWidget::pane {"
             "  border: 1px solid rgba(91,115,142,0.16);"
@@ -297,8 +306,8 @@ class VoiceTableWidget(QWidget):
         self._editor_tabs.addTab(self._build_segment_editor(), "")
         self._editor_tabs.addTab(self._build_full_text_editor(), "")
         splitter.addWidget(self._editor_tabs)
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 2)
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 3)
         layout.addWidget(splitter)
 
         self.retranslate()
@@ -334,13 +343,13 @@ class VoiceTableWidget(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
         self._segment_editor.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
         )
         self._segment_editor.setStyleSheet(_editor_style())
         self._segment_editor.textChanged.connect(
             self._on_segment_editor_text_changed,
         )
-        outer.addWidget(self._segment_editor)
+        outer.addWidget(self._segment_editor, 1)
 
         actions = QHBoxLayout()
         actions.setSpacing(6)
@@ -402,11 +411,11 @@ class VoiceTableWidget(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
         self._full_text_editor.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
         )
         self._full_text_editor.setStyleSheet(_editor_style())
         self._full_text_editor.textChanged.connect(self._update_full_char_count)
-        outer.addWidget(self._full_text_editor)
+        outer.addWidget(self._full_text_editor, 1)
 
         actions = QHBoxLayout()
         actions.setSpacing(6)
@@ -440,6 +449,10 @@ class VoiceTableWidget(QWidget):
             t("voice.col_retry"),
         ])
         self._chapter_filter_label.setText(t("voice.chapter_filter"))
+        self._btn_prev_segment.setText(t("voice.prev_segment"))
+        self._btn_prev_segment.setToolTip(t("voice.prev_segment_tip"))
+        self._btn_next_segment.setText(t("voice.next_segment"))
+        self._btn_next_segment.setToolTip(t("voice.next_segment_tip"))
         self._editor_tabs.setTabText(0, t("voice.editor_segment_tab"))
         self._editor_tabs.setTabText(1, t("voice.editor_full_tab"))
         self._segment_editor_title.setText(t("voice.editor_segment_title"))
@@ -490,7 +503,7 @@ class VoiceTableWidget(QWidget):
             max(58, min(92, round(68 * self._ui_scale))),
         )
         self._editor_tabs.setMinimumHeight(
-            max(132, min(190, round(140 * self._ui_scale))),
+            max(148, min(190, round(150 * self._ui_scale))),
         )
         self._apply_table_layout()
 
@@ -550,7 +563,7 @@ class VoiceTableWidget(QWidget):
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         if self._compact_mode:
-            self._table.setMinimumHeight(96)
+            self._table.setMinimumHeight(108)
             self._quick_combo.setMinimumWidth(150)
             self._table.setColumnWidth(4, 150)
             self._table.setColumnWidth(5, 170)
@@ -560,7 +573,7 @@ class VoiceTableWidget(QWidget):
                 self._scaled_table_row_height(32),
             )
         else:
-            self._table.setMinimumHeight(132)
+            self._table.setMinimumHeight(112)
             self._quick_combo.setMinimumWidth(190)
             self._table.setColumnWidth(0, 42)
             self._table.setColumnWidth(1, 72)
@@ -594,6 +607,8 @@ class VoiceTableWidget(QWidget):
         self._preset_toolbar_panel.setVisible(has_segments and not self._ultra_dense_mode)
         self._quick_apply_panel.setVisible(has_segments and not self._ultra_dense_mode)
         self._editor_tabs.setVisible(has_segments and not self._dense_mode)
+        self._btn_prev_segment.setEnabled(has_segments and self._table.rowCount() > 1)
+        self._btn_next_segment.setEnabled(has_segments and self._table.rowCount() > 1)
 
     def _scaled_table_row_height(self, base_height: int) -> int:
         return max(
@@ -838,6 +853,28 @@ class VoiceTableWidget(QWidget):
             table_row = 0 if self._row_to_segment_index else -1
         if table_row >= 0:
             self._table.setCurrentCell(table_row, 3)
+            item = self._table.item(table_row, 3)
+            if item is not None:
+                self._table.scrollToItem(
+                    item,
+                    QAbstractItemView.ScrollHint.PositionAtCenter,
+                )
+
+    def _select_visible_row(self, delta: int) -> None:
+        """Move selection through the currently visible chunk rows."""
+        if self._table.rowCount() <= 0:
+            return
+        current = self._table.currentRow()
+        if current < 0:
+            current = 0
+        next_row = max(0, min(self._table.rowCount() - 1, current + delta))
+        self._table.setCurrentCell(next_row, 3)
+        item = self._table.item(next_row, 3)
+        if item is not None:
+            self._table.scrollToItem(
+                item,
+                QAbstractItemView.ScrollHint.PositionAtCenter,
+            )
 
     def _load_selected_segment(self) -> None:
         row = self._current_row()

@@ -409,7 +409,7 @@ class NormalizePage(QWidget):
     def set_ui_scale(self, scale: float) -> None:
         """Keep control spacing stable under high-DPI UI zoom."""
         self._ui_scale = max(0.8, min(1.45, scale))
-        self._settings_grid.setVerticalSpacing(max(8, round(12 * self._ui_scale)))
+        self._settings_grid.setVerticalSpacing(max(10, round(18 * self._ui_scale)))
 
     def _sync_compact_mode(self) -> None:
         compact = self.width() < 900

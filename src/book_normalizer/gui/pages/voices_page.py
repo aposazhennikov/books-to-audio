@@ -206,7 +206,11 @@ class VoicesPage(QWidget):
 
         # Manifest path display.
         self._manifest_label = QLabel("")
-        self._manifest_label.setWordWrap(True)
+        self._manifest_label.setWordWrap(False)
+        self._manifest_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
         self._manifest_label.setStyleSheet(
             "color: rgba(51,65,85,0.62); font-size: 10px;"
             "padding: 2px 0;",
@@ -335,17 +339,17 @@ class VoicesPage(QWidget):
     def _sync_settings_panel_height(self) -> None:
         """Balance the scrollable settings area against the assignment table."""
         width_compact = self.width() < 960
-        height_compact = self.height() < 580
+        height_compact = self.height() < 760
         content_needed = self._settings_panel.sizeHint().height()
         if self._top_tabs.tabBar().isVisible():
             content_needed += self._top_tabs.tabBar().sizeHint().height()
-        content_needed += round(18 * self._ui_scale)
+        content_needed += round((8 if height_compact else 18) * self._ui_scale)
         if width_compact:
             target = max(164, round(105 * self._ui_scale))
             minimum = 164
         elif height_compact:
-            target = max(188, round(130 * self._ui_scale))
-            minimum = 188
+            target = max(224, round(154 * self._ui_scale))
+            minimum = 224
         else:
             target = max(188, round(188 * self._ui_scale))
             minimum = 188
@@ -355,7 +359,7 @@ class VoicesPage(QWidget):
             if self.height() < 430:
                 table_reserve = 145
             elif height_compact:
-                table_reserve = 250
+                table_reserve = 360
             else:
                 table_reserve = max(260, round(260 * self._ui_scale))
             target = min(target, max(minimum, self.height() - table_reserve))
@@ -365,18 +369,22 @@ class VoicesPage(QWidget):
     def _sync_compact_mode(self) -> None:
         """Switch heavy table controls into compact mode on narrow widths."""
         width_compact = self.width() < 960
-        height_compact = self.height() < 580
+        height_compact = self.height() < 760
+        editor_dense = self.height() < 600
         controls_compact = width_compact or height_compact
         ultra_dense = self.height() < 430
-        dense = ultra_dense or (height_compact and not width_compact)
+        dense = ultra_dense or (editor_dense and not width_compact)
         self._compact_mode = controls_compact
         self._voice_table.set_compact_mode(width_compact)
         self._voice_table.set_dense_mode(dense, ultra_dense=ultra_dense)
-        self._settings_layout.setVerticalSpacing(12 if controls_compact else 6)
+        self._settings_layout.setVerticalSpacing(4 if height_compact else 6)
         self._action_panel.layout().setContentsMargins(0, 4 if controls_compact else 0, 0, 0)
         self._chunk_size.setFixedHeight(42 if controls_compact else 38)
         self._chunk_size.setFixedWidth(118 if width_compact else 128)
         self._progress.setVisible(not controls_compact)
+        self._manifest_label.setVisible(
+            bool(self._manifest_label.text()) and not controls_compact,
+        )
         for button in (
             self._btn_detect,
             self._btn_load,
@@ -396,7 +404,7 @@ class VoicesPage(QWidget):
             label.setVisible(not controls_compact)
         self._speaker_mode_hint.setVisible(not controls_compact)
         self._stress_mode.setVisible(not controls_compact)
-        self._stats_label.setVisible(not dense)
+        self._stats_label.setVisible(not controls_compact and not dense)
         self._btn_detect.setMinimumWidth(0 if width_compact else 260)
         self._btn_detect.setMaximumWidth(16777215 if width_compact else 360)
         self._btn_detect.setText(t("voice.compact_detect") if width_compact else t("voice.detect"))

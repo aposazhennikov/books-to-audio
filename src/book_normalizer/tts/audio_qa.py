@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from book_normalizer.chunking.manifest_v2 import ensure_v2_manifest
+from book_normalizer.chunking.manifest_v2 import chunk_is_excluded, ensure_v2_manifest
 
 
 @dataclass
@@ -71,6 +71,8 @@ def run_audio_qa(
         chapter_index = int(chapter.get("chapter_index", 0))
         for chunk in chapter.get("chunks", []):
             if not isinstance(chunk, dict):
+                continue
+            if chunk_is_excluded(chunk):
                 continue
             chunk_index = int(chunk.get("chunk_index", 0))
             result.total_chunks += 1

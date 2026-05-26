@@ -72,3 +72,42 @@ def test_assemble_from_manifest_skips_missing_files_when_not_strict(tmp_path: Pa
 
     assert results[0].skipped is True
     assert results[0].missing == 1
+
+
+def test_assemble_from_manifest_skips_excluded_chunks_even_with_stale_audio(
+    tmp_path: Path,
+) -> None:
+    keep = tmp_path / "audio_chunks" / "chapter_001" / "chunk_001_narrator.wav"
+    deleted = tmp_path / "audio_chunks" / "chapter_001" / "chunk_002_narrator.wav"
+    _write_wav(keep, frames=100)
+    _write_wav(deleted, frames=100)
+    manifest = {
+        "version": 2,
+        "chapters": [
+            {
+                "chapter_index": 0,
+                "chunks": [
+                    {
+                        "chunk_index": 0,
+                        "voice": "narrator",
+                        "synthesized": True,
+                        "audio_file": str(keep),
+                    },
+                    {
+                        "chunk_index": 1,
+                        "voice": "narrator",
+                        "synthesized": True,
+                        "audio_file": str(deleted),
+                        "deleted": True,
+                        "excluded_from_tts": True,
+                    },
+                ],
+            }
+        ],
+    }
+
+    results = assemble_from_manifest(manifest, tmp_path, pause_same_voice_ms=0)
+
+    assert results[0].chunks == 1
+    with wave.open(str(tmp_path / "chapter_001.wav"), "rb") as wav:
+        assert wav.getnframes() == 100

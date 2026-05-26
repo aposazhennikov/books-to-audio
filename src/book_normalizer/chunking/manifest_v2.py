@@ -248,6 +248,11 @@ def flatten_manifest(
     ]
 
 
+def chunk_is_excluded(chunk: dict[str, Any]) -> bool:
+    """Return true when a chunk is intentionally omitted from TTS output."""
+    return bool(chunk.get("deleted") or chunk.get("excluded_from_tts"))
+
+
 def chunks_to_manifest(
     chunks: Iterable[dict[str, Any]],
     *,

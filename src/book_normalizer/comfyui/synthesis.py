@@ -9,7 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from book_normalizer.chunking.manifest_v2 import DEFAULT_MANIFEST_NAME, ensure_v2_manifest
+from book_normalizer.chunking.manifest_v2 import (
+    DEFAULT_MANIFEST_NAME,
+    chunk_is_excluded,
+    ensure_v2_manifest,
+)
 from book_normalizer.comfyui.client import ComfyUIClient, ComfyUIError
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
 from book_normalizer.tts.voice_mapping import voice_mapping_candidates
@@ -76,6 +80,8 @@ def collect_pending_chunks(
     """Return chunk pairs that should be synthesized."""
     pending: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for chapter, chunk in iter_manifest_chunks(manifest, chapter_filter):
+        if chunk_is_excluded(chunk):
+            continue
         if chunk.get("synthesized", False):
             continue
         if failed_only and not chunk.get("failed", False):
@@ -89,7 +95,7 @@ def count_done_chunks(manifest: dict[str, Any], chapter_filter: int | None = Non
     return sum(
         1
         for _chapter, chunk in iter_manifest_chunks(manifest, chapter_filter)
-        if chunk.get("synthesized", False)
+        if not chunk_is_excluded(chunk) and chunk.get("synthesized", False)
     )
 
 
@@ -167,7 +173,10 @@ def synthesize_manifest(
 ) -> SynthesisSummary:
     """Synthesize all pending chunks and update the manifest after each chunk."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    all_pairs = iter_manifest_chunks(manifest, chapter_filter)
+    all_pairs = [
+        pair for pair in iter_manifest_chunks(manifest, chapter_filter)
+        if not chunk_is_excluded(pair[1])
+    ]
     pending = collect_pending_chunks(manifest, chapter_filter, failed_only=failed_only)
     total = len(all_pairs)
     done_start = count_done_chunks(manifest, chapter_filter)

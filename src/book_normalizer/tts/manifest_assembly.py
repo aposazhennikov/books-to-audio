@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from book_normalizer.chunking.manifest_v2 import ensure_v2_manifest
+from book_normalizer.chunking.manifest_v2 import chunk_is_excluded, ensure_v2_manifest
 
 
 @dataclass
@@ -59,7 +59,12 @@ def assemble_from_manifest(
 
         chunks = [
             c for c in chapter_entry.get("chunks", [])
-            if isinstance(c, dict) and c.get("synthesized", False) and c.get("audio_file")
+            if (
+                isinstance(c, dict)
+                and not chunk_is_excluded(c)
+                and c.get("synthesized", False)
+                and c.get("audio_file")
+            )
         ]
         if not chunks:
             results.append(

@@ -89,3 +89,37 @@ def test_audio_qa_passes_basic_non_silent_file(tmp_path: Path) -> None:
 
     assert result.checked_files == 1
     assert not any(issue.severity == "error" for issue in result.issues)
+
+
+def test_audio_qa_ignores_deleted_chunks(tmp_path: Path) -> None:
+    wav_path = tmp_path / "ok.wav"
+    _write_wav(wav_path, b"\x10\x00" * 24000)
+    manifest = {
+        "version": 2,
+        "chapters": [
+            {
+                "chapter_index": 0,
+                "chunks": [
+                    {
+                        "chunk_index": 0,
+                        "synthesized": True,
+                        "audio_file": str(wav_path),
+                        "text": "Активный фрагмент.",
+                    },
+                    {
+                        "chunk_index": 1,
+                        "synthesized": False,
+                        "text": "Удаленный издательский мусор.",
+                        "deleted": True,
+                        "excluded_from_tts": True,
+                    },
+                ],
+            }
+        ],
+    }
+
+    result = run_audio_qa(manifest, min_seconds_per_100_chars=0.1)
+
+    assert result.total_chunks == 1
+    assert result.synthesized_chunks == 1
+    assert not any(issue.kind == "not_synthesized" for issue in result.issues)

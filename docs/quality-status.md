@@ -34,6 +34,13 @@ are intentionally not committed.
   - Report: `output/quality_reports/quality_report_20260526T034602Z.*`
   - Sources: `books/monosov/monosov1.epub`, `.fb2`, `.pdf`, `.txt`
   - Result: 4/4 cases `offline_checked`; text preserved through chunks.
+- Local audiobook E2E smoke passed without external TTS services.
+  - Test: `tests/test_end_to_end_smoke.py::test_role_chunks_voice_assignment_audio_qa_and_assembly_skip_deleted_text`
+  - Covered path: role inventory -> active chunks -> v2 manifest -> voice
+    assignment -> synthesized WAV placeholders -> audio QA -> chapter assembly.
+  - Deleted/excluded chunks with stale audio are skipped by synthesis, QA, and
+    chapter assembly, so removed publisher boilerplate cannot leak into the
+    final chapter WAV.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.
   - Report: `output/quality_reports/ocr_multilingual_smoke_20260526T025818Z.json`
   - Runtime: local WSL Tesseract with `data/tessdata`.
@@ -54,8 +61,7 @@ are intentionally not committed.
 ## Remaining Before Final Sign-Off
 
 - Confirm native Windows Tesseract after an interactive install/UAC approval.
-- Run one full end-to-end audiobook chapter path:
-  normalized book -> role inventory -> editable chunks -> voice assignment ->
-  synthesis -> chapter assembly -> preview/audio QA.
+- Run one full end-to-end audiobook chapter path against a live TTS backend
+  (ComfyUI/Qwen CustomVoice), then listen to the previewed chapter.
 - Keep `ollama ps` empty after benchmark runs so only one model is resident at a
   time on an 8 GB VRAM / 16 GB RAM machine.

@@ -161,6 +161,43 @@ def test_synthesize_manifest_failed_only_skips_unfailed_chunks(tmp_path: Path) -
     assert client.calls == 0
 
 
+def test_synthesize_manifest_skips_deleted_chunks(tmp_path: Path) -> None:
+    manifest = _manifest()
+    chunks = manifest["chapters"][0]["chunks"]
+    chunks.append(
+        {
+            "chapter_index": 0,
+            "chunk_index": 1,
+            "voice_label": "narrator",
+            "voice_tone": "calm",
+            "text": "Deleted publisher boilerplate.",
+            "synthesized": False,
+            "deleted": True,
+            "excluded_from_tts": True,
+        }
+    )
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    client = _Client()
+    lines: list[str] = []
+
+    summary = synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=client,  # type: ignore[arg-type]
+        builder=_Builder(),  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+        progress=lines.append,
+    )
+
+    assert summary.total == 1
+    assert summary.synthesized == 1
+    assert client.calls == 1
+    assert chunks[0]["synthesized"] is True
+    assert chunks[1]["synthesized"] is False
+    assert "PROGRESS 1/1" in lines
+
+
 def test_load_manifest_rejects_v1_list(tmp_path: Path) -> None:
     manifest_path = tmp_path / "chunks_manifest.json"
     manifest_path.write_text("[]", encoding="utf-8")

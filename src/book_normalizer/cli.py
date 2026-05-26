@@ -908,6 +908,83 @@ def production_qa_command(
         click.echo(f"Manifest production QA metadata updated: {manifest_path}")
 
 
+@main.command(name="package-audiobook")
+@click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--out",
+    "output_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output package directory. Defaults to audiobook_package next to the manifest.",
+)
+@click.option(
+    "--chapter-audio-dir",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Directory containing chapter_###.wav/mp3 or mastered chapter files.",
+)
+@click.option("--title", default="", help="Audiobook title metadata.")
+@click.option("--author", default="", help="Audiobook author/artist metadata.")
+@click.option("--cover", "cover_path", type=click.Path(exists=True, path_type=Path), default=None, help="Cover image.")
+@click.option("--bitrate", default="192k", show_default=True, help="Audio bitrate for MP3/M4B exports.")
+@click.option(
+    "--format",
+    "package_format",
+    type=click.Choice(["both", "m4b", "mp3", "metadata-only"]),
+    default="both",
+    show_default=True,
+    help="Package outputs to prepare.",
+)
+@click.option("--dry-run", is_flag=True, default=False, help="Write metadata and commands without running ffmpeg.")
+@click.option("--allow-review", is_flag=True, default=False, help="Allow packaging when QA status is not passed.")
+def package_audiobook_command(
+    manifest_path: Path,
+    output_dir: Path | None,
+    chapter_audio_dir: Path | None,
+    title: str,
+    author: str,
+    cover_path: Path | None,
+    bitrate: str,
+    package_format: str,
+    dry_run: bool,
+    allow_review: bool,
+) -> None:
+    """Create final audiobook package metadata, MP3 chapters, and optional M4B."""
+    from book_normalizer.production.audiobook_package import build_audiobook_package
+
+    make_mp3 = package_format in {"both", "mp3"}
+    make_m4b = package_format in {"both", "m4b"}
+    if package_format == "metadata-only":
+        dry_run = True
+
+    try:
+        result = build_audiobook_package(
+            manifest_path,
+            output_dir=output_dir,
+            chapter_audio_dir=chapter_audio_dir,
+            title=title,
+            author=author,
+            cover_path=cover_path,
+            bitrate=bitrate,
+            make_m4b=make_m4b,
+            make_mp3=make_mp3,
+            require_passed_qa=not allow_review,
+            dry_run=dry_run,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    click.echo(
+        "Audiobook package: "
+        f"{len(result.chapters)} chapter(s), "
+        f"commands={len(result.commands)}, "
+        f"dry_run={result.dry_run}."
+    )
+    if result.m4b_path:
+        click.echo(f"M4B: {result.m4b_path}")
+    click.echo(f"Report: {result.report_path}")
+
+
 @main.command(name="master")
 @click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
 @click.option(

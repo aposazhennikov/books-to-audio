@@ -1359,6 +1359,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.compact_save_local_voice": {
         "en": "Save",
         "ru": "Сохр.",
+        "zh": "保存",
+        "kk": "Сақт.",
+        "uz": "Saql.",
     },
     "synth.saved_voice_all_hint": {
         "en": "The selected saved voice will be used for every chunk; previous voice markup stays in the manifest but does not affect timbre.",
@@ -1725,6 +1728,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.compact_chunk_editor_save": {
         "en": "Save",
         "ru": "\u0421\u043e\u0445\u0440. \u0447\u0430\u043d\u043a",
+        "zh": "\u4fdd\u5b58",
+        "kk": "\u0421\u0430\u049b\u0442.",
+        "uz": "Saql.",
     },
     "synth.chunk_editor_split": {
         "en": "Split",
@@ -1747,6 +1753,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.compact_chunk_editor_merge": {
         "en": "Merge",
         "ru": "\u0421\u043a\u043b\u0435\u0438\u0442\u044c",
+        "zh": "\u5408\u5e76",
+        "kk": "\u0411\u0456\u0440\u0456\u043a.",
+        "uz": "Birlasht.",
     },
     "synth.chunk_editor_saved": {
         "en": "Chunk manifest saved. Synthesis will use the edited text.",

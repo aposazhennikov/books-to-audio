@@ -985,6 +985,66 @@ def package_audiobook_command(
     click.echo(f"Report: {result.report_path}")
 
 
+@main.command(name="production-preflight")
+@click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--out-dir", type=click.Path(path_type=Path), default=None, help="Directory for production artifacts.")
+@click.option("--voice-library", "voice_library_dir", type=click.Path(path_type=Path), default=None)
+@click.option("--preset-json", "preset_path", type=click.Path(exists=True, path_type=Path), default=None)
+@click.option("--min-design-lines", type=int, default=3, show_default=True)
+@click.option("--package", "package_outputs", is_flag=True, default=False, help="Also prepare audiobook package.")
+@click.option("--chapter-audio-dir", type=click.Path(exists=True, path_type=Path), default=None)
+@click.option("--title", default="", help="Audiobook title override.")
+@click.option("--author", default="", help="Audiobook author/artist metadata.")
+@click.option("--cover", "cover_path", type=click.Path(exists=True, path_type=Path), default=None)
+@click.option("--bitrate", default="192k", show_default=True)
+@click.option("--dry-run-package/--run-ffmpeg-package", default=True, show_default=True)
+@click.option("--allow-review-package", is_flag=True, default=False)
+def production_preflight_command(
+    manifest_path: Path,
+    out_dir: Path | None,
+    voice_library_dir: Path | None,
+    preset_path: Path | None,
+    min_design_lines: int,
+    package_outputs: bool,
+    chapter_audio_dir: Path | None,
+    title: str,
+    author: str,
+    cover_path: Path | None,
+    bitrate: str,
+    dry_run_package: bool,
+    allow_review_package: bool,
+) -> None:
+    """Run all production metadata passes around a v2 manifest."""
+    from book_normalizer.production.pipeline import run_production_preflight
+
+    try:
+        result = run_production_preflight(
+            manifest_path,
+            output_dir=out_dir,
+            voice_library_dir=voice_library_dir,
+            preset_path=preset_path,
+            min_design_lines=min_design_lines,
+            package=package_outputs,
+            chapter_audio_dir=chapter_audio_dir,
+            title=title,
+            author=author,
+            cover_path=cover_path,
+            bitrate=bitrate,
+            dry_run_package=dry_run_package,
+            allow_review_package=allow_review_package,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    click.echo(f"Production preflight complete: {result.run_report_path}")
+    click.echo(f"Character bible: {result.character_bible_path}")
+    click.echo(f"Casting plan: {result.casting_plan_path}")
+    click.echo(f"Director score: {result.director_score_path}")
+    click.echo(f"Production QA: {result.production_qa_report_path}")
+    if result.package_report_path:
+        click.echo(f"Package report: {result.package_report_path}")
+
+
 @main.command(name="master")
 @click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
 @click.option(

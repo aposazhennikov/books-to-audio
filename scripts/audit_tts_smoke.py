@@ -17,6 +17,10 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 BAD_FRONT_MATTER_TERMS = ("royallib", "http", "приятного")
+DEFAULT_MAX_SILENCE_SECONDS = 2.5
+DEFAULT_MAX_CLIPPING_RATIO = 0.001
+SILENCE_THRESHOLD = 80
+CLIPPING_THRESHOLD = 32700
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,6 +28,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("smoke_dir", type=Path)
     parser.add_argument("--min-duration", type=float, default=10.0)
     parser.add_argument("--expect-chunks", type=int, default=2)
+    parser.add_argument("--max-silence-seconds", type=float, default=DEFAULT_MAX_SILENCE_SECONDS)
+    parser.add_argument("--max-clipping-ratio", type=float, default=DEFAULT_MAX_CLIPPING_RATIO)
     parser.add_argument("--write-report", type=Path, default=None)
     args = parser.parse_args(argv)
 
@@ -32,6 +38,8 @@ def main(argv: list[str] | None = None) -> int:
             args.smoke_dir,
             min_duration=args.min_duration,
             expect_chunks=args.expect_chunks,
+            max_silence_seconds=args.max_silence_seconds,
+            max_clipping_ratio=args.max_clipping_ratio,
         )
     except (OSError, ValueError, KeyError) as exc:
         print(f"Audit failed: {exc}", file=sys.stderr)
@@ -50,6 +58,8 @@ def audit_tts_smoke(
     *,
     min_duration: float = 10.0,
     expect_chunks: int = 2,
+    max_silence_seconds: float = DEFAULT_MAX_SILENCE_SECONDS,
+    max_clipping_ratio: float = DEFAULT_MAX_CLIPPING_RATIO,
 ) -> dict[str, Any]:
     """Return a strict audit report for a live TTS smoke output directory."""
     live_report = json.loads((smoke_dir / "live_tts_smoke_report.json").read_text(encoding="utf-8"))
@@ -85,6 +95,10 @@ def audit_tts_smoke(
         failures.append(f"duration_seconds={wav_stats['duration_seconds']!r}")
     if wav_stats["rms"] <= 0 or wav_stats["peak"] <= 0:
         failures.append("silent_wav")
+    if wav_stats["longest_silence_seconds"] > max_silence_seconds:
+        failures.append(f"longest_silence_seconds={wav_stats['longest_silence_seconds']!r}")
+    if wav_stats["clipping_ratio"] > max_clipping_ratio:
+        failures.append(f"clipping_ratio={wav_stats['clipping_ratio']!r}")
 
     return {
         "ok": not failures,
@@ -95,6 +109,11 @@ def audit_tts_smoke(
         "chunks": len(chunks),
         "bad_front_matter_terms": bad_terms,
         "wav": wav_stats,
+        "limits": {
+            "min_duration_seconds": min_duration,
+            "max_silence_seconds": max_silence_seconds,
+            "max_clipping_ratio": max_clipping_ratio,
+        },
         "failures": failures,
     }
 
@@ -117,9 +136,14 @@ def _wav_stats(path: Path) -> dict[str, Any]:
     if samples:
         peak = max(abs(sample) for sample in samples)
         rms = int(math.sqrt(sum(sample * sample for sample in samples) / len(samples)))
+        clipping_samples = sum(1 for sample in samples if abs(sample) >= CLIPPING_THRESHOLD)
+        clipping_ratio = clipping_samples / len(samples)
+        longest_silence_samples = _longest_silence_run(samples)
     else:
         peak = 0
         rms = 0
+        clipping_ratio = 0.0
+        longest_silence_samples = 0
     return {
         "path": str(path),
         "channels": channels,
@@ -129,7 +153,25 @@ def _wav_stats(path: Path) -> dict[str, Any]:
         "duration_seconds": round(frames_count / sample_rate, 2) if sample_rate else 0,
         "rms": rms,
         "peak": peak,
+        "clipping_ratio": round(clipping_ratio, 6),
+        "longest_silence_seconds": (
+            round(longest_silence_samples / (sample_rate * channels), 2)
+            if sample_rate and channels
+            else 0
+        ),
     }
+
+
+def _longest_silence_run(samples: list[int]) -> int:
+    longest = 0
+    current = 0
+    for sample in samples:
+        if abs(sample) <= SILENCE_THRESHOLD:
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    return longest
 
 
 if __name__ == "__main__":

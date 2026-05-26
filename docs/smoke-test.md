@@ -61,8 +61,8 @@ python scripts\audit_tts_smoke.py output\live_tts_smoke `
 ```
 
 The audit checks the live smoke report, manifest chunk count, front-matter
-terms, WAV format, duration, and non-silent audio. It does not load ComfyUI,
-Ollama, or any model.
+terms, WAV format, duration, non-silent audio, clipping ratio, and longest
+silence. It does not load ComfyUI, Ollama, or any model.
 
 Final automated readiness report:
 

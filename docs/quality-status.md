@@ -96,7 +96,7 @@ are intentionally not committed.
     output/live_tts_real_book_smoke_after_filter --write-report
     output/live_tts_real_book_smoke_after_filter/audit_report.json`.
     Result: `ok=true`; duration 45.48 s, mono, 24 kHz, RMS 3574, peak 29824,
-    no front-matter terms.
+    clipping ratio 0.0, longest silence 1.26 s, no front-matter terms.
   - Final automated readiness check passed:
     `python scripts/final_readiness_check.py --write-report
     output/final_readiness_report.json`. Result: `automated_gates_ok=true`,

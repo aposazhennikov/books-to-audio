@@ -982,11 +982,21 @@ def _system_package_commands(extras: set[str]) -> list[list[str]]:
         return []
 
     if system == "Windows":
+        winget_install = [
+            "winget",
+            "install",
+            "-e",
+            "--silent",
+            "--disable-interactivity",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+            "--id",
+        ]
         commands = []
         if needs_ocr:
-            commands.append(["winget", "install", "UB-Mannheim.TesseractOCR"])
+            commands.append([*winget_install, "UB-Mannheim.TesseractOCR"])
         if needs_audio:
-            commands.append(["winget", "install", "Gyan.FFmpeg"])
+            commands.append([*winget_install, "Gyan.FFmpeg"])
         return commands
 
     if system == "Linux":

@@ -80,11 +80,11 @@ Python-зависимости ставит `install.py`. Системные ут
 
 ```powershell
 winget install Python.Python.3.12
-winget install UB-Mannheim.TesseractOCR
-winget install Gyan.FFmpeg
+winget install -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --id UB-Mannheim.TesseractOCR
+winget install -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --id Gyan.FFmpeg
 ```
 
-После установки Tesseract перезапустите терминал, чтобы обновился `PATH`.
+Если Windows покажет UAC/installer confirmation, подтвердите установку. После установки Tesseract перезапустите терминал, чтобы обновился `PATH`.
 
 ### Ubuntu/Debian
 

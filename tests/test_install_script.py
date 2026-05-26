@@ -942,8 +942,18 @@ def test_install_system_tools_runs_native_commands_without_shell(monkeypatch) ->
 
     _install_system_tools({"ocr", "audio"})
 
+    winget_install = [
+        "winget",
+        "install",
+        "-e",
+        "--silent",
+        "--disable-interactivity",
+        "--accept-package-agreements",
+        "--accept-source-agreements",
+        "--id",
+    ]
     assert [call[0] for call in calls] == [
-        ["winget", "install", "UB-Mannheim.TesseractOCR"],
-        ["winget", "install", "Gyan.FFmpeg"],
+        [*winget_install, "UB-Mannheim.TesseractOCR"],
+        [*winget_install, "Gyan.FFmpeg"],
     ]
     assert all(call[1] == {"check": True} for call in calls)

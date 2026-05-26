@@ -25,21 +25,26 @@ QColor = QtGui.QColor
 
 def qapp():
     app = QApplication.instance() or QApplication([])
+    _apply_test_theme(app, 1.0)
+    return app
+
+
+def _apply_test_theme(app, scale: float, *, force: bool = False) -> None:
     from book_normalizer.gui.app import _resolve_theme
     from book_normalizer.gui.ui_scaler import BASE_FONT_SIZE, make_app_font
 
-    app.setFont(make_app_font(BASE_FONT_SIZE))
-    app.setStyleSheet(_resolve_theme(1.0))
-    return app
+    font_size = max(10, round(BASE_FONT_SIZE * scale))
+    if force or app.property("_books_to_audio_test_font_size") != font_size:
+        app.setFont(make_app_font(font_size))
+        app.setProperty("_books_to_audio_test_font_size", font_size)
+    if force or app.property("_books_to_audio_test_theme_scale") != scale:
+        app.setStyleSheet(_resolve_theme(scale))
+        app.setProperty("_books_to_audio_test_theme_scale", scale)
 
 
 def render_widget(widget: QWidget, width: int, height: int, *, scale: float = 1.0) -> QImage:
     app = qapp()
-    from book_normalizer.gui.app import _resolve_theme
-    from book_normalizer.gui.ui_scaler import BASE_FONT_SIZE, make_app_font
-
-    app.setFont(make_app_font(max(10, round(BASE_FONT_SIZE * scale))))
-    app.setStyleSheet(_resolve_theme(scale))
+    _apply_test_theme(app, scale)
     if hasattr(widget, "set_ui_scale"):
         widget.set_ui_scale(scale)
     widget.resize(width, height)
@@ -53,7 +58,7 @@ def render_widget(widget: QWidget, width: int, height: int, *, scale: float = 1.
 
 
 def flush_events(app=None) -> None:
-    app = app or qapp()
+    app = app or QApplication.instance() or qapp()
     for _ in range(3):
         app.processEvents()
 

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,6 +22,26 @@ from tests.gui.helpers import (
 MainWindow = pytest.importorskip("book_normalizer.gui.main_window").MainWindow
 QtCore = pytest.importorskip("PyQt6.QtCore")
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
+
+
+@pytest.fixture(autouse=True)
+def _clean_qt_widgets_between_layout_tests() -> None:
+    app = QtWidgets.QApplication.instance()
+    if app is not None:
+        _dispose_top_level_widgets(app)
+    yield
+    app = QtWidgets.QApplication.instance()
+    if app is not None:
+        _dispose_top_level_widgets(app)
+
+
+def _dispose_top_level_widgets(app: QtWidgets.QApplication) -> None:
+    for widget in list(app.topLevelWidgets()):
+        widget.close()
+        widget.deleteLater()
+    app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+    for _ in range(3):
+        app.processEvents()
 
 
 @pytest.mark.parametrize(
@@ -497,14 +520,40 @@ def test_zoomed_chunk_actions_keep_breathing_room() -> None:
 
 
 @pytest.mark.gui_snapshot
-def test_main_window_snapshot_matches_baseline() -> None:
-    app = qapp()
-    _ = app
-    window = MainWindow()
-    image = render_widget(window, 1180, 760, scale=1.0)
+def test_main_window_snapshot_matches_baseline(tmp_path: Path) -> None:
+    image_path = tmp_path / "main_window_1180x760.png"
+    env = os.environ.copy()
+    env.setdefault("QT_QPA_PLATFORM", "offscreen")
+    env["BOOKS_TO_AUDIO_SNAPSHOT_OUT"] = str(image_path)
+    code = """
+import os
+from pathlib import Path
+
+from book_normalizer.gui.i18n import set_language
+from book_normalizer.gui.main_window import MainWindow
+from tests.gui.helpers import qapp, render_widget
+
+app = qapp()
+set_language("ru")
+window = MainWindow()
+image = render_widget(window, 1180, 760, scale=1.0)
+assert image.save(os.environ["BOOKS_TO_AUDIO_SNAPSHOT_OUT"])
+window.close()
+window.deleteLater()
+app.processEvents()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=45,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    image = gui_helpers.QImage(str(image_path))
+    assert not image.isNull()
     assert_snapshot_matches("main_window_1180x760", image)
-    window.close()
-    window.deleteLater()
 
 
 def test_main_window_snapshot_uses_portable_smoke_on_non_windows(

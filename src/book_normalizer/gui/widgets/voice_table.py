@@ -252,13 +252,13 @@ class VoiceTableWidget(QWidget):
             3, QHeaderView.ResizeMode.Stretch,
         )
         self._table.setColumnWidth(0, 42)
-        self._table.setColumnWidth(1, 60)
-        self._table.setColumnWidth(2, 48)
+        self._table.setColumnWidth(1, 72)
+        self._table.setColumnWidth(2, 72)
         self._table.setColumnWidth(4, 170)
         self._table.setColumnWidth(5, 220)
         self._table.setColumnWidth(6, 145)
-        self._table.setColumnWidth(7, 80)
-        self._table.setColumnWidth(8, 80)
+        self._table.setColumnWidth(7, 104)
+        self._table.setColumnWidth(8, 112)
         self._table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows,
         )
@@ -552,13 +552,13 @@ class VoiceTableWidget(QWidget):
             self._table.setMinimumHeight(132)
             self._quick_combo.setMinimumWidth(190)
             self._table.setColumnWidth(0, 42)
-            self._table.setColumnWidth(1, 60)
-            self._table.setColumnWidth(2, 48)
+            self._table.setColumnWidth(1, 72)
+            self._table.setColumnWidth(2, 72)
             self._table.setColumnWidth(4, 170)
             self._table.setColumnWidth(5, 220)
             self._table.setColumnWidth(6, 145)
-            self._table.setColumnWidth(7, 80)
-            self._table.setColumnWidth(8, 80)
+            self._table.setColumnWidth(7, 104)
+            self._table.setColumnWidth(8, 112)
             self._table.verticalHeader().setDefaultSectionSize(
                 self._scaled_table_row_height(34),
             )

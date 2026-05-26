@@ -856,6 +856,7 @@ class SynthesisPage(QWidget):
         self._voice_name_edit.setPlaceholderText("voice_name")
         save_row.addWidget(self._voice_name_edit, stretch=1)
         self._btn_save_sample_voice = QPushButton()
+        self._btn_save_sample_voice.setMinimumWidth(220)
         self._btn_save_sample_voice.clicked.connect(self._save_sample_voice)
         save_row.addWidget(self._btn_save_sample_voice)
         self._save_voice_label = QLabel()
@@ -1487,7 +1488,6 @@ class SynthesisPage(QWidget):
             t("synth.clone_transcript_ph"),
         )
         self._save_voice_label.setText(t("synth.saved_voice_name"))
-        self._btn_save_sample_voice.setText(t("synth.save_local_voice"))
         self._temperature_label.setText(t("synth.temperature"))
         self._top_p_label.setText(t("synth.top_p"))
         self._top_k_label.setText(t("synth.top_k"))
@@ -1514,7 +1514,6 @@ class SynthesisPage(QWidget):
         self._test_chunk_preview.setPlaceholderText(
             t("synth.chunk_editor_placeholder"),
         )
-        self._btn_save_chunk_text.setText(t("synth.chunk_editor_save"))
         self._btn_split_chunk.setText(t("synth.chunk_editor_split"))
         self._btn_split_chunk.setToolTip(t("synth.chunk_editor_split_tip"))
         self._btn_merge_chunk.setText(t("synth.chunk_editor_merge"))
@@ -1527,6 +1526,7 @@ class SynthesisPage(QWidget):
         self._preset_title.setText(t("synth.preset_title"))
         self._preset_desc.setText(t("synth.preset_desc"))
         self._advanced_title.setText(t("synth.advanced_title"))
+        self._apply_action_labels()
         self._advanced_desc.setText(t("synth.advanced_desc"))
         for btn, help_key in self._help_buttons:
             btn.setToolTip(t(help_key))
@@ -2542,6 +2542,9 @@ class SynthesisPage(QWidget):
             self._btn_play_test.setText(t("synth.compact_test_play"))
             self._btn_start.setText(t("synth.compact_start"))
             self._btn_load.setText(t("synth.compact_load_manifest"))
+            self._btn_save_sample_voice.setText(t("synth.compact_save_local_voice"))
+            self._btn_save_chunk_text.setText(t("synth.compact_chunk_editor_save"))
+            self._btn_merge_chunk.setText(t("synth.compact_chunk_editor_merge"))
             self._btn_stop.setText(t("synth.stop"))
             return
 
@@ -2549,6 +2552,9 @@ class SynthesisPage(QWidget):
         self._btn_test.setText(t("synth.test_start"))
         self._btn_play_test.setText(t("synth.test_play"))
         self._btn_start.setText(t("synth.start"))
+        self._btn_save_sample_voice.setText(t("synth.save_local_voice"))
+        self._btn_save_chunk_text.setText(t("synth.chunk_editor_save"))
+        self._btn_merge_chunk.setText(t("synth.chunk_editor_merge"))
         self._btn_stop.setText(t("synth.stop"))
 
     def _toggle_test_playback(self) -> None:

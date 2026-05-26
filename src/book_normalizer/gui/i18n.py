@@ -1356,6 +1356,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Save Voice",
         "ru": "Сохранить голос",
     },
+    "synth.compact_save_local_voice": {
+        "en": "Save",
+        "ru": "Сохр.",
+    },
     "synth.saved_voice_all_hint": {
         "en": "The selected saved voice will be used for every chunk; previous voice markup stays in the manifest but does not affect timbre.",
         "ru": "Выбранный сохраненный голос будет использован для всех чанков; разметка голосов останется в манифесте, но не повлияет на тембр.",
@@ -1718,6 +1722,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Save chunk text",
         "ru": "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0447\u0430\u043d\u043a",
     },
+    "synth.compact_chunk_editor_save": {
+        "en": "Save",
+        "ru": "\u0421\u043e\u0445\u0440. \u0447\u0430\u043d\u043a",
+    },
     "synth.chunk_editor_split": {
         "en": "Split",
         "ru": "\u0420\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c",
@@ -1735,6 +1743,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "synth.chunk_editor_merge": {
         "en": "Merge next",
         "ru": "\u0421\u043a\u043b\u0435\u0438\u0442\u044c \u0441\u043e \u0441\u043b\u0435\u0434.",
+    },
+    "synth.compact_chunk_editor_merge": {
+        "en": "Merge",
+        "ru": "\u0421\u043a\u043b\u0435\u0438\u0442\u044c",
     },
     "synth.chunk_editor_saved": {
         "en": "Chunk manifest saved. Synthesis will use the edited text.",

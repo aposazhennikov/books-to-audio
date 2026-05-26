@@ -140,6 +140,7 @@ class NormalizePage(QWidget):
         self._ui_scale = 1.0
         self._tesseract_available: bool | None = None
         self._tesseract_language_available: dict[str, bool] = {}
+        self._cache_restored_chapters: int | None = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -479,6 +480,10 @@ class NormalizePage(QWidget):
         self._norm_text.setPlaceholderText(t("norm.norm_placeholder"))
         self._raw_label.setText(t("norm.raw_placeholder"))
         self._norm_label.setText(t("norm.norm_placeholder"))
+        if self._cache_restored_chapters is not None:
+            self._progress.set_status(
+                t("norm.cache_restored", n=self._cache_restored_chapters),
+            )
 
     def _apply_action_labels(self) -> None:
         self._llm_normalize.setText(
@@ -602,6 +607,7 @@ class NormalizePage(QWidget):
         )
         if path:
             self._selected_path = path
+            self._cache_restored_chapters = None
             self._path_label.setText(path)
             self._btn_run.setEnabled(True)
             self._update_ocr_visibility()
@@ -616,6 +622,7 @@ class NormalizePage(QWidget):
             return
 
         cache_choice = cache_choice if cache_choice in {"restore", "fresh", "cancel"} else None
+        self._cache_restored_chapters = None
         settings = self._normalization_cache_settings(path)
         cached = self._find_cached_normalization(path, settings)
         if cached is None and cache_choice == "restore":
@@ -751,7 +758,10 @@ class NormalizePage(QWidget):
 
         self._progress.reset()
         self._on_finished(book)
-        self._progress.set_status(t("norm.cache_restored", n=len(getattr(book, "chapters", []))))
+        self._cache_restored_chapters = len(getattr(book, "chapters", []))
+        self._progress.set_status(
+            t("norm.cache_restored", n=self._cache_restored_chapters),
+        )
 
     def _save_current_normalization_cache(self, book: object) -> None:
         """Save the completed normalization result for the current source/settings."""

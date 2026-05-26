@@ -7,6 +7,7 @@ from pathlib import Path
 from book_normalizer.gui.app import _resolve_theme
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, TRANSLATIONS, set_language, t
 from book_normalizer.gui.main_window import MainWindow
+from book_normalizer.gui.pages.normalize_page import NormalizePage
 from book_normalizer.gui.pages.roles_page import RolesPage
 from book_normalizer.gui.widgets.voice_table import VoiceTableWidget
 from tests.gui.helpers import assert_layout_sane, flush_events, qapp
@@ -108,6 +109,35 @@ def test_progress_widgets_retranslate_ready_state(qtbot) -> None:
             window._assembly_page,
         ):
             assert page._progress._status.text() == ready
+
+    set_language("ru")
+
+
+def test_cached_restore_statuses_retranslate_after_language_switch(qtbot) -> None:
+    app = qapp()
+    normalize_page = NormalizePage()
+    roles_page = RolesPage()
+    qtbot.addWidget(normalize_page)
+    qtbot.addWidget(roles_page)
+
+    set_language("ru")
+    normalize_page._cache_restored_chapters = 1
+    normalize_page._progress.set_status(t("norm.cache_restored", n=1))
+    roles_page._cache_restored_roles = 90
+    roles_page._progress.set_status(t("roles.cache_restored", n=90))
+    normalize_page.retranslate()
+    assert normalize_page._help_buttons["norm.llm_tip"].toolTip() == t("norm.llm_tip")
+
+    set_language("zh")
+    normalize_page.retranslate()
+    roles_page.retranslate()
+    flush_events(app)
+
+    assert normalize_page._progress._status.text() == t("norm.cache_restored", n=1)
+    assert roles_page._progress._status.text() == t("roles.cache_restored", n=90)
+    assert "Восстановлено" not in normalize_page._progress._status.text()
+    assert "Роли восстановлены" not in roles_page._progress._status.text()
+    assert normalize_page._help_buttons["norm.llm_tip"].toolTip() == t("norm.llm_tip")
 
     set_language("ru")
 
@@ -449,6 +479,33 @@ def test_synthesis_asr_and_quality_panels_are_localized(qtbot) -> None:
         assert page._quality_title.text() == labels[4]
         assert page._quality_summary_label.text() == labels[5]
         assert page._btn_quality_run.text() != "Run full QA"
+
+    set_language("ru")
+
+
+def test_synthesis_static_statuses_retranslate_after_language_switch(qtbot) -> None:
+    app = qapp()
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    flush_events(app)
+
+    combo = window._lang_combo
+    combo.setCurrentIndex(combo.findData("ru"))
+    flush_events(app)
+    page = window._synthesis_page
+    page._sample_status.setText(
+        "Sample voice необязателен; если включен, prompt extraction выполнится перед чанками.",
+    )
+    page._asr_status.setText(t("synth.asr_idle"))
+
+    combo.setCurrentIndex(combo.findData("zh"))
+    flush_events(app)
+
+    assert page._sample_status.text() == t("synth.sample_idle")
+    assert page._asr_status.text() == t("synth.asr_idle")
+    assert "Sample voice" not in page._sample_status.text()
+    assert "ASR QA только" not in page._asr_status.text()
 
     set_language("ru")
 

@@ -95,6 +95,7 @@ class RolesPage(QWidget):
         self._worker: ExportSegmentsWorker | None = None
         self._compact_mode = False
         self._current_inventory: dict[str, object] | None = None
+        self._cache_restored_roles: int | None = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -178,6 +179,10 @@ class RolesPage(QWidget):
             self._populate_table(self._current_inventory)
         elif self._table.rowCount() == 0:
             self._summary.setText(t("roles.empty"))
+        if self._cache_restored_roles is not None:
+            self._progress.set_status(
+                t("roles.cache_restored", n=self._cache_restored_roles),
+            )
 
     def _apply_control_layout(self) -> None:
         """Keep role extraction controls readable in compact windows."""
@@ -250,6 +255,7 @@ class RolesPage(QWidget):
         """Receive the normalized book and output folder."""
         self._book = book
         self._output_dir = output_dir
+        self._cache_restored_roles = None
         metadata = getattr(book, "metadata", None)
         extra = getattr(metadata, "extra", {}) if metadata is not None else {}
         candidates = extra.get("llm_model_candidates") if isinstance(extra, dict) else None
@@ -267,6 +273,7 @@ class RolesPage(QWidget):
             return
 
         cache_choice = cache_choice if cache_choice in {"restore", "fresh", "cancel"} else None
+        self._cache_restored_roles = None
         settings = self._role_cache_settings()
         cached = self._find_cached_roles(settings)
         if cached is None and cache_choice == "restore":
@@ -399,6 +406,7 @@ class RolesPage(QWidget):
             return
 
         role_count = len(list(inventory.get("roles", [])))
+        self._cache_restored_roles = role_count
         self._btn_extract.setEnabled(True)
         if cached.path.resolve() == self._output_dir.resolve():
             self._save_current_role_cache()
@@ -426,6 +434,7 @@ class RolesPage(QWidget):
 
     def load_segments_manifest(self, manifest_path: Path) -> dict[str, object]:
         """Load a segment manifest, build role inventory, and update UI."""
+        self._cache_restored_roles = None
         self._segments_path = manifest_path
         segments = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not isinstance(segments, list):

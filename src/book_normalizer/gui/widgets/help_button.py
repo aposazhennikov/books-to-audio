@@ -24,6 +24,7 @@ def help_button(text: str = "") -> QToolButton:
 
 def set_help_text(button: QToolButton, text: str) -> None:
     """Update text used by tooltip, status tip, and click-to-show help."""
+    QToolTip.hideText()
     button.setProperty(_HELP_TEXT_PROPERTY, text)
     button.setToolTip(text)
     button.setStatusTip(text)

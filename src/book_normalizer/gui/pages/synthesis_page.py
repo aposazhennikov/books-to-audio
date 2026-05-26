@@ -51,7 +51,7 @@ from book_normalizer.chunking.manifest_v2 import (
     split_chunk_text,
     update_chunk_text,
 )
-from book_normalizer.gui.i18n import t
+from book_normalizer.gui.i18n import TRANSLATIONS, t
 from book_normalizer.gui.ui_scaler import apply_combo_content_width
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.tts_worker import (
@@ -101,6 +101,19 @@ VOICE_IDS = [
 
 _TEST_FRAGMENT_MAX_CHARS = 420
 _TEST_CHUNK_LABEL_MAX_CHARS = 64
+_LEGACY_STATIC_TRANSLATIONS = {
+    "synth.sample_idle": {
+        "Sample voice необязателен; если включен, prompt extraction выполнится перед чанками.",
+    },
+}
+
+
+def _matches_static_translation(text: str, key: str) -> bool:
+    """Return true when text is one of the literal translations for key."""
+    entry = TRANSLATIONS.get(key, {})
+    translations = {value for value in entry.values() if isinstance(value, str)}
+    translations.update(_LEGACY_STATIC_TRANSLATIONS.get(key, set()))
+    return text in translations
 
 
 def _host_path_from_text(path_text: str | Path) -> Path:
@@ -1796,7 +1809,10 @@ class SynthesisPage(QWidget):
             row.retranslate()
         self._populate_test_source_combo()
         self._refresh_test_chapter_combo()
-        if not self._sample_status.text():
+        if not self._sample_status.text() or _matches_static_translation(
+            self._sample_status.text(),
+            "synth.sample_idle",
+        ):
             self._sample_status.setText(t("synth.sample_idle"))
         self._preset_title.setText(t("synth.preset_title"))
         self._preset_desc.setText(t("synth.preset_desc"))
@@ -1827,7 +1843,10 @@ class SynthesisPage(QWidget):
         self._btn_asr_open_diff.setToolTip(t("synth.asr_diff_help"))
         self._btn_asr_select_issue.setText(t("synth.asr_select_issue"))
         self._btn_asr_select_issue.setToolTip(t("synth.asr_select_issue_help"))
-        if not self._asr_status.text():
+        if not self._asr_status.text() or _matches_static_translation(
+            self._asr_status.text(),
+            "synth.asr_idle",
+        ):
             self._asr_status.setText(t("synth.asr_idle"))
         for btn, help_key in self._help_buttons:
             btn.setToolTip(t(help_key))
@@ -2142,7 +2161,13 @@ class SynthesisPage(QWidget):
             saved_all_mode or saved_roles_mode,
         )
         self._role_mapping_widget.setVisible(saved_roles_mode)
-        if sample_mode and not self._sample_status.text():
+        if sample_mode and (
+            not self._sample_status.text()
+            or _matches_static_translation(
+                self._sample_status.text(),
+                "synth.sample_idle",
+            )
+        ):
             self._sample_status.setText(t("synth.sample_idle"))
         elif saved_all_mode:
             self._apply_selected_saved_voice_rate()

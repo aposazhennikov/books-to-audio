@@ -1721,7 +1721,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "synth.sample_idle": {
         "en": "Sample voice is optional; when enabled, prompt extraction runs before chunks.",
-        "ru": "Sample voice необязателен; если включен, prompt extraction выполнится перед чанками.",
+        "ru": "Образец голоса необязателен; если он включен, извлечение голосового промпта выполнится перед фрагментами.",
     },
     "synth.sample_ready": {
         "en": "Sample audio loaded. Enter the exact transcript before synthesis.",
@@ -1729,7 +1729,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "synth.sample_duration": {
         "en": "Sample length: {sec}s. Prompt extraction estimate: {eta}.",
-        "ru": "Длина sample: {sec} с. Оценка prompt extraction: {eta}.",
+        "ru": "Длина образца: {sec} с. Оценка извлечения промпта: {eta}.",
     },
     "synth.sample_missing": {
         "en": "Choose sample audio and enter the exact sample text.",
@@ -1737,11 +1737,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "synth.sample_extracting": {
         "en": "Extracting voice prompt from sample audio...",
-        "ru": "Извлекаю voice prompt из sample audio...",
+        "ru": "Извлекаю голосовой промпт из аудио образца...",
     },
     "synth.sample_extracted": {
         "en": "Voice prompt {done}/{total} ready in {sec:.1f}s.",
-        "ru": "Voice prompt {done}/{total} готов за {sec:.1f} с.",
+        "ru": "Голосовой промпт {done}/{total} готов за {sec:.1f} с.",
     },
     "synth.temperature": {
         "en": "Temperature (0.10-2.00):",

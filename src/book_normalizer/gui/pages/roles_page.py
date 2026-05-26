@@ -9,6 +9,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QGridLayout,
     QHeaderView,
     QLabel,
@@ -253,9 +254,17 @@ class RolesPage(QWidget):
         self._worker.start()
 
     def _on_segments_ready(self, manifest_path: str) -> None:
-        self._btn_extract.setEnabled(True)
-        self.load_segments_manifest(Path(manifest_path))
-        self._save_current_role_cache()
+        self._progress.set_busy(t("roles.extracting"))
+        self._summary.setText(t("roles.extracting"))
+        QApplication.processEvents()
+        try:
+            self.load_segments_manifest(Path(manifest_path))
+            self._save_current_role_cache()
+        except (OSError, ValueError, TypeError) as exc:
+            self._on_error(str(exc))
+            return
+        finally:
+            self._btn_extract.setEnabled(True)
         if self._segments_path and self._roles_path:
             self.segments_ready.emit(str(self._segments_path), str(self._roles_path))
 

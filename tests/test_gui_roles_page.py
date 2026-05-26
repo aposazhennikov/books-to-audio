@@ -413,6 +413,44 @@ def test_roles_page_shows_busy_feedback_before_first_llm_window(
     page.deleteLater()
 
 
+def test_roles_page_keeps_busy_feedback_while_finishing_segments(
+    qapp,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    page = RolesPage()
+    page.set_book(_sample_book(), tmp_path)
+    page._btn_extract.setEnabled(False)
+    manifest_path = tmp_path / "segments_manifest.json"
+    roles_path = tmp_path / "roles_manifest.json"
+    seen: list[tuple[str, int, bool]] = []
+
+    def fake_load_segments_manifest(path: Path) -> dict[str, object]:
+        seen.append(
+            (
+                page._progress._status.text(),
+                page._progress._bar.maximum(),
+                page._btn_extract.isEnabled(),
+            )
+        )
+        roles_path.write_text(
+            json.dumps(_roles_inventory(), ensure_ascii=False),
+            encoding="utf-8",
+        )
+        page._segments_path = path
+        page._roles_path = roles_path
+        return _roles_inventory()
+
+    monkeypatch.setattr(page, "load_segments_manifest", fake_load_segments_manifest)
+
+    page._on_segments_ready(str(manifest_path))
+
+    assert seen == [(roles_page.t("roles.extracting"), 0, False)]
+    assert page._btn_extract.isEnabled()
+
+    page.deleteLater()
+
+
 def test_roles_page_warns_when_review_report_was_written(qapp, tmp_path: Path) -> None:
     page = RolesPage()
     page.set_book(_sample_book(), tmp_path)

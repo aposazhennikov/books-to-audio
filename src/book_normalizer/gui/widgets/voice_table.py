@@ -178,7 +178,9 @@ class VoiceTableWidget(QWidget):
         self._chapter_filter_label = QLabel()
         nav.addWidget(self._chapter_filter_label)
         self._chapter_filter = QComboBox()
-        self._chapter_filter.currentIndexChanged.connect(lambda _idx: self._populate_table())
+        self._chapter_filter.currentIndexChanged.connect(
+            lambda _idx: self._apply_chapter_filter(),
+        )
         nav.addWidget(self._chapter_filter)
         self._btn_prev_segment = QPushButton()
         self._btn_prev_segment.setProperty("compactActionButton", True)
@@ -475,13 +477,16 @@ class VoiceTableWidget(QWidget):
         """Refresh all voice combo labels after language changes."""
         quick_current = self._quick_combo.currentData() or "narrator_calm"
         _populate_voice_combo(self._quick_combo, str(quick_current))
+        role_options = self._role_options()
         for row in range(self._table.rowCount()):
+            if self._table.isRowHidden(row):
+                continue
             role_combo = self._table.cellWidget(row, 4)
             if isinstance(role_combo, QComboBox):
                 segment_index = self._segment_index_for_table_row(row)
                 if 0 <= segment_index < len(self._segments):
                     current = _segment_role_display(self._segments[segment_index])
-                    self._populate_role_combo(role_combo, current)
+                    self._populate_role_combo(role_combo, current, role_options)
 
             combo = self._table.cellWidget(row, 5)
             if isinstance(combo, QComboBox):
@@ -603,12 +608,13 @@ class VoiceTableWidget(QWidget):
     def _sync_editor_visibility(self) -> None:
         """Hide the chunk editor until there is something meaningful to edit."""
         has_segments = bool(self._segments)
+        has_multiple_visible_rows = self._visible_row_count() > 1
         self._chapter_nav_panel.setVisible(has_segments)
         self._preset_toolbar_panel.setVisible(has_segments and not self._ultra_dense_mode)
         self._quick_apply_panel.setVisible(has_segments and not self._ultra_dense_mode)
         self._editor_tabs.setVisible(has_segments and not self._dense_mode)
-        self._btn_prev_segment.setEnabled(has_segments and self._table.rowCount() > 1)
-        self._btn_next_segment.setEnabled(has_segments and self._table.rowCount() > 1)
+        self._btn_prev_segment.setEnabled(has_multiple_visible_rows)
+        self._btn_next_segment.setEnabled(has_multiple_visible_rows)
 
     def _scaled_table_row_height(self, base_height: int) -> int:
         return max(
@@ -685,15 +691,81 @@ class VoiceTableWidget(QWidget):
             if int(segment.get("chapter_index", 0)) == int(chapter)
         ]
 
+    def _iter_visible_table_rows(self):
+        """Yield table rows matching the active chapter filter."""
+        chapter = self._chapter_filter.currentData()
+        for table_row, segment_index in enumerate(self._row_to_segment_index):
+            if not 0 <= segment_index < len(self._segments):
+                continue
+            segment = self._segments[segment_index]
+            if chapter is None or int(segment.get("chapter_index", 0)) == int(chapter):
+                yield table_row, segment_index, segment
+
+    def _visible_row_count(self) -> int:
+        """Return the number of rows currently exposed by the chapter filter."""
+        return sum(1 for _row in self._iter_visible_table_rows())
+
+    def _first_visible_table_row(self) -> int:
+        """Return the first table row that passes the chapter filter."""
+        return next((row for row, _index, _segment in self._iter_visible_table_rows()), -1)
+
+    def _apply_chapter_filter(self, preferred_segment_index: int | None = None) -> None:
+        """Filter rows by chapter without rebuilding thousands of row widgets."""
+        if self._populating:
+            return
+        current_segment_index = (
+            preferred_segment_index
+            if preferred_segment_index is not None
+            else self._current_row()
+        )
+        visible_rows = {
+            row
+            for row, _segment_index, _segment in self._iter_visible_table_rows()
+        }
+
+        self._table.setUpdatesEnabled(False)
+        try:
+            for row in range(self._table.rowCount()):
+                self._table.setRowHidden(row, row not in visible_rows)
+        finally:
+            self._table.setUpdatesEnabled(True)
+
+        selected_row = -1
+        if current_segment_index is not None and current_segment_index >= 0:
+            try:
+                candidate = self._row_to_segment_index.index(current_segment_index)
+            except ValueError:
+                candidate = -1
+            if candidate in visible_rows:
+                selected_row = candidate
+        if selected_row < 0:
+            selected_row = min(visible_rows) if visible_rows else -1
+
+        if selected_row >= 0:
+            self._table.setCurrentCell(selected_row, 3)
+            item = self._table.item(selected_row, 3)
+            if item is not None:
+                self._table.scrollToItem(
+                    item,
+                    QAbstractItemView.ScrollHint.PositionAtTop,
+                )
+        else:
+            self._table.clearSelection()
+            self._table.setCurrentCell(-1, -1)
+            self._load_selected_segment()
+        self._sync_editor_visibility()
+
     # ── Table population ──
 
     def _populate_table(self) -> None:
+        selected_segment_index = self._current_row()
         self._populating = True
-        visible_segments = self._visible_segment_pairs()
-        self._row_to_segment_index = [index for index, _segment in visible_segments]
-        self._table.setRowCount(len(visible_segments))
+        segment_rows = list(enumerate(self._segments))
+        self._row_to_segment_index = [index for index, _segment in segment_rows]
+        self._table.setRowCount(len(segment_rows))
+        role_options = self._role_options()
 
-        for row, (segment_index, seg) in enumerate(visible_segments):
+        for row, (segment_index, seg) in enumerate(segment_rows):
             is_dlg = seg.get("is_dialogue", False)
             role = seg.get("role", "narrator")
             is_speech = is_dlg or role in ("male", "female")
@@ -761,7 +833,11 @@ class VoiceTableWidget(QWidget):
             role_combo.setEditable(True)
             role_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
             role_combo.setToolTip(t("voice.col_role_tip"))
-            self._populate_role_combo(role_combo, _segment_role_display(seg))
+            self._populate_role_combo(
+                role_combo,
+                _segment_role_display(seg),
+                role_options,
+            )
             role_combo.currentIndexChanged.connect(
                 lambda _i, r=segment_index, c=role_combo: self._on_role_changed(
                     r,
@@ -814,12 +890,8 @@ class VoiceTableWidget(QWidget):
 
         self._populating = False
         self._apply_table_layout()
-        self._sync_editor_visibility()
         self._sync_full_text_from_segments()
-        if visible_segments and not self._table.selectedItems():
-            self._table.setCurrentCell(0, 3)
-        else:
-            self._load_selected_segment()
+        self._apply_chapter_filter(selected_segment_index)
 
     # ── Data change handlers ──
 
@@ -851,7 +923,7 @@ class VoiceTableWidget(QWidget):
             table_row = self._row_to_segment_index.index(segment_index)
         except ValueError:
             table_row = 0 if self._row_to_segment_index else -1
-        if table_row >= 0:
+        if table_row >= 0 and not self._table.isRowHidden(table_row):
             self._table.setCurrentCell(table_row, 3)
             item = self._table.item(table_row, 3)
             if item is not None:
@@ -864,10 +936,16 @@ class VoiceTableWidget(QWidget):
         """Move selection through the currently visible chunk rows."""
         if self._table.rowCount() <= 0:
             return
+        visible_rows = [row for row, _index, _segment in self._iter_visible_table_rows()]
+        if not visible_rows:
+            return
         current = self._table.currentRow()
-        if current < 0:
-            current = 0
-        next_row = max(0, min(self._table.rowCount() - 1, current + delta))
+        if current not in visible_rows:
+            next_row = visible_rows[0 if delta >= 0 else -1]
+        else:
+            current_index = visible_rows.index(current)
+            next_index = max(0, min(len(visible_rows) - 1, current_index + delta))
+            next_row = visible_rows[next_index]
         self._table.setCurrentCell(next_row, 3)
         item = self._table.item(next_row, 3)
         if item is not None:
@@ -929,11 +1007,16 @@ class VoiceTableWidget(QWidget):
                 add(speaker, f"speaker:{speaker}")
         return options
 
-    def _populate_role_combo(self, combo: QComboBox, current: str) -> None:
+    def _populate_role_combo(
+        self,
+        combo: QComboBox,
+        current: str,
+        options: list[tuple[str, str]] | None = None,
+    ) -> None:
         """Refresh one role selector while preserving custom typed names."""
         combo.blockSignals(True)
         combo.clear()
-        for label, data in self._role_options():
+        for label, data in options or self._role_options():
             combo.addItem(label, data)
         if current and combo.findText(current) < 0:
             combo.addItem(current, f"speaker:{current}")
@@ -1159,7 +1242,7 @@ class VoiceTableWidget(QWidget):
 
     def _set_all_voice(self, voice_id: str) -> None:
         """Set all rows to a specific voice preset."""
-        for row in range(self._table.rowCount()):
+        for row, _segment_index, _segment in self._iter_visible_table_rows():
             combo = self._table.cellWidget(row, 5)
             if isinstance(combo, QComboBox):
                 for i in range(combo.count()):
@@ -1178,7 +1261,7 @@ class VoiceTableWidget(QWidget):
         vid = self._quick_combo.currentData()
         if not vid:
             return
-        for table_row, (_segment_index, seg) in enumerate(self._visible_segment_pairs()):
+        for table_row, _segment_index, seg in self._iter_visible_table_rows():
             is_speech = seg.get("is_dialogue", False) or seg.get(
                 "role", "narrator",
             ) in ("male", "female")
@@ -1195,7 +1278,7 @@ class VoiceTableWidget(QWidget):
         vid = self._quick_combo.currentData()
         if not vid:
             return
-        for table_row, (_segment_index, seg) in enumerate(self._visible_segment_pairs()):
+        for table_row, _segment_index, seg in self._iter_visible_table_rows():
             is_speech = seg.get("is_dialogue", False) or seg.get(
                 "role", "narrator",
             ) in ("male", "female")
@@ -1210,7 +1293,7 @@ class VoiceTableWidget(QWidget):
     def _auto_detect(self) -> None:
         """Re-run heuristic voice mapping based on detected roles."""
         from book_normalizer.gui.voice_presets import LEGACY_VOICE_MAP
-        for table_row, (_segment_index, seg) in enumerate(self._visible_segment_pairs()):
+        for table_row, _segment_index, seg in self._iter_visible_table_rows():
             role = seg.get("role", "narrator")
             target = LEGACY_VOICE_MAP.get(role, "narrator_calm")
             combo = self._table.cellWidget(table_row, 5)

@@ -1609,12 +1609,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "synth.sample_desc": {
         "en": (
-            "Choose an audio sample, listen to it, enter the exact spoken text, "
-            "then synthesize all chunks directly in this app without ComfyUI nodes."
+            "Use this only when the whole book should sound like your own sample "
+            "or a reusable saved voice."
         ),
         "ru": (
-            "Выберите аудио-образец, прослушайте его, введите точный произнесенный текст, "
-            "и приложение озвучит все чанки напрямую без ComfyUI-нод."
+            "Нужно только если вся книга должна звучать как ваш образец "
+            "или сохраненный голос."
         ),
     },
     "synth.custom_strategy": {
@@ -1962,8 +1962,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a \u0442\u0435\u0441\u0442\u043e\u0432\u043e\u0433\u043e \u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u0430",
     },
     "synth.test_source_desc": {
-        "en": "Choose an exact book chunk for preview, or paste custom text to test the current CustomVoice settings.",
-        "ru": "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0447\u043d\u044b\u0439 \u0447\u0430\u043d\u043a \u0438\u0437 \u043a\u043d\u0438\u0433\u0438 \u0438\u043b\u0438 \u0432\u0441\u0442\u0430\u0432\u044c\u0442\u0435 \u0441\u0432\u043e\u0439 \u0442\u0435\u043a\u0441\u0442 \u0434\u043b\u044f \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438 \u0442\u0435\u043a\u0443\u0449\u0438\u0445 CustomVoice-\u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043a.",
+        "en": "Pick one book chunk for a quick preview before running the whole book, or switch to custom text.",
+        "ru": "Выберите один чанк для быстрой проверки перед полной озвучкой или переключитесь на свой текст.",
     },
     "synth.test_source": {
         "en": "Test from:",

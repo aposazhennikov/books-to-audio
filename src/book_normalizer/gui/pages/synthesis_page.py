@@ -456,6 +456,7 @@ class SynthesisPage(QWidget):
         self._voice_mode = "custom"
         self._saved_voices = []
         self._compact_mode = False
+        self._dense_vertical_mode = False
         self._run_kind = "idle"
         self._preview_output_dir: Path | None = None
         self._last_test_audio_path: Path | None = None
@@ -502,7 +503,7 @@ class SynthesisPage(QWidget):
         file_row = QHBoxLayout()
         file_row.setSpacing(8)
         self._manifest_label = QLabel()
-        self._manifest_label.setWordWrap(True)
+        self._manifest_label.setWordWrap(False)
         self._manifest_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
@@ -526,14 +527,15 @@ class SynthesisPage(QWidget):
         self._mode_tabs.setMinimumWidth(0)
         self._mode_tabs.setSizePolicy(
             QSizePolicy.Policy.Ignored,
-            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
         )
         self._mode_tabs.currentChanged.connect(self._on_mode_changed)
         self._mode_tabs.addTab(self._build_sample_voice_panel(), "")
         self._mode_tabs.addTab(self._build_preset_speakers_tab(), "")
         self._mode_tabs.addTab(self._build_advanced_tab(), "")
         layout.addWidget(self._mode_tabs)
-        layout.addWidget(self._build_test_fragment_panel())
+        self._test_fragment_panel = self._build_test_fragment_panel()
+        layout.addWidget(self._test_fragment_panel)
 
 
         # ── Action buttons ────────────────────────────────────────────────
@@ -579,6 +581,7 @@ class SynthesisPage(QWidget):
         bottom.setSpacing(6)
 
         self._progress = ProgressWidget()
+        self._progress.setVisible(False)
         bottom.addWidget(self._progress)
 
         self._log_edit = QPlainTextEdit()
@@ -590,6 +593,7 @@ class SynthesisPage(QWidget):
             "font-size: 11px; background: rgba(255,255,255,0.90);"
             "border: 1px solid rgba(91,115,142,0.18); border-radius: 8px; padding: 6px;",
         )
+        self._log_edit.setVisible(False)
         bottom.addWidget(self._log_edit)
 
         self._status = QLabel()
@@ -607,11 +611,14 @@ class SynthesisPage(QWidget):
         self.retranslate()
         self._refresh_saved_voices()
         self._update_custom_voice_controls()
+        self._sync_mode_tabs_height()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Keep command buttons readable as the page width changes."""
         super().resizeEvent(event)
         self._sync_compact_mode()
+        self._sync_test_fragment_density()
+        self._sync_mode_tabs_height()
 
     def _sync_compact_mode(self) -> None:
         compact = self.width() < 900
@@ -623,10 +630,76 @@ class SynthesisPage(QWidget):
         else:
             self._settings_container.setMaximumWidth(16777215)
             self._mode_tabs.setMaximumWidth(16777215)
-        if self._compact_mode == compact:
+        if self._compact_mode != compact:
+            self._compact_mode = compact
+            self._apply_action_labels()
+        self._sync_mode_tabs_height()
+
+    def _sync_mode_tabs_height(self) -> None:
+        """Size the mode tabs to the selected tab, not the largest hidden tab."""
+        if not hasattr(self, "_mode_tabs"):
             return
-        self._compact_mode = compact
-        self._apply_action_labels()
+        current = self._mode_tabs.currentWidget()
+        if current is None:
+            return
+        current.updateGeometry()
+        tab_bar_height = self._mode_tabs.tabBar().sizeHint().height()
+        content_height = max(
+            current.minimumSizeHint().height(),
+            current.sizeHint().height(),
+        )
+        target = max(tab_bar_height + 120, content_height + tab_bar_height + 28)
+        self._mode_tabs.setMinimumHeight(target)
+        self._mode_tabs.setMaximumHeight(target)
+        self._settings_container.updateGeometry()
+
+    def _sync_test_fragment_density(self) -> None:
+        """Keep secondary test-fragment controls off cramped first screens."""
+        if not hasattr(self, "_test_text_stack"):
+            return
+        dense = self.height() < 820
+        if self._dense_vertical_mode == dense:
+            return
+        self._dense_vertical_mode = dense
+        preview_height = 72 if dense else 94
+        custom_height = 92 if dense else 118
+        self._test_chunk_preview.setMaximumHeight(preview_height)
+        self._test_custom_text_edit.setMaximumHeight(custom_height)
+        self._test_text_stack.setMaximumHeight(custom_height)
+        self._update_test_source_controls()
+        self._settings_container.updateGeometry()
+
+    def _set_manifest_label(self, manifest_path: Path) -> None:
+        """Show a compact manifest label while keeping the full path in tooltip."""
+        parent_name = manifest_path.parent.name
+        display = f"{parent_name}\\{manifest_path.name}" if parent_name else manifest_path.name
+        self._manifest_label.setText(display)
+        self._manifest_label.setToolTip(str(manifest_path))
+
+    def _set_manifest_ready_status(self) -> None:
+        total = sum(self._chapter_map.values())
+        if total:
+            self._status.setText(
+                f"{t('progress.ready')}: "
+                f"{t('synth.chapter_info', chapters=len(self._chapter_map), chunks=total)}",
+            )
+
+    def _prefer_simple_voice_mode(self) -> None:
+        """Open loaded manifests in the least demanding synthesis mode."""
+        if self._mode_tabs.currentIndex() != 0:
+            self._sync_mode_tabs_height()
+            return
+        has_sample = bool(self._sample_audio_edit.text().strip())
+        has_saved_voice = bool(self._selected_saved_voice())
+        if not has_sample and not has_saved_voice:
+            self._mode_tabs.setCurrentIndex(1)
+        else:
+            self._sync_mode_tabs_height()
+
+    def _show_runtime_feedback(self, *, show_log: bool = False) -> None:
+        self._progress.setVisible(True)
+        if show_log:
+            self._log_edit.setVisible(True)
 
     def _build_test_fragment_panel(self) -> QFrame:
         """Build controls for selecting the exact preview text."""
@@ -712,6 +785,7 @@ class SynthesisPage(QWidget):
         _make_text_edit_compact(self._test_custom_text_edit)
         self._test_text_stack = QStackedWidget()
         self._test_text_stack.setMinimumWidth(0)
+        self._test_text_stack.setMaximumHeight(118)
         self._test_text_stack.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
@@ -1416,6 +1490,7 @@ class SynthesisPage(QWidget):
         """Show or hide advanced voice generation controls."""
         self._voice_tuning_panel.setVisible(checked)
         self._update_voice_tuning_toggle_text()
+        self._sync_mode_tabs_height()
 
     def _update_voice_tuning_toggle_text(self) -> None:
         """Update the collapsed/expanded label for tuning controls."""
@@ -1626,6 +1701,9 @@ class SynthesisPage(QWidget):
         """Update translatable strings."""
         if not self._manifest_path:
             self._manifest_label.setText(t("synth.no_manifest"))
+            self._manifest_label.setToolTip("")
+        else:
+            self._set_manifest_label(self._manifest_path)
         self._btn_load.setText(t("synth.load_manifest"))
         self._btn_load.setToolTip(t("synth.load_manifest_tip"))
         self._mode_tabs.setTabText(0, t("synth.mode_custom_voice"))
@@ -1749,8 +1827,12 @@ class SynthesisPage(QWidget):
 
         self._apply_action_labels()
         self._btn_test.setToolTip(t("synth.test_help"))
-        self._status.setText(t("synth.waiting"))
+        if self._manifest_path:
+            self._set_manifest_ready_status()
+        else:
+            self._status.setText(t("synth.waiting"))
         self._log_edit.setPlaceholderText(t("synth.log_placeholder"))
+        self._sync_mode_tabs_height()
         self._refresh_chapter_combo()
 
     # ── Clone panel logic ─────────────────────────────────────────────────────
@@ -2012,6 +2094,7 @@ class SynthesisPage(QWidget):
         elif saved_roles_mode:
             self._sample_status.setText(t("synth.saved_voice_roles_hint"))
         self._refresh_test_chunk_combo()
+        self._sync_mode_tabs_height()
 
     def _selected_saved_voice(self) -> str:
         """Return the globally selected saved voice id."""
@@ -2094,6 +2177,7 @@ class SynthesisPage(QWidget):
             self._progress.set_status(t("synth.models_present", dir=str(models_dir)))
             return
 
+        self._show_runtime_feedback(show_log=True)
         self._log_edit.clear()
         self._log_edit.appendPlainText(MODEL_DOWNLOAD_WARNING)
         self._status.setText(t("synth.models_installing", dir=str(models_dir)))
@@ -2250,6 +2334,7 @@ class SynthesisPage(QWidget):
         if self._sample_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self._sample_player.pause()
         self._refresh_test_chunk_combo()
+        self._sync_mode_tabs_height()
 
     # ── Manifest ──────────────────────────────────────────────────────────────
 
@@ -2257,11 +2342,13 @@ class SynthesisPage(QWidget):
         """Set the manifest file and output directory."""
         self._manifest_path = manifest_path
         self._set_output_dir(output_dir, emit=False)
-        self._manifest_label.setText(str(manifest_path))
+        self._set_manifest_label(manifest_path)
         self._btn_start.setEnabled(True)
         self._btn_test.setEnabled(True)
         self._btn_asr_run.setEnabled(True)
         self._load_chapters_from_manifest()
+        self._prefer_simple_voice_mode()
+        self._set_manifest_ready_status()
 
     def _browse_manifest(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -2271,11 +2358,13 @@ class SynthesisPage(QWidget):
             p = Path(path)
             self._manifest_path = p
             self._set_output_dir(p.parent)
-            self._manifest_label.setText(str(p))
+            self._set_manifest_label(p)
             self._btn_start.setEnabled(True)
             self._btn_test.setEnabled(True)
             self._btn_asr_run.setEnabled(True)
             self._load_chapters_from_manifest()
+            self._prefer_simple_voice_mode()
+            self._set_manifest_ready_status()
 
     def _load_chapters_from_manifest(self) -> None:
         """Parse manifest and populate chapter combo with real data."""
@@ -2545,7 +2634,9 @@ class SynthesisPage(QWidget):
         is_custom = (self._test_source_combo.currentData() or "chunk") == "custom"
         self._test_chunk_controls.setVisible(not is_custom)
         self._test_chunk_label.setVisible(not is_custom)
-        self._chunk_edit_controls.setVisible(not is_custom)
+        self._chunk_edit_controls.setVisible(
+            not is_custom and not self._dense_vertical_mode,
+        )
         self._test_voice_combo.setVisible(is_custom)
         self._test_voice_label.setVisible(is_custom)
         self._test_text_stack.setCurrentIndex(1 if is_custom else 0)
@@ -2738,6 +2829,7 @@ class SynthesisPage(QWidget):
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
+        self._show_runtime_feedback(show_log=True)
         self._log_edit.clear()
         log_path = output_dir / "synthesis_log.txt"
         self._log_edit.appendPlainText(t("synth.log_path", path=str(log_path)))
@@ -2818,6 +2910,7 @@ class SynthesisPage(QWidget):
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
+        self._show_runtime_feedback(show_log=True)
         self._log_edit.clear()
         self._log_edit.appendPlainText(
             t("synth.test_log_path", path=str(self._preview_output_dir)),
@@ -2972,6 +3065,7 @@ class SynthesisPage(QWidget):
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
         self._worker.start()
+        self._show_runtime_feedback(show_log=True)
         self._status.setText("Resynthesizing failed/warning chunks...")
 
     def _reset_quality_bad_chunks(self, *, max_attempts: int) -> None:
@@ -3004,6 +3098,7 @@ class SynthesisPage(QWidget):
     ) -> None:
         if not self._manifest_path or not self._manifest_path.exists():
             return
+        self._show_runtime_feedback(show_log=True)
         self._pending_synthesis_finish = pending_finish
         self._btn_asr_run.setEnabled(False)
         self._btn_asr_open_report.setEnabled(False)
@@ -3124,6 +3219,7 @@ class SynthesisPage(QWidget):
     # ── Signal handlers ───────────────────────────────────────────────────────
 
     def _on_log_line(self, line: str) -> None:
+        self._show_runtime_feedback(show_log=True)
         self._log_edit.appendPlainText(line)
         sb = self._log_edit.verticalScrollBar()
         sb.setValue(sb.maximum())
@@ -3152,6 +3248,7 @@ class SynthesisPage(QWidget):
         remaining_chars: int = 0,
         total_chars: int = 0,
     ) -> None:
+        self._show_runtime_feedback()
         if self._phase == "loading":
             self._phase = "synth"
         self._tick_timer.stop()
@@ -3177,6 +3274,7 @@ class SynthesisPage(QWidget):
         self._status.setText(" • ".join(parts))
 
     def _on_status(self, msg: str) -> None:
+        self._show_runtime_feedback()
         if msg == "__loading__":
             self._phase = "loading"
             self._phase_start = time.time()
@@ -3233,6 +3331,7 @@ class SynthesisPage(QWidget):
         self._run_kind = "idle"
         self._worker_handles_asr = False
         self._set_run_buttons_active(False)
+        self._show_runtime_feedback()
         self._progress.set_status(f"❌ {msg}")
 
         self.synthesis_failed.emit(msg)

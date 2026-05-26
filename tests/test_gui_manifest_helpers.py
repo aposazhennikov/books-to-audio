@@ -232,6 +232,8 @@ def test_synthesis_page_test_chunk_label_shows_effective_custom_voice(
 
         page.set_manifest(manifest_path, tmp_path / "out")
 
+        assert page._mode_tabs.currentIndex() == 1
+        page._mode_tabs.setCurrentIndex(0)
         item_text = page._test_chunk_combo.itemText(0)
         assert "CustomVoice sample" in item_text
         assert "narrator_calm" not in item_text
@@ -343,6 +345,7 @@ def test_synthesis_page_test_synthesis_uses_persisted_speech_rate(
     sample_path.write_bytes(b"fake wav")
 
     page.set_manifest(manifest_path, tmp_path / "out")
+    page._mode_tabs.setCurrentIndex(0)
     page._sample_audio_edit.setText(str(sample_path))
     page._sample_transcript_edit.setPlainText("Reference transcript.")
     page._set_speech_rate_value(0.82)

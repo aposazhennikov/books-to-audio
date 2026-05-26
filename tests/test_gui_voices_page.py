@@ -370,8 +370,11 @@ def test_voice_table_filters_chapters_and_restores_deleted_segments(qapp, qtbot)
     page._voice_table._chapter_filter.setCurrentIndex(
         page._voice_table._chapter_filter.findData(1)
     )
-    assert page._voice_table._table.rowCount() == 1
-    assert page._voice_table._table.item(0, 3).text() == "Delete me."
+    assert page._voice_table._table.rowCount() == 2
+    assert page._voice_table._table.isRowHidden(0)
+    assert not page._voice_table._table.isRowHidden(1)
+    assert page._voice_table._table.item(1, 3).text() == "Delete me."
+    assert page._voice_table._current_row() == 1
 
     qtbot.mouseClick(page._voice_table._btn_segment_delete, QtCore.Qt.MouseButton.LeftButton)
     assert page._voice_table.get_segments()[1]["deleted"] is True
@@ -380,6 +383,36 @@ def test_voice_table_filters_chapters_and_restores_deleted_segments(qapp, qtbot)
     qtbot.mouseClick(page._voice_table._btn_segment_restore, QtCore.Qt.MouseButton.LeftButton)
     assert page._voice_table.get_segments()[1]["deleted"] is False
     assert len(page._voice_table.get_active_segments()) == 2
+
+    page.deleteLater()
+
+
+def test_voice_table_chapter_filter_reuses_existing_rows(qapp, qtbot) -> None:
+    page = VoicesPage()
+    qtbot.addWidget(page)
+    segments = [
+        {
+            "segment_index": index,
+            "chapter_index": index // 40,
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "intonation": "calm",
+            "text": f"Segment {index}.",
+        }
+        for index in range(120)
+    ]
+    page._voice_table.set_segments(segments)
+    original_widget = page._voice_table._table.cellWidget(0, 5)
+
+    page._voice_table._chapter_filter.setCurrentIndex(
+        page._voice_table._chapter_filter.findData(1)
+    )
+
+    assert page._voice_table._table.rowCount() == len(segments)
+    assert page._voice_table._table.cellWidget(0, 5) is original_widget
+    assert page._voice_table._table.isRowHidden(0)
+    assert not page._voice_table._table.isRowHidden(40)
+    assert page._voice_table._current_row() == 40
 
     page.deleteLater()
 

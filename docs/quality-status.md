@@ -82,6 +82,15 @@ are intentionally not committed.
     output/live_tts_real_book_manifest_only --max-smoke-chunks 3
     --manifest-only` wrote a clean manifest with no `royallib`, `http://`, or
     `Приятного` front-matter strings.
+  - Follow-up live rerun after the boilerplate fix passed:
+    `python scripts/live_tts_smoke.py --book-path books/monosov/monosov1.txt
+    --out-dir output/live_tts_real_book_smoke_after_filter
+    --max-smoke-chunks 2 --max-book-chars 900 --max-chunk-chars 260
+    --chunk-timeout 360`, launched from WSL using the Windows venv so it could
+    reach the Windows ComfyUI backend. Result: `ok`; 2/2 chunks synthesized,
+    audio QA passed, and `chapter_001.wav` is PCM WAV, mono, 24 kHz.
+  - The post-fix manifest contains useful book text and no `royallib`, `http`,
+    or `Приятного` front-matter strings.
   - Post-run resource check: ComfyUI was stopped, `ollama ps` was empty, and
     GPU memory returned to the low idle range.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.
@@ -135,8 +144,9 @@ are intentionally not committed.
 - Optional only: install native Windows Tesseract system-wide after an
   interactive UAC approval. The GUI no longer depends on this because the
   project-local fallback is verified.
-- Listen to the generated real-book smoke chapter for subjective voice-quality
-  sign-off: `output/live_tts_real_book_smoke/chapter_001.wav`.
+- Listen to the post-fix generated real-book smoke chapter for subjective
+  voice-quality sign-off:
+  `output/live_tts_real_book_smoke_after_filter/chapter_001.wav`.
 - Run a full-length real-book LLM+TTS pass only when there is an explicit
   long-running acceptance window; the safe full-book text/chunk pass is
   complete, but full synthesis of a long book is intentionally not run by

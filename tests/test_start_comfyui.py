@@ -93,3 +93,11 @@ def test_probe_url_can_fallback_to_windows_curl(monkeypatch) -> None:
     monkeypatch.setattr(module.subprocess, "run", lambda *_args, **_kwargs: _FakeRun())
 
     assert module.probe_url("http://127.0.0.1:8188/system_stats") is True
+
+
+def test_probe_host_for_wildcard_listen_host() -> None:
+    module = _load_start_comfyui_module()
+
+    assert module._probe_host_for_listen_host("0.0.0.0") == "127.0.0.1"
+    assert module._probe_host_for_listen_host("::") == "127.0.0.1"
+    assert module._probe_host_for_listen_host("127.0.0.1") == "127.0.0.1"

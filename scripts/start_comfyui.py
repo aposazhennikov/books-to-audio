@@ -44,7 +44,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = resolve_comfyui_root(args.root)
-    api_url = f"http://{args.host}:{args.port}/system_stats"
+    api_probe_host = _probe_host_for_listen_host(args.host)
+    api_url = f"http://{api_probe_host}:{args.port}/system_stats"
     if probe_url(api_url):
         print(f"ComfyUI already reachable: {api_url}")
         return 0
@@ -172,6 +173,11 @@ def probe_url(url: str) -> bool:
         except (OSError, subprocess.SubprocessError):
             return False
     return False
+
+
+def _probe_host_for_listen_host(host: str) -> str:
+    """Return a concrete loopback host for wildcard listen addresses."""
+    return "127.0.0.1" if host in {"0.0.0.0", "::"} else host
 
 
 def _looks_like_portable_comfyui(root: Path) -> bool:

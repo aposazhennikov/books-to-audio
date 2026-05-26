@@ -41,6 +41,11 @@ are intentionally not committed.
   - Deleted/excluded chunks with stale audio are skipped by synthesis, QA, and
     chapter assembly, so removed publisher boilerplate cannot leak into the
     final chapter WAV.
+- Live TTS smoke runner is available for final backend sign-off.
+  - Command: `python scripts/live_tts_smoke.py --comfyui-url http://127.0.0.1:8188 --workflow comfyui_workflows/qwen3_tts_template.json`
+  - Output: `output/live_tts_smoke/live_tts_smoke_report.json`
+  - Current machine state on 2026-05-26: ComfyUI was not reachable at
+    `127.0.0.1:8188`, so live synthesis could not be executed in this run.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.
   - Report: `output/quality_reports/ocr_multilingual_smoke_20260526T025818Z.json`
   - Runtime: local WSL Tesseract with `data/tessdata`.

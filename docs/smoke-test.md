@@ -52,3 +52,14 @@ Expected artifacts:
 - `audio_chunks/chapter_001/chunk_*.wav`
 - `chapter_001.wav`
 - `output/live_tts_smoke/live_tts_smoke_report.json`
+
+Post-run artifact audit:
+
+```powershell
+python scripts\audit_tts_smoke.py output\live_tts_smoke `
+  --write-report output\live_tts_smoke\audit_report.json
+```
+
+The audit checks the live smoke report, manifest chunk count, front-matter
+terms, WAV format, duration, and non-silent audio. It does not load ComfyUI,
+Ollama, or any model.

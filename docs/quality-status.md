@@ -91,6 +91,12 @@ are intentionally not committed.
     audio QA passed, and `chapter_001.wav` is PCM WAV, mono, 24 kHz.
   - The post-fix manifest contains useful book text and no `royallib`, `http`,
     or `Приятного` front-matter strings.
+  - Post-fix artifact audit passed:
+    `python scripts/audit_tts_smoke.py
+    output/live_tts_real_book_smoke_after_filter --write-report
+    output/live_tts_real_book_smoke_after_filter/audit_report.json`.
+    Result: `ok=true`; duration 45.48 s, mono, 24 kHz, RMS 3574, peak 29824,
+    no front-matter terms.
   - Post-run resource check: ComfyUI was stopped, `ollama ps` was empty, and
     GPU memory returned to the low idle range.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.

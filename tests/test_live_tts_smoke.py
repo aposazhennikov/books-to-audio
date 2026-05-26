@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import wave
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -84,4 +85,42 @@ def test_live_tts_smoke_runs_synthesis_qa_and_assembly(monkeypatch, tmp_path: Pa
     assert report["synthesis"]["synthesized"] == 2
     assert report["audio_qa"]["ok"] is True
     assert Path(report["manifest"]).exists()
+    assert Path(report["assembled_chapter"]).exists()
+
+
+def test_live_tts_smoke_can_use_real_book_excerpt(monkeypatch, tmp_path: Path) -> None:
+    module = _load_live_tts_smoke_module()
+    monkeypatch.setattr(module, "ComfyUIClient", _FakeClient)
+    monkeypatch.setattr(module, "WorkflowBuilder", _FakeBuilder)
+    book_path = tmp_path / "book.txt"
+    book_path.write_text(
+        (
+            "Глава первая\n\n"
+            "Иван вошёл в комнату и остановился у окна. За стеклом шумел дождь.\n\n"
+            "Мария тихо сказала, что чай уже готов. Иван улыбнулся и сел за стол."
+        ),
+        encoding="utf-8",
+    )
+
+    report = module.run_live_tts_smoke(
+        comfyui_url="http://127.0.0.1:8188",
+        workflow_path=tmp_path / "workflow.json",
+        out_dir=tmp_path / "real_book_smoke",
+        language="ru",
+        chunk_timeout=1.0,
+        book_path=book_path,
+        max_book_chars=240,
+        max_smoke_chunks=2,
+        max_chunk_chars=80,
+    )
+
+    assert report["status"] == "ok"
+    assert report["source_book"] == str(book_path)
+    assert report["synthesis"]["synthesized"] == 2
+    manifest = json.loads(Path(report["manifest"]).read_text(encoding="utf-8"))
+    chunks = manifest["chapters"][0]["chunks"]
+    assert manifest["chunker"] == "real-book-live-tts-smoke"
+    assert manifest["language"] == "ru"
+    assert len(chunks) == 2
+    assert "Иван вошёл" in " ".join(chunk["text"] for chunk in chunks)
     assert Path(report["assembled_chapter"]).exists()

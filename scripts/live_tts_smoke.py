@@ -22,12 +22,15 @@ if hasattr(sys.stdout, "reconfigure"):
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from book_normalizer.chunking.manifest_v2 import chunks_to_manifest  # noqa: E402
+from book_normalizer.chunking.splitter import chunk_text  # noqa: E402
 from book_normalizer.comfyui.client import ComfyUIClient, ComfyUIError  # noqa: E402
 from book_normalizer.comfyui.synthesis import synthesize_manifest  # noqa: E402
 from book_normalizer.comfyui.workflow_builder import (  # noqa: E402
     WorkflowBuilder,
     WorkflowBuilderError,
 )
+from book_normalizer.languages import normalize_book_language  # noqa: E402
+from book_normalizer.loaders.factory import LoaderFactory  # noqa: E402
 from book_normalizer.tts.audio_qa import run_audio_qa  # noqa: E402
 from book_normalizer.tts.manifest_assembly import assemble_from_manifest  # noqa: E402
 
@@ -41,6 +44,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-dir", default="output/live_tts_smoke")
     parser.add_argument("--language", default="ru")
     parser.add_argument("--chunk-timeout", type=float, default=300.0)
+    parser.add_argument(
+        "--book-path",
+        default="",
+        help="Optional real book file to use for the smoke instead of built-in text.",
+    )
+    parser.add_argument(
+        "--max-book-chars",
+        type=int,
+        default=1200,
+        help="Maximum real-book characters to include in the smoke manifest.",
+    )
+    parser.add_argument(
+        "--max-smoke-chunks",
+        type=int,
+        default=2,
+        help="Maximum real-book chunks to synthesize.",
+    )
+    parser.add_argument(
+        "--max-chunk-chars",
+        type=int,
+        default=260,
+        help="Maximum characters per real-book TTS smoke chunk.",
+    )
     args = parser.parse_args(argv)
 
     out_dir = Path(args.out_dir)
@@ -50,6 +76,10 @@ def main(argv: list[str] | None = None) -> int:
         out_dir=out_dir,
         language=args.language,
         chunk_timeout=args.chunk_timeout,
+        book_path=Path(args.book_path) if args.book_path else None,
+        max_book_chars=args.max_book_chars,
+        max_smoke_chunks=args.max_smoke_chunks,
+        max_chunk_chars=args.max_chunk_chars,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     report_path = out_dir / "live_tts_smoke_report.json"
@@ -73,8 +103,13 @@ def run_live_tts_smoke(
     out_dir: Path,
     language: str = "ru",
     chunk_timeout: float = 300.0,
+    book_path: Path | None = None,
+    max_book_chars: int = 1200,
+    max_smoke_chunks: int = 2,
+    max_chunk_chars: int = 260,
 ) -> dict[str, Any]:
     """Run the live TTS smoke and return a JSON-serializable report."""
+    language = normalize_book_language(language)
     created_at = datetime.now(timezone.utc).isoformat()
     report: dict[str, Any] = {
         "created_at": created_at,
@@ -83,6 +118,10 @@ def run_live_tts_smoke(
         "workflow": str(workflow_path),
         "out_dir": str(out_dir),
         "language": language,
+        "source_book": str(book_path) if book_path else "",
+        "max_book_chars": max_book_chars,
+        "max_smoke_chunks": max_smoke_chunks,
+        "max_chunk_chars": max_chunk_chars,
     }
 
     client = ComfyUIClient(comfyui_url)
@@ -100,7 +139,21 @@ def run_live_tts_smoke(
         return report
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    manifest = _smoke_manifest(language).to_record()
+    try:
+        manifest = (
+            _real_book_smoke_manifest(
+                book_path,
+                language=language,
+                max_book_chars=max_book_chars,
+                max_smoke_chunks=max_smoke_chunks,
+                max_chunk_chars=max_chunk_chars,
+            )
+            if book_path
+            else _smoke_manifest(language)
+        ).to_record()
+    except (OSError, ValueError) as exc:
+        report.update({"status": "error", "message": str(exc)})
+        return report
     manifest_path = out_dir / "chunks_manifest_v2.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -153,6 +206,82 @@ def run_live_tts_smoke(
     if report["status"] != "ok":
         report["message"] = "Live TTS smoke completed but QA or assembly needs review."
     return report
+
+
+def _real_book_smoke_manifest(
+    book_path: Path,
+    *,
+    language: str,
+    max_book_chars: int,
+    max_smoke_chunks: int,
+    max_chunk_chars: int,
+):
+    """Build a tiny TTS manifest from the start of a real book file."""
+    if max_book_chars <= 0:
+        raise ValueError("--max-book-chars must be greater than zero")
+    if max_smoke_chunks <= 0:
+        raise ValueError("--max-smoke-chunks must be greater than zero")
+    if max_chunk_chars <= 0:
+        raise ValueError("--max-chunk-chars must be greater than zero")
+    if not book_path.exists():
+        raise FileNotFoundError(f"Book not found: {book_path}")
+
+    book = LoaderFactory.default().load(book_path)
+    if getattr(book, "metadata", None) is not None:
+        book.metadata.language = language
+    text = _bounded_book_text(book, max_book_chars=max_book_chars)
+    chunks = [
+        {
+            "chapter_index": 0,
+            "chunk_index": index,
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "intonation": "calm",
+            "text": chunk,
+            "language": language,
+            "pause_after_ms": 250,
+            "boundary_after": "paragraph",
+        }
+        for index, chunk in enumerate(chunk_text(text, max_chunk_chars)[:max_smoke_chunks])
+        if chunk.strip()
+    ]
+    if not chunks:
+        raise ValueError(f"Book has no usable text for TTS smoke: {book_path}")
+    chunks[-1]["boundary_after"] = "chapter"
+    chunks[-1]["pause_after_ms"] = 1500
+    return chunks_to_manifest(
+        chunks,
+        book_title=getattr(book.metadata, "title", "") or book_path.stem,
+        language=language,
+        chunker="real-book-live-tts-smoke",
+        model="ComfyUI/Qwen3-TTS",
+        max_chunk_chars=max_chunk_chars,
+    )
+
+
+def _bounded_book_text(book: object, *, max_book_chars: int) -> str:
+    """Return a clean leading slice of normalized/raw book text."""
+    pieces: list[str] = []
+    remaining = max_book_chars
+    for chapter in getattr(book, "chapters", []):
+        for paragraph in getattr(chapter, "paragraphs", []):
+            source = (
+                getattr(paragraph, "normalized_text", "")
+                or getattr(paragraph, "raw_text", "")
+                or ""
+            ).strip()
+            if not source:
+                continue
+            if len(source) > remaining:
+                source = source[:remaining].rsplit(" ", 1)[0].strip() or source[:remaining]
+            if source:
+                pieces.append(source)
+                remaining -= len(source) + 2
+            if remaining <= 0:
+                break
+        if remaining <= 0:
+            break
+    return "\n\n".join(pieces).strip()
 
 
 def _smoke_manifest(language: str):

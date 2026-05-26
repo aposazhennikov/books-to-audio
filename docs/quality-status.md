@@ -65,6 +65,16 @@ are intentionally not committed.
     chunk files and assembled chapter now start with a RIFF/WAVE header.
   - Post-run resource check: ComfyUI reported about 7.3 GB free VRAM, and
     `ollama ps` was empty.
+- Live real-book TTS smoke passed against the local Windows ComfyUI/Qwen3-TTS
+  backend.
+  - Command: `python scripts/live_tts_smoke.py --book-path books/monosov/monosov1.txt --out-dir output/live_tts_real_book_smoke --max-smoke-chunks 2`
+  - Output: `output/live_tts_real_book_smoke/live_tts_smoke_report.json`
+  - Result: `ok`; 2/2 real-book chunks synthesized, audio QA passed, and
+    `output/live_tts_real_book_smoke/chapter_001.wav` was assembled.
+  - WAV verification: chunk files and assembled chapter are PCM WAV,
+    16-bit mono, 24 kHz.
+  - Post-run resource check: ComfyUI was stopped, `ollama ps` was empty, and
+    GPU memory returned to the low idle range.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.
   - Report: `output/quality_reports/ocr_multilingual_smoke_20260526T025818Z.json`
   - Runtime: local WSL Tesseract with `data/tessdata`.
@@ -107,8 +117,8 @@ are intentionally not committed.
 - Optional only: install native Windows Tesseract system-wide after an
   interactive UAC approval. The GUI no longer depends on this because the
   project-local fallback is verified.
-- Listen to the generated live smoke chapter and/or one real-book short
-  chapter for subjective voice-quality sign-off.
+- Listen to the generated real-book smoke chapter for subjective voice-quality
+  sign-off: `output/live_tts_real_book_smoke/chapter_001.wav`.
 - Run a full-length real-book LLM+TTS pass only when there is an explicit
   long-running acceptance window; the safe full-book text/chunk pass is
   complete, but full synthesis of a long book is intentionally not run by

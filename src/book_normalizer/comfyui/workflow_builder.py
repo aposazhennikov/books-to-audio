@@ -46,6 +46,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.comfyui.generation_options import (
+    GenerationOptions,
+    generation_options_from_mapping,
+)
 from book_normalizer.languages import qwen_tts_language
 
 logger = logging.getLogger(__name__)
@@ -94,6 +98,13 @@ _PLACEHOLDER_SPEAKER = "{{SPEAKER}}"
 _PLACEHOLDER_INSTRUCT = "{{INSTRUCT}}"
 _PLACEHOLDER_LANGUAGE = "{{LANGUAGE}}"
 _PLACEHOLDER_OUTPUT = "{{OUTPUT_FILENAME}}"
+_PLACEHOLDER_TEMPERATURE = "{{TEMPERATURE}}"
+_PLACEHOLDER_TOP_P = "{{TOP_P}}"
+_PLACEHOLDER_TOP_K = "{{TOP_K}}"
+_PLACEHOLDER_REPETITION_PENALTY = "{{REPETITION_PENALTY}}"
+_PLACEHOLDER_MAX_NEW_TOKENS = "{{MAX_NEW_TOKENS}}"
+_PLACEHOLDER_SEED = "{{SEED}}"
+_PLACEHOLDER_SPEECH_RATE = "{{SPEECH_RATE}}"
 # Legacy alias kept for backward-compatibility with hand-crafted templates.
 _PLACEHOLDER_VOICE_ID = "{{VOICE_ID}}"
 
@@ -115,6 +126,18 @@ _ALL_PLACEHOLDERS = (
     _PLACEHOLDER_LANGUAGE,
     _PLACEHOLDER_OUTPUT,
 )
+
+_GENERATION_INPUT_KEYS = {
+    "temperature",
+    "top_p",
+    "top_k",
+    "repetition_penalty",
+    "max_new_tokens",
+    "seed",
+    "speech_rate",
+    "speed",
+    "rate",
+}
 
 
 class WorkflowBuilderError(Exception):
@@ -146,6 +169,12 @@ class WorkflowBuilder:
         output_filename: str,
         language: str = "ru",
         speaker_override: str = "",
+        generation_options: GenerationOptions | dict[str, Any] | None = None,
+        speaker: str = "",
+        emotion: str = "",
+        section_kind: str = "",
+        director: dict[str, Any] | None = None,
+        resynthesis_attempt: int = 0,
     ) -> dict[str, Any]:
         """Return a workflow dict with all placeholders substituted.
 
@@ -159,20 +188,41 @@ class WorkflowBuilder:
         Returns:
             A deep copy of the template with all placeholders replaced.
         """
-        speaker = speaker_override.strip() or voice_label_to_speaker(voice_label)
-        instruct = voice_tone_to_instruct(voice_label, voice_tone)
+        resolved_speaker = speaker_override.strip() or voice_label_to_speaker(voice_label)
+        instruct = voice_tone_to_instruct(
+            voice_label,
+            voice_tone,
+            speaker=speaker,
+            emotion=emotion,
+            section_kind=section_kind,
+            director=director,
+            resynthesis_attempt=resynthesis_attempt,
+        )
         tts_language = qwen_tts_language(language)
+        if isinstance(generation_options, dict):
+            option_values = generation_options_from_mapping(generation_options).for_attempt(0)
+        else:
+            gen_options = generation_options_from_mapping(generation_options)
+            option_values = gen_options.for_attempt(max(0, int(resynthesis_attempt)))
         replacements = {
             _PLACEHOLDER_TEXT: text,
-            _PLACEHOLDER_SPEAKER: speaker,
+            _PLACEHOLDER_SPEAKER: resolved_speaker,
             # Keep backward-compat: some old templates may still use {{VOICE_ID}}.
-            _PLACEHOLDER_VOICE_ID: speaker,
+            _PLACEHOLDER_VOICE_ID: resolved_speaker,
             _PLACEHOLDER_INSTRUCT: instruct,
             _PLACEHOLDER_LANGUAGE: tts_language,
             _PLACEHOLDER_OUTPUT: output_filename,
+            _PLACEHOLDER_TEMPERATURE: str(option_values["temperature"]),
+            _PLACEHOLDER_TOP_P: str(option_values["top_p"]),
+            _PLACEHOLDER_TOP_K: str(option_values["top_k"]),
+            _PLACEHOLDER_REPETITION_PENALTY: str(option_values["repetition_penalty"]),
+            _PLACEHOLDER_MAX_NEW_TOKENS: str(option_values["max_new_tokens"]),
+            _PLACEHOLDER_SEED: str(option_values["seed"]),
+            _PLACEHOLDER_SPEECH_RATE: str(option_values["speech_rate"]),
         }
         workflow = _deep_replace(copy.deepcopy(self._template), replacements)
-        return _deep_set_language(workflow, tts_language)
+        workflow = _deep_set_language(workflow, tts_language)
+        return _deep_set_generation_options(workflow, option_values)
 
     def build_dialogue(
         self,
@@ -292,17 +342,43 @@ def voice_label_to_speaker(voice_label: str) -> str:
     return VOICE_LABEL_TO_SPEAKER.get(voice_label, VOICE_LABEL_TO_SPEAKER["narrator"])
 
 
-def voice_tone_to_instruct(voice_label: str, voice_tone: str) -> str:
+def voice_tone_to_instruct(
+    voice_label: str,
+    voice_tone: str,
+    *,
+    speaker: str = "",
+    emotion: str = "",
+    section_kind: str = "",
+    director: dict[str, Any] | None = None,
+    resynthesis_attempt: int = 0,
+) -> str:
     """Build a Russian-language instruct string from voice_label + free-form voice_tone.
 
-    The first word of ``voice_tone`` is used as the tone key; unrecognised
-    first words fall back to the default neutral sentence.
+    The old first-word tone lookup is kept as a base sentence, but the full
+    tone/director metadata is preserved so retries can steer performance.
     """
     role_prefix = _ROLE_PREFIX.get(voice_label, _ROLE_PREFIX["narrator"])
-    # Use only the first word for lookup to tolerate compound tones like "angry and tense".
-    first_word = voice_tone.strip().lower().split()[0] if voice_tone.strip() else ""
+    full_tone = " ".join(str(voice_tone or "").strip().split())
+    first_word = full_tone.lower().split()[0] if full_tone else ""
     tone_sentence = TONE_TO_RUSSIAN.get(first_word, _DEFAULT_TONE_RU)
-    return f"{role_prefix} {tone_sentence}"
+    parts = [role_prefix, tone_sentence]
+    if full_tone and full_tone.lower() != first_word:
+        parts.append(f"Full tone: {full_tone}.")
+    if speaker:
+        parts.append(f"Speaker: {speaker}.")
+    if emotion:
+        parts.append(f"Emotion: {emotion}.")
+    if section_kind:
+        parts.append(f"Section: {section_kind}.")
+    for key in ("scene", "pace", "pause", "volume", "tension", "delivery"):
+        value = (director or {}).get(key) if isinstance(director, dict) else None
+        if value:
+            parts.append(f"{key.replace('_', ' ').title()}: {value}.")
+    if resynthesis_attempt > 0:
+        parts.append(
+            "Speak clearly with stable volume, no repeated syllables, no rushed delivery."
+        )
+    return " ".join(parts)
 
 
 def _deep_replace(
@@ -339,5 +415,24 @@ def _deep_set_language(obj: Any, language: str) -> Any:
 
     if isinstance(obj, list):
         return [_deep_set_language(item, language) for item in obj]
+
+    return obj
+
+
+def _deep_set_generation_options(obj: Any, options: dict[str, Any]) -> Any:
+    """Set known generation option inputs wherever the workflow exposes them."""
+    if isinstance(obj, dict):
+        result: dict[Any, Any] = {}
+        for key, value in obj.items():
+            normalized = str(key).lower()
+            if normalized in _GENERATION_INPUT_KEYS:
+                option_key = "speech_rate" if normalized in {"speed", "rate"} else normalized
+                result[key] = options.get(option_key, value)
+            else:
+                result[key] = _deep_set_generation_options(value, options)
+        return result
+
+    if isinstance(obj, list):
+        return [_deep_set_generation_options(item, options) for item in obj]
 
     return obj

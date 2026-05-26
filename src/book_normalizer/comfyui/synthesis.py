@@ -15,6 +15,10 @@ from book_normalizer.chunking.manifest_v2 import (
     ensure_v2_manifest,
 )
 from book_normalizer.comfyui.client import ComfyUIClient, ComfyUIError
+from book_normalizer.comfyui.generation_options import (
+    GenerationOptions,
+    generation_options_from_mapping,
+)
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
 from book_normalizer.tts.voice_mapping import voice_mapping_candidates
 
@@ -169,6 +173,7 @@ def synthesize_manifest(
     chunk_timeout: float = 300.0,
     failed_only: bool = False,
     speaker_overrides: dict[str, str] | None = None,
+    generation_options: GenerationOptions | dict[str, Any] | None = None,
     progress: ProgressCallback | None = None,
 ) -> SynthesisSummary:
     """Synthesize all pending chunks and update the manifest after each chunk."""
@@ -195,6 +200,7 @@ def synthesize_manifest(
     done = done_start
     synthesized_now = 0
     manifest_language = str(manifest.get("language") or "ru")
+    base_generation_options = generation_options_from_mapping(generation_options)
 
     for chapter_entry, chunk in pending:
         chapter_index = int(chapter_entry.get("chapter_index", 0))
@@ -203,6 +209,12 @@ def synthesize_manifest(
         voice_tone = str(chunk.get("voice_tone") or "calm")
         text = str(chunk.get("text") or chunk.get(voice_label) or "")
         language = str(chunk.get("language") or manifest_language)
+        attempt = int(chunk.get("resynthesis_attempt") or 0)
+        effective_options = base_generation_options.for_attempt(
+            attempt,
+            chapter_index=chapter_index,
+            chunk_index=chunk_index,
+        )
 
         chunk["failed"] = False
         chunk["error"] = ""
@@ -237,6 +249,12 @@ def synthesize_manifest(
                     voice_label,
                     speaker_overrides,
                 ),
+                generation_options=effective_options,
+                speaker=str(chunk.get("speaker") or ""),
+                emotion=str(chunk.get("emotion") or ""),
+                section_kind=str(chunk.get("section_kind") or ""),
+                director=chunk.get("director") if isinstance(chunk.get("director"), dict) else None,
+                resynthesis_attempt=attempt,
             )
             client.synthesize_chunk(workflow, output_path, timeout=chunk_timeout)
         except ComfyUIError as exc:
@@ -255,6 +273,7 @@ def synthesize_manifest(
         chunk["failed"] = False
         chunk["error"] = ""
         chunk["audio_file"] = str(output_path)
+        chunk["last_generation_options"] = effective_options
         done += 1
         synthesized_now += 1
         emit(f"PROGRESS {done}/{total}")

@@ -19,6 +19,12 @@ from typing import Any, Protocol
 
 from book_normalizer.chunking.manifest_v2 import chunk_is_excluded, ensure_v2_manifest
 from book_normalizer.languages import normalize_book_language
+from book_normalizer.tts.quality_gate import (
+    BAD_QA_STATUSES,
+    compact_issue_reason,
+    normalize_statuses,
+    reset_chunk_for_resynthesis,
+)
 
 ASR_QA_SCHEMA_VERSION = 1
 DEFAULT_ASR_MODEL = "small"
@@ -403,8 +409,12 @@ def annotate_manifest_with_asr(
     *,
     report_path: Path | str | None = None,
     mark_failed_on_asr: bool = False,
+    reset_bad_chunks: bool = False,
+    resynth_statuses: set[str] | list[str] | tuple[str, ...] | None = None,
+    max_resynthesis_attempts: int = 2,
 ) -> None:
     """Attach compact ASR QA blocks to manifest chunks in-place."""
+    statuses = normalize_statuses(resynth_statuses or set(BAD_QA_STATUSES))
     by_chunk = {
         (chunk.chapter_index, chunk.chunk_index): chunk
         for chunk in result.chunks
@@ -426,6 +436,14 @@ def annotate_manifest_with_asr(
                 model=result.model,
                 created_at=result.created_at,
             )
+            if reset_bad_chunks and chunk_result.status.value in statuses:
+                reason = compact_issue_reason("asr_qa", chunk_result.issues)
+                reset_chunk_for_resynthesis(
+                    chunk,
+                    reason=reason,
+                    max_attempts=max_resynthesis_attempts,
+                )
+                continue
             if mark_failed_on_asr and chunk_result.status in {AsrQaStatus.FAILED, AsrQaStatus.ERROR}:
                 chunk["failed"] = True
                 chunk["error"] = "; ".join(issue.message for issue in chunk_result.issues[:3])

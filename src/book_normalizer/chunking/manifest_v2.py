@@ -71,6 +71,13 @@ class ManifestChunkV2(BaseModel):
     deleted: bool = False
     excluded_from_tts: bool = False
     asr_qa: dict[str, Any] | None = None
+    artifact_qa: dict[str, Any] | None = None
+    director: dict[str, Any] | None = None
+    resynthesis_attempt: int = 0
+    resynthesis_reason: str = ""
+    resynthesis_split_count: int = 0
+    rejected_audio_files: list[str] = Field(default_factory=list)
+    last_generation_options: dict[str, Any] | None = None
 
     @field_validator("voice_label")
     @classmethod
@@ -303,6 +310,26 @@ def chunks_to_manifest(
                 section_kind=str(raw_chunk.get("section_kind") or ""),
                 deleted=bool(raw_chunk.get("deleted", False)),
                 excluded_from_tts=bool(raw_chunk.get("excluded_from_tts", False)),
+                asr_qa=raw_chunk.get("asr_qa") if isinstance(raw_chunk.get("asr_qa"), dict) else None,
+                artifact_qa=(
+                    raw_chunk.get("artifact_qa")
+                    if isinstance(raw_chunk.get("artifact_qa"), dict)
+                    else None
+                ),
+                director=raw_chunk.get("director") if isinstance(raw_chunk.get("director"), dict) else None,
+                resynthesis_attempt=int(raw_chunk.get("resynthesis_attempt") or 0),
+                resynthesis_reason=str(raw_chunk.get("resynthesis_reason") or ""),
+                resynthesis_split_count=int(raw_chunk.get("resynthesis_split_count") or 0),
+                rejected_audio_files=[
+                    str(item)
+                    for item in raw_chunk.get("rejected_audio_files", [])
+                    if item
+                ] if isinstance(raw_chunk.get("rejected_audio_files"), list) else [],
+                last_generation_options=(
+                    raw_chunk.get("last_generation_options")
+                    if isinstance(raw_chunk.get("last_generation_options"), dict)
+                    else None
+                ),
             )
         )
 

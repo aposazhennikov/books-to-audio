@@ -123,6 +123,50 @@ def test_synthesize_manifest_passes_character_voice_override(tmp_path: Path) -> 
     assert builder.calls[0]["speaker_override"] == "margarita_sad"
 
 
+def test_synthesize_manifest_passes_generation_options_and_director(tmp_path: Path) -> None:
+    manifest = _manifest()
+    chunk = manifest["chapters"][0]["chunks"][0]
+    chunk.update(
+        {
+            "speaker": "Alice",
+            "emotion": "tense",
+            "section_kind": "dialogue",
+            "director": {"pace": "slow", "volume": "quiet"},
+            "resynthesis_attempt": 1,
+        }
+    )
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    builder = _Builder()
+
+    synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=_Client(),  # type: ignore[arg-type]
+        builder=builder,  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+        generation_options={
+            "temperature": 0.9,
+            "top_p": 0.75,
+            "top_k": 30,
+            "repetition_penalty": 1.1,
+            "max_new_tokens": 1024,
+            "seed": 77,
+            "speech_rate": 0.98,
+        },
+    )
+
+    call = builder.calls[0]
+    assert call["speaker"] == "Alice"
+    assert call["emotion"] == "tense"
+    assert call["section_kind"] == "dialogue"
+    assert call["director"] == {"pace": "slow", "volume": "quiet"}
+    assert call["resynthesis_attempt"] == 1
+    assert call["generation_options"]["temperature"] == 0.9
+    assert call["generation_options"]["seed"] != 77
+    assert manifest["chapters"][0]["chunks"][0]["last_generation_options"] == call["generation_options"]
+
+
 def test_synthesize_manifest_marks_failed_chunk(tmp_path: Path) -> None:
     manifest = _manifest()
     manifest_path = tmp_path / "chunks_manifest_v2.json"

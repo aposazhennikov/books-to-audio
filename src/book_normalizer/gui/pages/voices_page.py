@@ -62,6 +62,7 @@ class VoicesPage(QWidget):
 
         # Left panel: settings + actions.
         left_panel = QWidget()
+        self._settings_panel = left_panel
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
@@ -321,46 +322,68 @@ class VoicesPage(QWidget):
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Keep the voice table readable as the page width changes."""
         super().resizeEvent(event)
-        self._sync_settings_panel_height()
         self._sync_compact_mode()
+        self._sync_settings_panel_height()
 
     def set_ui_scale(self, scale: float) -> None:
         """Keep the settings panel tall enough when global UI zoom changes."""
         self._ui_scale = max(0.8, min(1.45, scale))
         self._voice_table.set_ui_scale(self._ui_scale)
-        self._sync_settings_panel_height()
         self._sync_compact_mode()
+        self._sync_settings_panel_height()
 
     def _sync_settings_panel_height(self) -> None:
         """Balance the scrollable settings area against the assignment table."""
-        tight_viewport = self.width() < 960 or self.height() < 560
-        target = max(
-            164 if tight_viewport else 188,
-            round((105 if tight_viewport else 188) * self._ui_scale),
-        )
+        width_compact = self.width() < 960
+        height_compact = self.height() < 580
+        content_needed = self._settings_panel.sizeHint().height()
+        if self._top_tabs.tabBar().isVisible():
+            content_needed += self._top_tabs.tabBar().sizeHint().height()
+        content_needed += round(18 * self._ui_scale)
+        if width_compact:
+            target = max(164, round(105 * self._ui_scale))
+            minimum = 164
+        elif height_compact:
+            target = max(188, round(130 * self._ui_scale))
+            minimum = 188
+        else:
+            target = max(188, round(188 * self._ui_scale))
+            minimum = 188
+        if not width_compact:
+            target = max(target, content_needed)
         if self.height() > 0:
-            table_reserve = 185 if tight_viewport else max(260, round(260 * self._ui_scale))
-            target = min(target, max(164 if tight_viewport else 188, self.height() - table_reserve))
+            if self.height() < 430:
+                table_reserve = 145
+            elif height_compact:
+                table_reserve = 250
+            else:
+                table_reserve = max(260, round(260 * self._ui_scale))
+            target = min(target, max(minimum, self.height() - table_reserve))
         self._top_tabs.setMinimumHeight(target)
         self._top_tabs.setMaximumHeight(target)
 
     def _sync_compact_mode(self) -> None:
         """Switch heavy table controls into compact mode on narrow widths."""
-        compact = self.width() < 960
-        self._compact_mode = compact
-        self._voice_table.set_compact_mode(compact)
-        self._settings_layout.setVerticalSpacing(12 if compact else 6)
-        self._action_panel.layout().setContentsMargins(0, 4 if compact else 0, 0, 0)
-        self._chunk_size.setFixedHeight(42 if compact else 38)
-        self._chunk_size.setFixedWidth(118 if compact else 128)
-        self._progress.setVisible(not compact)
+        width_compact = self.width() < 960
+        height_compact = self.height() < 580
+        controls_compact = width_compact or height_compact
+        ultra_dense = self.height() < 430
+        dense = ultra_dense or (height_compact and not width_compact)
+        self._compact_mode = controls_compact
+        self._voice_table.set_compact_mode(width_compact)
+        self._voice_table.set_dense_mode(dense, ultra_dense=ultra_dense)
+        self._settings_layout.setVerticalSpacing(12 if controls_compact else 6)
+        self._action_panel.layout().setContentsMargins(0, 4 if controls_compact else 0, 0, 0)
+        self._chunk_size.setFixedHeight(42 if controls_compact else 38)
+        self._chunk_size.setFixedWidth(118 if width_compact else 128)
+        self._progress.setVisible(not controls_compact)
         for button in (
             self._btn_detect,
             self._btn_load,
             self._btn_save,
             self._btn_build,
         ):
-            if compact:
+            if controls_compact:
                 button.setFixedHeight(42)
             else:
                 button.setMaximumHeight(16777215)
@@ -370,19 +393,20 @@ class VoicesPage(QWidget):
             self._chunk_size_label,
             self._stress_mode_label,
         ):
-            label.setVisible(not compact)
-        self._speaker_mode_hint.setVisible(not compact)
-        self._stress_mode.setVisible(not compact)
-        self._btn_detect.setMinimumWidth(0 if compact else 260)
-        self._btn_detect.setMaximumWidth(16777215 if compact else 360)
-        self._btn_detect.setText(t("voice.compact_detect") if compact else t("voice.detect"))
+            label.setVisible(not controls_compact)
+        self._speaker_mode_hint.setVisible(not controls_compact)
+        self._stress_mode.setVisible(not controls_compact)
+        self._stats_label.setVisible(not dense)
+        self._btn_detect.setMinimumWidth(0 if width_compact else 260)
+        self._btn_detect.setMaximumWidth(16777215 if width_compact else 360)
+        self._btn_detect.setText(t("voice.compact_detect") if width_compact else t("voice.detect"))
         self._btn_load.setText(
-            t("voice.compact_load_manifest") if compact else t("voice.load_manifest")
+            t("voice.compact_load_manifest") if width_compact else t("voice.load_manifest")
         )
         self._btn_save.setText(
-            t("voice.compact_save_manifest") if compact else t("voice.save_manifest")
+            t("voice.compact_save_manifest") if width_compact else t("voice.save_manifest")
         )
-        self._btn_build.setText(t("voice.compact_build_chunks") if compact else t("voice.build_chunks"))
+        self._btn_build.setText(t("voice.compact_build_chunks") if width_compact else t("voice.build_chunks"))
 
     def _current_speaker_mode(self) -> str:
         """Return the internal speaker attribution mode."""
@@ -442,6 +466,7 @@ class VoicesPage(QWidget):
         mode = self._current_speaker_mode()
         self._llm_panel.setVisible(mode == "llm")
         self._update_speaker_mode_hint()
+        self._refresh_loaded_layout()
 
     def _on_llm_provider_changed(self, _idx: int) -> None:
         """Toggle endpoint vs API key fields based on provider."""
@@ -457,6 +482,7 @@ class VoicesPage(QWidget):
         else:
             self._llm_endpoint.setText(configured_ollama_endpoint())
             self._llm_model.setText(PRIMARY_QWEN3_MODEL)
+        self._refresh_loaded_layout()
 
     def set_book(self, book: object, output_dir: Path) -> None:
         """Set the book object from normalization page."""
@@ -486,6 +512,7 @@ class VoicesPage(QWidget):
         )
         self._manifest_label.setVisible(True)
         self._progress.set_status(t("voice.segments_ready", n=len(segments)))
+        self._refresh_loaded_layout()
 
     # ── Detection ──
 
@@ -530,6 +557,7 @@ class VoicesPage(QWidget):
         self._progress.set_status(
             t("voice.segments_ready", n=len(segments)),
         )
+        self._refresh_loaded_layout()
 
     def _update_stats(self, segments: list) -> None:
         """Update the stats label with segment distribution."""
@@ -600,6 +628,7 @@ class VoicesPage(QWidget):
         )
         self._manifest_label.setVisible(True)
         self.chunks_built.emit(str(chunks_path))
+        self._refresh_loaded_layout()
 
     # ── Load / Save ──
 
@@ -619,6 +648,7 @@ class VoicesPage(QWidget):
                 t("voice.manifest_path", path=str(self._manifest_path)),
             )
             self._manifest_label.setVisible(True)
+            self._refresh_loaded_layout()
 
     def _save_manifest(self) -> None:
         if not self._manifest_path:
@@ -640,7 +670,14 @@ class VoicesPage(QWidget):
             t("voice.manifest_path", path=str(self._manifest_path)),
         )
         self._manifest_label.setVisible(True)
+        self._refresh_loaded_layout()
 
     def get_manifest_path(self) -> Path | None:
         """Return path to the current manifest file."""
         return self._manifest_path
+
+    def _refresh_loaded_layout(self) -> None:
+        """Recompute compact/dense layout after manifest-dependent widgets appear."""
+        self._sync_compact_mode()
+        self._sync_settings_panel_height()
+        self.updateGeometry()

@@ -5,15 +5,35 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from book_normalizer.chunking.manifest_v2 import flatten_manifest, load_manifest
+from book_normalizer.comfyui.generation_options import GenerationOptions
 from book_normalizer.comfyui.client import ComfyUIClient
 from book_normalizer.comfyui.synthesis import (
+    collect_pending_chunks,
     count_done_chunks,
     load_speaker_overrides,
+    save_manifest,
     synthesize_manifest,
 )
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
+from book_normalizer.tts.artifact_qa import (
+    DEFAULT_ARTIFACT_REPORT_NAME,
+    annotate_manifest_with_artifacts,
+    run_artifact_qa,
+    write_artifact_report,
+)
+from book_normalizer.tts.asr_qa import (
+    DEFAULT_ASR_REPORT_NAME,
+    AsrQaConfig,
+    FasterWhisperBackend,
+    annotate_manifest_with_asr,
+    run_asr_qa,
+    write_asr_diff,
+    write_asr_report,
+)
+from book_normalizer.tts.quality_gate import split_problem_chunks_for_retry
 
 ProgressCallback = Callable[[int, int, str, int, int, float, int, int, int], None]
 StatusCallback = Callable[[str], None]
@@ -33,6 +53,14 @@ class SynthesisRequest:
     failed_only: bool = False
     merge_chapters: bool = True
     clone_config_path: Path | None = None
+    generation_options: GenerationOptions | dict[str, Any] | None = None
+    quality_loop: bool = False
+    artifact_qa: bool = False
+    asr_qa_after_synthesis: bool = False
+    asr_model: str = "small"
+    asr_device: str = "auto"
+    asr_timeout_seconds: float = 180.0
+    max_resynthesis_attempts: int = 2
 
 
 @dataclass(frozen=True)
@@ -116,24 +144,115 @@ class SynthesisController:
                 0,
             )
 
-        summary = synthesize_manifest(
-            manifest=manifest,
-            manifest_path=request.manifest_path,
-            client=client,
-            builder=builder,
-            out_dir=audio_dir,
-            chapter_filter=request.chapter,
-            chunk_timeout=request.chunk_timeout,
-            failed_only=request.failed_only,
-            speaker_overrides=speaker_overrides,
-            progress=on_line,
-        )
+        synthesized_total = 0
+        skipped = done_start
+        max_passes = max(1, int(request.max_resynthesis_attempts) + 1)
+        for pass_index in range(max_passes):
+            retry_pass = pass_index > 0
+            if retry_pass:
+                self._emit_log(f"Quality retry pass {pass_index}/{max_passes - 1}")
+            summary = synthesize_manifest(
+                manifest=manifest,
+                manifest_path=request.manifest_path,
+                client=client,
+                builder=builder,
+                out_dir=audio_dir,
+                chapter_filter=request.chapter,
+                chunk_timeout=request.chunk_timeout,
+                failed_only=request.failed_only or retry_pass,
+                speaker_overrides=speaker_overrides,
+                generation_options=request.generation_options,
+                progress=on_line,
+            )
+            synthesized_total += summary.synthesized
+            skipped = summary.skipped
+
+            if not (request.quality_loop or request.artifact_qa or request.asr_qa_after_synthesis):
+                break
+
+            self._run_quality_gates(manifest, request)
+            if not request.quality_loop:
+                break
+
+            splits = split_problem_chunks_for_retry(manifest)
+            if splits:
+                save_manifest(request.manifest_path, manifest)
+                self._emit_log(f"Quality loop split {splits} repeated/overlong chunk(s) for retry.")
+
+            retry_pending = collect_pending_chunks(
+                manifest,
+                request.chapter,
+                failed_only=True,
+            )
+            if not retry_pending:
+                break
+            if pass_index == max_passes - 1:
+                self._emit_log(
+                    f"Quality loop stopped: {len(retry_pending)} chunk(s) still need attention."
+                )
+                break
+            self._emit_log(
+                f"Quality loop reset {len(retry_pending)} bad chunk(s) for resynthesis."
+            )
+
         self._emit_progress(total, total, "0s", 0, 0, 0.0, 0, 0, 0)
         return SynthesisRunResult(
             audio_dir=audio_dir,
-            synthesized=summary.synthesized,
-            skipped=summary.skipped,
+            synthesized=synthesized_total,
+            skipped=skipped,
         )
+
+    def _run_quality_gates(self, manifest: dict[str, Any], request: SynthesisRequest) -> None:
+        """Run configured post-synthesis QA gates and update the manifest."""
+        if request.artifact_qa or request.quality_loop:
+            report_path = request.manifest_path.with_name(DEFAULT_ARTIFACT_REPORT_NAME)
+            self._emit_log("Artifact QA: checking clipping, silence, dropouts, and repeats...")
+            artifact_result = run_artifact_qa(manifest, manifest_path=request.manifest_path)
+            write_artifact_report(report_path, artifact_result)
+            annotate_manifest_with_artifacts(
+                manifest,
+                artifact_result,
+                report_path=report_path.resolve(),
+                reset_bad_chunks=request.quality_loop,
+                max_resynthesis_attempts=request.max_resynthesis_attempts,
+            )
+            summary = artifact_result.summary
+            self._emit_log(
+                "Artifact QA: "
+                f"status={artifact_result.status}, failed={summary['failed']}, "
+                f"warnings={summary['warning']}, errors={summary['error']}."
+            )
+            save_manifest(request.manifest_path, manifest)
+
+        if request.asr_qa_after_synthesis:
+            report_path = request.manifest_path.with_name(DEFAULT_ASR_REPORT_NAME)
+            self._emit_log(f"ASR QA: backend=faster-whisper model={request.asr_model}")
+            asr_result = run_asr_qa(
+                manifest,
+                config=AsrQaConfig(
+                    model=request.asr_model,
+                    device=request.asr_device,
+                    timeout_seconds=request.asr_timeout_seconds,
+                ),
+                backend=FasterWhisperBackend(request.asr_model, device=request.asr_device),
+                manifest_path=request.manifest_path,
+            )
+            write_asr_report(report_path, asr_result)
+            write_asr_diff(report_path.with_suffix(".diff.txt"), asr_result)
+            annotate_manifest_with_asr(
+                manifest,
+                asr_result,
+                report_path=report_path.resolve(),
+                reset_bad_chunks=request.quality_loop,
+                max_resynthesis_attempts=request.max_resynthesis_attempts,
+            )
+            summary = asr_result.summary
+            self._emit_log(
+                "ASR QA: "
+                f"status={asr_result.status.value}, failed={summary['failed']}, "
+                f"warnings={summary['warning']}, errors={summary['error']}."
+            )
+            save_manifest(request.manifest_path, manifest)
 
     def _emit_progress(
         self,

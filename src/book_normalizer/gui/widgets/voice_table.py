@@ -154,6 +154,8 @@ class VoiceTableWidget(QWidget):
         self._manifest_meta: dict[str, Any] = {}
         self._manifest_is_v2 = False
         self._compact_mode = False
+        self._dense_mode = False
+        self._ultra_dense_mode = False
         self._ui_scale = 1.0
         self._row_to_segment_index: list[int] = []
         self._populating = False
@@ -500,6 +502,15 @@ class VoiceTableWidget(QWidget):
         self._apply_toolbar_labels()
         self._apply_table_layout()
 
+    def set_dense_mode(self, dense: bool, *, ultra_dense: bool = False) -> None:
+        """Hide secondary editing chrome when the host page is height-constrained."""
+        if self._dense_mode == dense and self._ultra_dense_mode == ultra_dense:
+            return
+        self._dense_mode = dense
+        self._ultra_dense_mode = ultra_dense
+        self._apply_table_layout()
+        self._sync_editor_visibility()
+
     def _apply_toolbar_labels(self) -> None:
         """Use shorter toolbar labels in compact mode."""
         if not self._compact_mode:
@@ -580,9 +591,9 @@ class VoiceTableWidget(QWidget):
         """Hide the chunk editor until there is something meaningful to edit."""
         has_segments = bool(self._segments)
         self._chapter_nav_panel.setVisible(has_segments)
-        self._preset_toolbar_panel.setVisible(has_segments)
-        self._quick_apply_panel.setVisible(has_segments)
-        self._editor_tabs.setVisible(has_segments)
+        self._preset_toolbar_panel.setVisible(has_segments and not self._ultra_dense_mode)
+        self._quick_apply_panel.setVisible(has_segments and not self._ultra_dense_mode)
+        self._editor_tabs.setVisible(has_segments and not self._dense_mode)
 
     def _scaled_table_row_height(self, base_height: int) -> int:
         return max(

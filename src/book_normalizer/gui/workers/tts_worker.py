@@ -11,6 +11,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from book_normalizer.gui.i18n import t
 from book_normalizer.languages import normalize_book_language
 from book_normalizer.runtime_paths import configured_ollama_endpoint
+from book_normalizer.comfyui.generation_options import GenerationOptions
 from book_normalizer.tts.model_download import MODEL_DOWNLOAD_WARNING, install_tts_models
 from book_normalizer.tts.synthesis_controller import SynthesisController, SynthesisRequest
 
@@ -166,6 +167,12 @@ class TTSSynthesisWorker(QThread):
         speech_rate: float = 1.0,
         output_format: str = "flac",
         merge_chapters: bool = True,
+        quality_loop: bool = False,
+        artifact_qa: bool = True,
+        asr_qa_after_synthesis: bool = False,
+        asr_model: str = "small",
+        asr_device: str = "auto",
+        max_resynthesis_attempts: int = 2,
         parent=None,
     ):
         super().__init__(parent)
@@ -179,26 +186,34 @@ class TTSSynthesisWorker(QThread):
         self._merge_chapters = merge_chapters
         self._cancelled = False
         self._clone_config_path = Path(clone_config) if clone_config else None
+        self._generation_options = GenerationOptions(
+            batch_size=batch_size,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
+            max_new_tokens=max_new_tokens,
+            seed=seed,
+            speech_rate=speech_rate,
+            output_format=output_format,
+        )
+        self._quality_loop = quality_loop
+        self._artifact_qa = artifact_qa
+        self._asr_qa_after_synthesis = asr_qa_after_synthesis
+        self._asr_model = asr_model
+        self._asr_device = asr_device or "auto"
+        self._max_resynthesis_attempts = max_resynthesis_attempts
 
         # Accepted for source compatibility with older GUI/tests. V2 synthesis
         # is driven by the manifest and ComfyUI workflow, not runner flags.
         # clone_config is intentionally not here: it is active v2 input.
         self._unused_runner_options = {
             "model": model,
-            "batch_size": batch_size,
             "resume": resume,
             "use_compile": use_compile,
             "use_sage_attention": use_sage_attention,
             "models_dir": models_dir,
             "voice_library_dir": voice_library_dir,
-            "temperature": temperature,
-            "top_p": top_p,
-            "top_k": top_k,
-            "repetition_penalty": repetition_penalty,
-            "max_new_tokens": max_new_tokens,
-            "seed": seed,
-            "speech_rate": speech_rate,
-            "output_format": output_format,
         }
 
     def cancel(self) -> None:
@@ -224,6 +239,13 @@ class TTSSynthesisWorker(QThread):
                 failed_only=self._failed_only,
                 merge_chapters=self._merge_chapters,
                 clone_config_path=self._clone_config_path,
+                generation_options=self._generation_options,
+                quality_loop=self._quality_loop,
+                artifact_qa=self._artifact_qa,
+                asr_qa_after_synthesis=self._asr_qa_after_synthesis,
+                asr_model=self._asr_model,
+                asr_device=self._asr_device,
+                max_resynthesis_attempts=self._max_resynthesis_attempts,
             )
             controller = SynthesisController(
                 request,
@@ -259,6 +281,9 @@ class AsrQaWorker(QThread):
         max_cer: float = 0.18,
         min_match_ratio: float = 0.78,
         mark_failed_on_asr: bool = False,
+        run_artifact: bool = True,
+        reset_bad_chunks: bool = False,
+        max_resynthesis_attempts: int = 2,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -270,6 +295,9 @@ class AsrQaWorker(QThread):
         self._max_cer = max_cer
         self._min_match_ratio = min_match_ratio
         self._mark_failed_on_asr = mark_failed_on_asr
+        self._run_artifact = run_artifact
+        self._reset_bad_chunks = reset_bad_chunks
+        self._max_resynthesis_attempts = max_resynthesis_attempts
 
     def run(self) -> None:
         try:
@@ -280,6 +308,11 @@ class AsrQaWorker(QThread):
                 annotate_manifest_with_asr,
                 run_asr_qa,
                 write_asr_diff,
+            )
+            from book_normalizer.tts.artifact_qa import (
+                annotate_manifest_with_artifacts,
+                run_artifact_qa,
+                write_artifact_report,
             )
             from book_normalizer.tts.audio_qa import run_audio_qa
 
@@ -292,6 +325,24 @@ class AsrQaWorker(QThread):
                 f"Audio QA: {audio_result.checked_files}/{audio_result.synthesized_chunks} checked, "
                 f"{len(audio_result.issues)} issue(s)."
             )
+            artifact_result = None
+            if self._run_artifact:
+                artifact_report_path = self._manifest_path.with_name("artifact_qa_report.json")
+                artifact_result = run_artifact_qa(manifest, manifest_path=self._manifest_path)
+                write_artifact_report(artifact_report_path, artifact_result)
+                annotate_manifest_with_artifacts(
+                    manifest,
+                    artifact_result,
+                    report_path=artifact_report_path.resolve(),
+                    reset_bad_chunks=self._reset_bad_chunks,
+                    max_resynthesis_attempts=self._max_resynthesis_attempts,
+                )
+                artifact_summary = artifact_result.summary
+                self.log_line.emit(
+                    "Artifact QA: "
+                    f"status={artifact_result.status}, failed={artifact_summary['failed']}, "
+                    f"warnings={artifact_summary['warning']}, errors={artifact_summary['error']}."
+                )
             asr_result = run_asr_qa(
                 manifest,
                 config=AsrQaConfig(
@@ -309,6 +360,7 @@ class AsrQaWorker(QThread):
                 "schema_version": 1,
                 "manifest_path": str(self._manifest_path),
                 "audio_qa": audio_result.to_dict(),
+                "artifact_qa": artifact_result.to_dict() if artifact_result else None,
                 "asr_qa": asr_result.to_dict(),
             }
             report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -318,6 +370,8 @@ class AsrQaWorker(QThread):
                 asr_result,
                 report_path=report_path.resolve(),
                 mark_failed_on_asr=self._mark_failed_on_asr,
+                reset_bad_chunks=self._reset_bad_chunks,
+                max_resynthesis_attempts=self._max_resynthesis_attempts,
             )
             save_manifest(self._manifest_path, manifest)
             summary = asr_result.summary

@@ -491,6 +491,126 @@ def test_zoomed_chunk_markup_controls_do_not_overlap() -> None:
     window.deleteLater()
 
 
+@pytest.mark.parametrize(
+    ("size", "scale", "expect_ultra_dense"),
+    [
+        ((2048, 715), 1.45, False),
+        ((760, 520), 1.45, True),
+    ],
+)
+def test_loaded_chunk_page_does_not_overlap_in_height_constrained_viewports(
+    size: tuple[int, int],
+    scale: float,
+    expect_ultra_dense: bool,
+) -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    _populate_loaded_chunk_page(window)
+    render_widget(window, size[0], size[1], scale=scale)
+
+    page = window._voices_page
+    assert page._compact_mode is True
+    assert page._voice_table._dense_mode is True
+    assert page._voice_table._ultra_dense_mode is expect_ultra_dense
+    assert page._progress.isHidden()
+    assert page._voice_table._editor_tabs.isHidden()
+
+    if expect_ultra_dense:
+        assert page._voice_table._preset_toolbar_panel.isHidden()
+        assert page._voice_table._quick_apply_panel.isHidden()
+        assert page._stats_label.isHidden()
+    else:
+        assert page._voice_table._preset_toolbar_panel.isVisible()
+        assert page._voice_table._quick_apply_panel.isVisible()
+        assert page._stats_label.isHidden()
+        assert page._voice_table._compact_mode is False
+
+    siblings = [page._top_tabs, page._voice_table]
+    if page._stats_label.isVisible():
+        siblings.append(page._stats_label)
+    for upper, lower in zip(siblings, siblings[1:]):
+        assert upper.geometry().bottom() <= lower.geometry().top(), (
+            upper.objectName() or upper.__class__.__name__,
+            lower.objectName() or lower.__class__.__name__,
+            upper.geometry().getRect(),
+            lower.geometry().getRect(),
+        )
+
+    top_tabs_rect = _rect_in_window(window, page._top_tabs)
+    for button in (page._btn_detect, page._btn_load, page._btn_save, page._btn_build):
+        button_rect = _rect_in_window(window, button)
+        assert button_rect.bottom() <= top_tabs_rect.bottom()
+        assert button_rect.right() <= top_tabs_rect.right()
+
+    table_panel_rect = _rect_in_window(window, page._voice_table)
+    for child in (
+        page._voice_table._chapter_nav_panel,
+        page._voice_table._preset_toolbar_panel,
+        page._voice_table._quick_apply_panel,
+        page._voice_table._table,
+        page._voice_table._editor_tabs,
+    ):
+        if not child.isVisible():
+            continue
+        child_rect = _rect_in_window(window, child)
+        assert child_rect.bottom() <= table_panel_rect.bottom(), (
+            child.objectName() or child.__class__.__name__,
+            child_rect.getRect(),
+            table_panel_rect.getRect(),
+        )
+        assert child_rect.right() <= table_panel_rect.right()
+
+    assert page._voice_table._table.horizontalScrollBar().maximum() == 0
+
+    window.close()
+    window.deleteLater()
+
+
+def test_loaded_llm_chunk_page_keeps_settings_controls_inside_panel() -> None:
+    app = qapp()
+    _ = app
+    window = MainWindow()
+    window._tabs.setCurrentIndex(2)
+    _populate_loaded_chunk_page(window, speaker_mode="llm")
+    render_widget(window, 2048, 1228, scale=1.0)
+
+    page = window._voices_page
+    top_tabs_rect = _rect_in_window(window, page._top_tabs)
+    table_rect = _rect_in_window(window, page._voice_table)
+    assert top_tabs_rect.bottom() <= table_rect.top()
+
+    for child in (
+        page._speaker_mode,
+        page._chunk_size,
+        page._stress_mode,
+        page._llm_panel,
+        page._action_panel,
+        page._progress,
+        page._manifest_label,
+    ):
+        if not child.isVisible():
+            continue
+        child_rect = _rect_in_window(window, child)
+        assert child_rect.top() >= top_tabs_rect.top(), (
+            child.objectName() or child.__class__.__name__,
+            child_rect.getRect(),
+            top_tabs_rect.getRect(),
+        )
+        assert child_rect.bottom() <= top_tabs_rect.bottom(), (
+            child.objectName() or child.__class__.__name__,
+            child_rect.getRect(),
+            top_tabs_rect.getRect(),
+        )
+
+    assert page._llm_panel.isVisible()
+    assert page._top_tabs.height() > 188
+
+    window.close()
+    window.deleteLater()
+
+
 def test_zoomed_chunk_actions_keep_breathing_room() -> None:
     app = qapp()
     _ = app
@@ -642,6 +762,44 @@ def _assert_no_visual_overlap(root: QtWidgets.QWidget, widgets: list[QtWidgets.Q
                 left_rect.getRect(),
                 right_rect.getRect(),
             )
+
+
+def _populate_loaded_chunk_page(window: MainWindow, *, speaker_mode: str = "heuristic") -> None:
+    page = window._voices_page
+    mode_index = page._speaker_mode.findData(speaker_mode)
+    assert mode_index >= 0
+    page._speaker_mode.setCurrentIndex(mode_index)
+    segments = [
+        {
+            "segment_index": index,
+            "chapter_index": index // 8,
+            "role": "male" if index % 5 == 1 else "female" if index % 7 == 2 else "narrator",
+            "speaker": "Диктор" if index % 5 != 1 and index % 7 != 2 else "Персонаж",
+            "is_dialogue": index % 5 == 1 or index % 7 == 2,
+            "voice_id": (
+                "male_confident"
+                if index % 5 == 1
+                else "female_warm"
+                if index % 7 == 2
+                else "narrator_calm"
+            ),
+            "intonation": "calm",
+            "text": "Длинный текст превью сегмента для проверки загруженного состояния таблицы.",
+        }
+        for index in range(32)
+    ]
+    page._voice_table.set_segments(segments)
+    page._btn_save.setEnabled(True)
+    page._btn_build.setEnabled(True)
+    page._progress.set_status(
+        "Собрано 799 TTS-чанков. Перейдите на вкладку Голоса для следующего шага.",
+    )
+    page._manifest_label.setText(
+        "Манифест: C:\\Users\\LENOVO\\Desktop\\OwnProjects\\books-to-audio\\output\\"
+        "Ожидаемый_Писец__электронная_книга_pdf\\chunks_manifest_v2.json",
+    )
+    page._manifest_label.setVisible(True)
+    page._refresh_loaded_layout()
 
 
 def _rect_in_window(

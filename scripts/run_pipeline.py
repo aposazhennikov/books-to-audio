@@ -396,6 +396,12 @@ def run_stage4_synthesize(
     comfyui_url: str,
     workflow_path: str,
     chapter_filter: int | None,
+    *,
+    quality_loop: bool = False,
+    artifact_qa: bool = False,
+    asr_qa_after_synthesis: bool = False,
+    asr_model: str = "small",
+    max_resynth_attempts: int = 2,
 ) -> None:
     """Synthesize audio chunks via ComfyUI."""
     args = [
@@ -406,6 +412,12 @@ def run_stage4_synthesize(
     ]
     if chapter_filter is not None:
         args += ["--chapter", str(chapter_filter)]
+    if quality_loop:
+        args += ["--quality-loop", "--max-resynth-attempts", str(max_resynth_attempts)]
+    if artifact_qa:
+        args.append("--artifact-qa")
+    if asr_qa_after_synthesis:
+        args += ["--asr-qa-after-synthesis", "--asr-model", asr_model]
 
     print(f"Running in-process: synthesize_comfyui.py {' '.join(args)}")
     _run_script_main("synthesize_comfyui.py", args)
@@ -588,6 +600,16 @@ def main(argv: list[str] | None = None) -> None:
         help="Run ComfyUI synthesis after chunking (Stage 4).",
     )
     parser.add_argument(
+        "--quality-loop",
+        action="store_true",
+        help="Run synthesize -> artifact/ASR QA -> resynthesize bad chunks loop.",
+    )
+    parser.add_argument(
+        "--artifact-qa",
+        action="store_true",
+        help="Run artifact QA for clipping, silence, dropouts, and repeated audio.",
+    )
+    parser.add_argument(
         "--asr-qa-after-synthesis",
         action="store_true",
         help="Run report-first local faster-whisper ASR QA after synthesis and before assembly.",
@@ -625,6 +647,12 @@ def main(argv: list[str] | None = None) -> None:
         "--mark-failed-on-asr",
         action="store_true",
         help="Also mark chunks failed when ASR status is failed/error.",
+    )
+    parser.add_argument(
+        "--max-resynth-attempts",
+        type=int,
+        default=2,
+        help="Max automatic resynthesis attempts per bad chunk (default: 2).",
     )
     parser.add_argument(
         "--workflow", default=None,
@@ -722,13 +750,22 @@ def main(argv: list[str] | None = None) -> None:
     if args.synthesize:
         stage_banner(4, "ComfyUI synthesis")
         run_stage4_synthesize(
-            manifest_path, audio_dir, args.comfyui_url, args.workflow, args.chapter
+            manifest_path,
+            audio_dir,
+            args.comfyui_url,
+            args.workflow,
+            args.chapter,
+            quality_loop=args.quality_loop,
+            artifact_qa=args.artifact_qa or args.quality_loop,
+            asr_qa_after_synthesis=args.asr_qa_after_synthesis,
+            asr_model=args.asr_model,
+            max_resynth_attempts=args.max_resynth_attempts,
         )
     else:
         stage_banner(4, "ComfyUI synthesis — SKIPPED (use --synthesize to enable)")
 
     # ── Stage 5 ───────────────────────────────────────────────────────────────
-    if args.asr_qa_after_synthesis:
+    if args.asr_qa_after_synthesis and not args.quality_loop:
         stage_banner(5, "ASR QA: report-first transcript check")
         run_stage5_asr_qa(
             manifest_path,
@@ -739,6 +776,8 @@ def main(argv: list[str] | None = None) -> None:
             timeout_seconds=args.asr_timeout_seconds,
             mark_failed_on_asr=args.mark_failed_on_asr,
         )
+    elif args.asr_qa_after_synthesis:
+        stage_banner(5, "ASR QA handled inside quality loop")
     else:
         stage_banner(5, "ASR QA — SKIPPED (use --asr-qa-after-synthesis to enable)")
 

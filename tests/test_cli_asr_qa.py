@@ -93,3 +93,61 @@ def test_audio_qa_cli_runs_asr_writes_report_and_manifest(
     assert asr_block["model"] == "unit-small"
     assert asr_block["status"] == "passed"
     assert manifest["chapters"][0]["chunks"][0]["synthesized"] is True
+
+
+def test_audio_qa_cli_reset_bad_chunks_makes_failed_only_retry_possible(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import book_normalizer.tts.asr_qa as asr_qa
+
+    monkeypatch.setattr(asr_qa, "FasterWhisperBackend", FakeFasterWhisperBackend)
+    wav_path = tmp_path / "audio_chunks" / "chapter_001" / "chunk_001_narrator.wav"
+    _write_wav(wav_path)
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "language": "en",
+                "chapters": [
+                    {
+                        "chapter_index": 0,
+                        "chunks": [
+                            {
+                                "chapter_index": 0,
+                                "chunk_index": 0,
+                                "voice_label": "narrator",
+                                "text": "Completely different expected text.",
+                                "synthesized": True,
+                                "audio_file": str(wav_path),
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "audio-qa",
+            str(manifest_path),
+            "--asr",
+            "--reset-bad-chunks",
+            "--max-resynth-attempts",
+            "2",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    chunk = manifest["chapters"][0]["chunks"][0]
+    assert chunk["asr_qa"]["status"] == "failed"
+    assert chunk["failed"] is True
+    assert chunk["synthesized"] is False
+    assert chunk["audio_file"] is None
+    assert chunk["resynthesis_attempt"] == 1
+    assert str(wav_path) in chunk["rejected_audio_files"]

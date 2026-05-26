@@ -180,12 +180,26 @@ def main() -> None:
 @click.option("--max-chunk-chars", type=int, default=400, show_default=True, help="Soft max chars per LLM chunk.")
 @click.option("--synthesize", is_flag=True, default=False, help="Run ComfyUI synthesis after chunking.")
 @click.option(
+    "--quality-loop",
+    is_flag=True,
+    default=False,
+    help="Run artifact/ASR QA and resynthesize bad chunks before assembly.",
+)
+@click.option(
     "--asr-qa-after-synthesis",
     is_flag=True,
     default=False,
     help="Run report-first ASR QA after synthesis and before assembly.",
 )
+@click.option("--artifact-qa", is_flag=True, default=False, help="Run artifact QA after synthesis.")
 @click.option("--asr-model", default="small", show_default=True, help="faster-whisper model for ASR QA.")
+@click.option(
+    "--max-resynth-attempts",
+    type=int,
+    default=2,
+    show_default=True,
+    help="Max automatic resynthesis attempts per bad chunk.",
+)
 @click.option("--workflow", type=click.Path(path_type=Path), default=None, help="ComfyUI workflow template.")
 @click.option("--comfyui-url", default="http://localhost:8188", show_default=True, help="ComfyUI server URL.")
 @click.option("--assemble", is_flag=True, default=False, help="Assemble synthesized chunks via v2 manifest.")
@@ -208,8 +222,11 @@ def pipeline_command(
     chunk_mode: str,
     max_chunk_chars: int,
     synthesize: bool,
+    quality_loop: bool,
     asr_qa_after_synthesis: bool,
+    artifact_qa: bool,
     asr_model: str,
+    max_resynth_attempts: int,
     workflow: Path | None,
     comfyui_url: str,
     assemble: bool,
@@ -242,6 +259,10 @@ def pipeline_command(
         if not workflow:
             workflow = Path("comfyui_workflows/qwen3_tts_template.json")
         argv.extend(["--workflow", str(workflow), "--comfyui-url", comfyui_url])
+    if quality_loop:
+        argv.extend(["--quality-loop", "--max-resynth-attempts", str(max_resynth_attempts)])
+    if artifact_qa:
+        argv.append("--artifact-qa")
     if asr_qa_after_synthesis:
         argv.extend(["--asr-qa-after-synthesis", "--asr-model", asr_model])
     if assemble:
@@ -426,6 +447,13 @@ def install_tts_models_command(
     default=False,
     help="Run local faster-whisper ASR QA after WAV checks.",
 )
+@click.option(
+    "--artifact",
+    "enable_artifact",
+    is_flag=True,
+    default=False,
+    help="Run artifact QA for clipping, silence, dropouts, and repeated audio.",
+)
 @click.option("--asr-model", default="small", show_default=True, help="faster-whisper model name or local path.")
 @click.option("--max-wer", type=float, default=0.30, show_default=True, help="Fail chunks above this word error rate.")
 @click.option(
@@ -461,10 +489,24 @@ def install_tts_models_command(
     default=False,
     help="Also mark manifest chunks failed when ASR status is failed/error.",
 )
+@click.option(
+    "--reset-bad-chunks",
+    is_flag=True,
+    default=False,
+    help="Reset failed/warning/error QA chunks so --failed-only can resynthesize them.",
+)
+@click.option(
+    "--max-resynth-attempts",
+    type=int,
+    default=2,
+    show_default=True,
+    help="Max automatic resynthesis attempts per chunk when resetting bad chunks.",
+)
 def audio_qa_command(
     manifest_path: Path,
     report: Path | None,
     enable_asr: bool,
+    enable_artifact: bool,
     asr_model: str,
     max_wer: float,
     max_cer: float,
@@ -472,6 +514,8 @@ def audio_qa_command(
     asr_timeout_seconds: float,
     write_manifest_asr: bool,
     mark_failed_on_asr: bool,
+    reset_bad_chunks: bool,
+    max_resynth_attempts: int,
 ) -> None:
     """Run QA checks for synthesized audio in a v2 manifest."""
     from book_normalizer.tts.audio_qa import load_manifest, run_audio_qa
@@ -489,6 +533,45 @@ def audio_qa_command(
         click.echo(f"[{issue.severity.upper()}] {issue.kind}{location}: {issue.message}")
 
     report_payload: dict[str, object] | None = None
+    if enable_artifact:
+        from book_normalizer.chunking.manifest_v2 import save_manifest
+        from book_normalizer.tts.artifact_qa import (
+            DEFAULT_ARTIFACT_REPORT_NAME,
+            annotate_manifest_with_artifacts,
+            run_artifact_qa,
+            write_artifact_report,
+        )
+
+        artifact_report = manifest_path.with_name(DEFAULT_ARTIFACT_REPORT_NAME)
+        artifact_result = run_artifact_qa(manifest, manifest_path=manifest_path)
+        write_artifact_report(artifact_report, artifact_result)
+        annotate_manifest_with_artifacts(
+            manifest,
+            artifact_result,
+            report_path=artifact_report.resolve(),
+            reset_bad_chunks=reset_bad_chunks,
+            max_resynthesis_attempts=max_resynth_attempts,
+        )
+        save_manifest(manifest_path, manifest)
+        summary = artifact_result.summary
+        click.echo(
+            "Artifact QA: "
+            f"status={artifact_result.status}, failed={summary['failed']}, "
+            f"warnings={summary['warning']}, errors={summary['error']}."
+        )
+        for chunk in artifact_result.chunks:
+            if chunk.status == "passed":
+                continue
+            location = f" ch{chunk.chapter_index + 1:03d}/chunk{chunk.chunk_index + 1:03d}"
+            issue_text = ", ".join(issue.kind for issue in chunk.issues) or chunk.status
+            click.echo(f"[{chunk.status.upper()}] artifact{location}: {issue_text}")
+        report_payload = {
+            "schema_version": 1,
+            "manifest_path": str(manifest_path),
+            "audio_qa": result.to_dict(),
+            "artifact_qa": artifact_result.to_dict(),
+        }
+
     if enable_asr:
         from book_normalizer.chunking.manifest_v2 import save_manifest
         from book_normalizer.tts.asr_qa import (
@@ -534,6 +617,8 @@ def audio_qa_command(
                 asr_result,
                 report_path=report.resolve(),
                 mark_failed_on_asr=mark_failed_on_asr,
+                reset_bad_chunks=reset_bad_chunks,
+                max_resynthesis_attempts=max_resynth_attempts,
             )
             save_manifest(manifest_path, manifest)
             click.echo(f"Manifest ASR annotations updated: {manifest_path}")
@@ -541,6 +626,7 @@ def audio_qa_command(
             "schema_version": 1,
             "manifest_path": str(manifest_path),
             "audio_qa": result.to_dict(),
+            **({"artifact_qa": report_payload["artifact_qa"]} if report_payload and "artifact_qa" in report_payload else {}),
             "asr_qa": asr_result.to_dict(),
         }
 
@@ -548,6 +634,49 @@ def audio_qa_command(
         payload = report_payload if report_payload is not None else result.to_dict()
         report.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         click.echo(f"Report: {report}")
+
+
+@main.command(name="master")
+@click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--out",
+    "output_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory for assembled and mastered chapters. Defaults to manifest folder.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["both", "wav", "mp3"]),
+    default="both",
+    show_default=True,
+    help="Mastered export format.",
+)
+@click.option("--chapter", type=int, default=None, help="Only master one 1-based chapter.")
+def master_command(
+    manifest_path: Path,
+    output_dir: Path | None,
+    output_format: str,
+    chapter: int | None,
+) -> None:
+    """Assemble QA-passed chunks and create mastered WAV/MP3 chapters."""
+    from book_normalizer.tts.mastering import master_manifest
+
+    try:
+        result = master_manifest(
+            manifest_path,
+            output_dir=output_dir,
+            output_format=output_format,
+            chapter_filter=chapter,
+        )
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    click.echo(f"Mastered files: {len(result.files)}")
+    for item in result.files:
+        click.echo(f"  ch{item.chapter_number:03d} {item.format}: {item.output_path}")
+    click.echo(f"Report: {result.report_path}")
 
 
 @main.command(name="process")

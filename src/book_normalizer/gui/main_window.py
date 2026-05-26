@@ -220,6 +220,9 @@ class MainWindow(QMainWindow):
         )
         self._synthesis_page.synthesis_finished.connect(self._on_synthesis_done)
         self._synthesis_page.synthesis_failed.connect(self._on_auto_pipeline_failed)
+        self._synthesis_page.open_voice_presets_requested.connect(
+            self._open_voice_presets,
+        )
         self._assembly_page.assembly_finished.connect(self._on_assembly_done)
         self._assembly_page.assembly_failed.connect(self._on_auto_pipeline_failed)
         self._assembly_page.production_finished.connect(self._on_production_done)
@@ -288,6 +291,7 @@ class MainWindow(QMainWindow):
         if source is None:
             self._tabs.setCurrentIndex(0)
             self._statusbar.showMessage(t("auto.need_file"))
+            self._normalize_page.flash_browse_button()
             return
         if self._auto_pipeline_active:
             return
@@ -455,6 +459,11 @@ class MainWindow(QMainWindow):
         self._output_dir = out_dir
         if manifest_path_text:
             self._set_assembly_target(Path(manifest_path_text), out_dir)
+
+    def _open_voice_presets(self) -> None:
+        """Jump back to the shared voice preset library in the chunks step."""
+        self._tabs.setCurrentIndex(2)
+        self._voices_page._top_tabs.setCurrentIndex(1)
 
     def _set_assembly_target(self, manifest_path: Path, output_dir: Path) -> None:
         """Point the assembly page at the folder used by synthesis."""

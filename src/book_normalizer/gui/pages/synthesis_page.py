@@ -447,6 +447,7 @@ class SynthesisPage(QWidget):
     output_dir_changed = pyqtSignal(str, str)
     synthesis_finished = pyqtSignal(str, int, int)
     synthesis_failed = pyqtSignal(str)
+    open_voice_presets_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1117,6 +1118,13 @@ class SynthesisPage(QWidget):
             "color: rgba(51,65,85,0.62); font-size: 11px;"
         )
         layout.addWidget(self._preset_desc)
+
+        self._btn_open_voice_presets = QPushButton()
+        self._btn_open_voice_presets.setMinimumHeight(34)
+        self._btn_open_voice_presets.clicked.connect(
+            self.open_voice_presets_requested.emit,
+        )
+        layout.addWidget(self._btn_open_voice_presets)
 
         form = QFormLayout()
         form.setHorizontalSpacing(14)
@@ -1826,6 +1834,8 @@ class SynthesisPage(QWidget):
             self._sample_status.setText(t("synth.sample_idle"))
         self._preset_title.setText(t("synth.preset_title"))
         self._preset_desc.setText(t("synth.preset_desc"))
+        self._btn_open_voice_presets.setText(t("synth.open_voice_presets"))
+        self._btn_open_voice_presets.setToolTip(t("synth.open_voice_presets_tip"))
         self._advanced_title.setText(t("synth.advanced_title"))
         self._apply_action_labels()
         self._advanced_desc.setText(t("synth.advanced_desc"))

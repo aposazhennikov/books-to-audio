@@ -165,26 +165,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "uz": "3. Bo\u02bb.",
     },
     "tab.voices": {
-        "en": "4. Voices",
-        "ru": "4. \u0413\u043e\u043b\u043e\u0441\u0430",
-        "zh": "4. \u58f0\u97f3",
-        "kk": "4. \u0414\u0430\u0443\u044b\u0441\u0442\u0430\u0440",
-        "uz": "4. Ovozlar",
+        "en": "4. Synthesis",
+        "ru": "4. \u0421\u0438\u043d\u0442\u0435\u0437",
+        "zh": "4. \u5408\u6210",
+        "kk": "4. \u0421\u0438\u043d\u0442\u0435\u0437",
+        "uz": "4. Sintez",
     },
     "tab.voices_short": {
-        "en": "4. Voices",
-        "ru": "4. \u0413\u043e\u043b\u043e\u0441\u0430",
-        "zh": "4. \u58f0\u97f3",
-        "kk": "4. \u0414\u0430\u0443\u044b\u0441",
-        "uz": "4. Ovoz",
+        "en": "4. TTS",
+        "ru": "4. TTS",
+        "zh": "4. TTS",
+        "kk": "4. TTS",
+        "uz": "4. TTS",
     },
     "tab.synthesize": {
-        "en": "4. Voices",
-        "ru": "4. \u0413\u043e\u043b\u043e\u0441\u0430",
+        "en": "4. Synthesis",
+        "ru": "4. \u0421\u0438\u043d\u0442\u0435\u0437",
     },
     "tab.synthesize_short": {
-        "en": "4. Voices",
-        "ru": "4. \u0413\u043e\u043b\u043e\u0441\u0430",
+        "en": "4. TTS",
+        "ru": "4. TTS",
     },
     "tab.assemble": {
         "en": "5. Chapters",
@@ -1161,6 +1161,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "kk": "\u0411\u04b1\u043b \u0447\u0430\u043d\u043a\u0442\u044b TTS \u0436\u0438\u043d\u0430\u0443\u044b\u043d\u0430\u043d \u0430\u043b\u044b\u043f \u0442\u0430\u0441\u0442\u0430\u0443.",
         "uz": "Bu bo'lakni TTS chiqishidan chiqarish.",
     },
+    "voice.row_delete_confirm": {
+        "en": "Confirm",
+        "ru": "\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434.",
+        "zh": "\u786e\u8ba4",
+        "kk": "\u0420\u0430\u0441\u0442\u0430\u0443",
+        "uz": "Tasdiq",
+    },
+    "voice.row_delete_confirm_tip": {
+        "en": "Click again to exclude this chunk from TTS output.",
+        "ru": "\u041d\u0430\u0436\u043c\u0438\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437, \u0447\u0442\u043e\u0431\u044b \u0438\u0441\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u044d\u0442\u043e\u0442 \u0447\u0430\u043d\u043a \u0438\u0437 TTS-\u0441\u0431\u043e\u0440\u043a\u0438.",
+        "zh": "\u518d\u6b21\u70b9\u51fb\u4ee5\u4ece TTS \u8f93\u51fa\u4e2d\u6392\u9664\u6b64\u5206\u5757\u3002",
+        "kk": "\u0411\u04b1\u043b \u0447\u0430\u043d\u043a\u0442\u044b TTS \u0436\u0438\u043d\u0430\u0443\u044b\u043d\u0430\u043d \u0430\u043b\u044b\u043f \u0442\u0430\u0441\u0442\u0430\u0443 \u04af\u0448\u0456\u043d \u049b\u0430\u0439\u0442\u0430 \u0431\u0430\u0441\u044b\u04a3\u044b\u0437.",
+        "uz": "Bu bo'lakni TTS chiqishidan chiqarish uchun yana bosing.",
+    },
     "voice.row_restore_tip": {
         "en": "Include this chunk in TTS output again.",
         "ru": "\u0421\u043d\u043e\u0432\u0430 \u0432\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u044d\u0442\u043e\u0442 \u0447\u0430\u043d\u043a \u0432 TTS-\u0441\u0431\u043e\u0440\u043a\u0443.",
@@ -1346,9 +1360,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "voice.chunks_done": {
         "en": "\u2714 Built {n} TTS chunks! "
-              "Go to the Voices tab to choose or train voices.",
+              "Go to Synthesis to render audio.",
         "ru": "\u2714 Собрано {n} TTS-чанков! "
-              "Перейдите на вкладку \u00abГолоса\u00bb, чтобы выбрать или обучить голоса.",
+              "Перейдите на \u00abСинтез\u00bb, чтобы собрать аудио.",
     },
     "voice.saved": {
         "en": "\u2714 Saved: {path}",
@@ -1507,11 +1521,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "uz": "O'z ovozi",
     },
     "synth.mode_preset_speakers": {
-        "en": "Built-in Speakers",
-        "ru": "Готовые голоса",
-        "zh": "内置声音",
-        "kk": "Дайын дауыстар",
-        "uz": "Tayyor ovozlar",
+        "en": "From Step 3",
+        "ru": "Из шага 3",
+        "zh": "来自第 3 步",
+        "kk": "3-қадамнан",
+        "uz": "3-bosqichdan",
     },
     "synth.mode_advanced": {
         "en": "Advanced",
@@ -1521,18 +1535,38 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "uz": "Qo'shimcha",
     },
     "synth.preset_title": {
-        "en": "Built-in Qwen speakers",
-        "ru": "Готовые голоса Qwen",
+        "en": "Voices from Step 3",
+        "ru": "Голоса из шага 3",
+        "zh": "第 3 步的声音",
+        "kk": "3-қадамдағы дауыстар",
+        "uz": "3-bosqichdagi ovozlar",
     },
     "synth.preset_desc": {
         "en": (
-            "Use the speaker assignments from the Voices step. No reference audio is "
-            "needed; this is the simplest and most stable mode."
+            "Uses the voice assignments from 3. Chunks -> Voice presets. "
+            "Choose, preview, and save voices there; this step only renders audio."
         ),
         "ru": (
-            "Использует роли и голоса из шага «Голоса». Reference audio не нужен; "
-            "это самый простой и стабильный режим."
+            "Использует назначения из «3. Чанки -> Пресеты голосов». "
+            "Выбор, прослушивание и сохранение голосов теперь там; здесь только синтез аудио."
         ),
+        "zh": "使用“3. 分块 -> 声音预设”中的声音分配。选择、试听和保存声音都在那里；此步骤只合成音频。",
+        "kk": "«3. Чанктар -> Дауыс пресеттері» ішіндегі дауыс тағайындауларын қолданады. Дауысты таңдау, тыңдау және сақтау сонда; бұл қадам тек аудио синтездейді.",
+        "uz": "“3. Bo‘laklar -> Ovoz presetlari”dagi ovoz tayinlovlaridan foydalanadi. Ovoz tanlash, tinglash va saqlash o‘sha yerda; bu bosqich faqat audio sintez qiladi.",
+    },
+    "synth.open_voice_presets": {
+        "en": "Open voice presets",
+        "ru": "Открыть пресеты голосов",
+        "zh": "打开声音预设",
+        "kk": "Дауыс пресеттерін ашу",
+        "uz": "Ovoz presetlarini ochish",
+    },
+    "synth.open_voice_presets_tip": {
+        "en": "Go to 3. Chunks -> Voice presets to choose, preview, or save voices.",
+        "ru": "Перейти в «3. Чанки -> Пресеты голосов», чтобы выбрать, прослушать или сохранить голоса.",
+        "zh": "前往“3. 分块 -> 声音预设”选择、试听或保存声音。",
+        "kk": "Дауысты таңдау, тыңдау немесе сақтау үшін «3. Чанктар -> Дауыс пресеттері» бөліміне өту.",
+        "uz": "Ovoz tanlash, tinglash yoki saqlash uchun “3. Bo‘laklar -> Ovoz presetlari”ga o‘tish.",
     },
     "synth.advanced_title": {
         "en": "Advanced run settings",
@@ -1859,8 +1893,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Seed (-1=random):",
     },
     "synth.model_help": {
-        "en": "Choose the Qwen CustomVoice model for built-in speakers. 1.7B is better quality; 0.6B is faster and lighter.",
-        "ru": "Модель Qwen CustomVoice для готовых спикеров. 1.7B качественнее; 0.6B быстрее и легче.",
+        "en": "Choose the Qwen CustomVoice model for rendering voices assigned in Step 3. 1.7B is better quality; 0.6B is faster and lighter.",
+        "ru": "Модель Qwen CustomVoice для синтеза голосов, назначенных на шаге 3. 1.7B качественнее; 0.6B быстрее и легче.",
     },
     "synth.models_dir_help": {
         "en": "Folder with downloaded models used by the v2 ComfyUI synthesis workflow.",
@@ -2608,11 +2642,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "uz": "Rollar va aqlli segmentlar tayyor. Keyin bo\u02bblaklarni tekshiring.",
     },
     "status.voices_done": {
-        "en": "Chunks are ready. Go to Voices tab.",
-        "ru": "\u0427\u0430\u043d\u043a\u0438 \u0433\u043e\u0442\u043e\u0432\u044b. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043d\u0430 \u0432\u043a\u043b\u0430\u0434\u043a\u0443 \u00ab\u0413\u043e\u043b\u043e\u0441\u0430\u00bb.",
-        "zh": "\u5206\u5757\u5df2\u5c31\u7eea\u3002\u8fdb\u5165\u58f0\u97f3\u9875\u3002",
-        "kk": "\u0427\u0430\u043d\u043a\u0442\u0430\u0440 \u0434\u0430\u0439\u044b\u043d. \u0414\u0430\u0443\u044b\u0441\u0442\u0430\u0440 \u049b\u043e\u0439\u044b\u043d\u0434\u044b\u0441\u044b\u043d\u0430 \u04e9\u0442\u0456\u04a3\u0456\u0437.",
-        "uz": "Bo\u02bblaklar tayyor. Ovozlar sahifasiga o\u02bbting.",
+        "en": "Chunks are ready. Go to Synthesis.",
+        "ru": "\u0427\u0430\u043d\u043a\u0438 \u0433\u043e\u0442\u043e\u0432\u044b. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043d\u0430 \u00ab\u0421\u0438\u043d\u0442\u0435\u0437\u00bb.",
+        "zh": "\u5206\u5757\u5df2\u5c31\u7eea\u3002\u8fdb\u5165\u5408\u6210\u3002",
+        "kk": "\u0427\u0430\u043d\u043a\u0442\u0430\u0440 \u0434\u0430\u0439\u044b\u043d. \u0421\u0438\u043d\u0442\u0435\u0437\u0433\u0435 \u04e9\u0442\u0456\u04a3\u0456\u0437.",
+        "uz": "Bo\u02bblaklar tayyor. Sintezga o\u02bbting.",
     },
 }
 
@@ -2790,10 +2824,10 @@ def _install_extra_translations() -> None:
         },
         "app.subtitle": {"en": "", "ru": "", "zh": "", "kk": "", "uz": ""},
         "app.lang_label": {"zh": "语言：", "kk": "Тіл:", "uz": "Til:"},
-        "tab.voices": {"zh": "4. 声音", "kk": "4. Дауыстар", "uz": "4. Ovozlar"},
-        "tab.voices_short": {"zh": "4. 声音", "kk": "4. Дауыс", "uz": "4. Ovoz"},
-        "tab.synthesize": {"zh": "4. 声音", "kk": "4. Дауыстар", "uz": "4. Ovozlar"},
-        "tab.synthesize_short": {"zh": "4. 声音", "kk": "4. Дауыс", "uz": "4. Ovoz"},
+        "tab.voices": {"zh": "4. 合成", "kk": "4. Синтез", "uz": "4. Sintez"},
+        "tab.voices_short": {"zh": "4. TTS", "kk": "4. TTS", "uz": "4. TTS"},
+        "tab.synthesize": {"zh": "4. 合成", "kk": "4. Синтез", "uz": "4. Sintez"},
+        "tab.synthesize_short": {"zh": "4. TTS", "kk": "4. TTS", "uz": "4. TTS"},
         "tab.assemble": {"zh": "5. 章节", "kk": "5. Тараулар", "uz": "5. Boblar"},
         "tab.assemble_short": {"zh": "5. 章节", "kk": "5. Тарау", "uz": "5. Bob"},
         "synth.mode_custom_voice": {
@@ -2803,10 +2837,10 @@ def _install_extra_translations() -> None:
             "uz": "O'z ovozi",
         },
         "synth.mode_preset_speakers": {
-            "ru": "Готовые голоса",
-            "zh": "内置声音",
-            "kk": "Дайын дауыстар",
-            "uz": "Tayyor ovozlar",
+            "ru": "Из шага 3",
+            "zh": "来自第 3 步",
+            "kk": "3-қадамнан",
+            "uz": "3-bosqichdan",
         },
         "synth.mode_advanced": {
             "ru": "Дополнительно",
@@ -3111,11 +3145,11 @@ def _install_extra_translations() -> None:
         "voice.mark_retry": {"zh": "重试", "kk": "Қайталау", "uz": "Qayta"},
         "voice.type_narrator": {"zh": "旁白", "kk": "Автор", "uz": "Hikoya"},
         "voice.chunks_done": {
-            "en": "✔ Built {n} TTS chunks! Go to the Voices tab to choose or train voices.",
-            "ru": "✔ Собрано {n} TTS-чанков! Перейдите на вкладку «Голоса», чтобы выбрать или обучить голоса.",
-            "zh": "✔ 已生成 {n} 个 TTS 分块。下一步进入“声音”页选择或训练声音。",
-            "kk": "✔ {n} TTS чанкі дайын. Енді «Дауыстар» қойындысында дауыстарды таңдаңыз не үйретіңіз.",
-            "uz": "✔ {n} TTS bo‘lagi tayyor. Endi “Ovozlar” sahifasida ovoz tanlang yoki o‘rgating.",
+            "en": "✔ Built {n} TTS chunks! Go to Synthesis to render audio.",
+            "ru": "✔ Собрано {n} TTS-чанков! Перейдите на «Синтез», чтобы собрать аудио.",
+            "zh": "✔ 已生成 {n} 个 TTS 分块。下一步进入“合成”生成音频。",
+            "kk": "✔ {n} TTS чанкі дайын. Аудио жасау үшін «Синтезге» өтіңіз.",
+            "uz": "✔ {n} TTS bo‘lagi tayyor. Audio yaratish uchun “Sintez”ga o‘ting.",
         },
         "voice.manifest_path": {
             "zh": "清单：{path}",
@@ -3147,11 +3181,11 @@ def _install_extra_translations() -> None:
             "uz": "Rollar va aqlli segmentlar tayyor. Keyin bo‘laklarni tekshiring.",
         },
         "status.voices_done": {
-            "en": "Chunks are ready. Go to Voices tab.",
-            "ru": "Чанки готовы. Перейдите на вкладку «Голоса».",
-            "zh": "分块已就绪。进入“声音”页。",
-            "kk": "Чанктар дайын. «Дауыстар» қойындысына өтіңіз.",
-            "uz": "Bo‘laklar tayyor. “Ovozlar” sahifasiga o‘ting.",
+            "en": "Chunks are ready. Go to Synthesis.",
+            "ru": "Чанки готовы. Перейдите на «Синтез».",
+            "zh": "分块已就绪。进入“合成”。",
+            "kk": "Чанктар дайын. «Синтезге» өтіңіз.",
+            "uz": "Bo‘laklar tayyor. “Sintez”ga o‘ting.",
         },
         "synth.chunks_word": {"zh": "分块"},
     }

@@ -69,8 +69,17 @@ class VoicesPage(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
 
-        settings = QGridLayout()
+        settings_strip_panel = QWidget()
+        settings_strip = QHBoxLayout(settings_strip_panel)
+        settings_strip.setContentsMargins(0, 0, 0, 0)
+        settings_strip.setSpacing(10)
+        self._settings_strip = settings_strip
+
+        settings_fields_panel = QWidget()
+        self._settings_fields_panel = settings_fields_panel
+        settings = QGridLayout(settings_fields_panel)
         self._settings_layout = settings
+        settings.setContentsMargins(0, 0, 0, 0)
         settings.setHorizontalSpacing(16)
         settings.setVerticalSpacing(6)
         settings.setColumnStretch(0, 3)
@@ -114,15 +123,15 @@ class VoicesPage(QWidget):
         settings.addWidget(self._stress_mode_label, 0, 2)
         settings.addWidget(self._stress_mode, 1, 2)
 
-        left_layout.addLayout(settings)
+        settings_strip.addWidget(settings_fields_panel, 0, Qt.AlignmentFlag.AlignVCenter)
 
         # LLM config panel (hidden by default).
         self._llm_panel = QWidget()
         llm_layout = QGridLayout(self._llm_panel)
         self._llm_layout = llm_layout
-        llm_layout.setContentsMargins(0, 0, 0, 8)
-        llm_layout.setHorizontalSpacing(12)
-        llm_layout.setVerticalSpacing(6)
+        llm_layout.setContentsMargins(0, 0, 0, 0)
+        llm_layout.setHorizontalSpacing(8)
+        llm_layout.setVerticalSpacing(0)
         llm_layout.setColumnStretch(0, 0)
         llm_layout.setColumnStretch(1, 1)
 
@@ -152,7 +161,9 @@ class VoicesPage(QWidget):
         self._apply_llm_layout(compact=False)
 
         self._llm_panel.setVisible(False)
-        left_layout.addWidget(self._llm_panel)
+        settings_strip.addWidget(self._llm_panel, 0, Qt.AlignmentFlag.AlignVCenter)
+        settings_strip.addStretch(1)
+        left_layout.addWidget(settings_strip_panel)
 
         # Action buttons.
         self._action_panel = QWidget()
@@ -363,8 +374,8 @@ class VoicesPage(QWidget):
             target = max(224, round(178 * self._ui_scale), content_needed)
             minimum = 224
         elif height_compact:
-            target = max(246, round(184 * self._ui_scale), content_needed)
-            minimum = 224
+            target = max(176, round(154 * self._ui_scale), content_needed)
+            minimum = 176
         else:
             target = max(188, round(188 * self._ui_scale), content_needed)
             minimum = 188
@@ -409,7 +420,9 @@ class VoicesPage(QWidget):
         editor_dense = self.height() < 600
         controls_compact = width_compact or height_compact
         ultra_dense = self.height() < 430
-        dense = ultra_dense or (editor_dense and not width_compact)
+        dense = ultra_dense or (
+            editor_dense and not width_compact and self.width() >= 1500
+        )
         table_width = self._voice_table.width() if self._voice_table.width() > 0 else self.width()
         table_compact_threshold = max(960, round(1060 * self._ui_scale * self._ui_scale))
         table_width_compact = table_width < table_compact_threshold
@@ -479,22 +492,20 @@ class VoicesPage(QWidget):
 
     def _apply_llm_layout(self, *, compact: bool) -> None:
         """Use deterministic rows so high DPI wrapping cannot overlap fields."""
-        if self._llm_layout_compact == compact:
-            return
+        same_layout = self._llm_layout_compact == compact
         self._llm_layout_compact = compact
+        if same_layout:
+            self._sync_llm_field_metrics()
+            self._update_llm_placeholders()
+            self._sync_llm_field_visibility()
+            return
         while self._llm_layout.count():
             self._llm_layout.takeAt(0)
-        self._llm_layout.setColumnStretch(0, 1 if compact else 0)
-        self._llm_layout.setColumnStretch(1, 1)
         self._sync_llm_provider_width()
         self._sync_llm_field_metrics()
-        for row, (label, field) in enumerate(self._llm_rows()):
-            if compact:
-                self._llm_layout.addWidget(field, row, 0, 1, 2)
-            else:
-                label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                self._llm_layout.addWidget(label, row, 0)
-                self._llm_layout.addWidget(field, row, 1)
+        for column, (label, field) in enumerate(self._llm_rows()):
+            label.setVisible(False)
+            self._llm_layout.addWidget(field, 0, column)
         self._update_llm_placeholders()
         self._sync_llm_field_visibility()
 
@@ -510,25 +521,47 @@ class VoicesPage(QWidget):
         )
         for field in fields:
             field.setMinimumHeight(height)
-        self._llm_layout.setVerticalSpacing(max(12, round(12 * self._ui_scale)))
+            field.setMaximumHeight(height)
+
+        tight_line = self.width() < 1600
+        narrow_line = self._llm_layout_compact or self.width() < 1900
+        width_scale = min(self._ui_scale, 1.12)
+        if tight_line:
+            endpoint_width = 202
+            model_width = 258
+            api_width = 235
+        elif narrow_line:
+            endpoint_width = round(218 * width_scale)
+            model_width = round(278 * width_scale)
+            api_width = round(252 * width_scale)
+        else:
+            endpoint_width = round(252 * width_scale)
+            model_width = round(336 * width_scale)
+            api_width = round(300 * width_scale)
+
+        fixed_widths = {
+            self._llm_endpoint: endpoint_width,
+            self._llm_model: model_width,
+            self._llm_api_key: api_width,
+        }
+        for field, width in fixed_widths.items():
+            field.setMinimumWidth(width)
+            field.setMaximumWidth(width)
+            field.setSizePolicy(
+                QSizePolicy.Policy.Fixed,
+                QSizePolicy.Policy.Fixed,
+            )
+        self._llm_layout.setHorizontalSpacing(max(6, round(8 * self._ui_scale)))
+        self._llm_layout.setVerticalSpacing(0)
 
     def _sync_llm_provider_width(self) -> None:
         """Keep the provider selector readable without stretching like a text field."""
         if not hasattr(self, "_llm_provider"):
             return
-        minimum = max(220, round(220 * min(self._ui_scale, 1.15)))
-        if self._llm_layout_compact:
-            self._llm_provider.setMinimumWidth(minimum)
-            self._llm_provider.setMaximumWidth(16777215)
-            self._llm_provider.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Fixed,
-            )
-            return
-        self._llm_provider.setMinimumWidth(minimum)
-        self._llm_provider.setMaximumWidth(max(420, round(360 * self._ui_scale)))
+        self._llm_provider.setMinimumWidth(220)
+        self._llm_provider.setMaximumWidth(230)
         self._llm_provider.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Fixed,
         )
 
@@ -538,7 +571,6 @@ class VoicesPage(QWidget):
             return
         provider = self._llm_provider.currentData()
         is_local = provider == "local"
-        compact = bool(self._llm_layout_compact)
         visible_by_field = {
             self._llm_provider: True,
             self._llm_endpoint: is_local,
@@ -548,7 +580,7 @@ class VoicesPage(QWidget):
         for label, field in self._llm_rows():
             visible = visible_by_field.get(field, True)
             field.setVisible(visible)
-            label.setVisible(visible and not compact)
+            label.setVisible(False)
 
     def _update_llm_placeholders(self) -> None:
         """Keep compact LLM rows identifiable when labels are hidden."""

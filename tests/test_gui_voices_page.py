@@ -8,7 +8,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from book_normalizer.gui.i18n import set_language
+from book_normalizer.gui.i18n import set_language, t
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 from tests.gui.helpers import render_widget
@@ -241,14 +241,14 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     )
     render_widget(page, 760, 520, scale=1.45)
 
-    assert table._editor_tabs.isVisible()
-    assert table._chapter_nav_panel.isVisible()
-    assert table._preset_toolbar_panel.isVisible()
-    assert table._quick_apply_panel.isVisible()
+    assert not table._editor_tabs.isHidden()
+    assert not table._chapter_nav_panel.isHidden()
+    assert not table._preset_toolbar_panel.isHidden()
+    assert not table._quick_apply_panel.isHidden()
     assert table._table.verticalScrollBar().maximum() > 0
     assert table._table.verticalScrollBar().isVisible()
-    assert table._btn_prev_segment.isVisible()
-    assert table._btn_next_segment.isVisible()
+    assert not table._btn_prev_segment.isHidden()
+    assert not table._btn_next_segment.isHidden()
     assert table._table.viewport().height() >= table._table.verticalHeader().defaultSectionSize()
     role_combo = table._table.cellWidget(0, 4)
     voice_combo = table._table.cellWidget(0, 5)
@@ -459,6 +459,12 @@ def test_voice_table_row_delete_button_excludes_and_restores_chunk(qapp, qtbot) 
 
     delete_button = page._voice_table._table.cellWidget(1, 9)
     assert isinstance(delete_button, QtWidgets.QPushButton)
+    qtbot.mouseClick(delete_button, QtCore.Qt.MouseButton.LeftButton)
+
+    assert page._voice_table.get_segments()[1].get("deleted") is not True
+    assert page._voice_table.get_segments()[1].get("excluded_from_tts") is not True
+    assert delete_button.text() == t("voice.row_delete_confirm")
+
     qtbot.mouseClick(delete_button, QtCore.Qt.MouseButton.LeftButton)
 
     assert page._voice_table.get_segments()[1]["deleted"] is True

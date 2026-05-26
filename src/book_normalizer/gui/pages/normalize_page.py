@@ -6,7 +6,7 @@ import logging
 import platform
 from pathlib import Path
 
-from PyQt6.QtCore import QProcess, Qt, pyqtSignal
+from PyQt6.QtCore import QProcess, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QCheckBox,
@@ -149,10 +149,14 @@ class NormalizePage(QWidget):
         self._selected_path: str = ""
         self._help_buttons: dict[str, list[object]] = {}
         self._compact_mode = False
+        self._settings_layout_mode: str | None = None
         self._ui_scale = 1.0
         self._tesseract_available: bool | None = None
         self._tesseract_language_available: dict[str, bool] = {}
         self._cache_restored_chapters: int | None = None
+        self._browse_flash_timer = QTimer(self)
+        self._browse_flash_timer.setSingleShot(True)
+        self._browse_flash_timer.timeout.connect(self._clear_browse_button_flash)
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -184,9 +188,9 @@ class NormalizePage(QWidget):
 
         settings = QGridLayout()
         settings.setHorizontalSpacing(14)
-        settings.setVerticalSpacing(8)
+        settings.setVerticalSpacing(6)
         self._settings_grid = settings
-        for column in range(3):
+        for column in range(4):
             settings.setColumnStretch(column, 1)
 
         self._book_language = QComboBox()
@@ -303,6 +307,7 @@ class NormalizePage(QWidget):
         )
         self._add_setting(settings, 2, 1, self._llm_model_label_wrap, self._llm_model)
 
+        self._reflow_settings_grid(self._compact_mode, force=True)
         layout.addLayout(settings)
         layout.addWidget(self._ocr_install_panel)
 
@@ -336,7 +341,9 @@ class NormalizePage(QWidget):
         self._raw_text.setReadOnly(True)
         self._raw_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._raw_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._raw_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._raw_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._raw_text.setMinimumHeight(120)
+        self._raw_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         raw_layout.addWidget(self._raw_text)
         text_row.addWidget(raw_container, stretch=1)
 
@@ -364,7 +371,9 @@ class NormalizePage(QWidget):
         self._norm_text.setReadOnly(False)
         self._norm_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._norm_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._norm_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._norm_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._norm_text.setMinimumHeight(120)
+        self._norm_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         norm_layout.addWidget(self._norm_text)
         text_row.addWidget(norm_container, stretch=1)
 
@@ -423,17 +432,82 @@ class NormalizePage(QWidget):
     def set_ui_scale(self, scale: float) -> None:
         """Keep control spacing stable under high-DPI UI zoom."""
         self._ui_scale = max(0.8, min(1.45, scale))
-        self._settings_grid.setVerticalSpacing(max(10, round(18 * self._ui_scale)))
+        self._settings_grid.setVerticalSpacing(max(5, round(6 * self._ui_scale)))
 
     def _sync_compact_mode(self) -> None:
         compact = self.width() < 900
-        if self._compact_mode == compact:
+        mode = "compact" if compact else "full"
+        if self._compact_mode == compact and self._settings_layout_mode == mode:
             return
         self._compact_mode = compact
+        self._reflow_settings_grid(compact)
         self._populate_psm_combo()
         self._update_ocr_visibility()
         self._update_llm_visibility()
         self._apply_action_labels()
+
+    def _reflow_settings_grid(self, compact: bool, *, force: bool = False) -> None:
+        mode = "compact" if compact else "full"
+        if not force and self._settings_layout_mode == mode:
+            return
+        self._settings_layout_mode = mode
+        while self._settings_grid.takeAt(0) is not None:
+            pass
+        for column in range(4):
+            self._settings_grid.setColumnMinimumWidth(column, 0)
+            self._settings_grid.setColumnStretch(column, 0)
+
+        if compact:
+            for column in range(2):
+                self._settings_grid.setColumnStretch(column, 1)
+            self._add_setting(self._settings_grid, 0, 0, self._book_language_label_wrap, self._book_language)
+            self._add_setting(self._settings_grid, 0, 1, self._ocr_mode_label_wrap, self._ocr_mode)
+            self._add_setting(self._settings_grid, 1, 0, self._ocr_dpi_label_wrap, self._ocr_dpi)
+            self._add_setting(self._settings_grid, 1, 1, self._ocr_psm_label_wrap, self._ocr_psm_field)
+            self._add_setting(
+                self._settings_grid,
+                2,
+                0,
+                self._llm_normalize_label_wrap,
+                self._llm_normalize,
+            )
+            self._add_setting(
+                self._settings_grid,
+                3,
+                0,
+                self._llm_endpoint_label_wrap,
+                self._llm_endpoint,
+                column_span=2,
+            )
+            self._add_setting(
+                self._settings_grid,
+                4,
+                0,
+                self._llm_model_label_wrap,
+                self._llm_model,
+                column_span=2,
+            )
+            self._settings_grid.addWidget(self._ocr_not_applicable_label, 10, 0, 1, 2)
+            return
+
+        for column, stretch in enumerate((1, 1, 0, 1)):
+            self._settings_grid.setColumnStretch(column, stretch)
+        self._settings_grid.setColumnMinimumWidth(2, 136)
+        self._add_setting(self._settings_grid, 0, 0, self._book_language_label_wrap, self._book_language)
+        self._add_setting(self._settings_grid, 0, 1, self._ocr_mode_label_wrap, self._ocr_mode)
+        self._add_setting(self._settings_grid, 0, 2, self._ocr_dpi_label_wrap, self._ocr_dpi)
+        self._add_setting(self._settings_grid, 0, 3, self._ocr_psm_label_wrap, self._ocr_psm_field)
+        self._add_setting(self._settings_grid, 1, 0, self._llm_normalize_label_wrap, self._llm_normalize)
+        self._add_setting(self._settings_grid, 1, 1, self._llm_endpoint_label_wrap, self._llm_endpoint)
+        self._add_setting(
+            self._settings_grid,
+            1,
+            2,
+            self._llm_model_label_wrap,
+            self._llm_model,
+            column_span=2,
+        )
+        self._settings_grid.addWidget(self._ocr_not_applicable_label, 4, 0, 1, 4)
 
     @staticmethod
     def _add_setting(
@@ -442,14 +516,16 @@ class NormalizePage(QWidget):
         column: int,
         label: QWidget,
         field: QWidget,
+        *,
+        column_span: int = 1,
     ) -> None:
         if field.maximumWidth() == 16777215 and field.sizePolicy().horizontalPolicy() != QSizePolicy.Policy.Fixed:
             field.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
                 QSizePolicy.Policy.Fixed,
             )
-        grid.addWidget(label, row * 2, column)
-        grid.addWidget(field, row * 2 + 1, column)
+        grid.addWidget(label, row * 2, column, 1, column_span)
+        grid.addWidget(field, row * 2 + 1, column, 1, column_span)
 
     def retranslate(self) -> None:
         """Update all translatable strings."""
@@ -624,6 +700,22 @@ class NormalizePage(QWidget):
             self._path_label.setText(path)
             self._btn_run.setEnabled(True)
             self._update_ocr_visibility()
+
+    def flash_browse_button(self, duration_ms: int = 1000) -> None:
+        """Briefly highlight the file chooser button."""
+        self._set_browse_button_attention(True)
+        self._btn_browse.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._browse_flash_timer.start(max(0, duration_ms))
+
+    def _clear_browse_button_flash(self) -> None:
+        self._set_browse_button_attention(False)
+
+    def _set_browse_button_attention(self, enabled: bool) -> None:
+        self._btn_browse.setProperty("attention", enabled)
+        style = self._btn_browse.style()
+        style.unpolish(self._btn_browse)
+        style.polish(self._btn_browse)
+        self._btn_browse.update()
 
     def run_normalization(self, *, cache_choice: str | None = None) -> None:
         """Start normalization, optionally choosing a cache action without prompting."""

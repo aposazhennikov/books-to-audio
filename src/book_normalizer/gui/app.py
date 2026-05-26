@@ -127,6 +127,18 @@ QPushButton:pressed {
     background: rgba(186, 230, 253, 0.55);
 }
 
+QPushButton[attention="true"] {
+    background: rgba(254, 240, 138, 0.96);
+    border: 2px solid rgba(245, 158, 11, 0.88);
+    color: #713f12;
+}
+
+QPushButton[attention="true"]:hover {
+    background: rgba(253, 224, 71, 0.98);
+    border-color: rgba(217, 119, 6, 0.96);
+    color: #713f12;
+}
+
 QPushButton:disabled {
     background: rgba(226, 232, 240, 0.58);
     color: rgba(71, 85, 105, 0.46);

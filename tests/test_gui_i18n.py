@@ -210,37 +210,36 @@ def test_workflow_status_copy_matches_five_step_product_flow() -> None:
         "ru": {
             "status.norm_done": "извлеките роли",
             "status.roles_done": "проверьте чанки",
-            "status.voices_done": "вкладку «Голоса»",
-            "voice.chunks_done": "вкладку «Голоса»",
+            "status.voices_done": "«Синтез»",
+            "voice.chunks_done": "«Синтез»",
         },
         "en": {
             "status.norm_done": "Extract roles next",
             "status.roles_done": "Review chunks next",
-            "status.voices_done": "Go to Voices tab",
-            "voice.chunks_done": "Go to the Voices tab",
+            "status.voices_done": "Go to Synthesis",
+            "voice.chunks_done": "Go to Synthesis",
         },
         "zh": {
             "status.norm_done": "提取角色",
             "status.roles_done": "检查分块",
-            "status.voices_done": "声音",
-            "voice.chunks_done": "声音",
+            "status.voices_done": "合成",
+            "voice.chunks_done": "合成",
         },
         "kk": {
             "status.norm_done": "рөлдерді",
             "status.roles_done": "чанктарды",
-            "status.voices_done": "Дауыстар",
-            "voice.chunks_done": "Дауыстар",
+            "status.voices_done": "Синтез",
+            "voice.chunks_done": "Синтез",
         },
         "uz": {
             "status.norm_done": "rollarni",
             "status.roles_done": "bo‘laklarni",
-            "status.voices_done": "Ovozlar",
-            "voice.chunks_done": "Ovozlar",
+            "status.voices_done": "Sintez",
+            "voice.chunks_done": "Sintez",
         },
     }
     stale_fragments = (
         "Synthesize tab",
-        "синтез",
         "综合",
         "Синтездеу",
         "Sintezlash",
@@ -608,13 +607,13 @@ def test_chunk_segment_source_copy_replaces_old_dialogue_attribution_terms() -> 
 
 def test_synthesis_mode_tabs_are_localized_for_supported_languages(qtbot) -> None:
     expected = {
-        "ru": ["Свой голос", "Готовые голоса", "Дополнительно"],
-        "en": ["Custom Voice", "Built-in Speakers", "Advanced"],
-        "zh": ["自定义声音", "内置声音", "高级"],
-        "kk": ["Өз дауысы", "Дайын дауыстар", "Қосымша"],
-        "uz": ["O'z ovozi", "Tayyor ovozlar", "Qo'shimcha"],
+        "ru": ["Свой голос", "Из шага 3", "Дополнительно"],
+        "en": ["Custom Voice", "From Step 3", "Advanced"],
+        "zh": ["自定义声音", "来自第 3 步", "高级"],
+        "kk": ["Өз дауысы", "3-қадамнан", "Қосымша"],
+        "uz": ["O'z ovozi", "3-bosqichdan", "Qo'shimcha"],
     }
-    english_leaks = ("custom voice", "built-in speakers", "advanced")
+    english_leaks = ("custom voice", "built-in speakers", "from step", "advanced")
 
     app = qapp()
     window = MainWindow()
@@ -637,6 +636,22 @@ def test_synthesis_mode_tabs_are_localized_for_supported_languages(qtbot) -> Non
             assert not any(leak in combined for leak in english_leaks)
 
     set_language("ru")
+
+
+def test_synthesis_step_links_back_to_voice_preset_library(qtbot) -> None:
+    app = qapp()
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    flush_events(app)
+
+    window._tabs.setCurrentIndex(3)
+    window._synthesis_page._mode_tabs.setCurrentIndex(1)
+    window._synthesis_page._btn_open_voice_presets.click()
+    flush_events(app)
+
+    assert window._tabs.currentIndex() == 2
+    assert window._voices_page._top_tabs.currentIndex() == 1
 
 
 def test_synthesis_sample_panel_labels_are_localized(qtbot) -> None:

@@ -195,6 +195,7 @@ class VoiceTableWidget(QWidget):
         self._row_to_segment_index: list[int] = []
         self._cached_role_options: list[tuple[str, str]] = []
         self._language_dirty_rows: set[int] = set()
+        self._pending_delete_segment_index: int | None = None
         self._populating = False
         self._loading_editor = False
         self._player = QSoundEffect(self) if QSoundEffect is not None else None
@@ -258,10 +259,8 @@ class VoiceTableWidget(QWidget):
         self._btn_auto.clicked.connect(self._auto_detect)
         toolbar1.addWidget(self._btn_auto)
 
-        toolbar1.addStretch()
-        layout.addWidget(self._preset_toolbar_panel)
-
-        # Toolbar row 2: custom quick-assign via combo.
+        # Custom quick-assign lives on the same row as common presets on
+        # desktop-width layouts, preserving vertical room for the text editor.
         self._quick_apply_panel = QWidget()
         toolbar2 = QHBoxLayout(self._quick_apply_panel)
         toolbar2.setContentsMargins(0, 0, 0, 0)
@@ -286,8 +285,9 @@ class VoiceTableWidget(QWidget):
         )
         toolbar2.addWidget(self._btn_apply_narrator)
 
-        toolbar2.addStretch()
-        layout.addWidget(self._quick_apply_panel)
+        toolbar1.addWidget(self._quick_apply_panel)
+        toolbar1.addStretch()
+        layout.addWidget(self._preset_toolbar_panel)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
         self._splitter = splitter
@@ -750,6 +750,7 @@ class VoiceTableWidget(QWidget):
 
     def load_manifest(self, manifest_path: Path) -> None:
         """Load segments from a manifest JSON file."""
+        self._pending_delete_segment_index = None
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
         self._manifest_is_v2 = isinstance(data, dict) and data.get("version") == 2
         self._manifest_meta = data if isinstance(data, dict) else {}
@@ -760,6 +761,7 @@ class VoiceTableWidget(QWidget):
 
     def set_segments(self, segments: list[dict[str, Any]]) -> None:
         """Set segments directly from worker output."""
+        self._pending_delete_segment_index = None
         self._manifest_is_v2 = False
         self._manifest_meta = {}
         self._segments = segments
@@ -910,26 +912,27 @@ class VoiceTableWidget(QWidget):
         self._set_readonly_item(row, 8, t("voice.mark_retry"), alignment=Qt.AlignmentFlag.AlignCenter)
         self._refresh_row_action_item(row, seg)
 
-    def _row_delete_label(self, seg: dict[str, Any]) -> str:
+    def _row_delete_label(self, segment_index: int, seg: dict[str, Any]) -> str:
         """Return the action label for a row-level TTS exclusion button."""
-        return (
-            t("voice.editor_restore")
-            if seg.get("deleted") or seg.get("excluded_from_tts")
-            else t("voice.editor_delete")
-        )
+        if seg.get("deleted") or seg.get("excluded_from_tts"):
+            return t("voice.editor_restore")
+        if self._pending_delete_segment_index == segment_index:
+            return t("voice.row_delete_confirm")
+        return t("voice.editor_delete")
 
-    def _row_delete_tip(self, seg: dict[str, Any]) -> str:
+    def _row_delete_tip(self, segment_index: int, seg: dict[str, Any]) -> str:
         """Return the tooltip for a row-level TTS exclusion button."""
-        return (
-            t("voice.row_restore_tip")
-            if seg.get("deleted") or seg.get("excluded_from_tts")
-            else t("voice.row_delete_tip")
-        )
+        if seg.get("deleted") or seg.get("excluded_from_tts"):
+            return t("voice.row_restore_tip")
+        if self._pending_delete_segment_index == segment_index:
+            return t("voice.row_delete_confirm_tip")
+        return t("voice.row_delete_tip")
 
     def _refresh_row_action_item(self, row: int, seg: dict[str, Any]) -> None:
         """Refresh the delete/restore action for one row."""
-        label = self._row_delete_label(seg)
-        tip = self._row_delete_tip(seg)
+        segment_index = self._segment_index_for_table_row(row)
+        label = self._row_delete_label(segment_index, seg)
+        tip = self._row_delete_tip(segment_index, seg)
         button = self._table.cellWidget(row, 9)
         if isinstance(button, QPushButton):
             button.setText(label)
@@ -1377,13 +1380,28 @@ class VoiceTableWidget(QWidget):
         """Toggle whether a segment is excluded from TTS output."""
         if not 0 <= row < len(self._segments):
             return
-        self._set_segment_deleted(
-            row,
-            not (
-                self._segments[row].get("deleted")
-                or self._segments[row].get("excluded_from_tts")
-            ),
+        is_deleted = bool(
+            self._segments[row].get("deleted")
+            or self._segments[row].get("excluded_from_tts")
         )
+        if is_deleted:
+            self._set_segment_deleted(row, False)
+            return
+        if self._pending_delete_segment_index != row:
+            self._select_segment_index(row)
+            self._set_pending_delete_segment(row)
+            return
+        self._set_segment_deleted(row, True)
+
+    def _set_pending_delete_segment(self, row: int | None) -> None:
+        old_row = self._pending_delete_segment_index
+        self._pending_delete_segment_index = row
+        for segment_index in {old_row, row}:
+            if segment_index is None or not 0 <= segment_index < len(self._segments):
+                continue
+            table_row = self._table_row_for_segment_index(segment_index)
+            if table_row >= 0:
+                self._refresh_row_action_item(table_row, self._segments[segment_index])
 
     # ── Bulk operations ──
 
@@ -1465,6 +1483,7 @@ class VoiceTableWidget(QWidget):
     def _set_segment_deleted(self, row: int, deleted: bool) -> None:
         if not 0 <= row < len(self._segments):
             return
+        self._pending_delete_segment_index = None
         self._segments[row]["deleted"] = deleted
         self._segments[row]["excluded_from_tts"] = deleted
         self._populate_table()

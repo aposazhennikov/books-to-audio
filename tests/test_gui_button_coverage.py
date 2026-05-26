@@ -565,6 +565,11 @@ def test_main_window_auto_pipeline_requires_selected_book(qapp, qtbot) -> None:
     qtbot.mouseClick(window._btn_auto_pipeline, QtCore.Qt.MouseButton.LeftButton)
 
     assert window.statusBar().currentMessage() == t("auto.need_file")
+    assert window._normalize_page._btn_browse.property("attention") is True
+    qtbot.waitUntil(
+        lambda: window._normalize_page._btn_browse.property("attention") is False,
+        timeout=2000,
+    )
     assert not window._auto_pipeline_active
 
 

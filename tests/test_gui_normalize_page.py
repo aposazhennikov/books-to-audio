@@ -1003,7 +1003,7 @@ def test_normalize_page_pdf_layout_stays_sane_at_small_size(qapp) -> None:
     assert not page.findChildren(QtWidgets.QSplitter)
     for editor in (page._raw_text, page._norm_text):
         assert editor.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        assert editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
         assert not editor.horizontalScrollBar().isVisible()
         assert not editor.verticalScrollBar().isVisible()
 
@@ -1018,6 +1018,51 @@ def test_normalize_page_pdf_layout_stays_sane_at_small_size(qapp) -> None:
 
     assert raw_label.bottom() < raw_text.top()
     assert norm_label.bottom() < norm_text.top()
+    assert raw_text.right() < norm_text.left()
+
+    page.deleteLater()
+
+
+def test_normalize_page_text_editors_scroll_long_text(qapp) -> None:
+    page = NormalizePage()
+    long_text = "\n".join(f"Line {index}: long normalization preview text." for index in range(120))
+    page._raw_text.setPlainText(long_text)
+    page._norm_text.setPlainText(long_text)
+
+    render_widget(page, 1180, 760, scale=1.0)
+
+    for editor in (page._raw_text, page._norm_text):
+        assert editor.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert editor.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        assert editor.horizontalScrollBar().maximum() == 0
+        assert editor.verticalScrollBar().maximum() > 0
+        assert editor.verticalScrollBar().isVisible()
+
+    page.deleteLater()
+
+
+def test_normalize_page_fullscreen_layout_reserves_text_editing_space(qapp) -> None:
+    page = NormalizePage()
+    page._selected_path = "book.pdf"
+    page._path_label.setText("D:/Books/Long Example Book.pdf")
+    page._llm_normalize.setChecked(True)
+    page._update_ocr_visibility()
+    page._update_llm_visibility()
+
+    render_widget(page, 2048, 1228, scale=1.0)
+
+    def page_rect(widget):
+        top_left = widget.mapTo(page, widget.rect().topLeft())
+        return QtCore.QRect(top_left, widget.size()).adjusted(0, 0, -1, -1)
+
+    run_button = page_rect(page._btn_run)
+    raw_label = page_rect(page._raw_label)
+    raw_text = page_rect(page._raw_text)
+    norm_text = page_rect(page._norm_text)
+
+    assert run_button.bottom() < raw_label.top()
+    assert raw_text.height() >= 260
+    assert norm_text.height() >= 260
     assert raw_text.right() < norm_text.left()
 
     page.deleteLater()

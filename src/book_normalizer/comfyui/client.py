@@ -24,9 +24,12 @@ Usage example::
 from __future__ import annotations
 
 import logging
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
+
+from book_normalizer.runtime_paths import configured_ffmpeg_bin
 
 logger = logging.getLogger(__name__)
 
@@ -250,12 +253,13 @@ class ComfyUIClient:
         """
         prompt_id = self.queue_prompt(workflow)
         audio_info = self.wait_for_completion(prompt_id, timeout=timeout)
-        return self.download_audio(
+        downloaded = self.download_audio(
             audio_info["filename"],
             audio_info["subfolder"],
             dst_path=output_path,
             file_type=audio_info.get("type", "output"),
         )
+        return ensure_pcm_wav(downloaded)
 
     def upload_audio(self, audio_path: Path) -> str:
         """Upload a local audio file to the ComfyUI input directory.
@@ -337,3 +341,64 @@ class ComfyUIClient:
             return resp.status_code == 200
         except Exception:
             return False
+
+
+def ensure_pcm_wav(path: Path) -> Path:
+    """Convert ComfyUI FLAC downloads into real WAV files when needed."""
+    path = Path(path)
+    if path.suffix.lower() != ".wav":
+        return path
+    if _audio_magic(path) != b"fLaC":
+        return path
+    _convert_flac_to_wav(path)
+    return path
+
+
+def _audio_magic(path: Path) -> bytes:
+    try:
+        with path.open("rb") as fh:
+            return fh.read(4)
+    except OSError:
+        return b""
+
+
+def _convert_flac_to_wav(path: Path) -> None:
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    try:
+        import soundfile as sf
+
+        audio, sample_rate = sf.read(str(path), always_2d=True)
+        sf.write(str(tmp_path), audio, sample_rate, format="WAV", subtype="PCM_16")
+        tmp_path.replace(path)
+        return
+    except ImportError:
+        pass
+    except Exception as exc:  # noqa: BLE001
+        tmp_path.unlink(missing_ok=True)
+        logger.warning("soundfile could not convert FLAC to WAV for %s: %s", path, exc)
+
+    ffmpeg = configured_ffmpeg_bin() or "ffmpeg"
+    result = subprocess.run(
+        [
+            str(ffmpeg),
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(path),
+            "-acodec",
+            "pcm_s16le",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if result.returncode != 0:
+        tmp_path.unlink(missing_ok=True)
+        detail = (result.stderr or result.stdout or "").strip()
+        raise ComfyUIError(f"Could not convert FLAC response to WAV at {path}: {detail}")
+    tmp_path.replace(path)

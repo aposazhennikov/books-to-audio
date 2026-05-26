@@ -48,11 +48,16 @@ are intentionally not committed.
   - Deleted/excluded chunks with stale audio are skipped by synthesis, QA, and
     chapter assembly, so removed publisher boilerplate cannot leak into the
     final chapter WAV.
-- Live TTS smoke runner is available for final backend sign-off.
+- Live TTS smoke passed against the local Windows ComfyUI/Qwen3-TTS backend.
   - Command: `python scripts/live_tts_smoke.py --comfyui-url http://127.0.0.1:8188 --workflow comfyui_workflows/qwen3_tts_template.json`
   - Output: `output/live_tts_smoke/live_tts_smoke_report.json`
-  - Current machine state on 2026-05-26: ComfyUI was not reachable at
-    `127.0.0.1:8188`, so live synthesis could not be executed in this run.
+  - Result: `ok`; 2/2 chunks synthesized, audio QA passed, and
+    `output/live_tts_smoke/chapter_001.wav` was assembled.
+  - Container fix verified: ComfyUI `SaveAudio` returns FLAC bytes, so the
+    client converts FLAC downloads to real PCM WAV before QA/assembly. The live
+    chunk files and assembled chapter now start with a RIFF/WAVE header.
+  - Post-run resource check: ComfyUI reported about 7.3 GB free VRAM, and
+    `ollama ps` was empty.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.
   - Report: `output/quality_reports/ocr_multilingual_smoke_20260526T025818Z.json`
   - Runtime: local WSL Tesseract with `data/tessdata`.
@@ -78,11 +83,13 @@ are intentionally not committed.
   `/mnt/d/ComfyUI-external/models`.
   - The app now falls back to this installed model root when the installer
     runtime config points at an empty stale directory.
+- ComfyUI portable was found at `/mnt/d/ComfyUI` and can be started from WSL
+  with `python scripts/start_comfyui.py --wait-seconds 300`.
 
 ## Remaining Before Final Sign-Off
 
 - Confirm native Windows Tesseract after an interactive install/UAC approval.
-- Run one full end-to-end audiobook chapter path against a live TTS backend
-  (ComfyUI/Qwen CustomVoice), then listen to the previewed chapter.
+- Listen to the generated live smoke chapter and/or one real-book short
+  chapter for subjective voice-quality sign-off.
 - Keep `ollama ps` empty after benchmark runs so only one model is resident at a
   time on an 8 GB VRAM / 16 GB RAM machine.

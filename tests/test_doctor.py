@@ -146,6 +146,7 @@ def test_doctor_comfyui_warning_includes_live_tts_smoke(monkeypatch: pytest.Monk
             return False
 
     monkeypatch.setattr(doctor, "ComfyUIClient", _FakeComfyClient)
+    monkeypatch.setattr(doctor, "_windows_host_url_reachable", lambda _url: False)
 
     [result] = _check_comfyui("http://127.0.0.1:8188")
 
@@ -153,3 +154,21 @@ def test_doctor_comfyui_warning_includes_live_tts_smoke(monkeypatch: pytest.Monk
     assert "scripts/live_tts_smoke.py" in result.detail
     assert "--comfyui-url http://127.0.0.1:8188" in result.detail
     assert "qwen3_tts_template.json" in result.detail
+
+
+def test_doctor_comfyui_accepts_windows_host_reachability(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeComfyClient:
+        def __init__(self, url: str) -> None:
+            self.url = url
+
+        def is_reachable(self) -> bool:
+            return False
+
+    monkeypatch.setattr(doctor, "ComfyUIClient", _FakeComfyClient)
+    monkeypatch.setattr(doctor, "_windows_host_url_reachable", lambda _url: True)
+
+    [result] = _check_comfyui("http://127.0.0.1:8188")
+
+    assert result.status == "ok"
+    assert "reachable from the Windows host" in result.detail
+    assert ".venv-windows/Scripts/python.exe" in result.detail

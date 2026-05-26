@@ -240,6 +240,19 @@ def _missing_default_ollama_models(model_names: list[str]) -> list[str]:
 def _check_comfyui(url: str) -> list[DoctorCheck]:
     client = ComfyUIClient(url)
     if not client.is_reachable():
+        if _windows_host_url_reachable(f"{url.rstrip('/')}/system_stats"):
+            return [
+                DoctorCheck(
+                    "ComfyUI",
+                    "ok",
+                    (
+                        f"{url} is reachable from the Windows host. "
+                        "From WSL, run live smoke with `.venv-windows/Scripts/python.exe "
+                        "scripts/live_tts_smoke.py --comfyui-url "
+                        f"{url} --workflow comfyui_workflows/qwen3_tts_template.json`."
+                    ),
+                )
+            ]
         return [
             DoctorCheck(
                 "ComfyUI",
@@ -265,3 +278,16 @@ def _check_comfyui(url: str) -> list[DoctorCheck]:
             )
         )
     return checks
+
+
+def _windows_host_url_reachable(url: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["cmd.exe", "/c", "curl", "-sS", "-m", "2", url],
+            capture_output=True,
+            timeout=5.0,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and bool(result.stdout)

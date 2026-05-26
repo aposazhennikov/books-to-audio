@@ -11,6 +11,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from book_normalizer.gui import normalization_cache, role_cache
+from book_normalizer.gui.i18n import t
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 from tests.gui.helpers import qapp as make_qapp
 from tests.gui.helpers import render_widget
@@ -207,6 +208,188 @@ def test_main_window_llm_workflow_clicks_normalize_roles_and_loads_chunks(
     assert window._roles_page._table.rowCount() == 1
     assert window._voices_page._voice_table.get_segments()[0]["speaker"] == "Маргарита"
     assert (output_dir / "roles_manifest.json").exists()
+
+
+def test_main_window_auto_pipeline_runs_all_steps_with_quality_settings(
+    qapp,
+    qtbot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    book_path = tmp_path / "overnight.txt"
+    book_path.write_text("Alice said hello.", encoding="utf-8")
+    output_dir = tmp_path / "overnight_out"
+    captured_normalize: dict = {}
+    captured_roles: dict = {}
+    captured_tts: dict = {}
+    captured_assembly: dict = {}
+
+    class _FakeNormalizeWorker:
+        def __init__(self, **kwargs):
+            captured_normalize.update(kwargs)
+            self.progress = _Signal()
+            self.progress_pct = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            book = Book(
+                metadata=Metadata(
+                    language=captured_normalize["book_language"],
+                    extra={
+                        "llm_processing_enabled": True,
+                        "llm_model_candidates": [captured_normalize["llm_model"]],
+                    },
+                ),
+                chapters=[
+                    Chapter(
+                        title="Chapter 1",
+                        index=0,
+                        paragraphs=[
+                            Paragraph(
+                                raw_text="Alice said hello.",
+                                normalized_text="Alice said hello.",
+                            ),
+                        ],
+                    ),
+                ],
+            )
+            self.finished.emit(book)
+
+    class _FakeExportSegmentsWorker:
+        def __init__(self, **kwargs):
+            captured_roles.update(kwargs)
+            self.progress = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            manifest_path = captured_roles["output_dir"] / "segments_manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            manifest_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "segment_index": 0,
+                            "chapter_index": 0,
+                            "language": "en",
+                            "role": "alice",
+                            "speaker": "Alice",
+                            "character_description": "Main speaker.",
+                            "is_dialogue": True,
+                            "emotion": "calm",
+                            "intonation": "calm",
+                            "voice_id": "female_warm",
+                            "text": "Alice said hello.",
+                        }
+                    ],
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            self.finished.emit(str(manifest_path))
+
+    class _FakeTTSWorker:
+        def __init__(self, **kwargs):
+            captured_tts.update(kwargs)
+            self.progress = _Signal()
+            self.status = _Signal()
+            self.log_line = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+            self.cancelled = False
+
+        def start(self) -> None:
+            audio_dir = captured_tts["output_dir"] / "audio_chunks"
+            audio_dir.mkdir(parents=True, exist_ok=True)
+            self.finished.emit(str(audio_dir), 1, 0)
+
+        def cancel(self) -> None:
+            self.cancelled = True
+
+    class _FakeAssemblyWorker:
+        def __init__(
+            self,
+            audio_dir,
+            output_dir,
+            pause_same,
+            pause_change,
+            manifest_path=None,
+            parent=None,
+        ):
+            captured_assembly.update(
+                {
+                    "audio_dir": audio_dir,
+                    "output_dir": output_dir,
+                    "pause_same": pause_same,
+                    "pause_change": pause_change,
+                    "manifest_path": manifest_path,
+                    "parent": parent,
+                }
+            )
+            self.progress = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            self.finished.emit("Chapter 001: 1 chunks -> 1.0s")
+
+    monkeypatch.setattr(normalize_page, "NormalizeWorker", _FakeNormalizeWorker)
+    monkeypatch.setattr(roles_page, "ExportSegmentsWorker", _FakeExportSegmentsWorker)
+    monkeypatch.setattr(synthesis_page, "TTSSynthesisWorker", _FakeTTSWorker)
+    monkeypatch.setattr(assembly_page, "AssemblyWorker", _FakeAssemblyWorker)
+    monkeypatch.setattr(cli, "_build_output_dir", lambda *_args, **_kwargs: output_dir)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    render_widget(window, 1180, 760, scale=1.0)
+    window._normalize_page._selected_path = str(book_path)
+    window._normalize_page._path_label.setText(str(book_path))
+    window._normalize_page._btn_run.setEnabled(True)
+
+    qtbot.mouseClick(window._btn_auto_pipeline, QtCore.Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: not window._auto_pipeline_active, timeout=2000)
+
+    assert captured_normalize["llm_normalize"] is True
+    assert captured_normalize["ocr_mode"] == "compare"
+    assert captured_normalize["ocr_dpi"] == 600
+    assert captured_normalize["ocr_psm"] == 6
+    assert captured_roles["speaker_mode"] == "llm"
+    assert captured_roles["stress_mode"] == "double_vowel"
+
+    chunks_manifest = json.loads(
+        (output_dir / "chunks_manifest_v2.json").read_text(encoding="utf-8")
+    )
+    assert chunks_manifest["max_chunk_chars"] == 400
+    assert chunks_manifest["chapters"][0]["chunks"][0]["text"] == "Alice said hello."
+
+    assert captured_tts["manifest_path"] == output_dir / "chunks_manifest_v2.json"
+    assert captured_tts["model"] == "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+    assert captured_tts["batch_size"] == 1
+    assert captured_tts["resume"] is True
+    assert captured_tts["chunk_timeout"] == 900
+    assert captured_tts["merge_chapters"] is True
+    assert captured_tts["output_format"] == "wav"
+    assert captured_tts["max_new_tokens"] == 4096
+
+    assert captured_assembly["manifest_path"] == output_dir / "chunks_manifest_v2.json"
+    assert captured_assembly["output_dir"] == output_dir
+    assert captured_assembly["pause_same"] == 300
+    assert captured_assembly["pause_change"] == 600
+    assert window._tabs.currentIndex() == 4
+    assert window._btn_auto_pipeline.isEnabled()
+    assert window.statusBar().currentMessage() == t("auto.complete")
+
+
+def test_main_window_auto_pipeline_requires_selected_book(qapp, qtbot) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    qtbot.mouseClick(window._btn_auto_pipeline, QtCore.Qt.MouseButton.LeftButton)
+
+    assert window.statusBar().currentMessage() == t("auto.need_file")
+    assert not window._auto_pipeline_active
 
 
 def test_normalize_browse_button_selects_file_and_enables_run(

@@ -6,7 +6,7 @@ import logging
 import platform
 from pathlib import Path
 
-from PyQt6.QtCore import QProcess, Qt
+from PyQt6.QtCore import QProcess, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QCheckBox,
@@ -124,6 +124,8 @@ def _book_preview_lines(book: object, limit: int | None = None) -> tuple[list[st
 
 class NormalizePage(QWidget):
     """Page for book loading and text normalization."""
+
+    normalization_failed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -580,15 +582,20 @@ class NormalizePage(QWidget):
             self._btn_run.setEnabled(True)
             self._update_ocr_visibility()
 
-    def _run_normalization(self) -> None:
+    def run_normalization(self, *, cache_choice: str | None = None) -> None:
+        """Start normalization, optionally choosing a cache action without prompting."""
+        self._run_normalization(cache_choice=cache_choice)
+
+    def _run_normalization(self, cache_choice: str | None = None) -> None:
         path = Path(self._path_label.text())
         if not path.exists():
             return
 
+        cache_choice = cache_choice if cache_choice in {"restore", "fresh", "cancel"} else None
         settings = self._normalization_cache_settings(path)
         cached = self._find_cached_normalization(path, settings)
         if cached is not None:
-            choice = self._ask_cached_normalization(path)
+            choice = cache_choice or self._ask_cached_normalization(path)
             if choice == "restore":
                 self._restore_cached_normalization(path, cached)
                 return
@@ -697,6 +704,7 @@ class NormalizePage(QWidget):
         except (OSError, ValueError) as exc:
             self._progress.set_status(t("norm.cache_restore_failed", msg=str(exc)))
             self._btn_run.setEnabled(True)
+            self.normalization_failed.emit(str(exc))
             return
 
         metadata = getattr(book, "metadata", None)
@@ -780,6 +788,7 @@ class NormalizePage(QWidget):
     def _on_error(self, msg: str) -> None:
         self._btn_run.setEnabled(True)
         self._progress.set_status(f"Error: {msg}")
+        self.normalization_failed.emit(msg)
 
     def get_book(self) -> object | None:
         """Return the processed book object."""

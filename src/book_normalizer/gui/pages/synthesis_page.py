@@ -415,6 +415,8 @@ class SynthesisPage(QWidget):
     """Page for running TTS synthesis with progress tracking."""
 
     output_dir_changed = pyqtSignal(str, str)
+    synthesis_finished = pyqtSignal(str, int, int)
+    synthesis_failed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2673,6 +2675,7 @@ class SynthesisPage(QWidget):
                 path=output_dir,
             ),
         )
+        self.synthesis_finished.emit(output_dir, synthesized, skipped)
 
     def _on_error(self, msg: str) -> None:
         self._tick_timer.stop()
@@ -2680,6 +2683,8 @@ class SynthesisPage(QWidget):
         self._run_kind = "idle"
         self._set_run_buttons_active(False)
         self._progress.set_status(f"❌ {msg}")
+
+        self.synthesis_failed.emit(msg)
 
     def _find_test_audio_path(self) -> Path | None:
         if not self._preview_output_dir:

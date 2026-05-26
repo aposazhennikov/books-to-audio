@@ -43,6 +43,7 @@ class RolesPage(QWidget):
     """Extract character roles and emotion variants before chunk editing."""
 
     segments_ready = pyqtSignal(str, str)
+    role_extraction_failed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -213,14 +214,19 @@ class RolesPage(QWidget):
         self._btn_extract.setEnabled(True)
         self._summary.setText(t("roles.ready"))
 
-    def _run_role_extraction(self) -> None:
+    def run_role_extraction(self, *, cache_choice: str | None = None) -> None:
+        """Start role extraction, optionally choosing a cache action without prompting."""
+        self._run_role_extraction(cache_choice=cache_choice)
+
+    def _run_role_extraction(self, cache_choice: str | None = None) -> None:
         if not self._book or not self._output_dir:
             return
 
+        cache_choice = cache_choice if cache_choice in {"restore", "fresh", "cancel"} else None
         settings = self._role_cache_settings()
         cached = self._find_cached_roles(settings)
         if cached is not None:
-            choice = self._ask_cached_roles()
+            choice = cache_choice or self._ask_cached_roles()
             if choice == "restore":
                 self._restore_cached_roles(cached)
                 return
@@ -314,6 +320,7 @@ class RolesPage(QWidget):
         except (OSError, ValueError, TypeError) as exc:
             self._progress.set_status(t("roles.cache_restore_failed", msg=str(exc)))
             self._btn_extract.setEnabled(True)
+            self.role_extraction_failed.emit(str(exc))
             return
 
         role_count = len(list(inventory.get("roles", [])))
@@ -428,3 +435,4 @@ class RolesPage(QWidget):
     def _on_error(self, msg: str) -> None:
         self._btn_extract.setEnabled(True)
         self._progress.set_status(t("roles.error", msg=msg))
+        self.role_extraction_failed.emit(msg)

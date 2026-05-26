@@ -86,6 +86,9 @@ class AssemblyWorker(QThread):
 class AssemblyPage(QWidget):
     """Page for assembling audio chunks into full chapter/book files."""
 
+    assembly_finished = pyqtSignal(str)
+    assembly_failed = pyqtSignal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._audio_dir: Path | None = None
@@ -253,10 +256,13 @@ class AssemblyPage(QWidget):
         else:
             self._progress.set_status(t("asm.complete"))
         self._output_label.setText(translated)
+        self.assembly_finished.emit(output)
 
     def _on_error(self, msg: str) -> None:
         self._btn_run.setEnabled(True)
         self._progress.set_status(f"❌ {msg}")
+
+        self.assembly_failed.emit(msg)
 
     @staticmethod
     def _translate_output(text: str) -> str:

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QPushButton,
     QStatusBar,
     QTabWidget,
     QVBoxLayout,
@@ -38,6 +40,7 @@ class MainWindow(QMainWindow):
         self.resize(1180, 760)
         self.setWindowIcon(application_icon())
         self._output_dir: Path | None = None
+        self._auto_pipeline_active = False
         self._setup_ui()
         self._connect_signals()
         self._retranslate()
@@ -58,6 +61,13 @@ class MainWindow(QMainWindow):
         self._title.setFont(make_app_font(22, QFont.Weight.Bold))
         self._title.setStyleSheet("color: #14233a;")
         header_row.addWidget(self._title)
+
+        self._btn_auto_pipeline = QPushButton()
+        self._btn_auto_pipeline.setObjectName("successBtn")
+        self._btn_auto_pipeline.setMinimumHeight(34)
+        self._btn_auto_pipeline.setMinimumWidth(220)
+        self._btn_auto_pipeline.clicked.connect(self._start_auto_pipeline)
+        header_row.addWidget(self._btn_auto_pipeline)
 
         header_row.addStretch()
 
@@ -135,10 +145,16 @@ class MainWindow(QMainWindow):
         self._normalize_page._on_finished = patched_finished
 
         self._roles_page.segments_ready.connect(self._on_roles_segments_ready)
+        self._normalize_page.normalization_failed.connect(self._on_auto_pipeline_failed)
+        self._roles_page.role_extraction_failed.connect(self._on_auto_pipeline_failed)
         self._voices_page.chunks_built.connect(self._on_chunks_built)
         self._synthesis_page.output_dir_changed.connect(
             self._on_synthesis_output_dir_changed,
         )
+        self._synthesis_page.synthesis_finished.connect(self._on_synthesis_done)
+        self._synthesis_page.synthesis_failed.connect(self._on_auto_pipeline_failed)
+        self._assembly_page.assembly_finished.connect(self._on_assembly_done)
+        self._assembly_page.assembly_failed.connect(self._on_auto_pipeline_failed)
 
     def _on_language_changed(self, _index: int) -> None:
         """Handle language combo change."""
@@ -158,6 +174,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(t("app.title"))
         self._title.setText(t("app.title"))
         self._lang_label.setText(t("app.lang_label"))
+        self._btn_auto_pipeline.setToolTip(t("auto.tooltip"))
         self._statusbar.showMessage(t("app.ready"))
 
         self._sync_tab_labels()
@@ -169,6 +186,12 @@ class MainWindow(QMainWindow):
 
         very_compact = self.width() < 820 and self._ui_scale >= 1.2
         compact = self.width() < 860
+        if very_compact:
+            self._btn_auto_pipeline.setText(t("auto.button_tiny"))
+        elif compact:
+            self._btn_auto_pipeline.setText(t("auto.button_short"))
+        else:
+            self._btn_auto_pipeline.setText(t("auto.button"))
         suffix = "_short" if compact else ""
         full_keys = [
             "tab.normalize",
@@ -181,6 +204,79 @@ class MainWindow(QMainWindow):
             label = str(index + 1) if very_compact else t(f"{key}{suffix}")
             self._tabs.setTabText(index, label)
             self._tabs.setTabToolTip(index, t(key))
+
+    def _selected_book_path(self) -> Path | None:
+        """Return the selected source book path when it exists."""
+        raw = self._normalize_page._selected_path or self._normalize_page._path_label.text()
+        if not raw or raw == t("norm.no_file"):
+            return None
+        path = Path(raw)
+        return path if path.exists() else None
+
+    def _start_auto_pipeline(self) -> None:
+        """Run the complete overnight audiobook pipeline with quality-first settings."""
+        source = self._selected_book_path()
+        if source is None:
+            self._tabs.setCurrentIndex(0)
+            self._statusbar.showMessage(t("auto.need_file"))
+            return
+        if self._auto_pipeline_active:
+            return
+
+        self._auto_pipeline_active = True
+        self._btn_auto_pipeline.setEnabled(False)
+        self._tabs.setCurrentIndex(0)
+        self._apply_auto_quality_settings()
+        self._statusbar.showMessage(t("auto.normalizing"))
+        self._normalize_page.run_normalization(cache_choice="restore")
+
+    def _apply_auto_quality_settings(self) -> None:
+        """Configure pages for highest-quality unattended generation."""
+        normalize = self._normalize_page
+        normalize._llm_normalize.setChecked(True)
+        normalize._ocr_dpi.setValue(600)
+        ocr_idx = normalize._ocr_mode.findText("compare")
+        if ocr_idx >= 0:
+            normalize._ocr_mode.setCurrentIndex(ocr_idx)
+        psm_idx = normalize._ocr_psm.findData(6)
+        if psm_idx >= 0:
+            normalize._ocr_psm.setCurrentIndex(psm_idx)
+
+        roles = self._roles_page
+        roles._llm_endpoint.setText(normalize._llm_endpoint.text())
+        roles._llm_model.setText(normalize._llm_model.text())
+
+        voices = self._voices_page
+        mode_idx = voices._speaker_mode.findData("llm")
+        if mode_idx >= 0:
+            voices._speaker_mode.setCurrentIndex(mode_idx)
+        stress_idx = voices._stress_mode.findData("double_vowel")
+        if stress_idx >= 0:
+            voices._stress_mode.setCurrentIndex(stress_idx)
+        voices._chunk_size.setValue(400)
+
+        synthesis = self._synthesis_page
+        synthesis._mode_tabs.setCurrentIndex(1)
+        synthesis._model_combo.setCurrentIndex(0)
+        synthesis._batch_size.setValue(1)
+        synthesis._resume_check.setChecked(True)
+        synthesis._chunk_timeout.setValue(900)
+        synthesis._compile_check.setChecked(False)
+        synthesis._sage_check.setChecked(False)
+        synthesis._merge_chapters_check.setChecked(True)
+        format_idx = synthesis._output_format_combo.findData("wav")
+        if format_idx >= 0:
+            synthesis._output_format_combo.setCurrentIndex(format_idx)
+        synthesis._temperature_spin.setValue(1.0)
+        synthesis._top_p_spin.setValue(0.8)
+        synthesis._top_k_spin.setValue(20)
+        synthesis._repetition_penalty_spin.setValue(1.05)
+        synthesis._max_new_tokens_spin.setValue(4096)
+        synthesis._seed_spin.setValue(-1)
+        synthesis._set_speech_rate_value(1.0)
+
+        self._assembly_page._pause_same.setValue(300)
+        self._assembly_page._pause_change.setValue(600)
 
     def _on_normalization_done(self, book: object) -> None:
         """Called when normalization completes."""
@@ -197,12 +293,21 @@ class MainWindow(QMainWindow):
                 t("status.norm_done", n=len(book.chapters))
             )
             self._tabs.setCurrentIndex(1)
+            if self._auto_pipeline_active:
+                self._statusbar.showMessage(t("auto.roles"))
+                QTimer.singleShot(
+                    0,
+                    lambda: self._roles_page.run_role_extraction(cache_choice="restore"),
+                )
 
     def _on_roles_segments_ready(self, segments_path: str, _roles_path: str) -> None:
         """Load LLM segments into the chunk editor."""
         self._voices_page.load_segments_manifest(Path(segments_path))
         self._statusbar.showMessage(t("status.roles_done"))
         self._tabs.setCurrentIndex(2)
+        if self._auto_pipeline_active:
+            self._statusbar.showMessage(t("auto.chunks"))
+            QTimer.singleShot(0, self._voices_page._build_tts_chunks)
 
     def _on_chunks_built(self, chunks_path: str) -> None:
         """Called when TTS chunks are built from segments."""
@@ -211,6 +316,41 @@ class MainWindow(QMainWindow):
         self._synthesis_page.set_manifest(mp, out_dir)
         self._set_assembly_target(mp, out_dir)
         self._statusbar.showMessage(t("status.voices_done"))
+        if self._auto_pipeline_active:
+            self._tabs.setCurrentIndex(3)
+            self._apply_auto_quality_settings()
+            self._statusbar.showMessage(t("auto.synthesis"))
+            QTimer.singleShot(0, self._synthesis_page._start_synthesis)
+
+    def _on_synthesis_done(
+        self,
+        _audio_dir: str,
+        _synthesized: int,
+        _skipped: int,
+    ) -> None:
+        """Continue an active auto pipeline after TTS synthesis."""
+        if not self._auto_pipeline_active:
+            return
+        self._tabs.setCurrentIndex(4)
+        self._statusbar.showMessage(t("auto.assembly"))
+        QTimer.singleShot(0, self._assembly_page._run_assembly)
+
+    def _on_assembly_done(self, _output: str) -> None:
+        """Finish an active auto pipeline after assembly."""
+        if not self._auto_pipeline_active:
+            return
+        self._auto_pipeline_active = False
+        self._btn_auto_pipeline.setEnabled(True)
+        self._tabs.setCurrentIndex(4)
+        self._statusbar.showMessage(t("auto.complete"))
+
+    def _on_auto_pipeline_failed(self, msg: str) -> None:
+        """Stop the auto pipeline when any background stage reports an error."""
+        if not self._auto_pipeline_active:
+            return
+        self._auto_pipeline_active = False
+        self._btn_auto_pipeline.setEnabled(True)
+        self._statusbar.showMessage(t("auto.failed", msg=msg))
 
     def _on_synthesis_output_dir_changed(
         self,

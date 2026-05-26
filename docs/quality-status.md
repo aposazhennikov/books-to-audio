@@ -64,7 +64,8 @@ are intentionally not committed.
 
 ## Current External Gap
 
-- Native Windows Tesseract is still not installed.
+- Native Windows Tesseract is not installed system-wide, but the GUI now has a
+  verified project-local fallback.
   - `winget list -e --id UB-Mannheim.TesseractOCR` found no installed package.
   - Noninteractive install attempts reached the UB-Mannheim package installer,
     but Windows returned `0x800704c7` (`operation canceled by the user`). This
@@ -72,10 +73,16 @@ are intentionally not committed.
     to the background WSL session.
   - Latest attempted command:
     `install.bat --yes --install-system-tools --download-tessdata --venv .venv-windows`.
-  - The GUI now handles this correctly: stale WSL runtime paths are ignored on
+  - The UB-Mannheim installer was downloaded from winget metadata, SHA256 was
+    verified, and the payload was extracted without admin rights to
+    `tools/Tesseract-OCR/`.
+  - Windows doctor now reports Tesseract as `ok` through
+    `tools/Tesseract-OCR/tesseract.exe`, with OCR languages:
+    `eng`, `rus`, `chi_sim`, `kaz`, `uzb`.
+  - The GUI handles this path correctly: stale WSL runtime paths are ignored on
     Windows, standard `C:\Program Files\Tesseract-OCR\tesseract.exe` is probed
-    even when `PATH` is stale, and the OCR install prompt points to the native
-    install script.
+    even when `PATH` is stale, and the project-local portable binary is used
+    when the system installer is unavailable.
 - WSL Ollama is installed and has the required local LLM models.
   - `ollama list` includes `hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M` and
     `hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M`.
@@ -90,7 +97,9 @@ are intentionally not committed.
 
 ## Remaining Before Final Sign-Off
 
-- Confirm native Windows Tesseract after an interactive install/UAC approval.
+- Optional only: install native Windows Tesseract system-wide after an
+  interactive UAC approval. The GUI no longer depends on this because the
+  project-local fallback is verified.
 - Listen to the generated live smoke chapter and/or one real-book short
   chapter for subjective voice-quality sign-off.
 - Keep `ollama ps` empty after benchmark runs so only one model is resident at a

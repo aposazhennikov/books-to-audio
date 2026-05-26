@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from book_normalizer.languages import tesseract_language
-from book_normalizer.runtime_paths import configured_tessdata_dir, configured_tesseract_cmd
+from book_normalizer.runtime_paths import configured_tessdata_dir, configured_tesseract_cmd, project_root
 
 
 def tesseract_available() -> bool:
@@ -100,6 +100,9 @@ def _tesseract_command() -> Path | str | None:
     for candidate in _common_windows_tesseract_paths():
         if candidate.exists():
             return candidate
+    for candidate in _project_local_windows_tesseract_paths():
+        if candidate.exists():
+            return candidate
     return None
 
 
@@ -134,6 +137,15 @@ def _common_windows_tesseract_paths() -> tuple[Path, ...]:
         paths.append(candidate)
         seen.add(key)
     return tuple(paths)
+
+
+def _project_local_windows_tesseract_paths() -> tuple[Path, ...]:
+    """Return portable/project-local Windows Tesseract install locations."""
+    if platform.system() != "Windows":
+        return ()
+    return (
+        project_root() / "tools" / "Tesseract-OCR" / "tesseract.exe",
+    )
 
 
 def ocr_image_via_tesseract_cli(img_bytes: bytes, lang: str, psm: int = 6) -> str:

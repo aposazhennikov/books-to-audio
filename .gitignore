@@ -15,6 +15,7 @@ output/
 build/
 .eggs/
 *.egg
+tools/Tesseract-OCR/
 data/
 .venv/
 .venv-windows/

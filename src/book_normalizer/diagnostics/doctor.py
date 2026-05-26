@@ -15,7 +15,7 @@ from book_normalizer.comfyui.workflow_builder import WorkflowBuilder, WorkflowBu
 from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3_MODEL
 from book_normalizer.loaders.pdf_ocr_engine import available_tesseract_languages, tesseract_available
 from book_normalizer.tts.local_runtime import check_tts_python
-from book_normalizer.tts.model_paths import default_comfyui_models_dir
+from book_normalizer.tts.model_paths import effective_comfyui_models_dir
 
 WINDOWS_OCR_INSTALL_HINT = "install.bat --interactive --install-system-tools --download-tessdata"
 POSIX_OCR_INSTALL_HINT = "./install.sh --interactive --install-system-tools --download-tessdata"
@@ -44,7 +44,7 @@ def run_doctor(
 ) -> list[DoctorCheck]:
     """Run local dependency checks."""
     workflow_path = workflow_path or Path("comfyui_workflows/qwen3_tts_template.json")
-    models_dir = models_dir or default_comfyui_models_dir()
+    models_dir = models_dir or effective_comfyui_models_dir()
 
     checks = [
         _check_python(),

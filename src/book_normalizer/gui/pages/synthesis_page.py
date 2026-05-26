@@ -59,7 +59,7 @@ from book_normalizer.tts.model_download import (
     expand_tts_model_ids,
     missing_tts_model_ids,
 )
-from book_normalizer.tts.model_paths import default_comfyui_models_dir
+from book_normalizer.tts.model_paths import effective_comfyui_models_dir
 from book_normalizer.tts.voice_library import (
     default_voice_library_dir,
     list_saved_voices,
@@ -1064,7 +1064,7 @@ class SynthesisPage(QWidget):
 
         model_dir_row = QHBoxLayout()
         model_dir_row.setSpacing(6)
-        self._models_dir_edit = QLineEdit(str(default_comfyui_models_dir()))
+        self._models_dir_edit = QLineEdit(str(effective_comfyui_models_dir()))
         self._models_dir_edit.setMinimumWidth(180)
         model_dir_row.addWidget(self._models_dir_edit, stretch=1)
         self._btn_models_dir = QPushButton()
@@ -1849,13 +1849,13 @@ class SynthesisPage(QWidget):
         path = QFileDialog.getExistingDirectory(
             self,
             t("synth.models_dir"),
-            self._models_dir_edit.text().strip() or str(default_comfyui_models_dir()),
+            self._models_dir_edit.text().strip() or str(effective_comfyui_models_dir()),
         )
         if path:
             self._models_dir_edit.setText(path)
 
     def _selected_models_dir(self) -> Path:
-        text = self._models_dir_edit.text().strip() or str(default_comfyui_models_dir())
+        text = self._models_dir_edit.text().strip() or str(effective_comfyui_models_dir())
         path = _host_path_from_text(text)
         self._models_dir_edit.setText(str(path))
         return path

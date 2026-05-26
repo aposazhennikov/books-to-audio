@@ -16,6 +16,11 @@ MODEL_SUBDIRS = (
     "diffusion_models",
     "unet",
 )
+QWEN3_TTS_REQUIRED_DIRS = (
+    "Qwen3-TTS-12Hz-1.7B-Base",
+    "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    "Qwen3-TTS-Tokenizer-12Hz",
+)
 
 
 def default_comfyui_models_dir() -> Path:
@@ -23,6 +28,24 @@ def default_comfyui_models_dir() -> Path:
     configured = configured_models_dir()
     if configured is not None:
         return configured
+    return _platform_default_comfyui_models_dir()
+
+
+def effective_comfyui_models_dir() -> Path:
+    """Return the best available ComfyUI models root for the current machine.
+
+    Installer config wins when it points at a usable Qwen3-TTS model root. If a
+    stale config points at an empty/missing folder, fall back to the conventional
+    shared ComfyUI models folder so the app can still find already-downloaded
+    models without forcing the user to repair local config first.
+    """
+    for root in candidate_model_roots():
+        if _has_required_qwen3_tts_models(root):
+            return root
+    return default_comfyui_models_dir()
+
+
+def _platform_default_comfyui_models_dir() -> Path:
     if os.name == "nt":
         return Path("D:/ComfyUI-external/models")
     return Path("/mnt/d/ComfyUI-external/models")
@@ -40,6 +63,7 @@ def candidate_model_roots(models_dir: str | Path | None = None) -> list[Path]:
             roots.append(Path(value).expanduser())
 
     roots.append(default_comfyui_models_dir())
+    roots.append(_platform_default_comfyui_models_dir())
 
     deduped: list[Path] = []
     seen: set[str] = set()
@@ -109,6 +133,11 @@ def looks_like_model_dir(path: Path) -> bool:
         return path.is_dir() and any((path / marker).is_file() for marker in markers)
     except OSError:
         return False
+
+
+def _has_required_qwen3_tts_models(root: Path) -> bool:
+    audio_encoders = root / "audio_encoders"
+    return all(looks_like_model_dir(audio_encoders / name) for name in QWEN3_TTS_REQUIRED_DIRS)
 
 
 def _model_basename(model_name: str) -> str:

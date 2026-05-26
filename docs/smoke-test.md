@@ -63,3 +63,14 @@ python scripts\audit_tts_smoke.py output\live_tts_smoke `
 The audit checks the live smoke report, manifest chunk count, front-matter
 terms, WAV format, duration, and non-silent audio. It does not load ComfyUI,
 Ollama, or any model.
+
+Final automated readiness report:
+
+```powershell
+python scripts\final_readiness_check.py `
+  --write-report output\final_readiness_report.json
+```
+
+This aggregates the automated gates and keeps the remaining human listening
+step explicit instead of marking the project complete without ears on the
+post-filter audio sample.

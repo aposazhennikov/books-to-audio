@@ -97,6 +97,11 @@ are intentionally not committed.
     output/live_tts_real_book_smoke_after_filter/audit_report.json`.
     Result: `ok=true`; duration 45.48 s, mono, 24 kHz, RMS 3574, peak 29824,
     no front-matter terms.
+  - Final automated readiness check passed:
+    `python scripts/final_readiness_check.py --write-report
+    output/final_readiness_report.json`. Result: `automated_gates_ok=true`,
+    `complete_without_human_review=false`; remaining items are human
+    listen-through and optional full-length acceptance synthesis.
   - Post-run resource check: ComfyUI was stopped, `ollama ps` was empty, and
     GPU memory returned to the low idle range.
 - Local image-only OCR smoke passed for `ru`, `en`, `zh`, `kk`, `uz`.

@@ -796,6 +796,53 @@ def cast_voices_command(
         click.echo(f"Manifest casting metadata updated: {manifest_path}")
 
 
+@main.command(name="score-director")
+@click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--out",
+    "out_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Director score JSON path. Defaults to director_score.json next to the manifest.",
+)
+@click.option(
+    "--write-manifest",
+    is_flag=True,
+    default=False,
+    help="Annotate chunks_manifest_v2.json with director metadata and pauses.",
+)
+def score_director_command(
+    manifest_path: Path,
+    out_path: Path | None,
+    write_manifest: bool,
+) -> None:
+    """Build a director performance score for a v2 manifest."""
+    from book_normalizer.chunking.manifest_v2 import save_manifest
+    from book_normalizer.production.director import (
+        DEFAULT_DIRECTOR_SCORE_NAME,
+        apply_director_score_to_manifest,
+        build_director_score,
+        write_director_score,
+    )
+
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    score = build_director_score(raw)
+    target = out_path or manifest_path.with_name(DEFAULT_DIRECTOR_SCORE_NAME)
+    write_director_score(target, score)
+    click.echo(
+        "Director score: "
+        f"{score['total_chunks']} chunk(s), "
+        f"{score['summary']['scenes']} scene(s), "
+        f"{score['summary']['high_tension_chunks']} high-tension chunk(s)."
+    )
+    click.echo(f"Score: {target}")
+
+    if write_manifest:
+        annotated = apply_director_score_to_manifest(raw, score)
+        save_manifest(manifest_path, annotated)
+        click.echo(f"Manifest director metadata updated: {manifest_path}")
+
+
 @main.command(name="master")
 @click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
 @click.option(

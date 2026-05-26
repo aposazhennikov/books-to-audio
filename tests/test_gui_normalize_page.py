@@ -8,8 +8,9 @@ from tests.gui.helpers import assert_layout_sane, render_widget
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from book_normalizer.gui import normalization_cache
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, set_language, t
-from book_normalizer.models.book import Book, Chapter, Paragraph
+from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 QtCore = pytest.importorskip("PyQt6.QtCore")
@@ -25,6 +26,11 @@ NormalizePage = normalize_page.NormalizePage
 def qapp():
     app = QApplication.instance() or QApplication([])
     yield app
+
+
+@pytest.fixture(autouse=True)
+def isolate_normalization_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(normalization_cache, "CACHE_ROOT", tmp_path / "normalization_cache")
 
 
 def test_book_preview_default_is_not_truncated() -> None:
@@ -305,6 +311,222 @@ def test_normalize_page_run_button_starts_worker(qapp, qtbot, tmp_path, monkeypa
     assert captured["book_language"] == "en"
     assert page._book is not None
     assert page._raw_text.toPlainText() == "Hello."
+
+
+def test_normalize_page_restores_completed_book_from_cache(qapp, qtbot, tmp_path, monkeypatch) -> None:
+    class _UnexpectedWorker:
+        def __init__(self, **_kwargs):
+            raise AssertionError("worker should not start when cache is restored")
+
+    book_path = tmp_path / "book.txt"
+    book_path.write_text("Cached source.", encoding="utf-8")
+    page = NormalizePage()
+    qtbot.addWidget(page)
+    page._selected_path = str(book_path)
+    page._path_label.setText(str(book_path))
+    page._btn_run.setEnabled(True)
+    page._book_language.setCurrentIndex(page._book_language.findData("en"))
+    cached_book = Book(
+        metadata=Metadata(title="Cached", language="en", source_path="old.txt", source_format="txt"),
+        chapters=[
+            Chapter(
+                index=0,
+                paragraphs=[
+                    Paragraph(
+                        raw_text="Cached source.",
+                        normalized_text="Cached result.",
+                        index_in_chapter=0,
+                    ),
+                ],
+            ),
+        ],
+    )
+    normalization_cache.save_cached_book(
+        cached_book,
+        book_path,
+        page._normalization_cache_settings(book_path),
+    )
+    monkeypatch.setattr(page, "_ask_cached_normalization", lambda _path: "restore")
+    monkeypatch.setattr(normalize_page, "NormalizeWorker", _UnexpectedWorker)
+    set_language("en")
+
+    page._run_normalization()
+
+    assert page._book is not None
+    assert page._book.metadata.source_path == str(book_path)
+    assert page._norm_text.toPlainText() == "Cached result."
+    assert page._progress._status.text() == t("norm.cache_restored", n=1)
+    assert page._btn_run.isEnabled()
+    set_language("ru")
+
+
+def test_normalize_page_can_run_from_scratch_when_cache_exists(qapp, qtbot, tmp_path, monkeypatch) -> None:
+    started: list[bool] = []
+
+    class _Signal:
+        def __init__(self) -> None:
+            self.callbacks = []
+
+        def connect(self, callback):  # noqa: ANN001
+            self.callbacks.append(callback)
+
+        def emit(self, *args):  # noqa: ANN002
+            for callback in self.callbacks:
+                callback(*args)
+
+    class _FakeWorker:
+        def __init__(self, **_kwargs):
+            self.progress = _Signal()
+            self.progress_pct = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            started.append(True)
+            self.finished.emit(
+                Book(
+                    chapters=[
+                        Chapter(
+                            index=0,
+                            paragraphs=[
+                                Paragraph(
+                                    raw_text="Fresh source.",
+                                    normalized_text="Fresh result.",
+                                    index_in_chapter=0,
+                                ),
+                            ],
+                        ),
+                    ],
+                )
+            )
+
+    book_path = tmp_path / "book.txt"
+    book_path.write_text("Fresh source.", encoding="utf-8")
+    page = NormalizePage()
+    qtbot.addWidget(page)
+    page._selected_path = str(book_path)
+    page._path_label.setText(str(book_path))
+    page._btn_run.setEnabled(True)
+    normalization_cache.save_cached_book(
+        Book(chapters=[Chapter(index=0, paragraphs=[Paragraph(raw_text="old", normalized_text="old")])]),
+        book_path,
+        page._normalization_cache_settings(book_path),
+    )
+    monkeypatch.setattr(page, "_ask_cached_normalization", lambda _path: "fresh")
+    monkeypatch.setattr(normalize_page, "NormalizeWorker", _FakeWorker)
+
+    page._run_normalization()
+
+    assert started == [True]
+    assert page._book is not None
+    assert page._norm_text.toPlainText() == "Fresh result."
+
+
+def test_normalize_page_can_cancel_when_cache_exists(qapp, qtbot, tmp_path, monkeypatch) -> None:
+    class _UnexpectedWorker:
+        def __init__(self, **_kwargs):
+            raise AssertionError("worker should not start when cache prompt is cancelled")
+
+    book_path = tmp_path / "book.txt"
+    book_path.write_text("Cancelable source.", encoding="utf-8")
+    page = NormalizePage()
+    qtbot.addWidget(page)
+    page._selected_path = str(book_path)
+    page._path_label.setText(str(book_path))
+    page._btn_run.setEnabled(True)
+    normalization_cache.save_cached_book(
+        Book(chapters=[Chapter(index=0, paragraphs=[Paragraph(raw_text="old", normalized_text="old")])]),
+        book_path,
+        page._normalization_cache_settings(book_path),
+    )
+    monkeypatch.setattr(page, "_ask_cached_normalization", lambda _path: "cancel")
+    monkeypatch.setattr(normalize_page, "NormalizeWorker", _UnexpectedWorker)
+
+    page._run_normalization()
+
+    assert page._book is None
+    assert page._btn_run.isEnabled()
+
+
+@pytest.mark.parametrize(
+    ("clicked_key", "expected"),
+    [
+        ("norm.cache_restore_button", "restore"),
+        ("norm.cache_run_fresh_button", "fresh"),
+        ("norm.cache_cancel_button", "cancel"),
+    ],
+)
+def test_normalize_page_cache_prompt_uses_localized_copy(
+    qapp,
+    tmp_path,
+    monkeypatch,
+    clicked_key: str,
+    expected: str,
+) -> None:
+    seen: dict[str, object] = {}
+
+    class _FakeMessageBox:
+        class Icon:
+            Question = object()
+
+        class ButtonRole:
+            AcceptRole = object()
+            ActionRole = object()
+            RejectRole = object()
+
+        clicked_text = ""
+
+        def __init__(self, parent):  # noqa: ANN001
+            seen["parent"] = parent
+            seen["buttons"] = []
+            self._buttons: dict[str, object] = {}
+
+        def setIcon(self, icon):  # noqa: ANN001, N802
+            seen["icon"] = icon
+
+        def setWindowTitle(self, title):  # noqa: ANN001, N802
+            seen["title"] = title
+
+        def setText(self, text):  # noqa: ANN001, N802
+            seen["text"] = text
+
+        def setInformativeText(self, text):  # noqa: ANN001, N802
+            seen["informative"] = text
+
+        def addButton(self, text, role):  # noqa: ANN001, N802
+            button = object()
+            self._buttons[text] = button
+            seen["buttons"].append((text, role))
+            return button
+
+        def setDefaultButton(self, button):  # noqa: ANN001, N802
+            seen["default"] = button
+
+        def setEscapeButton(self, button):  # noqa: ANN001, N802
+            seen["escape"] = button
+
+        def exec(self) -> None:
+            return None
+
+        def clickedButton(self):  # noqa: N802
+            return self._buttons[self.clicked_text]
+
+    set_language("en")
+    _FakeMessageBox.clicked_text = t(clicked_key)
+    monkeypatch.setattr(normalize_page, "QMessageBox", _FakeMessageBox)
+    page = NormalizePage()
+    path = tmp_path / "cached.txt"
+
+    assert page._ask_cached_normalization(path) == expected
+    assert seen["title"] == t("norm.cache_dialog_title")
+    assert seen["text"] == t("norm.cache_dialog_text", name=path.name)
+    assert seen["informative"] == t("norm.cache_dialog_informative")
+    assert {text for text, _role in seen["buttons"]} == {
+        t("norm.cache_restore_button"),
+        t("norm.cache_run_fresh_button"),
+        t("norm.cache_cancel_button"),
+    }
+    set_language("ru")
 
 
 def test_normalize_page_shows_worker_preview_before_finished(

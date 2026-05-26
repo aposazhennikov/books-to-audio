@@ -357,6 +357,74 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Starting\u2026",
         "ru": "\u0417\u0430\u043f\u0443\u0441\u043a\u2026",
     },
+    "norm.cache_dialog_title": {
+        "en": "Completed normalization found",
+        "ru": "Готовая нормализация найдена",
+        "zh": "已找到完成的标准化结果",
+        "kk": "Дайын нормализация табылды",
+        "uz": "Yakunlangan normalizatsiya topildi",
+    },
+    "norm.cache_dialog_text": {
+        "en": "A cached result exists for “{name}” with the current settings.",
+        "ru": "Для «{name}» найден результат с текущими параметрами.",
+        "zh": "“{name}”在当前设置下已有缓存结果。",
+        "kk": "«{name}» үшін ағымдағы баптаулармен кеш нәтижесі бар.",
+        "uz": "“{name}” uchun joriy sozlamalar bilan kesh natijasi bor.",
+    },
+    "norm.cache_dialog_informative": {
+        "en": (
+            "Restore it to continue immediately with chapters and role extraction. "
+            "Choose “Run from scratch” only if you want to read the source, OCR, and LLM steps again."
+        ),
+        "ru": (
+            "Восстановите его из кеша, чтобы сразу продолжить с главами и ролями. "
+            "Выберите «Запустить заново», только если хотите повторно прочитать файл, OCR и LLM-шаги."
+        ),
+        "zh": "从缓存恢复即可立即继续处理章节和角色。只有在想重新读取源文件、OCR 和 LLM 步骤时，才选择“重新运行”。",
+        "kk": (
+            "Кештен қалпына келтірсеңіз, тараулар мен рөлдерге бірден өтесіз. "
+            "Бастапқы файлды, OCR және LLM қадамдарын қайта орындау керек болса ғана «Қайта іске қосу» таңдаңыз."
+        ),
+        "uz": (
+            "Keshdan tiklasangiz, boblar va rollar bilan darhol davom etasiz. "
+            "Manba fayl, OCR va LLM bosqichlarini qayta bajarishni istasangizgina “Qayta ishga tushirish”ni tanlang."
+        ),
+    },
+    "norm.cache_restore_button": {
+        "en": "Restore from cache",
+        "ru": "Восстановить из кеша",
+        "zh": "从缓存恢复",
+        "kk": "Кештен қалпына келтіру",
+        "uz": "Keshdan tiklash",
+    },
+    "norm.cache_run_fresh_button": {
+        "en": "Run from scratch",
+        "ru": "Запустить заново",
+        "zh": "重新运行",
+        "kk": "Қайта іске қосу",
+        "uz": "Qayta ishga tushirish",
+    },
+    "norm.cache_cancel_button": {
+        "en": "Cancel",
+        "ru": "Отмена",
+        "zh": "取消",
+        "kk": "Болдырмау",
+        "uz": "Bekor qilish",
+    },
+    "norm.cache_restored": {
+        "en": "Restored from cache. Chapters: {n}.",
+        "ru": "Восстановлено из кеша. Глав: {n}.",
+        "zh": "已从缓存恢复。章节数：{n}。",
+        "kk": "Кештен қалпына келтірілді. Тараулар: {n}.",
+        "uz": "Keshdan tiklandi. Boblar: {n}.",
+    },
+    "norm.cache_restore_failed": {
+        "en": "Could not restore cached normalization: {msg}",
+        "ru": "Не удалось восстановить нормализацию из кеша: {msg}",
+        "zh": "无法恢复缓存的标准化结果：{msg}",
+        "kk": "Кештегі нормализацияны қалпына келтіру мүмкін болмады: {msg}",
+        "uz": "Keshlangan normalizatsiyani tiklab bo'lmadi: {msg}",
+    },
     "norm.loading": {
         "en": "Loading book\u2026",
         "ru": "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u043a\u043d\u0438\u0433\u0438\u2026",

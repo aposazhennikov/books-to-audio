@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import platform
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
@@ -24,6 +26,13 @@ from PyQt6.QtWidgets import (
 )
 
 from book_normalizer.gui.i18n import t
+from book_normalizer.gui.normalization_cache import (
+    CachedNormalization,
+    NormalizationCacheSettings,
+    find_cached_normalization,
+    load_cached_book,
+    save_cached_book,
+)
 from book_normalizer.gui.widgets.help_button import label_with_help, set_help_text
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
 from book_normalizer.gui.workers.normalize_worker import NormalizeWorker
@@ -41,6 +50,7 @@ from book_normalizer.runtime_paths import configured_ollama_endpoint
 
 _PDF_EXTENSIONS = {".pdf"}
 _PSM_VALUES = (3, 4, 6, 11, 13)
+logger = logging.getLogger(__name__)
 
 
 def _project_root() -> Path:
@@ -575,6 +585,16 @@ class NormalizePage(QWidget):
         if not path.exists():
             return
 
+        settings = self._normalization_cache_settings(path)
+        cached = self._find_cached_normalization(path, settings)
+        if cached is not None:
+            choice = self._ask_cached_normalization(path)
+            if choice == "restore":
+                self._restore_cached_normalization(path, cached)
+                return
+            if choice == "cancel":
+                return
+
         self._progress.reset()
         self._btn_run.setEnabled(False)
         self._progress.set_busy(t("norm.starting"))
@@ -601,6 +621,106 @@ class NormalizePage(QWidget):
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
+    def _normalization_cache_settings(self, path: Path) -> NormalizationCacheSettings:
+        """Return the settings that define a reusable completed normalization result."""
+        is_pdf = path.suffix.lower() in _PDF_EXTENSIONS
+        language = str(self._book_language.currentData() or DEFAULT_BOOK_LANGUAGE)
+        tesseract_ok: bool | None = None
+        tesseract_lang_ok: bool | None = None
+        if is_pdf:
+            tesseract_ok = self._is_tesseract_available()
+            if tesseract_ok:
+                tesseract_lang_ok = self._is_tesseract_language_available(tesseract_language(language))
+
+        return NormalizationCacheSettings(
+            source_format=path.suffix.lower().lstrip(".") or "unknown",
+            book_language=language,
+            ocr_mode=self._ocr_mode.currentText() if is_pdf else "off",
+            ocr_dpi=self._ocr_dpi.value() if is_pdf else 0,
+            ocr_psm=int(self._ocr_psm.currentData() or 6) if is_pdf else 0,
+            llm_normalize=self._llm_normalize.isChecked(),
+            llm_endpoint=self._llm_endpoint.text().strip() or configured_ollama_endpoint(),
+            llm_model=self._llm_model.text().strip() or PRIMARY_QWEN3_MODEL,
+            tesseract_available=tesseract_ok,
+            tesseract_language_available=tesseract_lang_ok,
+        )
+
+    def _find_cached_normalization(
+        self,
+        path: Path,
+        settings: NormalizationCacheSettings,
+    ) -> CachedNormalization | None:
+        """Find a completed normalization cache entry, ignoring unreadable cache state."""
+        try:
+            return find_cached_normalization(path, settings)
+        except OSError as exc:
+            logger.debug("Could not inspect normalization cache for %s: %s", path, exc)
+            return None
+
+    def _ask_cached_normalization(self, path: Path) -> str:
+        """Ask whether to restore a cached completed normalization or run again."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(t("norm.cache_dialog_title"))
+        box.setText(t("norm.cache_dialog_text", name=path.name))
+        box.setInformativeText(t("norm.cache_dialog_informative"))
+        restore_button = box.addButton(
+            t("norm.cache_restore_button"),
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        fresh_button = box.addButton(
+            t("norm.cache_run_fresh_button"),
+            QMessageBox.ButtonRole.ActionRole,
+        )
+        cancel_button = box.addButton(
+            t("norm.cache_cancel_button"),
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        box.setDefaultButton(restore_button)
+        box.setEscapeButton(cancel_button)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is restore_button:
+            return "restore"
+        if clicked is fresh_button:
+            return "fresh"
+        return "cancel"
+
+    def _restore_cached_normalization(
+        self,
+        path: Path,
+        cached: CachedNormalization,
+    ) -> None:
+        """Load a completed normalization result and continue the GUI workflow."""
+        try:
+            book = load_cached_book(cached)
+        except (OSError, ValueError) as exc:
+            self._progress.set_status(t("norm.cache_restore_failed", msg=str(exc)))
+            self._btn_run.setEnabled(True)
+            return
+
+        metadata = getattr(book, "metadata", None)
+        if metadata is not None:
+            metadata.source_path = str(path)
+            metadata.source_format = path.suffix.lower().lstrip(".") or metadata.source_format
+        if hasattr(book, "add_audit"):
+            book.add_audit("normalization_cache", "restore", f"path={cached.path}")
+
+        self._progress.reset()
+        self._on_finished(book)
+        self._progress.set_status(t("norm.cache_restored", n=len(getattr(book, "chapters", []))))
+
+    def _save_current_normalization_cache(self, book: object) -> None:
+        """Save the completed normalization result for the current source/settings."""
+        path = Path(self._path_label.text())
+        if not path.exists():
+            return
+        try:
+            settings = self._normalization_cache_settings(path)
+            save_cached_book(book, path, settings)
+        except (OSError, ValueError, TypeError) as exc:
+            logger.debug("Could not save normalization cache for %s: %s", path, exc)
+
     def _show_book_preview(self, book: object) -> bool:
         """Render raw and normalized text panels for a partially or fully ready book."""
         if getattr(book, "chapters", []):
@@ -617,6 +737,7 @@ class NormalizePage(QWidget):
     def _on_finished(self, book: object) -> None:
         self._book = book
         self._btn_run.setEnabled(True)
+        self._save_current_normalization_cache(book)
 
         if self._show_book_preview(book):
             self._set_manual_edit_available(True)

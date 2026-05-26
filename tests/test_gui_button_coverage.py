@@ -10,6 +10,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from book_normalizer.gui import normalization_cache
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 from tests.gui.helpers import qapp as make_qapp
 from tests.gui.helpers import render_widget
@@ -39,6 +40,11 @@ VoiceTableWidget = pytest.importorskip(
 @pytest.fixture
 def qapp():
     return make_qapp()
+
+
+@pytest.fixture(autouse=True)
+def isolate_normalization_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(normalization_cache, "CACHE_ROOT", tmp_path / "normalization_cache")
 
 
 class _Signal:

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from book_normalizer.chunking.dialogue_invariants import audit_dialogue_chunk_boundaries
+import pytest
+
+from book_normalizer.chunking.dialogue_invariants import (
+    assert_dialogue_chunk_boundaries,
+    audit_dialogue_chunk_boundaries,
+)
 
 
 def test_audit_accepts_clean_dialogue_and_narration_chunks() -> None:
@@ -81,3 +86,27 @@ def test_audit_does_not_flag_speech_with_attribution_word_inside_phrase() -> Non
     ])
 
     assert issues == []
+
+
+def test_boundary_assertion_rejects_manifest_issues() -> None:
+    manifest = {
+        "version": 2,
+        "language": "ru",
+        "chapters": [
+            {
+                "chapter_index": 0,
+                "chunks": [
+                    {
+                        "chunk_index": 0,
+                        "voice": "male",
+                        "voice_id": "male_young",
+                        "section_kind": "dialogue",
+                        "text": "- Что случилось? - спросил он.",
+                    }
+                ],
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="Dialogue chunk boundary audit failed"):
+        assert_dialogue_chunk_boundaries(manifest, language="ru")

@@ -588,6 +588,59 @@ def test_plain_narration_splits_before_colon_introduced_dash_dialogue() -> None:
     assert [row["role"] for row in repaired] == ["narrator", "male"]
 
 
+def test_lowercase_ocr_dash_question_stays_dialogue_before_narration_intro() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = "- вы подскажете куда нам идти? Мужчина открыл глаза: - Идите прямо."
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "- вы подскажете куда нам идти?",
+        "Мужчина открыл глаза:",
+        "- Идите прямо.",
+    ]
+    assert [row["section_kind"] for row in repaired] == ["dialogue", "narration", "dialogue"]
+
+
+def test_dash_speech_with_closing_quote_splits_before_following_narration() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = "— Что я скажу?». Он стал вспоминать инструкцию."
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "— Что я скажу?».",
+        "Он стал вспоминать инструкцию.",
+    ]
+    assert [row["section_kind"] for row in repaired] == ["dialogue", "narration"]
+
+
 def test_narrator_tag_splits_before_lowercase_resumed_dash_dialogue() -> None:
     from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
 
@@ -612,6 +665,42 @@ def test_narrator_tag_splits_before_lowercase_resumed_dash_dialogue() -> None:
         "- я просто чародей.",
     ]
     assert [row["role"] for row in repaired] == ["narrator", "male"]
+
+
+def test_dash_started_narration_splits_later_direct_speech() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = (
+        "— вставная авторская часть закончилась. Герой посмотрел на дверь. "
+        "— Ты меня обманул,, сказал он. — Я своё обещание выполнил?"
+    )
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "— вставная авторская часть закончилась. Герой посмотрел на дверь.",
+        "— Ты меня обманул,,",
+        "сказал он.",
+        "— Я своё обещание выполнил?",
+    ]
+    assert [row["section_kind"] for row in repaired] == [
+        "narration",
+        "dialogue",
+        "narration",
+        "dialogue",
+    ]
 
 
 def test_dash_dialogue_splits_ocr_inline_attribution_without_second_dash() -> None:

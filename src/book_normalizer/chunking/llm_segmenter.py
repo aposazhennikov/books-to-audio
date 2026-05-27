@@ -966,7 +966,10 @@ def _contains_embedded_direct_speech(text: str, language: str) -> bool:
     if _starts_with_direct_speech_marker(text, language):
         return True
     if language == "ru" and _dash_starts_narrator_tag(text, language):
-        return _find_nested_dialogue_after_narrator_tag(text) is not None
+        return (
+            _find_nested_dialogue_after_narrator_tag(text) is not None
+            or _find_next_dialogue_marker(text, language) is not None
+        )
     if _find_next_dialogue_marker(text, language) is not None:
         return True
     return _split_inline_attribution(text, language) is not None
@@ -1068,6 +1071,10 @@ def _take_quoted_speech(text: str) -> tuple[str, str]:
     close_quote = _CLOSING_QUOTE_BY_OPENING.get(quote, quote)
     close_index = stripped.find(close_quote, 1)
     if close_index < 0:
+        inline = _split_inline_attribution_at_start(stripped, "ru")
+        if inline is not None:
+            speech, tail = inline
+            return speech, tail
         return text.strip(), ""
 
     end = leading_ws + close_index + 1
@@ -1095,7 +1102,7 @@ def _opening_quote_starts_direct_speech(text: str, language: str) -> bool:
 def _quoted_speech_has_attribution_tail(speech: str, tail: str, language: str) -> bool:
     probe = f"{speech} {tail[:120]}".strip()
     if language == "ru":
-        if _split_inline_attribution(probe, language) is not None:
+        if _split_inline_attribution_at_start(probe, language) is not None:
             return True
         return _dash_starts_attribution_tag(tail, language)
 
@@ -1132,32 +1139,56 @@ def _quoted_speech_core(text: str) -> str:
 
 def _take_dash_speech(text: str, language: str) -> tuple[str, str]:
     stripped = text.strip()
-    inline = _split_dash_speech_at_inline_attribution(stripped, language)
-    if inline is not None:
-        return inline
-
     dash_chars = re.escape("".join(_DASH_CHARS))
     for match in re.finditer(rf"\s*[{dash_chars}]\s*", stripped[1:]):
         split_at = match.start() + 1
         speech = stripped[:split_at].rstrip()
         tail = stripped[split_at:].strip()
+        boundary_found = False
         if re.search(r"[,.!?…]\s*$", speech) and _dash_starts_narrator_tag(tail, language):
-            return speech, tail
+            boundary_found = True
         if re.search(r"[.!?…]\s*$", speech) and _dash_starts_new_direct_speech(tail, language):
-            return speech, tail
+            boundary_found = True
+        if not boundary_found:
+            continue
+        inline = _split_dash_speech_at_inline_attribution(speech, language)
+        if inline is not None:
+            inline_speech, inline_tail = inline
+            return inline_speech, f"{inline_tail} {tail}".strip()
+        return speech, tail
+    inline = _split_dash_speech_at_inline_attribution(stripped, language)
+    if inline is not None:
+        return inline
+    narration_tail = _split_dash_speech_before_narration_tail(stripped)
+    if narration_tail is not None:
+        return narration_tail
     return stripped, ""
 
 
 def _split_dash_speech_at_inline_attribution(text: str, language: str) -> tuple[str, str] | None:
     if not text.lstrip().startswith(("-", "—", "–")):
         return None
-    inline = _split_inline_attribution(text, language)
+    inline = _split_inline_attribution_at_start(text, language)
     if inline is None:
         return None
     speech, tag = inline
     if _dash_starts_narrator_tag(tag, language):
         return None
     return speech, tag
+
+
+def _split_dash_speech_before_narration_tail(text: str) -> tuple[str, str] | None:
+    stripped = text.strip()
+    if not stripped or stripped[0] not in _DASH_CHARS:
+        return None
+    for pattern in (
+        r"(?P<speech>^[—–-]\s*.+?[!?…][»”\"]\.?)\s+(?P<tail>[А-ЯЁ][^—–-].*)",
+        r"(?P<speech>^[—–-]\s*.+?[!?…])\s+(?P<tail>[А-ЯЁ][^—–-]{1,240}:\s*[—–-]\s+.+)",
+    ):
+        match = re.search(pattern, stripped, re.DOTALL)
+        if match:
+            return match.group("speech").strip(), match.group("tail").strip()
+    return None
 
 
 def _take_narrator_tail(text: str) -> tuple[str, str]:
@@ -1241,9 +1272,13 @@ def _dash_starts_narrator_tag(text: str, language: str) -> bool:
     if not after_dash:
         return False
     if language == "ru":
+        if re.match(rf"(?:{_ru_attribution_pattern()})\b", after_dash, re.IGNORECASE):
+            return True
+        first_sentence = re.split(r"(?<=[.!?…])\s+", after_dash, maxsplit=1)[0]
+        if after_dash[0].islower() and re.search(r"[!?…]", first_sentence):
+            return False
         return bool(
             after_dash[0].islower()
-            or re.match(rf"(?:{_ru_attribution_pattern()})\b", after_dash, re.IGNORECASE)
         )
     if language == "en":
         return bool(
@@ -1257,17 +1292,31 @@ def _dash_starts_narrator_tag(text: str, language: str) -> bool:
 
 
 def _split_inline_attribution(text: str, language: str) -> tuple[str, str] | None:
+    return _split_inline_attribution_match(text, language, anchored=False)
+
+
+def _split_inline_attribution_at_start(text: str, language: str) -> tuple[str, str] | None:
+    return _split_inline_attribution_match(text, language, anchored=True)
+
+
+def _split_inline_attribution_match(
+    text: str,
+    language: str,
+    *,
+    anchored: bool,
+) -> tuple[str, str] | None:
+    prefix = r"^\s*" if anchored else ""
     if language == "ru":
         for pattern in (
-            rf"(?P<speech>.+?[,，]{{1,2}})\s*(?P<tag>[—–-]\s*(?:\w+\s+){{0,3}}(?:{_ru_attribution_pattern()})\b.*)",
-            rf"(?P<speech>.+?[,，]{{1,2}})\s*(?P<tag>(?:\w+\s+){{0,5}}(?:{_ru_attribution_pattern()})\b.*)",
+            rf"{prefix}(?P<speech>[^.!?…]+?[,，]{{1,2}})\s*(?P<tag>[—–-]\s*(?:\w+\s+){{0,3}}(?:{_ru_attribution_pattern()})\b.*)",
+            rf"{prefix}(?P<speech>[^.!?…]+?[,，]{{1,2}})\s*(?P<tag>(?:\w+\s+){{0,5}}(?:{_ru_attribution_pattern()})\b.*)",
         ):
             match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
             if match:
                 return match.group("speech").strip(), match.group("tag").strip()
     if language == "en":
         match = re.search(
-            r"(?P<speech>.+?[,.!?])\s*(?P<tag>(?:he|she|[A-Z][A-Za-z'-]{1,40})\s+"
+            rf"{prefix}(?P<speech>.+?[,.!?])\s*(?P<tag>(?:he|she|[A-Z][A-Za-z'-]{{1,40}})\s+"
             r"(?:said|asked|replied|shouted|whispered|cried|muttered)\b.*)",
             text,
             re.IGNORECASE | re.DOTALL,

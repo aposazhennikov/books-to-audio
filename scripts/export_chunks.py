@@ -30,6 +30,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from book_normalizer.chunking.dialogue_invariants import assert_dialogue_chunk_boundaries
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest
 from book_normalizer.chunking.voice_splitter import chunk_annotated_book
 from book_normalizer.dialogue.attribution import SpeakerMode, create_attributor
@@ -109,6 +110,10 @@ def export_heuristic(
         book_title=book_dir.name,
         chunker="heuristic",
         max_chunk_chars=max_chunk_chars,
+    )
+    assert_dialogue_chunk_boundaries(
+        manifest,
+        language=getattr(book.metadata, "language", "ru"),
     )
     out_path = Path(args.out) if args.out else book_dir / "chunks_manifest_v2.json"
     out_path.write_text(
@@ -235,6 +240,10 @@ def export_llm(
         chunker="llm-smart-segments",
         model=model,
         max_chunk_chars=max_chunk_chars,
+    )
+    assert_dialogue_chunk_boundaries(
+        manifest_v2,
+        language=getattr(book.metadata, "language", "ru"),
     )
 
     out_path = Path(args.out) if args.out else book_dir / "chunks_manifest_v2.json"

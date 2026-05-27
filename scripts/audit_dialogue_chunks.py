@@ -11,7 +11,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from book_normalizer.chunking.dialogue_invariants import audit_dialogue_chunk_boundaries  # noqa: E402
+from book_normalizer.chunking.dialogue_invariants import (  # noqa: E402
+    audit_dialogue_chunk_boundaries,
+    format_dialogue_chunk_issues,
+)
 from book_normalizer.chunking.manifest_v2 import flatten_manifest, load_manifest  # noqa: E402
 
 
@@ -34,11 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps([issue.__dict__ for issue in issues], ensure_ascii=False, indent=2))
     elif issues:
-        for issue in issues:
-            print(
-                f"{issue.kind}: chapter={issue.chapter_index + 1} "
-                f"chunk={issue.chunk_index + 1} role={issue.role} text={issue.text!r}"
-            )
+        print(format_dialogue_chunk_issues(issues))
     else:
         print("Dialogue chunk boundary audit passed.")
 

@@ -357,6 +357,30 @@ class TestBuildChunksFromSegments:
             "narrator_calm",
         ]
 
+    def test_build_chunks_repairs_boundaries_after_text_subchunking(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "language": "ru",
+                "voice_id": "male_young",
+                "role": "male",
+                "section_kind": "dialogue",
+                "intonation": "calm",
+                "text": "«Неужели это работает?» — подумал Сергей. «Проверим позже,, решил маркиз.",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments, max_chunk_chars=120)
+
+        assert [chunk["text"] for chunk in chunks] == [
+            "«Неужели это работает?»",
+            "— подумал Сергей.",
+            "«Проверим позже,,",
+            "решил маркиз.",
+        ]
+        assert [chunk["role"] for chunk in chunks] == ["male", "narrator", "male", "narrator"]
+        assert [chunk["chunk_index"] for chunk in chunks] == [0, 1, 2, 3]
+
     def test_build_chunks_refreshes_default_character_voice_ids(self) -> None:
         segments = [
             {

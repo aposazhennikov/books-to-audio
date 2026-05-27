@@ -11,6 +11,7 @@ from book_normalizer.chunking.llm_segmenter import (
     _starts_with_direct_speech_marker,
     _take_quoted_speech,
 )
+from book_normalizer.chunking.manifest_v2 import flatten_manifest
 from book_normalizer.languages import normalize_book_language
 
 
@@ -76,6 +77,46 @@ def audit_dialogue_chunk_boundaries(
                 message="Author-tag chunk appears to contain the following direct speech.",
             ))
     return issues
+
+
+def assert_dialogue_chunk_boundaries(
+    manifest_or_chunks: object,
+    *,
+    language: str = "ru",
+) -> None:
+    """Raise ValueError when ready-to-synthesize chunks mix speech and narration."""
+
+    chunks = (
+        flatten_manifest(manifest_or_chunks)
+        if isinstance(manifest_or_chunks, dict)
+        else list(manifest_or_chunks)  # type: ignore[arg-type]
+    )
+    issues = audit_dialogue_chunk_boundaries(chunks, language=language)
+    if not issues:
+        return
+    raise ValueError(format_dialogue_chunk_issues(issues))
+
+
+def format_dialogue_chunk_issues(issues: Iterable[DialogueChunkIssue], *, limit: int = 5) -> str:
+    """Return a compact human-readable report for boundary audit failures."""
+
+    issue_list = list(issues)
+    shown = issue_list[:limit]
+    lines = [
+        "Dialogue chunk boundary audit failed: direct speech is mixed with author narration.",
+    ]
+    for issue in shown:
+        excerpt = issue.text.replace("\n", " ")
+        if len(excerpt) > 180:
+            excerpt = excerpt[:177].rstrip() + "..."
+        lines.append(
+            f"- {issue.kind}: chapter={issue.chapter_index + 1} "
+            f"chunk={issue.chunk_index + 1} role={issue.role} text={excerpt!r}"
+        )
+    remaining = len(issue_list) - len(shown)
+    if remaining > 0:
+        lines.append(f"- ...and {remaining} more issue(s).")
+    return "\n".join(lines)
 
 
 def _is_dialogue_chunk(role: str, section_kind: str) -> bool:

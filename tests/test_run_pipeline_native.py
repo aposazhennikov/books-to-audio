@@ -6,6 +6,8 @@ import wave
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 
 def _load_run_pipeline() -> ModuleType:
     script = Path("scripts/run_pipeline.py").resolve()
@@ -178,6 +180,123 @@ def test_export_chunks_llm_uses_smart_segmenter_and_repairs_dialogue(
         "- гордо ответил я тёмному божеству.",
     ]
     assert [chunk["voice"] for chunk in chunks] == ["male", "narrator", "male", "narrator"]
+
+
+def test_export_chunks_llm_rejects_mixed_dialogue_manifest(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    export_chunks = _load_export_chunks()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    (book_dir / "001_chapter_01.txt").write_text("Hello.", encoding="utf-8")
+
+    class _FakeSegmenter:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def segment_book(self, book):  # noqa: ANN001
+            return [
+                {
+                    "chapter_index": book.chapters[0].index,
+                    "segment_index": 0,
+                    "language": "ru",
+                    "role": "male",
+                    "voice_id": "male_young",
+                    "intonation": "calm",
+                    "section_kind": "dialogue",
+                    "text": "unused",
+                }
+            ]
+
+    def fake_build_chunks_from_segments(_segments, *, max_chunk_chars):  # noqa: ANN001, ARG001
+        return [
+            {
+                "chapter_index": 0,
+                "chunk_index": 0,
+                "language": "ru",
+                "role": "male",
+                "voice_id": "male_young",
+                "section_kind": "dialogue",
+                "text": "- Что случилось? - спросил он.",
+            }
+        ]
+
+    import book_normalizer.chunking.llm_segmenter as llm_segmenter
+    import book_normalizer.chunking.voice_splitter as voice_splitter
+
+    monkeypatch.setattr(llm_segmenter, "LlmVoiceSegmenter", _FakeSegmenter)
+    monkeypatch.setattr(voice_splitter, "build_chunks_from_segments", fake_build_chunks_from_segments)
+
+    with pytest.raises(ValueError, match="Dialogue chunk boundary audit failed"):
+        export_chunks.main([
+            "--book-dir",
+            str(book_dir),
+            "--mode",
+            "llm",
+        ])
+
+    assert not (book_dir / "chunks_manifest_v2.json").exists()
+
+
+def test_stage3_llm_rejects_mixed_dialogue_manifest(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pipeline = _load_run_pipeline()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    (book_dir / "001_chapter_01.txt").write_text("Hello.", encoding="utf-8")
+
+    class _FakeSegmenter:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def segment_book(self, book):  # noqa: ANN001
+            return [
+                {
+                    "chapter_index": book.chapters[0].index,
+                    "segment_index": 0,
+                    "language": "ru",
+                    "role": "male",
+                    "voice_id": "male_young",
+                    "intonation": "calm",
+                    "section_kind": "dialogue",
+                    "text": "unused",
+                }
+            ]
+
+    def fake_build_chunks_from_segments(_segments, *, max_chunk_chars):  # noqa: ANN001, ARG001
+        return [
+            {
+                "chapter_index": 0,
+                "chunk_index": 0,
+                "language": "ru",
+                "role": "male",
+                "voice_id": "male_young",
+                "section_kind": "dialogue",
+                "text": "- Что случилось? - спросил он.",
+            }
+        ]
+
+    import book_normalizer.chunking.llm_segmenter as llm_segmenter
+    import book_normalizer.chunking.voice_splitter as voice_splitter
+
+    monkeypatch.setattr(llm_segmenter, "LlmVoiceSegmenter", _FakeSegmenter)
+    monkeypatch.setattr(voice_splitter, "build_chunks_from_segments", fake_build_chunks_from_segments)
+
+    with pytest.raises(ValueError, match="Dialogue chunk boundary audit failed"):
+        pipeline.run_stage3_llm_chunking(
+            book_dir,
+            "http://127.0.0.1:11434",
+            "model",
+            "ru",
+            chapter_filter=None,
+            llm_max_retries=1,
+            max_chunk_chars=400,
+        )
+
+    assert not (book_dir / "chunks_manifest_v2.json").exists()
 
 
 def test_stage3_heuristic_invokes_native_exporter_and_filters_chapter(

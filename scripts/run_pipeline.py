@@ -244,6 +244,7 @@ def run_stage3_llm_chunking(
     max_chunk_chars: int,
 ) -> Path:
     """Create v2 chunks manifest using speaker-aware LLM segmentation."""
+    from book_normalizer.chunking.dialogue_invariants import assert_dialogue_chunk_boundaries
     from book_normalizer.chunking.llm_segmenter import DEFAULT_WINDOW_CHARS, LlmVoiceSegmenter
     from book_normalizer.chunking.manifest import chunks_to_v2_manifest
     from book_normalizer.chunking.voice_splitter import build_chunks_from_segments
@@ -340,6 +341,7 @@ def run_stage3_llm_chunking(
         model=llm_model,
         max_chunk_chars=max_chunk_chars,
     )
+    assert_dialogue_chunk_boundaries(manifest, language=language)
 
     manifest_path = book_dir / "chunks_manifest_v2.json"
     manifest_path.write_text(

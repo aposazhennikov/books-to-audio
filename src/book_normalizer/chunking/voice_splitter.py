@@ -307,7 +307,17 @@ def build_chunks_from_segments(
         len(chunks),
         len(segments),
     )
-    return chunks
+    repaired_chunks = repair_segment_dialogue_boundaries(chunks, language=language)
+    _renumber_chunk_indices(repaired_chunks)
+    return repaired_chunks
+
+
+def _renumber_chunk_indices(chunks: list[dict[str, Any]]) -> None:
+    next_indexes: dict[int, int] = {}
+    for chunk in chunks:
+        chapter_index = int(chunk.get("chapter_index") or 0)
+        chunk["chunk_index"] = next_indexes.get(chapter_index, 0)
+        next_indexes[chapter_index] = chunk["chunk_index"] + 1
 
 
 # ── Legacy chunk-level API (kept for backward compatibility) ──

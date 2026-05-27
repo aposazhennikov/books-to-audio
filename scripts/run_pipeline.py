@@ -243,22 +243,25 @@ def run_stage3_llm_chunking(
     llm_max_retries: int | None,
     max_chunk_chars: int,
 ) -> Path:
-    """Create v2 chunks manifest using LLM chunker."""
-    from book_normalizer.chunking.llm_chunker import DEFAULT_WINDOW_CHARS, LlmChunker
+    """Create v2 chunks manifest using speaker-aware LLM segmentation."""
+    from book_normalizer.chunking.llm_segmenter import DEFAULT_WINDOW_CHARS, LlmVoiceSegmenter
+    from book_normalizer.chunking.manifest import chunks_to_v2_manifest
+    from book_normalizer.chunking.voice_splitter import build_chunks_from_segments
+    from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 
     cache_dir = book_dir / "speaker_cache"
     init_kwargs: dict[str, object] = {
         "endpoint": llm_endpoint,
         "model": llm_model,
         "cache_dir": cache_dir,
-        "max_chunk_chars": max_chunk_chars,
         "language": language,
         "review_report_path": book_dir / "llm_chunking_review_report.json",
+        "max_segment_chars": max_chunk_chars,
     }
     if llm_max_retries is not None:
         init_kwargs["max_retries"] = llm_max_retries
 
-    chunker = LlmChunker(**init_kwargs)
+    segmenter = LlmVoiceSegmenter(**init_kwargs)
 
     chapters = load_chapter_texts(book_dir)
     if not chapters:
@@ -284,7 +287,7 @@ def run_stage3_llm_chunking(
         length = max(len(text), 1)
         return max(1, math.ceil(length / max_chars))
 
-    all_specs = []
+    all_chunks: list[dict[str, object]] = []
     stage_t0 = time.monotonic()
 
     total_windows = sum(_estimate_windows(text, DEFAULT_WINDOW_CHARS) for _, text in targets)
@@ -297,9 +300,25 @@ def run_stage3_llm_chunking(
             f"({len(text)} chars, ~{est_windows} window(s))..."
         )
         t0 = time.monotonic()
-        specs = chunker.chunk_chapter(ch_idx, text)
+        paragraphs = [
+            Paragraph(raw_text=para, normalized_text=para, index_in_chapter=index)
+            for index, para in enumerate(text.split("\n\n"))
+            if para.strip()
+        ]
+        book = Book(
+            metadata=Metadata(language=language),
+            chapters=[
+                Chapter(
+                    title=f"Chapter {ch_idx + 1}",
+                    index=ch_idx,
+                    paragraphs=paragraphs,
+                )
+            ],
+        )
+        segments = segmenter.segment_book(book)
+        chunks = build_chunks_from_segments(segments, max_chunk_chars=max_chunk_chars)
         elapsed = time.monotonic() - t0
-        all_specs.extend(specs)
+        all_chunks.extend(chunks)
 
         processed_windows += est_windows
         total_elapsed = time.monotonic() - stage_t0
@@ -308,31 +327,19 @@ def run_stage3_llm_chunking(
         eta = remaining_windows * avg_per_window
 
         print(
-            f"    → {len(specs)} chunks in {elapsed:.1f}s "
+            f"    → {len(chunks)} chunks in {elapsed:.1f}s "
             f"(elapsed {total_elapsed:.1f}s, eta ≈ {eta:.1f}s, "
             f"{processed_windows}/{total_windows} estimated windows)"
         )
 
-    # Build v2 manifest.
-    chapters_map: dict[int, dict] = {}
-    for spec in all_specs:
-        ci = spec.chapter_index
-        if ci not in chapters_map:
-            chapters_map[ci] = {
-                "chapter_index": ci,
-                "chapter_title": f"Chapter {ci + 1}",
-                "chunks": [],
-            }
-        chapters_map[ci]["chunks"].append(spec.to_dict())
-
-    manifest = {
-        "version": 2,
-        "book_title": book_dir.name,
-        "chunker": "llm",
-        "model": llm_model,
-        "max_chunk_chars": max_chunk_chars,
-        "chapters": [chapters_map[i] for i in sorted(chapters_map)],
-    }
+    manifest = chunks_to_v2_manifest(
+        all_chunks,
+        book_title=book_dir.name,
+        language=language,
+        chunker="llm-smart-segments",
+        model=llm_model,
+        max_chunk_chars=max_chunk_chars,
+    )
 
     manifest_path = book_dir / "chunks_manifest_v2.json"
     manifest_path.write_text(

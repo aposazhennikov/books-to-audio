@@ -531,6 +531,31 @@ class TestLlmChunkerFormat:
         assert specs[1].voice_tone == "tense"
         assert specs[2].voice_label == "narrator"
 
+    def test_chunker_repairs_mixed_dialogue_from_llm_response(self, tmp_path: Path) -> None:
+        """Legacy LlmChunker must not keep speech and narration in one chunk."""
+        chunker = self._make_chunker(tmp_path)
+        source = (
+            "- Что это? - спросил он, наконец, дрогнувшим голосом. - "
+            "Моя невеста, - гордо ответил я тёмному божеству."
+        )
+        llm_response = [{"narrator": source, "voice_tone": "calm"}]
+
+        with patch.object(chunker, "_query_llm", return_value=llm_response):
+            specs = chunker.chunk_chapter(chapter_index=0, chapter_text=source)
+
+        assert [spec.voice_label for spec in specs] == [
+            "men",
+            "narrator",
+            "men",
+            "narrator",
+        ]
+        assert [spec.text for spec in specs] == [
+            "- Что это?",
+            "- спросил он, наконец, дрогнувшим голосом.",
+            "- Моя невеста,",
+            "- гордо ответил я тёмному божеству.",
+        ]
+
     def test_chunker_enforces_smaller_soft_limit(self, tmp_path: Path) -> None:
         """Oversized LLM chunks are split without cutting words."""
         from book_normalizer.chunking.llm_chunker import LlmChunker

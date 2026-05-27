@@ -17,6 +17,16 @@ def _load_run_pipeline() -> ModuleType:
     return module
 
 
+def _load_export_chunks() -> ModuleType:
+    script = Path("scripts/export_chunks.py").resolve()
+    spec = importlib.util.spec_from_file_location("test_export_chunks_native_module", script)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_run_pipeline_stages_do_not_spawn_child_python() -> None:
     source = Path("scripts/run_pipeline.py").read_text(encoding="utf-8")
 
@@ -59,7 +69,7 @@ def test_stage1_normalize_invokes_click_command_in_process(
     assert captured["standalone_mode"] is False
 
 
-def test_stage3_passes_language_and_review_report_to_native_chunker(
+def test_stage3_passes_language_and_review_report_to_smart_segmenter(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -69,30 +79,29 @@ def test_stage3_passes_language_and_review_report_to_native_chunker(
     (book_dir / "001_chapter_01.txt").write_text("Salom. \"Kim bor?\"", encoding="utf-8")
     captured: dict[str, object] = {}
 
-    class _FakeSpec:
-        chapter_index = 0
-
-        def to_dict(self) -> dict[str, object]:
-            return {
-                "chapter_index": 0,
-                "chunk_index": 0,
-                "narrator": "Salom.",
-                "voice_tone": "calm",
-                "text": "Salom.",
-            }
-
-    class _FakeChunker:
+    class _FakeSegmenter:
         def __init__(self, **kwargs: object) -> None:
             captured.update(kwargs)
 
-        def chunk_chapter(self, chapter_index: int, text: str) -> list[_FakeSpec]:
-            assert chapter_index == 0
-            assert "Salom" in text
-            return [_FakeSpec()]
+        def segment_book(self, book):  # noqa: ANN001
+            assert book.chapters[0].index == 0
+            assert "Salom" in book.chapters[0].paragraphs[0].raw_text
+            return [
+                {
+                    "chapter_index": 0,
+                    "segment_index": 0,
+                    "language": "uz",
+                    "role": "narrator",
+                    "voice_id": "narrator_calm",
+                    "intonation": "calm",
+                    "section_kind": "narration",
+                    "text": "Salom.",
+                }
+            ]
 
-    import book_normalizer.chunking.llm_chunker as llm_chunker
+    import book_normalizer.chunking.llm_segmenter as llm_segmenter
 
-    monkeypatch.setattr(llm_chunker, "LlmChunker", _FakeChunker)
+    monkeypatch.setattr(llm_segmenter, "LlmVoiceSegmenter", _FakeSegmenter)
 
     manifest_path = pipeline.run_stage3_llm_chunking(
         book_dir,
@@ -107,6 +116,68 @@ def test_stage3_passes_language_and_review_report_to_native_chunker(
     assert manifest_path == book_dir / "chunks_manifest_v2.json"
     assert captured["language"] == "uz"
     assert captured["review_report_path"] == book_dir / "llm_chunking_review_report.json"
+    assert captured["max_segment_chars"] == 400
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["chunker"] == "llm-smart-segments"
+    assert manifest["chapters"][0]["chunks"][0]["speaker"] == ""
+
+
+def test_export_chunks_llm_uses_smart_segmenter_and_repairs_dialogue(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    export_chunks = _load_export_chunks()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    text = (
+        "- Что это? - спросил он, наконец, дрогнувшим голосом. - "
+        "Моя невеста, - гордо ответил я тёмному божеству."
+    )
+    (book_dir / "001_chapter_01.txt").write_text(text, encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class _FakeSegmenter:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def segment_book(self, book):  # noqa: ANN001
+            return [
+                {
+                    "chapter_index": book.chapters[0].index,
+                    "segment_index": 0,
+                    "language": "ru",
+                    "role": "narrator",
+                    "voice_id": "narrator_calm",
+                    "intonation": "calm",
+                    "section_kind": "narration",
+                    "text": text,
+                }
+            ]
+
+    import book_normalizer.chunking.llm_segmenter as llm_segmenter
+
+    monkeypatch.setattr(llm_segmenter, "LlmVoiceSegmenter", _FakeSegmenter)
+
+    export_chunks.main([
+        "--book-dir",
+        str(book_dir),
+        "--mode",
+        "llm",
+        "--max-chunk-chars",
+        "400",
+    ])
+
+    manifest = json.loads((book_dir / "chunks_manifest_v2.json").read_text(encoding="utf-8"))
+    chunks = manifest["chapters"][0]["chunks"]
+    assert captured["max_segment_chars"] == 400
+    assert manifest["chunker"] == "llm-smart-segments"
+    assert [chunk["text"] for chunk in chunks] == [
+        "- Что это?",
+        "- спросил он, наконец, дрогнувшим голосом.",
+        "- Моя невеста,",
+        "- гордо ответил я тёмному божеству.",
+    ]
+    assert [chunk["voice"] for chunk in chunks] == ["male", "narrator", "male", "narrator"]
 
 
 def test_stage3_heuristic_invokes_native_exporter_and_filters_chapter(

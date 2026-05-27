@@ -389,6 +389,44 @@ def test_llm_voice_segmenter_repairs_dash_dialogue_inside_narrator_segment() -> 
     ]
 
 
+def test_repaired_narrator_tags_stay_narrator_when_chunk_builder_repairs_again() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+    from book_normalizer.chunking.voice_splitter import build_chunks_from_segments
+
+    text = (
+        "- Что это? - спросил он, наконец, дрогнувшим голосом. - "
+        "Моя невеста, - гордо ответил я тёмному божеству."
+    )
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+    chunks = build_chunks_from_segments(repaired, max_chunk_chars=400)
+
+    assert [chunk["text"] for chunk in chunks] == [
+        "- Что это?",
+        "- спросил он, наконец, дрогнувшим голосом.",
+        "- Моя невеста,",
+        "- гордо ответил я тёмному божеству.",
+    ]
+    assert [chunk["role"] for chunk in chunks] == [
+        "male",
+        "narrator",
+        "male",
+        "narrator",
+    ]
+
+
 def test_llm_voice_segmenter_repairs_quoted_and_unquoted_speech_inside_narrator_segment() -> None:
     text = (
         "«Нарушена техника безопасности при работе с монстрами», - сказал Сет и потащил мою женщину с собой в ад. "

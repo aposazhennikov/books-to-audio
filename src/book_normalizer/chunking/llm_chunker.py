@@ -44,6 +44,7 @@ DEFAULT_WINDOW_CHARS = 2000
 MAX_RETRIES = 3
 DEFAULT_MAX_CHUNK_CHARS = 400  # Prefer small chunks for stable intonation.
 MAX_CHUNK_CHARS = DEFAULT_MAX_CHUNK_CHARS  # Backward-compatible alias.
+_CACHE_VERSION = "llm-chunker-v2-dialogue-boundary-repair"
 
 # Maps voice label (returned by LLM) to TTS voice_id preset.
 VOICE_ID_MAP: dict[str, str] = {
@@ -349,6 +350,7 @@ class LlmChunker:
             for attempt in range(1, self._max_retries + 1):
                 try:
                     raw = _normalise_llm_items(self._query_llm(prompt, text, model=model))
+                    raw = _repair_raw_dialogue_boundaries(raw, language=self._language)
                 except Exception as exc:  # noqa: BLE001
                     last_error = exc
                     self._failures.append(
@@ -529,6 +531,7 @@ class LlmChunker:
             except (json.JSONDecodeError, OSError):
                 return None
             items = _normalise_llm_items(loaded)
+            items = _repair_raw_dialogue_boundaries(items, language=self._language)
             if items and _items_preserve_source_text(window_text, items):
                 return items
             logger.warning(
@@ -563,6 +566,7 @@ class LlmChunker:
             self._language,
             ",".join(self._model_plan.candidates),
             self._endpoint,
+            _CACHE_VERSION,
             prompt,
             window_text,
         ))
@@ -801,6 +805,44 @@ def _build_chunk_specs(
             )
             chunk_index += 1
     return specs
+
+
+def _repair_raw_dialogue_boundaries(
+    raw: list[dict[str, str]],
+    *,
+    language: str,
+) -> list[dict[str, str]]:
+    """Split mixed raw LLM chunks before creating legacy ChunkSpec rows."""
+    if not raw:
+        return []
+
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    label_to_role = {"narrator": "narrator", "men": "male", "women": "female"}
+    role_to_label = {"narrator": "narrator", "male": "men", "female": "women"}
+    rows: list[dict[str, str]] = []
+    for item in raw:
+        voice_label, text = _extract_voice_text(item)
+        role = label_to_role.get(voice_label, "narrator")
+        rows.append({
+            "role": role,
+            "section_kind": "narration" if role == "narrator" else "dialogue",
+            "text": text,
+            "intonation": str(item.get("voice_tone", "calm")).strip() or "calm",
+        })
+
+    repaired = repair_segment_dialogue_boundaries(rows, language=language)
+    fixed: list[dict[str, str]] = []
+    for row in repaired:
+        role = str(row.get("role", "narrator"))
+        label = role_to_label.get(role, "narrator")
+        text = str(row.get("text", "")).strip()
+        if text:
+            fixed.append({
+                label: text,
+                "voice_tone": str(row.get("intonation", "calm")).strip() or "calm",
+            })
+    return fixed
 
 
 def _items_preserve_source_text(source_text: str, items: list[dict[str, str]]) -> bool:

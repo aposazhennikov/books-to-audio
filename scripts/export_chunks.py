@@ -172,11 +172,10 @@ def export_llm(
     args: argparse.Namespace,
     book_dir: Path,
 ) -> None:
-    """Build v2 manifest using LLM-based chunking with voice + tone annotation."""
-    from book_normalizer.chunking.llm_chunker import (
-        DEFAULT_MAX_CHUNK_CHARS,
-        LlmChunker,
-    )
+    """Build v2 manifest using speaker-aware LLM segmentation."""
+    from book_normalizer.chunking.llm_chunker import DEFAULT_MAX_CHUNK_CHARS
+    from book_normalizer.chunking.llm_segmenter import LlmVoiceSegmenter
+    from book_normalizer.chunking.voice_splitter import build_chunks_from_segments
 
     endpoint = getattr(args, "llm_endpoint", "http://localhost:11434")
     model = getattr(args, "llm_model", PRIMARY_QWEN3_MODEL)
@@ -193,20 +192,20 @@ def export_llm(
         book = run_llm_normalize_book(book, book_dir, endpoint, model)
 
     print(
-        f"\nLLM chunker: model={model}, endpoint={endpoint}, "
+        f"\nLLM segmenter: model={model}, endpoint={endpoint}, "
         f"max_chunk_chars={max_chunk_chars}"
     )
 
-    chunker = LlmChunker(
+    segmenter = LlmVoiceSegmenter(
         endpoint=endpoint,
         model=model,
         cache_dir=cache_dir,
-        max_chunk_chars=max_chunk_chars,
+        max_segment_chars=max_chunk_chars,
         language=getattr(book.metadata, "language", "ru"),
         review_report_path=book_dir / "llm_chunking_review_report.json",
     )
 
-    all_chunk_specs = []
+    all_chunks: list[dict[str, object]] = []
     for chapter in book.chapters:
         chapter_text = "\n\n".join(
             p.normalized_text or p.raw_text
@@ -217,42 +216,33 @@ def export_llm(
             continue
 
         print(f"  Chunking chapter {chapter.index + 1} ({len(chapter_text)} chars)...")
-        specs = chunker.chunk_chapter(chapter.index, chapter_text)
-        all_chunk_specs.extend(specs)
-        print(f"    → {len(specs)} chunks")
+        segments = segmenter.segment_book(
+            Book(
+                metadata=book.metadata,
+                chapters=[chapter],
+            )
+        )
+        chunks = build_chunks_from_segments(segments, max_chunk_chars=max_chunk_chars)
+        all_chunks.extend(chunks)
+        print(f"    → {len(chunks)} chunks")
 
-    print(f"Total LLM chunks: {len(all_chunk_specs)}")
+    print(f"Total LLM chunks: {len(all_chunks)}")
 
-    # Build v2 manifest grouped by chapter.
-    chapters_map: dict[int, dict] = {}
-    for spec in all_chunk_specs:
-        ch_idx = spec.chapter_index
-        if ch_idx not in chapters_map:
-            chapters_map[ch_idx] = {
-                "chapter_index": ch_idx,
-                "chapter_title": f"Chapter {ch_idx + 1}",
-                "chunks": [],
-            }
-        chapters_map[ch_idx]["chunks"].append(spec.to_dict())
-
-    # Infer book title from directory name.
-    book_title = book_dir.name
-
-    manifest_v2 = {
-        "version": 2,
-        "book_title": book_title,
-        "chunker": "llm",
-        "model": model,
-        "max_chunk_chars": max_chunk_chars,
-        "chapters": [chapters_map[i] for i in sorted(chapters_map)],
-    }
+    manifest_v2 = chunks_to_v2_manifest(
+        all_chunks,
+        book_title=book_dir.name,
+        language=getattr(book.metadata, "language", "ru"),
+        chunker="llm-smart-segments",
+        model=model,
+        max_chunk_chars=max_chunk_chars,
+    )
 
     out_path = Path(args.out) if args.out else book_dir / "chunks_manifest_v2.json"
     out_path.write_text(
         json.dumps(manifest_v2, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"Manifest v2 written: {out_path} ({len(all_chunk_specs)} chunks)")
+    print(f"Manifest v2 written: {out_path} ({len(all_chunks)} chunks)")
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -1276,6 +1276,14 @@ def _repair_dialogue_metadata(
     ):
         return "narrator", "", "narration", ""
 
+    if (
+        role == "narrator"
+        and section_kind == "narration"
+        and not speaker
+        and _dash_starts_narrator_tag(text, language)
+    ):
+        return "narrator", "", "narration", ""
+
     if not _has_direct_speech_marker(text):
         return role, speaker, section_kind, character_description
 

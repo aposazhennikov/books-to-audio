@@ -47,6 +47,10 @@ if defined CHECK_ONLY (
     call :say_ru_b64 "0J3QsNGC0LjQstC90LDRjyBXaW5kb3dzLdGB0YDQtdC00LAgR1VJINCz0L7RgtC+0LLQsC4="
     exit /b 0
 )
+echo Checking local Ollama server...
+"%VENV_PY%" -m book_normalizer.llm.ollama_server 30
+if errorlevel 1 goto error
+
 echo Starting books-to-audio GUI...
 "%VENV_PY%" -m book_normalizer.gui.app %*
 if errorlevel 1 goto error

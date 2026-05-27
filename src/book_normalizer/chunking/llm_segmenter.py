@@ -21,6 +21,7 @@ from book_normalizer.chunking.splitter import (
 from book_normalizer.languages import get_book_language, normalize_book_language
 from book_normalizer.llm.model_router import model_plan_for_language
 from book_normalizer.llm.ollama_client import OllamaChatClient
+from book_normalizer.normalization.morphology import infer_person_gender
 
 logger = logging.getLogger(__name__)
 
@@ -1515,6 +1516,10 @@ def _repair_dialogue_metadata(
         speaker = speaker or inferred_speaker
     if inferred_role in {"male", "female"}:
         role = inferred_role
+    if role in {"narrator", "unknown"} and speaker:
+        speaker_role = infer_person_gender(speaker)
+        if speaker_role in {"male", "female"}:
+            role = speaker_role
 
     if not speaker:
         speaker, known_role = _alternate_dialogue_speaker(recent_dialogue_speakers, role)

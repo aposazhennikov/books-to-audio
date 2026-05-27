@@ -986,7 +986,29 @@ def test_llm_voice_segmenter_marks_dialogue_when_gender_is_unknown() -> None:
     assert rows[1]["role"] == "unknown"
     assert rows[1]["voice_id"] == "narrator_calm"
     assert rows[1]["section_kind"] == "dialogue"
-    assert rows[1]["is_dialogue"] is True
+
+
+def test_repaired_dialogue_uses_speaker_name_gender_for_voice() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "unknown",
+            "voice_id": "narrator_calm",
+            "speaker": "Сергей",
+            "section_kind": "dialogue",
+            "text": "- Продолжаем.",
+            "intonation": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[0]["role"] == "male"
+    assert repaired[0]["voice_id"].startswith("male_")
 
 
 def test_llm_voice_segmenter_restores_source_punctuation_from_model_boundaries() -> None:

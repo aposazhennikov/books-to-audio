@@ -6,6 +6,7 @@ from hashlib import sha1
 from typing import Any
 
 from book_normalizer.chunking.manifest_v2 import role_for_voice_id
+from book_normalizer.normalization.morphology import infer_person_gender
 
 NEUTRAL_EMOTIONS = {"", "neutral", "calm"}
 
@@ -79,8 +80,11 @@ def segment_emotion(segment: dict[str, Any]) -> str:
 def canonical_role_for_segment(segment: dict[str, Any]) -> str:
     """Return narrator/male/female/unknown from segment metadata."""
     role = str(segment.get("role") or "").strip().lower()
-    if role in {"narrator", "male", "female", "unknown"}:
+    if role in {"narrator", "male", "female"}:
         return role
+    if role == "unknown":
+        inferred = infer_person_gender(segment_speaker(segment))
+        return inferred or role
 
     voice_label = str(segment.get("voice_label") or "").strip().lower()
     if voice_label == "men":

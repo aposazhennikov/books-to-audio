@@ -4,6 +4,7 @@ from book_normalizer.tts.voice_mapping import (
     AUTO_BUILTIN_VOICES_BY_ROLE,
     apply_auto_builtin_voice_ids,
     auto_builtin_voice_id_for_segment,
+    canonical_role_for_segment,
 )
 
 
@@ -40,6 +41,19 @@ def test_auto_builtin_voice_mapping_uses_emotion_for_unnamed_dialogue() -> None:
         "female_gentle"
     )
     assert auto_builtin_voice_id_for_segment({"role": "narrator"}) == "narrator_calm"
+
+
+def test_unknown_russian_named_speaker_gets_character_voice() -> None:
+    male = {"role": "unknown", "section_kind": "dialogue", "speaker": "Сергей"}
+    female = {"role": "unknown", "section_kind": "dialogue", "speaker": "женщина"}
+    diminutive = {"role": "unknown", "section_kind": "dialogue", "speaker": "Лизочка"}
+
+    assert canonical_role_for_segment(male) == "male"
+    assert canonical_role_for_segment(female) == "female"
+    assert canonical_role_for_segment(diminutive) == "female"
+    assert auto_builtin_voice_id_for_segment(male).startswith("male_")
+    assert auto_builtin_voice_id_for_segment(female).startswith("female_")
+    assert auto_builtin_voice_id_for_segment(diminutive).startswith("female_")
 
 
 def test_apply_auto_builtin_voice_ids_mutates_segments() -> None:

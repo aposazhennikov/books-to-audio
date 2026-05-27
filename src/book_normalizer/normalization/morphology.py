@@ -54,3 +54,28 @@ def is_likely_plural_head(word: str) -> bool:
             return True
     return False
 
+
+def infer_person_gender(word: str) -> str:
+    """Infer ``male``/``female`` for a singular Russian person noun or name."""
+
+    cleaned = str(word or "").strip().split()[0] if str(word or "").strip() else ""
+    if not cleaned:
+        return ""
+    if cleaned[:1].isupper() and cleaned.casefold().endswith(
+        ("очка", "ечка", "онька", "енька", "ушка", "юша")
+    ):
+        return "female"
+    for parse in parse_word(cleaned)[:3]:
+        tag = getattr(parse, "tag", None)
+        if tag is None:
+            continue
+        pos = getattr(tag, "POS", None)
+        if pos != "NOUN" or "sing" not in tag or "plur" in tag:
+            continue
+        if "Name" not in tag and "anim" not in tag:
+            continue
+        if "masc" in tag:
+            return "male"
+        if "femn" in tag:
+            return "female"
+    return ""

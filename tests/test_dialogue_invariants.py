@@ -5,6 +5,7 @@ import pytest
 from book_normalizer.chunking.dialogue_invariants import (
     assert_dialogue_chunk_boundaries,
     audit_dialogue_chunk_boundaries,
+    audit_dialogue_speaker_assignments,
 )
 
 
@@ -110,3 +111,63 @@ def test_boundary_assertion_rejects_manifest_issues() -> None:
 
     with pytest.raises(ValueError, match="Dialogue chunk boundary audit failed"):
         assert_dialogue_chunk_boundaries(manifest, language="ru")
+
+
+def test_speaker_audit_warns_about_dialogue_on_narrator_voice() -> None:
+    issues = audit_dialogue_speaker_assignments([
+        {
+            "chapter_index": 0,
+            "chunk_index": 3,
+            "role": "unknown",
+            "voice_id": "narrator_calm",
+            "section_kind": "dialogue",
+            "speaker": "",
+            "text": "- Кто здесь?",
+        }
+    ])
+
+    assert [issue.kind for issue in issues] == ["dialogue_uses_narrator_voice"]
+    assert issues[0].chapter_index == 0
+    assert issues[0].chunk_index == 3
+
+
+def test_speaker_audit_warns_about_role_voice_mismatch() -> None:
+    issues = audit_dialogue_speaker_assignments([
+        {
+            "role": "female",
+            "voice_id": "male_young",
+            "section_kind": "dialogue",
+            "speaker": "Анна",
+            "text": "- Я тут.",
+        }
+    ])
+
+    assert [issue.kind for issue in issues] == ["dialogue_role_voice_mismatch"]
+
+
+def test_speaker_audit_warns_about_non_person_speaker_token() -> None:
+    issues = audit_dialogue_speaker_assignments([
+        {
+            "role": "male",
+            "voice_id": "male_young",
+            "section_kind": "dialogue",
+            "speaker": "Кто",
+            "text": "- Я тут.",
+        }
+    ])
+
+    assert [issue.kind for issue in issues] == ["dialogue_speaker_not_person"]
+
+
+def test_speaker_audit_accepts_named_character_voice() -> None:
+    issues = audit_dialogue_speaker_assignments([
+        {
+            "role": "male",
+            "voice_id": "male_deep",
+            "section_kind": "dialogue",
+            "speaker": "Сергей",
+            "text": "- Я тут.",
+        }
+    ])
+
+    assert issues == []

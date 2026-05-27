@@ -13,6 +13,10 @@ from book_normalizer.chunking.llm_segmenter import (
 )
 from book_normalizer.chunking.manifest_v2 import flatten_manifest
 from book_normalizer.languages import normalize_book_language
+from book_normalizer.normalization.morphology import (
+    infer_person_gender,
+    is_definitely_not_person_reference,
+)
 
 
 @dataclass(frozen=True)
@@ -23,6 +27,20 @@ class DialogueChunkIssue:
     chapter_index: int
     chunk_index: int
     role: str
+    text: str
+    message: str
+
+
+@dataclass(frozen=True)
+class DialogueSpeakerIssue:
+    """A non-fatal speaker/voice assignment concern for review."""
+
+    kind: str
+    chapter_index: int
+    chunk_index: int
+    role: str
+    voice_id: str
+    speaker: str
     text: str
     message: str
 
@@ -79,6 +97,93 @@ def audit_dialogue_chunk_boundaries(
     return issues
 
 
+def audit_dialogue_speaker_assignments(
+    chunks: Iterable[dict[str, Any]],
+    *,
+    language: str = "ru",
+) -> list[DialogueSpeakerIssue]:
+    """Return non-fatal issues where dialogue may use the wrong voice/speaker."""
+
+    code = normalize_book_language(language)
+    issues: list[DialogueSpeakerIssue] = []
+    for chunk in chunks:
+        text = str(chunk.get("text") or "").strip()
+        if not text:
+            continue
+        role = str(chunk.get("role") or chunk.get("voice") or "").strip().lower()
+        voice_id = str(chunk.get("voice_id") or "").strip().lower()
+        section_kind = str(chunk.get("section_kind") or "").strip().lower()
+        speaker = str(chunk.get("speaker") or "").strip()
+        chapter_index = _safe_int(chunk.get("chapter_index"))
+        chunk_index = _safe_int(chunk.get("chunk_index"))
+        if not _is_dialogue_chunk(role, section_kind):
+            continue
+
+        if voice_id.startswith("narrator"):
+            issues.append(DialogueSpeakerIssue(
+                kind="dialogue_uses_narrator_voice",
+                chapter_index=chapter_index,
+                chunk_index=chunk_index,
+                role=role or "unknown",
+                voice_id=voice_id,
+                speaker=speaker,
+                text=text,
+                message="Dialogue chunk still uses a narrator voice preset.",
+            ))
+            continue
+
+        if role == "male" and voice_id.startswith("female"):
+            issues.append(_speaker_issue(
+                "dialogue_role_voice_mismatch",
+                chapter_index,
+                chunk_index,
+                role,
+                voice_id,
+                speaker,
+                text,
+                "Male dialogue is assigned to a female voice preset.",
+            ))
+            continue
+
+        if role == "female" and voice_id.startswith("male"):
+            issues.append(_speaker_issue(
+                "dialogue_role_voice_mismatch",
+                chapter_index,
+                chunk_index,
+                role,
+                voice_id,
+                speaker,
+                text,
+                "Female dialogue is assigned to a male voice preset.",
+            ))
+            continue
+
+        if code == "ru" and speaker and len(speaker.split()) == 1:
+            if is_definitely_not_person_reference(speaker):
+                issues.append(_speaker_issue(
+                    "dialogue_speaker_not_person",
+                    chapter_index,
+                    chunk_index,
+                    role or "unknown",
+                    voice_id,
+                    speaker,
+                    text,
+                    "Speaker candidate looks like a non-person token.",
+                ))
+            elif role == "unknown" and not infer_person_gender(speaker):
+                issues.append(_speaker_issue(
+                    "dialogue_speaker_gender_uncertain",
+                    chapter_index,
+                    chunk_index,
+                    role,
+                    voice_id,
+                    speaker,
+                    text,
+                    "Speaker is named but gender/voice could not be inferred.",
+                ))
+    return issues
+
+
 def assert_dialogue_chunk_boundaries(
     manifest_or_chunks: object,
     *,
@@ -117,6 +222,54 @@ def format_dialogue_chunk_issues(issues: Iterable[DialogueChunkIssue], *, limit:
     if remaining > 0:
         lines.append(f"- ...and {remaining} more issue(s).")
     return "\n".join(lines)
+
+
+def format_dialogue_speaker_issues(
+    issues: Iterable[DialogueSpeakerIssue],
+    *,
+    limit: int = 10,
+) -> str:
+    """Return a compact review report for non-fatal speaker assignment warnings."""
+
+    issue_list = list(issues)
+    shown = issue_list[:limit]
+    lines = ["Dialogue speaker audit warnings:"]
+    for issue in shown:
+        excerpt = issue.text.replace("\n", " ")
+        if len(excerpt) > 160:
+            excerpt = excerpt[:157].rstrip() + "..."
+        speaker = f" speaker={issue.speaker!r}" if issue.speaker else ""
+        lines.append(
+            f"- {issue.kind}: chapter={issue.chapter_index + 1} "
+            f"chunk={issue.chunk_index + 1} role={issue.role} voice_id={issue.voice_id!r}"
+            f"{speaker} text={excerpt!r}"
+        )
+    remaining = len(issue_list) - len(shown)
+    if remaining > 0:
+        lines.append(f"- ...and {remaining} more warning(s).")
+    return "\n".join(lines)
+
+
+def _speaker_issue(
+    kind: str,
+    chapter_index: int,
+    chunk_index: int,
+    role: str,
+    voice_id: str,
+    speaker: str,
+    text: str,
+    message: str,
+) -> DialogueSpeakerIssue:
+    return DialogueSpeakerIssue(
+        kind=kind,
+        chapter_index=chapter_index,
+        chunk_index=chunk_index,
+        role=role,
+        voice_id=voice_id,
+        speaker=speaker,
+        text=text,
+        message=message,
+    )
 
 
 def _is_dialogue_chunk(role: str, section_kind: str) -> bool:

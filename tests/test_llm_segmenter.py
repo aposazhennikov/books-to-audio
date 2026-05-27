@@ -814,6 +814,122 @@ def test_llm_voice_segmenter_repairs_quoted_and_unquoted_speech_inside_narrator_
     assert all(row["voice_id"] != "narrator_calm" for row in (rows[0], rows[2]))
 
 
+def test_dash_dialogue_splits_bare_inline_author_tag() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "male",
+            "voice_id": "male_young",
+            "section_kind": "dialogue",
+            "text": (
+                "- Троцкий, хватит болтать, сказал Иосиф, "
+                "нянча отдавленную руку, - эта тварь явно на нас охотится."
+            ),
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "- Троцкий, хватит болтать,",
+        "сказал Иосиф, нянча отдавленную руку,",
+        "- эта тварь явно на нас охотится.",
+    ]
+    assert [row["section_kind"] for row in repaired] == [
+        "dialogue",
+        "narration",
+        "dialogue",
+    ]
+
+
+def test_dash_prefixed_narration_splits_before_nested_dialogue() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "male",
+            "voice_id": "male_young",
+            "section_kind": "dialogue",
+            "text": (
+                "- снял с пояса шпагу, протянул мне и сказал: "
+                "быть тебе, голубчик, отныне полным поручиком. - Всё-таки годится."
+            ),
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        (
+            "- снял с пояса шпагу, протянул мне и сказал: "
+            "быть тебе, голубчик, отныне полным поручиком."
+        ),
+        "- Всё-таки годится.",
+    ]
+    assert [row["section_kind"] for row in repaired] == ["narration", "dialogue"]
+
+
+def test_dash_prefixed_author_tag_is_not_kept_as_dialogue() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "female",
+            "voice_id": "female_warm",
+            "section_kind": "dialogue",
+            "text": "- оживилась Мальвина,",
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == ["- оживилась Мальвина,"]
+    assert [row["section_kind"] for row in repaired] == ["narration"]
+    assert [row["role"] for row in repaired] == ["narrator"]
+
+
+def test_long_dash_prefixed_narration_splits_later_direct_speech() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": (
+                "- крикнул громко Шаман. «Нехристями» называл обитателей Острова "
+                "съеденный недавно английский миссионер. Воспоминания о нем у всего "
+                "Племени были самые приятные, поэтому странное обращение принималось "
+                "народом весьма хорошо. - Хотел бы узнать, Нехристи, кто из утопил "
+                "Подводный Корабль?"
+            ),
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["section_kind"] for row in repaired] == ["narration", "dialogue"]
+    assert repaired[0]["text"].endswith("народом весьма хорошо.")
+    assert repaired[1]["text"].startswith("- Хотел бы узнать")
+
+
 def test_llm_voice_segmenter_keeps_character_metadata_for_roles() -> None:
     text = "Маргарита сказала: «Я вернулась»."
     segmenter = LlmVoiceSegmenter(language="ru")
@@ -1009,6 +1125,52 @@ def test_repaired_dialogue_uses_speaker_name_gender_for_voice() -> None:
 
     assert repaired[0]["role"] == "male"
     assert repaired[0]["voice_id"].startswith("male_")
+
+
+def test_repaired_dialogue_speaker_gender_overrides_stale_role() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "female",
+            "voice_id": "female_warm",
+            "speaker": "Сергей",
+            "section_kind": "dialogue",
+            "text": "- Продолжаем.",
+            "intonation": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[0]["role"] == "male"
+    assert repaired[0]["voice_id"].startswith("male_")
+
+
+def test_repaired_dialogue_refreshes_voice_when_speaker_role_conflicts() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "male",
+            "voice_id": "male_lively",
+            "speaker": "\u041b\u0438\u0437\u043e\u0447\u043a\u0430",
+            "section_kind": "dialogue",
+            "text": "- \u041f\u043e\u0439\u0434\u0435\u043c.",
+            "intonation": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[0]["role"] == "female"
+    assert repaired[0]["voice_id"].startswith("female_")
 
 
 def test_ru_speaker_filter_rejects_lowercase_non_person_candidates() -> None:

@@ -110,6 +110,25 @@ class TestVoiceAnnotatedChunking:
         assert segments[1].role == SpeakerRole.UNKNOWN
         assert len(chunks) == 3
 
+    def test_segment_builder_preserves_unknown_dialogue_role(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "segment_index": 0,
+                "language": "ru",
+                "role": "unknown",
+                "voice_id": "narrator_calm",
+                "section_kind": "dialogue",
+                "text": "- Кто здесь?",
+                "intonation": "tense",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments)
+
+        assert chunks[0]["role"] == "unknown"
+        assert chunks[0]["section_kind"] == "dialogue"
+
     def test_chunk_indices_sequential(self) -> None:
         ch = _chapter([
             _line("\u041d\u0430\u0440\u0440\u0430\u0446\u0438\u044f.", SpeakerRole.NARRATOR, False),

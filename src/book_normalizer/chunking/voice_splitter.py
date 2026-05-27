@@ -438,6 +438,11 @@ def _effective_role(line: DialogueLine) -> SpeakerRole:
 
 def _role_from_segment(seg: dict[str, Any]) -> str:
     """Infer canonical role from voice_id first, then stale role metadata."""
+    role = str(seg.get("role") or "narrator").strip().lower()
+    section_kind = str(seg.get("section_kind") or "").strip().lower()
+    if role == "unknown" and section_kind == "dialogue":
+        return "unknown"
+
     voice_id = str(seg.get("voice_id") or "").strip().lower()
     if voice_id == "male" or voice_id.startswith("male_"):
         return "male"
@@ -446,7 +451,6 @@ def _role_from_segment(seg: dict[str, Any]) -> str:
     if voice_id == "narrator" or voice_id.startswith("narrator_"):
         return "narrator"
 
-    role = str(seg.get("role") or "narrator").strip().lower()
     if role in {"narrator", "male", "female", "unknown"}:
         return role
     return "narrator"

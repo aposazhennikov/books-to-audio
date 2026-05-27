@@ -427,6 +427,137 @@ def test_repaired_narrator_tags_stay_narrator_when_chunk_builder_repairs_again()
     ]
 
 
+def test_short_quoted_terms_are_not_repaired_as_dialogue() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+    from book_normalizer.chunking.voice_splitter import build_chunks_from_segments
+
+    text = "Они называли этот сбой «Глюк» и потом долго спорили о «Скарабее»."
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    chunks = build_chunks_from_segments(
+        repair_segment_dialogue_boundaries(rows, language="ru"),
+        max_chunk_chars=400,
+    )
+
+    assert [chunk["text"] for chunk in chunks] == [text]
+    assert [chunk["role"] for chunk in chunks] == ["narrator"]
+
+
+def test_quoted_term_with_explanatory_dash_stays_narrator() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+    from book_normalizer.chunking.voice_splitter import build_chunks_from_segments
+
+    text = "Несколько раз произносилось название «Вольфшанце» — волчье логово."
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    chunks = build_chunks_from_segments(
+        repair_segment_dialogue_boundaries(rows, language="ru"),
+        max_chunk_chars=400,
+    )
+
+    assert [chunk["text"] for chunk in chunks] == [text]
+    assert [chunk["role"] for chunk in chunks] == ["narrator"]
+
+
+def test_dash_dialogue_splits_before_attribution_without_space_after_punctuation() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = "- Тварь!- закричал наставник отскочив от моего питомца."
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "- Тварь!",
+        "- закричал наставник отскочив от моего питомца.",
+    ]
+    assert [row["role"] for row in repaired] == ["male", "narrator"]
+
+
+def test_narrator_tag_can_contain_next_dash_dialogue() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = "- Я пришёл, - признался - Ой, как все запущено, - сказал мужчина."
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "- Я пришёл,",
+        "- признался",
+        "- Ой, как все запущено,",
+        "- сказал мужчина.",
+    ]
+    assert [row["role"] for row in repaired] == ["male", "narrator", "male", "narrator"]
+
+
+def test_short_quoted_terms_from_llm_dialogue_are_demoted_to_narrator() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "male",
+            "voice_id": "male_young",
+            "section_kind": "dialogue",
+            "text": "«Глюк»",
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == ["«Глюк»"]
+    assert [row["role"] for row in repaired] == ["narrator"]
+    assert [row["section_kind"] for row in repaired] == ["narration"]
+
+
 def test_llm_voice_segmenter_repairs_quoted_and_unquoted_speech_inside_narrator_segment() -> None:
     text = (
         "«Нарушена техника безопасности при работе с монстрами», - сказал Сет и потащил мою женщину с собой в ад. "

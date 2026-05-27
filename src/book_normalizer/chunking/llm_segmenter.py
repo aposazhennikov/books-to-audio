@@ -890,7 +890,10 @@ def _split_dialogue_and_narration_text(
                     remaining = remaining_after_prefix
                     continue
 
-        if _starts_with_opening_quote(remaining):
+        if _starts_with_opening_quote(remaining) and (
+            role_is_dialogue
+            or _opening_quote_starts_direct_speech(remaining, language)
+        ):
             speech, remaining = _take_quoted_speech(remaining)
             parts.append(("speech", speech))
             if remaining:
@@ -915,7 +918,7 @@ def _split_dialogue_and_narration_text(
             continue
 
         if _starts_with_dash_dialogue(remaining):
-            speech, remaining = _take_dash_speech(remaining)
+            speech, remaining = _take_dash_speech(remaining, language)
             parts.append(("speech", speech))
             if remaining and _dash_starts_narrator_tag(remaining, language):
                 narrator, remaining = _take_narrator_tail(remaining)
@@ -949,7 +952,7 @@ def _split_dialogue_and_narration_text(
 
 
 def _contains_embedded_direct_speech(text: str, language: str) -> bool:
-    if _starts_with_dialogue_marker(text):
+    if _starts_with_direct_speech_marker(text, language):
         return True
     if _find_next_dialogue_marker(text, language) is not None:
         return True
@@ -970,7 +973,10 @@ def _find_next_dialogue_marker(text: str, language: str) -> int | None:
     for index, char in enumerate(text):
         if index == 0:
             continue
-        if char in _OPENING_QUOTE_CHARS:
+        if (
+            char in _OPENING_QUOTE_CHARS
+            and _opening_quote_starts_direct_speech(text[index:], language)
+        ):
             return index
         if char in _DASH_CHARS and _dash_can_start_embedded_dialogue(text, index, language):
             return index
@@ -1021,6 +1027,17 @@ def _starts_with_dialogue_marker(text: str) -> bool:
     return bool(stripped and (stripped[0] in _QUOTE_CHARS or stripped[0] in _DASH_CHARS))
 
 
+def _starts_with_direct_speech_marker(text: str, language: str) -> bool:
+    stripped = text.lstrip()
+    if not stripped:
+        return False
+    if stripped[0] in _DASH_CHARS:
+        return not _dash_starts_narrator_tag(stripped, language)
+    if stripped[0] in _OPENING_QUOTE_CHARS:
+        return _opening_quote_starts_direct_speech(stripped, language)
+    return False
+
+
 def _starts_with_opening_quote(text: str) -> bool:
     stripped = text.lstrip()
     return bool(stripped and stripped[0] in _OPENING_QUOTE_CHARS)
@@ -1046,11 +1063,69 @@ def _take_quoted_speech(text: str) -> tuple[str, str]:
     return text[:end].strip(), text[end:].strip()
 
 
-def _take_dash_speech(text: str) -> tuple[str, str]:
+def _opening_quote_starts_direct_speech(text: str, language: str) -> bool:
+    speech, tail = _take_quoted_speech(text)
+    if not speech:
+        return False
+    if _quoted_speech_has_attribution_tail(speech, tail, language):
+        return True
+
+    core = _quoted_speech_core(speech)
+    if not core:
+        return False
+    words = re.findall(r"[\wА-Яа-яЁё]+", core, flags=re.UNICODE)
+    if len(words) <= 3 and not re.search(r"[!?…！？]|\.{3}", core):
+        return False
+    return bool(re.search(r"[.!?…。！？]\s*$", core))
+
+
+def _quoted_speech_has_attribution_tail(speech: str, tail: str, language: str) -> bool:
+    probe = f"{speech} {tail[:120]}".strip()
+    if language == "ru":
+        if _split_inline_attribution(probe, language) is not None:
+            return True
+        return _dash_starts_attribution_tag(tail, language)
+
+    inferred_speaker, inferred_role = _infer_dialogue_speaker(probe, language)
+    if inferred_speaker or inferred_role:
+        return True
+    if _split_inline_attribution(probe, language) is not None:
+        return True
+    if tail and _dash_starts_narrator_tag(tail, language):
+        return True
+    return False
+
+
+def _dash_starts_attribution_tag(text: str, language: str) -> bool:
+    stripped = text.lstrip()
+    if not stripped or stripped[0] not in _DASH_CHARS:
+        return False
+    after_dash = stripped[1:].lstrip()
+    if language == "ru":
+        return bool(re.match(rf"(?:{_ru_attribution_pattern()})\b", after_dash, re.IGNORECASE))
+    return _dash_starts_narrator_tag(text, language)
+
+
+def _quoted_speech_core(text: str) -> str:
     stripped = text.strip()
-    for match in re.finditer(r"\s+[—–-]\s+", stripped[1:]):
+    while stripped and stripped[-1] in ",.;:!?…，。！？":
+        stripped = stripped[:-1].rstrip()
+    if len(stripped) >= 2 and stripped[0] in _OPENING_QUOTE_CHARS:
+        close_quote = _CLOSING_QUOTE_BY_OPENING.get(stripped[0], stripped[0])
+        if stripped.endswith(close_quote):
+            stripped = stripped[1:-1].strip()
+    return stripped
+
+
+def _take_dash_speech(text: str, language: str) -> tuple[str, str]:
+    stripped = text.strip()
+    dash_chars = re.escape("".join(_DASH_CHARS))
+    for match in re.finditer(rf"\s*[{dash_chars}]\s*", stripped[1:]):
         split_at = match.start() + 1
-        return stripped[:split_at].strip(), stripped[split_at:].strip()
+        speech = stripped[:split_at].rstrip()
+        tail = stripped[split_at:].strip()
+        if re.search(r"[,.!?…]\s*$", speech) and _dash_starts_narrator_tag(tail, language):
+            return speech, tail
     return stripped, ""
 
 
@@ -1060,10 +1135,31 @@ def _take_narrator_tail(text: str) -> tuple[str, str]:
     if inline_index is not None and inline_index > 0:
         return stripped[:inline_index].strip(), stripped[inline_index:].strip()
 
+    nested_index = _find_nested_dialogue_after_narrator_tag(stripped)
+    if nested_index is not None:
+        return stripped[:nested_index].strip(), stripped[nested_index:].strip()
+
     match = re.search(r"(?<=[.!?…])\s+(?=[\"“„«‹「『《〈—–-]\s*\S)", stripped)
     if not match:
         return stripped, ""
     return stripped[: match.start()].strip(), stripped[match.end():].strip()
+
+
+def _find_nested_dialogue_after_narrator_tag(text: str) -> int | None:
+    for match in re.finditer(r"\s+[—–-]\s+", text[1:]):
+        index = match.start() + 1
+        before = text[:index].strip()
+        after = text[index:].strip()
+        after_dash = after[1:].lstrip() if after and after[0] in _DASH_CHARS else after
+        if not after_dash or not (after_dash[0].isupper() or after_dash[0] in _QUOTE_CHARS):
+            continue
+        if len(before) <= 160 and (
+            _contains_ru_attribution_word(before)
+            or _dash_starts_narrator_tag(before, "ru")
+            or re.search(r":\s*$", before)
+        ):
+            return index
+    return None
 
 
 def _dash_starts_narrator_tag(text: str, language: str) -> bool:
@@ -1111,7 +1207,7 @@ def _split_inline_attribution(text: str, language: str) -> tuple[str, str] | Non
 
 
 def _looks_like_direct_speech(text: str, language: str) -> bool:
-    if _starts_with_dialogue_marker(text):
+    if _starts_with_direct_speech_marker(text, language):
         return True
     if _split_inline_attribution(text, language) is not None:
         return True
@@ -1284,7 +1380,7 @@ def _repair_dialogue_metadata(
     ):
         return "narrator", "", "narration", ""
 
-    if not _has_direct_speech_marker(text):
+    if not _has_direct_speech_marker(text, language):
         return role, speaker, section_kind, character_description
 
     inferred_speaker, inferred_role = _infer_dialogue_speaker(text, language)
@@ -1308,9 +1404,8 @@ def _repair_dialogue_metadata(
     return role, speaker, section_kind, character_description
 
 
-def _has_direct_speech_marker(text: str) -> bool:
-    stripped = text.lstrip()
-    return bool(stripped and (stripped[0] in _QUOTE_CHARS or stripped[0] in _DASH_CHARS))
+def _has_direct_speech_marker(text: str, language: str) -> bool:
+    return _starts_with_direct_speech_marker(text, language)
 
 
 def _infer_dialogue_speaker(text: str, language: str) -> tuple[str, str]:
@@ -1341,7 +1436,28 @@ def _infer_ru_dialogue_speaker(text: str) -> tuple[str, str]:
         return "", "male"
     if _text_has_ru_gendered_attribution(text, _RU_FEMALE_ATTRIBUTION):
         return "", "female"
+    pronoun_role = _infer_ru_pronoun_attribution_role(text)
+    if pronoun_role:
+        return "", pronoun_role
     return "", ""
+
+
+def _infer_ru_pronoun_attribution_role(text: str) -> str:
+    probe = text.casefold()
+    if re.search(r"\b[а-яё]{3,}ла(?:сь)?\s+она\b|\bона\s+[а-яё]{3,}ла(?:сь)?\b", probe):
+        return "female"
+    if re.search(r"\b[а-яё]{3,}л(?:ся)?\s+он\b|\bон\s+[а-яё]{3,}л(?:ся)?\b", probe):
+        return "male"
+
+    if re.search(r"\b[а-яё]{3,}ла(?:сь)?\s+я\b", probe):
+        return "female"
+    if re.search(r"\b[а-яё]{3,}л(?:ся)?\s+я\b", probe):
+        return "male"
+    if re.search(r"\bя\s+(?:[а-яё]+\s+){0,3}[а-яё]{3,}ла(?:сь)?\b", probe):
+        return "female"
+    if re.search(r"\bя\s+(?:[а-яё]+\s+){0,3}[а-яё]{3,}л(?:ся)?\b", probe):
+        return "male"
+    return ""
 
 
 def _infer_en_dialogue_speaker(text: str) -> tuple[str, str]:

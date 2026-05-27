@@ -45,12 +45,18 @@ def test_auto_builtin_voice_mapping_uses_emotion_for_unnamed_dialogue() -> None:
 
 def test_unknown_russian_named_speaker_gets_character_voice() -> None:
     male = {"role": "unknown", "section_kind": "dialogue", "speaker": "Сергей"}
+    dictionary_gap_male = {"role": "unknown", "section_kind": "dialogue", "speaker": "Мерлин"}
+    inflected_male = {"role": "unknown", "section_kind": "dialogue", "speaker": "Агамемнону"}
     female = {"role": "unknown", "section_kind": "dialogue", "speaker": "женщина"}
     diminutive = {"role": "unknown", "section_kind": "dialogue", "speaker": "Лизочка"}
+    inanimate = {"role": "unknown", "section_kind": "dialogue", "speaker": "Предмет"}
 
     assert canonical_role_for_segment(male) == "male"
+    assert canonical_role_for_segment(dictionary_gap_male) == "male"
+    assert canonical_role_for_segment(inflected_male) == "male"
     assert canonical_role_for_segment(female) == "female"
     assert canonical_role_for_segment(diminutive) == "female"
+    assert canonical_role_for_segment(inanimate) == "unknown"
     assert auto_builtin_voice_id_for_segment(male).startswith("male_")
     assert auto_builtin_voice_id_for_segment(female).startswith("female_")
     assert auto_builtin_voice_id_for_segment(diminutive).startswith("female_")

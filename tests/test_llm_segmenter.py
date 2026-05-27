@@ -1011,6 +1011,83 @@ def test_repaired_dialogue_uses_speaker_name_gender_for_voice() -> None:
     assert repaired[0]["voice_id"].startswith("male_")
 
 
+def test_ru_speaker_filter_rejects_lowercase_non_person_candidates() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "- Проверим,, готовиться.",
+            "intonation": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 1,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "- Проверим,, ответил маркиз.",
+            "intonation": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+    dialogue = [row for row in repaired if row["section_kind"] == "dialogue"]
+
+    assert dialogue[0]["speaker"] == ""
+    assert dialogue[1]["speaker"] == "Маркиз"
+
+
+def test_ru_speaker_filter_rejects_capitalized_non_person_candidates() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "- Проверим,, спросил Кто.",
+            "intonation": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 1,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "- Проверим,, ответил Боккардини.",
+            "intonation": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 2,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "- Проверим,, спросил Медное.",
+            "intonation": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+    dialogue = [row for row in repaired if row["section_kind"] == "dialogue"]
+
+    assert dialogue[0]["speaker"] == ""
+    assert dialogue[1]["speaker"] == "Боккардини"
+    assert dialogue[2]["speaker"] == ""
+
+
 def test_llm_voice_segmenter_restores_source_punctuation_from_model_boundaries() -> None:
     text = "Посланца..И сделать было нельзя.\n\nСерг"
     segmenter = LlmVoiceSegmenter(language="ru")

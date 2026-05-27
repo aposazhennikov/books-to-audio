@@ -21,7 +21,10 @@ from book_normalizer.chunking.splitter import (
 from book_normalizer.languages import get_book_language, normalize_book_language
 from book_normalizer.llm.model_router import model_plan_for_language
 from book_normalizer.llm.ollama_client import OllamaChatClient
-from book_normalizer.normalization.morphology import infer_person_gender
+from book_normalizer.normalization.morphology import (
+    infer_person_gender,
+    is_definitely_not_person_reference,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1654,6 +1657,10 @@ def _clean_ru_speaker(value: str) -> str:
     if speaker.casefold() in _RU_BAD_SPEAKER_TOKENS:
         return ""
     if not re.fullmatch(_RU_SPEAKER_TOKEN, speaker):
+        return ""
+    if is_definitely_not_person_reference(speaker):
+        return ""
+    if speaker[0].islower() and not infer_person_gender(speaker):
         return ""
     if speaker[0].islower():
         speaker = speaker[0].upper() + speaker[1:]

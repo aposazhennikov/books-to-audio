@@ -25,7 +25,7 @@ from book_normalizer.llm.ollama_client import OllamaChatClient
 logger = logging.getLogger(__name__)
 
 DEFAULT_WINDOW_CHARS = 900
-_CACHE_VERSION = "llm-segmenter-v5-dialogue-boundaries"
+_CACHE_VERSION = "llm-segmenter-v6-narrator-dialogue-boundaries"
 
 ROLE_TO_VOICE_ID = {
     "narrator": "narrator_calm",
@@ -808,14 +808,16 @@ def _split_mixed_dialogue_segments(
             result.append(segment)
             continue
 
-        if role not in {"male", "female", "unknown"}:
+        if (
+            role not in {"male", "female", "unknown"}
+            and not _contains_embedded_direct_speech(text, language)
+        ):
             result.append(segment)
             continue
-        inferred_speaker, inferred_role = _infer_dialogue_speaker(text, language)
         parts = _split_dialogue_and_narration_text(
             text,
             language=language,
-            role_is_dialogue=True,
+            role_is_dialogue=role in {"male", "female", "unknown"},
         )
         if len(parts) <= 1:
             result.append(segment)
@@ -837,6 +839,10 @@ def _split_mixed_dialogue_segments(
                 row["_narration_repaired"] = True
                 row.pop("_direct_speech_repaired", None)
             else:
+                inferred_speaker, inferred_role = _infer_dialogue_speaker(
+                    _speaker_context_for_part(parts, part_index),
+                    language,
+                )
                 if inferred_speaker and not _clean_optional(row.get("speaker")):
                     row["speaker"] = inferred_speaker
                 if inferred_role in {"male", "female"}:
@@ -854,6 +860,15 @@ def _split_mixed_dialogue_segments(
     return result
 
 
+def _speaker_context_for_part(parts: list[tuple[str, str]], part_index: int) -> str:
+    context = parts[part_index][1]
+    if part_index + 1 < len(parts) and parts[part_index + 1][0] == "narrator":
+        context = f"{context} {parts[part_index + 1][1]}"
+    if part_index > 0 and parts[part_index - 1][0] == "narrator":
+        context = f"{parts[part_index - 1][1]} {context}"
+    return context
+
+
 def _split_dialogue_and_narration_text(
     text: str,
     *,
@@ -864,13 +879,39 @@ def _split_dialogue_and_narration_text(
     parts: list[tuple[str, str]] = []
 
     while remaining:
+        if not role_is_dialogue:
+            if not _starts_with_dialogue_marker(remaining):
+                prefix, remaining_after_prefix = _take_narration_before_direct_speech(
+                    remaining,
+                    language,
+                )
+                if prefix:
+                    parts.append(("narrator", prefix))
+                    remaining = remaining_after_prefix
+                    continue
+
         if _starts_with_opening_quote(remaining):
             speech, remaining = _take_quoted_speech(remaining)
             parts.append(("speech", speech))
             if remaining:
                 narrator, remaining = _take_narrator_tail(remaining)
                 if narrator:
-                    parts.append(("narrator", narrator))
+                    nested = _split_dialogue_and_narration_text(
+                        narrator,
+                        language=language,
+                        role_is_dialogue=False,
+                    )
+                    parts.extend(nested or [("narrator", narrator)])
+            continue
+
+        if (
+            not role_is_dialogue
+            and _starts_with_dash_dialogue(remaining)
+            and _dash_starts_narrator_tag(remaining, language)
+        ):
+            narrator, remaining = _take_narrator_tail(remaining)
+            if narrator:
+                parts.append(("narrator", narrator))
             continue
 
         if _starts_with_dash_dialogue(remaining):
@@ -879,23 +920,90 @@ def _split_dialogue_and_narration_text(
             if remaining and _dash_starts_narrator_tag(remaining, language):
                 narrator, remaining = _take_narrator_tail(remaining)
                 if narrator:
-                    parts.append(("narrator", narrator))
+                    nested = _split_dialogue_and_narration_text(
+                        narrator,
+                        language=language,
+                        role_is_dialogue=False,
+                    )
+                    parts.extend(nested or [("narrator", narrator)])
             continue
 
-        if role_is_dialogue:
-            inline = _split_inline_attribution(remaining, language)
-            if inline is not None:
-                speech, tail = inline
-                parts.append(("speech", speech))
-                narrator, remaining = _take_narrator_tail(tail)
-                if narrator:
-                    parts.append(("narrator", narrator))
-                continue
+        inline = _split_inline_attribution(remaining, language)
+        if inline is not None:
+            speech, tail = inline
+            parts.append(("speech", speech))
+            narrator, remaining = _take_narrator_tail(tail)
+            if narrator:
+                nested = _split_dialogue_and_narration_text(
+                    narrator,
+                    language=language,
+                    role_is_dialogue=False,
+                )
+                parts.extend(nested or [("narrator", narrator)])
+            continue
 
         parts.append(("speech" if role_is_dialogue else "narrator", remaining))
         break
 
     return _coalesce_dialogue_parts(parts)
+
+
+def _contains_embedded_direct_speech(text: str, language: str) -> bool:
+    if _starts_with_dialogue_marker(text):
+        return True
+    if _find_next_dialogue_marker(text, language) is not None:
+        return True
+    return _split_inline_attribution(text, language) is not None
+
+
+def _take_narration_before_direct_speech(text: str, language: str) -> tuple[str, str]:
+    marker_index = _find_next_dialogue_marker(text, language)
+    inline_index = _find_next_inline_attribution_start(text, language)
+    candidates = [index for index in (marker_index, inline_index) if index is not None and index > 0]
+    if not candidates:
+        return "", text
+    split_at = min(candidates)
+    return text[:split_at].strip(), text[split_at:].strip()
+
+
+def _find_next_dialogue_marker(text: str, language: str) -> int | None:
+    for index, char in enumerate(text):
+        if index == 0:
+            continue
+        if char in _OPENING_QUOTE_CHARS:
+            return index
+        if char in _DASH_CHARS and _dash_can_start_embedded_dialogue(text, index, language):
+            return index
+    return None
+
+
+def _dash_can_start_embedded_dialogue(text: str, index: int, language: str) -> bool:
+    before = text[:index].rstrip()
+    after = text[index + 1 :].lstrip()
+    if not after:
+        return False
+    if not (not before or re.search(r"[.!?…]\s*$", before)):
+        return False
+    if language == "ru":
+        return not _dash_starts_narrator_tag(text[index:], language)
+    return after[:1].isupper() or after[:1] in _QUOTE_CHARS
+
+
+def _find_next_inline_attribution_start(text: str, language: str) -> int | None:
+    if language == "ru":
+        pattern = rf"(?P<speech>[^.!?…]+?,)\s*[—–-]\s*(?:\w+\s+){{0,3}}(?:{_ru_attribution_pattern()})\b"
+    elif language == "en":
+        pattern = (
+            r"(?P<speech>[^.!?…]+?[,.!?])\s*(?:he|she|[A-Z][A-Za-z'-]{1,40})\s+"
+            r"(?:said|asked|replied|shouted|whispered|cried|muttered)\b"
+        )
+    else:
+        return None
+    for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL):
+        speech_start = match.start("speech")
+        if speech_start == 0 or re.search(r"[.!?…]\s*$", text[:speech_start]):
+            return speech_start
+    return None
 
 
 def _trailing_dialogue_opener(text: str) -> str:
@@ -948,6 +1056,10 @@ def _take_dash_speech(text: str) -> tuple[str, str]:
 
 def _take_narrator_tail(text: str) -> tuple[str, str]:
     stripped = text.strip()
+    inline_index = _find_next_inline_attribution_start(stripped, "ru")
+    if inline_index is not None and inline_index > 0:
+        return stripped[:inline_index].strip(), stripped[inline_index:].strip()
+
     match = re.search(r"(?<=[.!?…])\s+(?=[\"“„«‹「『《〈—–-]\s*\S)", stripped)
     if not match:
         return stripped, ""
@@ -962,7 +1074,10 @@ def _dash_starts_narrator_tag(text: str, language: str) -> bool:
     if not after_dash:
         return False
     if language == "ru":
-        return _contains_ru_attribution_word(after_dash[:80]) or after_dash[0].islower()
+        return bool(
+            after_dash[0].islower()
+            or re.match(rf"(?:{_ru_attribution_pattern()})\b", after_dash, re.IGNORECASE)
+        )
     if language == "en":
         return bool(
             re.search(
@@ -1366,6 +1481,8 @@ def _is_dialogue_segment(
     text: str,
 ) -> bool:
     """Detect direct speech even when the LLM cannot prove speaker gender."""
+    if role == "narrator" and section_kind == "narration" and not speaker:
+        return False
     if role in {"male", "female", "unknown"} or section_kind == "dialogue" or speaker:
         return True
     stripped = text.lstrip()

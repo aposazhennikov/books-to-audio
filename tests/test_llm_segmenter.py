@@ -14,6 +14,18 @@ from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 _MOJIBAKE_FRAGMENTS = ("Рў", "Рџ", "Рњ", "вЂ", "дЅ", "Т›", "У©")
 
 
+def _joined_segment_text(rows: list[dict[str, Any]]) -> str:
+    from book_normalizer.chunking.llm_segmenter import _canonical_for_preservation
+
+    return _canonical_for_preservation(" ".join(row["text"] for row in rows))
+
+
+def _source_text(text: str) -> str:
+    from book_normalizer.chunking.llm_segmenter import _canonical_for_preservation
+
+    return _canonical_for_preservation(text.replace("\n\n", " "))
+
+
 class _FakeClient:
     def __init__(self, responses: dict[str, Any]) -> None:
         self.responses = responses
@@ -107,7 +119,7 @@ def test_llm_voice_segmenter_outputs_manifest_for_all_languages(language: str, t
     assert rows[0]["language"] == language
     assert rows[0]["role"] == "narrator"
     assert rows[0]["voice_id"] == "narrator_calm"
-    assert rows[0]["text"] == text
+    assert _joined_segment_text(rows) == _source_text(text)
     assert rows[-1]["boundary_after"] == "chapter"
     assert rows[-1]["pause_after_ms"] == 1500
     assert fake.calls == [PRIMARY_QWEN3_MODEL]
@@ -336,6 +348,83 @@ def test_llm_voice_segmenter_splits_dash_dialogue_from_author_tags() -> None:
     ]
 
 
+def test_llm_voice_segmenter_repairs_dash_dialogue_inside_narrator_segment() -> None:
+    text = (
+        "- Что это? - спросил он, наконец, дрогнувшим голосом. - "
+        "Моя невеста, - гордо ответил я тёмному божеству. Он глубоко вздохнул "
+        "и схватил прекрасную деву, грациозно покачивающуюся в воздухе, за ногу."
+    )
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {
+                    "role": "narrator",
+                    "section_kind": "narration",
+                    "text": text,
+                    "intonation": "calm",
+                },
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="ru"))
+
+    assert [row["text"] for row in rows] == [
+        "- Что это?",
+        "- спросил он, наконец, дрогнувшим голосом.",
+        "- Моя невеста,",
+        (
+            "- гордо ответил я тёмному божеству. Он глубоко вздохнул и схватил "
+            "прекрасную деву, грациозно покачивающуюся в воздухе, за ногу."
+        ),
+    ]
+    assert [row["role"] for row in rows] == ["male", "narrator", "male", "narrator"]
+    assert [row["section_kind"] for row in rows] == [
+        "dialogue",
+        "narration",
+        "dialogue",
+        "narration",
+    ]
+
+
+def test_llm_voice_segmenter_repairs_quoted_and_unquoted_speech_inside_narrator_segment() -> None:
+    text = (
+        "«Нарушена техника безопасности при работе с монстрами», - сказал Сет и потащил мою женщину с собой в ад. "
+        "Себя бы посмотрел, животное неизвестное, - прошептал ему вслед. "
+        "Так вот я и остался сегодня без женщины, зато Годзилла сразу же вернулся (или вернулась?)."
+    )
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {
+                    "role": "narrator",
+                    "section_kind": "narration",
+                    "text": text,
+                    "intonation": "calm",
+                },
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="ru"))
+
+    assert [row["text"] for row in rows] == [
+        "«Нарушена техника безопасности при работе с монстрами»,",
+        "- сказал Сет и потащил мою женщину с собой в ад.",
+        "Себя бы посмотрел, животное неизвестное,",
+        (
+            "- прошептал ему вслед. Так вот я и остался сегодня без женщины, "
+            "зато Годзилла сразу же вернулся (или вернулась?)."
+        ),
+    ]
+    assert [row["role"] for row in rows] == ["male", "narrator", "male", "narrator"]
+    assert all(row["voice_id"] != "narrator_calm" for row in (rows[0], rows[2]))
+
+
 def test_llm_voice_segmenter_keeps_character_metadata_for_roles() -> None:
     text = "Маргарита сказала: «Я вернулась»."
     segmenter = LlmVoiceSegmenter(language="ru")
@@ -384,17 +473,18 @@ def test_llm_voice_segmenter_repairs_narrator_dialogue_from_bad_llm_output() -> 
 
     rows = segmenter.segment_book(_book(text, language="ru"))
 
-    assert " ".join(row["text"] for row in rows).replace(" \n", "\n") == text.replace("\n\n", " ")
-    assert [row["speaker"] for row in rows] == ["Цыганка", "Сергей", "Цыганка", "Сергей"]
-    assert [row["role"] for row in rows] == ["female", "male", "female", "male"]
-    assert [row["voice_id"] for row in rows] == [
-        "female_warm",
-        "male_young",
-        "female_warm",
-        "male_young",
+    assert _joined_segment_text(rows) == _source_text(text)
+    dialogue_rows = [row for row in rows if row["is_dialogue"]]
+    assert [row["text"] for row in dialogue_rows] == [
+        "— Да,",
+        "— Ты зачем пришла?",
+        "— Меня к тебе по делу прислали.",
+        "— Кто прислал?",
     ]
-    assert all(row["section_kind"] == "dialogue" for row in rows)
-    assert all(row["is_dialogue"] is True for row in rows)
+    assert [row["speaker"] for row in dialogue_rows] == ["Цыганка", "Сергей", "Цыганка", "Сергей"]
+    assert [row["role"] for row in dialogue_rows] == ["female", "male", "female", "male"]
+    assert all(row["section_kind"] == "dialogue" for row in dialogue_rows)
+    assert all(row["section_kind"] == "narration" for row in rows if not row["is_dialogue"])
 
 
 @pytest.mark.parametrize(
@@ -441,12 +531,11 @@ def test_llm_voice_segmenter_repairs_named_dialogue_for_all_product_languages(
 
     rows = segmenter.segment_book(_book(text, language=language))
 
-    assert [row["text"] for row in rows] == parts
-    assert [row["speaker"] for row in rows] == expected_speakers
-    assert all(row["role"] == "unknown" for row in rows)
-    assert all(row["voice_id"] == "narrator_calm" for row in rows)
-    assert all(row["section_kind"] == "dialogue" for row in rows)
-    assert all(row["is_dialogue"] is True for row in rows)
+    assert _joined_segment_text(rows) == _source_text(text)
+    dialogue_rows = [row for row in rows if row["is_dialogue"]]
+    assert [row["speaker"] for row in dialogue_rows] == expected_speakers
+    assert all(row["section_kind"] == "dialogue" for row in dialogue_rows)
+    assert all(row["section_kind"] == "narration" for row in rows if not row["is_dialogue"])
 
 
 @pytest.mark.parametrize(
@@ -476,11 +565,12 @@ def test_llm_voice_segmenter_repairs_gendered_pronoun_dialogue(
 
     rows = segmenter.segment_book(_book(text, language=language))
 
-    assert rows[0]["text"] == text
-    assert rows[0]["role"] == expected_role
-    assert rows[0]["voice_id"] == expected_voice
-    assert rows[0]["section_kind"] == "dialogue"
-    assert rows[0]["is_dialogue"] is True
+    assert _joined_segment_text(rows) == _source_text(text)
+    dialogue_rows = [row for row in rows if row["is_dialogue"]]
+    assert len(dialogue_rows) == 1
+    assert dialogue_rows[0]["role"] == expected_role
+    assert dialogue_rows[0]["voice_id"] == expected_voice
+    assert dialogue_rows[0]["section_kind"] == "dialogue"
 
 
 def test_llm_voice_segmenter_marks_dialogue_when_gender_is_unknown() -> None:

@@ -18,6 +18,7 @@ build/
 tools/Tesseract-OCR/
 data/
 .venv/
+.venv-wsl/
 .venv-windows/
 books/
 venv/

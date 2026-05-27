@@ -93,6 +93,45 @@ _HYPHEN_PARTICLE_RE = re.compile(
     re.IGNORECASE,
 )
 
+_PRONOUN_PARTICLE_BASES = (
+    "меня",
+    "тебя",
+    "себя",
+    "него",
+    "нее",
+    "неё",
+    "нам",
+    "вам",
+    "мне",
+    "тебе",
+    "ему",
+    "ней",
+    "неё",
+    "ним",
+    "них",
+    "нас",
+    "вас",
+    "них",
+    "им",
+    "ей",
+    "их",
+    "он",
+    "она",
+    "оно",
+    "они",
+    "мы",
+    "ты",
+    "вы",
+    "я",
+)
+_PRONOUN_PARTICLE_RE = re.compile(
+    r"(?<![А-Яа-яЁё-])"
+    rf"(?P<base>{'|'.join(_PRONOUN_PARTICLE_BASES)})"
+    r"то"
+    r"(?![А-Яа-яЁё-])",
+    re.IGNORECASE,
+)
+
 
 def _transliterate(word: str) -> str:
     """Replace Latin lookalikes with Cyrillic equivalents."""
@@ -160,7 +199,8 @@ def _has_cyrillic_context(is_cyrillic: list[bool], idx: int) -> bool:
 def fix_russian_particle_hyphens(text: str) -> str:
     """Restore hyphens in Russian pronoun/adverb particles lost by OCR."""
 
-    return _HYPHEN_PARTICLE_RE.sub(r"\g<base>-\g<particle>", text)
+    text = _HYPHEN_PARTICLE_RE.sub(r"\g<base>-\g<particle>", text)
+    return _PRONOUN_PARTICLE_RE.sub(r"\g<base>-то", text)
 
 
 _TRAILING_JUNK = re.compile(

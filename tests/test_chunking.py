@@ -84,6 +84,40 @@ class TestChunkText:
         assert "supercalifragilistic" in chunks
         assert " ".join(chunks) == text
 
+    def test_sentence_that_fits_chunk_limit_is_not_split_by_soft_sentence_limit(self) -> None:
+        text = (
+            "В общем, так или иначе, а эти Гунны (а может быть и Вандалы, я их все время путаю) "
+            "скоро, возможно, вернутся и наверное (хочется надеяться на их честность) "
+            "приведут мне женщин (обещали троих)."
+        )
+
+        chunks = chunk_text(text, max_chunk_chars=260, max_sentence_chars=120)
+
+        assert chunks == [text]
+
+    def test_dangling_sentence_start_moves_to_next_chunk(self) -> None:
+        text = (
+            "А потом опять пришли Гунны или даже Вандалы. Я все время путаю. "
+            "Пообещали притащить даже три женщины, если я перестану их наконец путать "
+            "и правильно укажу им путь."
+        )
+
+        chunks = chunk_text(text, max_chunk_chars=50)
+
+        assert not any(chunk.endswith(". Я") for chunk in chunks)
+        assert "Я все время путаю." in " ".join(chunks)
+
+    def test_one_word_continuation_chunk_is_merged_when_it_fits(self) -> None:
+        text = (
+            "А я вот пока присмотрелся к Годзилле и решил, что самка… "
+            "скорее Я пришёл по ваши уши…"
+        )
+
+        chunks = chunk_text(text, max_chunk_chars=90, max_sentence_chars=40)
+
+        assert "скорее" not in chunks
+        assert " ".join(chunks) == text
+
 
 class TestChunkChapter:
     """Tests for chapter-level chunking."""

@@ -109,11 +109,15 @@ def chunk_text(
 
     sentences = split_into_sentences(text)
 
-    # Break long sentences at clause/word boundaries. The chunk limit is a
-    # soft target, but long sentences should not dwarf a user-selected size.
-    sentence_limit = max(1, min(max_sentence_chars, max_chunk_chars))
     fragments: list[str] = []
     for sent in sentences:
+        if len(sent) <= max_chunk_chars:
+            fragments.append(sent)
+            continue
+
+        # Break only sentences that cannot fit a single TTS chunk. The
+        # sentence limit remains a soft target for genuinely oversized prose.
+        sentence_limit = max(1, min(max_sentence_chars, max_chunk_chars))
         fragments.extend(_break_long_sentence(sent, sentence_limit))
 
     chunks: list[str] = []
@@ -135,7 +139,96 @@ def chunk_text(
     if current_parts:
         chunks.append(" ".join(current_parts))
 
-    return chunks
+    chunks = _move_dangling_sentence_starts(chunks)
+    return _merge_tiny_continuation_chunks(chunks, max_chunk_chars)
+
+
+def _move_dangling_sentence_starts(chunks: list[str]) -> list[str]:
+    """Move tiny sentence starts from the end of one chunk to the next chunk."""
+
+    if len(chunks) < 2:
+        return chunks
+
+    result = list(chunks)
+    index = 0
+    while index < len(result) - 1:
+        current = result[index].strip()
+        next_chunk = result[index + 1].strip()
+        split = _dangling_sentence_start_split(current)
+        if split is None or not next_chunk:
+            index += 1
+            continue
+
+        kept, dangling = split
+        result[index] = kept
+        result[index + 1] = f"{dangling} {next_chunk}".strip()
+        index += 1
+
+    return [chunk for chunk in result if chunk.strip()]
+
+
+def _dangling_sentence_start_split(text: str) -> tuple[str, str] | None:
+    """Return (kept, dangling_start) when a chunk ends with an orphan sentence start."""
+
+    match = list(re.finditer(r"(?<=[.!?…])\s+", text))
+    if not match:
+        return None
+
+    boundary = match[-1].end()
+    kept = text[:boundary].strip()
+    tail = text[boundary:].strip()
+    if not kept or not tail:
+        return None
+    if re.search(r"[.!?…]$", tail):
+        return None
+
+    words = re.findall(r"[A-Za-zА-Яа-яЁё]+", tail)
+    if not words or len(words) > 2:
+        return None
+    if len(tail) > 16:
+        return None
+    return kept, tail
+
+
+def _merge_tiny_continuation_chunks(chunks: list[str], max_chunk_chars: int) -> list[str]:
+    """Merge one-word/interjection chunks back into nearby text when possible."""
+
+    result = [chunk.strip() for chunk in chunks if chunk.strip()]
+    index = 0
+    while index < len(result):
+        chunk = result[index]
+        if not _is_tiny_continuation_chunk(chunk):
+            index += 1
+            continue
+
+        merged = False
+        if index > 0:
+            candidate = f"{result[index - 1]} {chunk}".strip()
+            if len(candidate) <= max_chunk_chars:
+                result[index - 1] = candidate
+                del result[index]
+                merged = True
+        if not merged and index + 1 < len(result):
+            candidate = f"{chunk} {result[index + 1]}".strip()
+            if len(candidate) <= max_chunk_chars:
+                result[index + 1] = candidate
+                del result[index]
+                merged = True
+        if not merged:
+            index += 1
+    return result
+
+
+def _is_tiny_continuation_chunk(text: str) -> bool:
+    stripped = text.strip()
+    if len(stripped) > 24:
+        return False
+    words = re.findall(r"[A-Za-zА-Яа-яЁё]+", stripped)
+    if len(words) > 2:
+        return False
+    if re.search(r"[.!?]$", stripped):
+        return False
+    return bool(words)
 
 
 def _is_scene_break(paragraph: str) -> bool:

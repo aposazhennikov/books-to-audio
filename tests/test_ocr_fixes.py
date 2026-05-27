@@ -56,6 +56,13 @@ def test_russian_particle_hyphen_fix_handles_common_pronouns() -> None:
     )
 
 
+def test_russian_particle_hyphen_fix_handles_personal_pronouns() -> None:
+    text = "А мыто, идиоты, эксцентриситет высчитывали."
+    assert fix_russian_particle_hyphens(text) == (
+        "А мы-то, идиоты, эксцентриситет высчитывали."
+    )
+
+
 def test_russian_particle_hyphen_fix_does_not_touch_ordinary_words() -> None:
     text = "Это зато работает без лишних правок."
     assert fix_russian_particle_hyphens(text) == text

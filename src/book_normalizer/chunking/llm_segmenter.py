@@ -465,7 +465,7 @@ class LlmVoiceSegmenter:
                         max_chunk_chars=self._max_segment_chars,
                     ) or [raw["text"]]:
                         role = _normalize_role(raw.get("role", "narrator"))
-                        speaker = _clean_optional(raw.get("speaker"))
+                        speaker = _clean_speaker(raw.get("speaker"), self._language)
                         section_kind = _clean_section_kind(raw.get("section_kind"), role)
                         character_description = _clean_optional(
                             raw.get("character_description")
@@ -1406,7 +1406,7 @@ def repair_segment_dialogue_boundaries(
         row = dict(segment)
         original_role = _normalize_role(row.get("role"))
         role = original_role
-        speaker = _clean_optional(row.get("speaker"))
+        speaker = _clean_speaker(row.get("speaker"), language)
         section_kind = _clean_section_kind(row.get("section_kind"), role)
         character_description = _clean_optional(
             row.get("character_description")
@@ -1665,6 +1665,19 @@ def _clean_ru_speaker(value: str) -> str:
     if speaker[0].islower():
         speaker = speaker[0].upper() + speaker[1:]
     return _clean_optional(speaker)
+
+
+def _clean_speaker(value: Any, language: str) -> str:
+    speaker = _clean_optional(value)
+    if not speaker:
+        return ""
+    if normalize_book_language(language) != "ru":
+        return speaker
+    if len(speaker.split()) != 1:
+        return speaker
+    if not re.search(r"[А-ЯЁа-яё]", speaker):
+        return speaker
+    return _clean_ru_speaker(speaker)
 
 
 def _clean_cyrillic_speaker(value: str) -> str:

@@ -1088,6 +1088,30 @@ def test_ru_speaker_filter_rejects_capitalized_non_person_candidates() -> None:
     assert dialogue[2]["speaker"] == ""
 
 
+def test_llm_provided_ru_speaker_is_filtered_with_same_person_rules() -> None:
+    text = "- Проверим."
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {
+                    "role": "male",
+                    "speaker": "Кто",
+                    "section_kind": "dialogue",
+                    "text": "- Проверим.",
+                    "intonation": "calm",
+                }
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="ru"))
+
+    assert rows[0]["speaker"] == ""
+    assert rows[0]["section_kind"] == "dialogue"
+
+
 def test_llm_voice_segmenter_restores_source_punctuation_from_model_boundaries() -> None:
     text = "Посланца..И сделать было нельзя.\n\nСерг"
     segmenter = LlmVoiceSegmenter(language="ru")

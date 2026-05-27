@@ -146,6 +146,11 @@ _RU_MALE_ATTRIBUTION = (
     "обратился",
     "задал",
     "начал",
+    "думал",
+    "подумал",
+    "решил",
+    "сообразил",
+    "вспомнил",
 )
 
 _RU_FEMALE_ATTRIBUTION = (
@@ -187,6 +192,11 @@ _RU_FEMALE_ATTRIBUTION = (
     "обратилась",
     "зашипела",
     "начала",
+    "думала",
+    "подумала",
+    "решила",
+    "сообразила",
+    "вспомнила",
 )
 
 _RU_SPEAKER_TOKEN = r"[А-ЯЁ][А-ЯЁа-яё-]{1,40}|[а-яё]{3,40}"
@@ -911,6 +921,7 @@ def _split_dialogue_and_narration_text(
             not role_is_dialogue
             and _starts_with_dash_dialogue(remaining)
             and _dash_starts_narrator_tag(remaining, language)
+            and not _continues_after_author_tag(parts, remaining)
         ):
             narrator, remaining = _take_narrator_tail(remaining)
             if narrator:
@@ -954,6 +965,8 @@ def _split_dialogue_and_narration_text(
 def _contains_embedded_direct_speech(text: str, language: str) -> bool:
     if _starts_with_direct_speech_marker(text, language):
         return True
+    if language == "ru" and _dash_starts_narrator_tag(text, language):
+        return _find_nested_dialogue_after_narrator_tag(text) is not None
     if _find_next_dialogue_marker(text, language) is not None:
         return True
     return _split_inline_attribution(text, language) is not None
@@ -988,7 +1001,7 @@ def _dash_can_start_embedded_dialogue(text: str, index: int, language: str) -> b
     after = text[index + 1 :].lstrip()
     if not after:
         return False
-    if not (not before or re.search(r"[.!?…]\s*$", before)):
+    if not (not before or re.search(r"[.!?…:]\s*$", before)):
         return False
     if language == "ru":
         return not _dash_starts_narrator_tag(text[index:], language)
@@ -1119,6 +1132,10 @@ def _quoted_speech_core(text: str) -> str:
 
 def _take_dash_speech(text: str, language: str) -> tuple[str, str]:
     stripped = text.strip()
+    inline = _split_dash_speech_at_inline_attribution(stripped, language)
+    if inline is not None:
+        return inline
+
     dash_chars = re.escape("".join(_DASH_CHARS))
     for match in re.finditer(rf"\s*[{dash_chars}]\s*", stripped[1:]):
         split_at = match.start() + 1
@@ -1126,7 +1143,21 @@ def _take_dash_speech(text: str, language: str) -> tuple[str, str]:
         tail = stripped[split_at:].strip()
         if re.search(r"[,.!?…]\s*$", speech) and _dash_starts_narrator_tag(tail, language):
             return speech, tail
+        if re.search(r"[.!?…]\s*$", speech) and _dash_starts_new_direct_speech(tail, language):
+            return speech, tail
     return stripped, ""
+
+
+def _split_dash_speech_at_inline_attribution(text: str, language: str) -> tuple[str, str] | None:
+    if not text.lstrip().startswith(("-", "—", "–")):
+        return None
+    inline = _split_inline_attribution(text, language)
+    if inline is None:
+        return None
+    speech, tag = inline
+    if _dash_starts_narrator_tag(tag, language):
+        return None
+    return speech, tag
 
 
 def _take_narrator_tail(text: str) -> tuple[str, str]:
@@ -1146,20 +1177,60 @@ def _take_narrator_tail(text: str) -> tuple[str, str]:
 
 
 def _find_nested_dialogue_after_narrator_tag(text: str) -> int | None:
-    for match in re.finditer(r"\s+[—–-]\s+", text[1:]):
-        index = match.start() + 1
+    for match in re.finditer(r"\s+(?P<dash>[—–-])\s+", text[1:]):
+        index = match.start("dash") + 1
+        previous = text[index - 1] if index > 0 else ""
+        if previous and not (previous.isspace() or previous in ",.!?:…"):
+            continue
         before = text[:index].strip()
         after = text[index:].strip()
         after_dash = after[1:].lstrip() if after and after[0] in _DASH_CHARS else after
-        if not after_dash or not (after_dash[0].isupper() or after_dash[0] in _QUOTE_CHARS):
+        resumes_after_tag = bool(
+            re.search(r"[,;:]\s*$", before)
+            and (
+                _contains_ru_attribution_word(before)
+                or _dash_starts_narrator_tag(before, "ru")
+            )
+        )
+        if not after_dash or not (
+            after_dash[0].isupper()
+            or after_dash[0] in _QUOTE_CHARS
+            or resumes_after_tag
+        ):
             continue
-        if len(before) <= 160 and (
+        colon_intro = bool(re.search(r":\s*$", before))
+        if colon_intro or len(before) <= 160 and (
             _contains_ru_attribution_word(before)
             or _dash_starts_narrator_tag(before, "ru")
-            or re.search(r":\s*$", before)
         ):
             return index
     return None
+
+
+def _continues_after_author_tag(parts: list[tuple[str, str]], text: str) -> bool:
+    if not parts or parts[-1][0] != "narrator":
+        return False
+    previous = parts[-1][1].strip()
+    if not (
+        previous.endswith((",", ";", ":"))
+        and (_contains_ru_attribution_word(previous) or _dash_starts_narrator_tag(previous, "ru"))
+    ):
+        return False
+    stripped = text.lstrip()
+    if not stripped or stripped[0] not in _DASH_CHARS:
+        return False
+    after_dash = stripped[1:].lstrip()
+    return bool(after_dash and after_dash[0].islower())
+
+
+def _dash_starts_new_direct_speech(text: str, language: str) -> bool:
+    stripped = text.lstrip()
+    if not stripped or stripped[0] not in _DASH_CHARS:
+        return False
+    if _dash_starts_narrator_tag(stripped, language):
+        return False
+    after_dash = stripped[1:].lstrip()
+    return bool(after_dash and (after_dash[0].isupper() or after_dash[0] in _QUOTE_CHARS))
 
 
 def _dash_starts_narrator_tag(text: str, language: str) -> bool:
@@ -1187,13 +1258,13 @@ def _dash_starts_narrator_tag(text: str, language: str) -> bool:
 
 def _split_inline_attribution(text: str, language: str) -> tuple[str, str] | None:
     if language == "ru":
-        match = re.search(
-            rf"(?P<speech>.+?,)\s*(?P<tag>[—–-]\s*(?:\w+\s+){{0,3}}(?:{_ru_attribution_pattern()})\b.*)",
-            text,
-            re.IGNORECASE | re.DOTALL,
-        )
-        if match:
-            return match.group("speech").strip(), match.group("tag").strip()
+        for pattern in (
+            rf"(?P<speech>.+?[,，]{{1,2}})\s*(?P<tag>[—–-]\s*(?:\w+\s+){{0,3}}(?:{_ru_attribution_pattern()})\b.*)",
+            rf"(?P<speech>.+?[,，]{{1,2}})\s*(?P<tag>(?:\w+\s+){{0,5}}(?:{_ru_attribution_pattern()})\b.*)",
+        ):
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                return match.group("speech").strip(), match.group("tag").strip()
     if language == "en":
         match = re.search(
             r"(?P<speech>.+?[,.!?])\s*(?P<tag>(?:he|she|[A-Z][A-Za-z'-]{1,40})\s+"
@@ -1231,7 +1302,14 @@ def _coalesce_dialogue_parts(parts: list[tuple[str, str]]) -> list[tuple[str, st
         return []
     result: list[tuple[str, str]] = []
     for kind, text in clean_parts:
-        if result and result[-1][0] == kind:
+        should_keep_separate = (
+            kind == "speech"
+            and result
+            and result[-1][0] == kind
+            and _starts_with_dialogue_marker(result[-1][1])
+            and _starts_with_dialogue_marker(text)
+        )
+        if result and result[-1][0] == kind and not should_keep_separate:
             prev_kind, prev_text = result[-1]
             result[-1] = (prev_kind, f"{prev_text} {text}".strip())
         else:
@@ -1424,6 +1502,7 @@ def _infer_dialogue_speaker(text: str, language: str) -> tuple[str, str]:
 
 
 def _infer_ru_dialogue_speaker(text: str) -> tuple[str, str]:
+    candidates: list[tuple[int, str, str]] = []
     for regex, role in (
         (_RU_MALE_ATTRIBUTION_RE, "male"),
         (_RU_FEMALE_ATTRIBUTION_RE, "female"),
@@ -1431,7 +1510,23 @@ def _infer_ru_dialogue_speaker(text: str) -> tuple[str, str]:
         for match in regex.finditer(text):
             speaker = _clean_ru_speaker(match.group("speaker"))
             if speaker:
-                return speaker, role
+                candidates.append((match.start(), speaker, role))
+    for verbs, role in (
+        (_RU_MALE_ATTRIBUTION, "male"),
+        (_RU_FEMALE_ATTRIBUTION, "female"),
+    ):
+        speaker_before = re.compile(
+            rf"\b(?P<speaker>{_RU_SPEAKER_TOKEN})\b"
+            rf"(?:\s+[А-ЯЁа-яё-]{{1,30}}){{0,4}}\s+\b(?:{'|'.join(verbs)})\b",
+            re.IGNORECASE,
+        )
+        for match in speaker_before.finditer(text):
+            speaker = _clean_ru_speaker(match.group("speaker"))
+            if speaker:
+                candidates.append((match.start(), speaker, role))
+    if candidates:
+        _position, speaker, role = max(candidates, key=lambda item: item[0])
+        return speaker, role
     if _text_has_ru_gendered_attribution(text, _RU_MALE_ATTRIBUTION):
         return "", "male"
     if _text_has_ru_gendered_attribution(text, _RU_FEMALE_ATTRIBUTION):

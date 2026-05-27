@@ -535,6 +535,137 @@ def test_narrator_tag_can_contain_next_dash_dialogue() -> None:
     assert [row["role"] for row in repaired] == ["male", "narrator", "male", "narrator"]
 
 
+def test_dash_dialogue_splits_before_following_dash_dialogue() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = "- Вы согласны? - А что у нас с планом? - переспросил мужчина."
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "- Вы согласны?",
+        "- А что у нас с планом?",
+        "- переспросил мужчина.",
+    ]
+    assert [row["role"] for row in repaired] == ["unknown", "male", "narrator"]
+
+
+def test_plain_narration_splits_before_colon_introduced_dash_dialogue() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = "Женщина спросила, и мужчина сразу ответил: - Конечно, вижу."
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "Женщина спросила, и мужчина сразу ответил:",
+        "- Конечно, вижу.",
+    ]
+    assert [row["role"] for row in repaired] == ["narrator", "male"]
+
+
+def test_narrator_tag_splits_before_lowercase_resumed_dash_dialogue() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = "- ответил мужчина, - я просто чародей."
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "- ответил мужчина,",
+        "- я просто чародей.",
+    ]
+    assert [row["role"] for row in repaired] == ["narrator", "male"]
+
+
+def test_dash_dialogue_splits_ocr_inline_attribution_without_second_dash() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = "— Да,, сквозь зубы процедила цыганка."
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "— Да,,",
+        "сквозь зубы процедила цыганка.",
+    ]
+    assert [row["role"] for row in repaired] == ["female", "narrator"]
+
+
+def test_quoted_thought_splits_from_thought_attribution() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = "«Придётся идти»,, обречено подумал Сергей."
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "«Придётся идти»,,",
+        "обречено подумал Сергей.",
+    ]
+    assert [row["role"] for row in repaired] == ["male", "narrator"]
+
+
 def test_short_quoted_terms_from_llm_dialogue_are_demoted_to_narrator() -> None:
     from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
 

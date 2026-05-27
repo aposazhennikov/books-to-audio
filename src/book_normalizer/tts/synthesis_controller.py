@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +40,18 @@ from book_normalizer.tts.quality_gate import split_problem_chunks_for_retry
 ProgressCallback = Callable[[int, int, str, int, int, float, int, int, int], None]
 StatusCallback = Callable[[str], None]
 LogCallback = Callable[[str], None]
+
+
+def _format_eta(seconds: float) -> str:
+    """Format a remaining-time estimate for GUI progress labels."""
+    total_seconds = max(0, int(seconds))
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+    minutes, sec = divmod(total_seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m"
 
 
 @dataclass(frozen=True)
@@ -122,6 +135,7 @@ class SynthesisController:
 
         done_start = count_done_chunks(manifest, request.chapter)
         current_done = done_start
+        progress_started_at = time.monotonic()
 
         def on_line(line: str) -> None:
             nonlocal current_done
@@ -137,14 +151,22 @@ class SynthesisController:
                 total_val = int(right)
             except ValueError:
                 return
+            remaining = max(0, total_val - current_done)
+            synthesized_this_run = max(0, current_done - done_start)
+            eta = ""
+            if remaining == 0:
+                eta = "0s"
+            elif synthesized_this_run > 0:
+                elapsed = max(0.0, time.monotonic() - progress_started_at)
+                eta = _format_eta((elapsed / synthesized_this_run) * remaining)
             self._emit_progress(
                 current_done,
                 total_val,
-                "",
+                eta,
                 0,
                 0,
                 0.0,
-                max(0, total_val - current_done),
+                remaining,
                 0,
                 0,
             )

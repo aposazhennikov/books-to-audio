@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from book_normalizer.gui.normalization_cache import (
+    CACHE_SCHEMA_VERSION,
     CachedNormalization,
     NormalizationCacheSettings,
     cache_path_for,
@@ -100,6 +101,19 @@ def test_normalization_cache_can_find_source_entry_ignoring_settings(tmp_path: P
 
     assert find_cached_normalization(source, _settings(book_language="en"), cache_root=cache_root) is None
     assert find_any_cached_normalization(source, cache_root=cache_root) == entry
+
+
+def test_normalization_cache_ignores_older_schema_entries(tmp_path: Path) -> None:
+    source = tmp_path / "book.txt"
+    source.write_text("source text", encoding="utf-8")
+    cache_root = tmp_path / "cache"
+    entry = save_cached_book(_book(), source, _settings(), cache_root=cache_root)
+    payload = json.loads(entry.path.read_text(encoding="utf-8"))
+    payload["schema_version"] = CACHE_SCHEMA_VERSION - 1
+    entry.path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert find_cached_normalization(source, _settings(), cache_root=cache_root) is None
+    assert find_any_cached_normalization(source, cache_root=cache_root) is None
 
 
 def test_normalization_cache_normalizes_llm_endpoint_suffix(tmp_path: Path) -> None:

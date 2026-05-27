@@ -49,6 +49,50 @@ _SCATTERED_CHARS = re.compile(
     r"\b([а-яёА-ЯЁa-zA-Z])\s+([а-яёА-ЯЁa-zA-Z])\s+([а-яёА-ЯЁa-zA-Z])\b"
 )
 
+_HYPHEN_PARTICLE_BASES = (
+    "откуда",
+    "почему",
+    "зачем",
+    "сколько",
+    "когда",
+    "какого",
+    "какому",
+    "какими",
+    "каких",
+    "каким",
+    "каком",
+    "какую",
+    "какая",
+    "какое",
+    "какие",
+    "какой",
+    "куда",
+    "кого",
+    "кому",
+    "кем",
+    "ком",
+    "кто",
+    "чего",
+    "чему",
+    "чем",
+    "чём",
+    "что",
+    "где",
+    "как",
+    "чей",
+    "чья",
+    "чье",
+    "чьё",
+    "чьи",
+)
+_HYPHEN_PARTICLE_RE = re.compile(
+    r"(?<![А-Яа-яЁё-])"
+    rf"(?P<base>{'|'.join(_HYPHEN_PARTICLE_BASES)})"
+    r"(?P<particle>нибудь|либо|то)"
+    r"(?![А-Яа-яЁё-])",
+    re.IGNORECASE,
+)
+
 
 def _transliterate(word: str) -> str:
     """Replace Latin lookalikes with Cyrillic equivalents."""
@@ -113,6 +157,12 @@ def _has_cyrillic_context(is_cyrillic: list[bool], idx: int) -> bool:
     return False
 
 
+def fix_russian_particle_hyphens(text: str) -> str:
+    """Restore hyphens in Russian pronoun/adverb particles lost by OCR."""
+
+    return _HYPHEN_PARTICLE_RE.sub(r"\g<base>-\g<particle>", text)
+
+
 _TRAILING_JUNK = re.compile(
     r"\s+[а-яёА-ЯЁa-zA-Z.,;:!?\-]{1,3}\s*$"
 )
@@ -143,6 +193,7 @@ def fix_ocr_artifacts(text: str) -> str:
     text = _STRAY_PUNCT_IN_CYR.sub("", text)
     text = _PERIOD_INSIDE_WORD.sub(" ", text)
     text = _LONE_GARBAGE.sub("", text)
+    text = fix_russian_particle_hyphens(text)
 
     # Rejoin words broken by hyphenation across lines.
     text = _BROKEN_HYPHEN.sub(r"\1\2", text)

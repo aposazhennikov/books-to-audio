@@ -11,7 +11,7 @@ from typing import Any
 
 from book_normalizer.models.book import Book
 
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 2
 CACHE_ROOT = Path("data") / "user_memory" / "normalization_cache"
 
 
@@ -74,13 +74,13 @@ def find_cached_normalization(
 ) -> CachedNormalization | None:
     """Return a cache entry for the source/settings pair when one exists."""
     path = cache_path_for(source_path, settings, cache_root=cache_root)
-    if not path.exists():
-        return _find_compatible_cached_normalization(
-            source_path,
-            settings,
-            cache_root=cache_root,
-        )
-    return CachedNormalization(key=path.stem, path=path)
+    if path.exists() and _cache_envelope_matches(path, path.stem):
+        return CachedNormalization(key=path.stem, path=path)
+    return _find_compatible_cached_normalization(
+        source_path,
+        settings,
+        cache_root=cache_root,
+    )
 
 
 def find_any_cached_normalization(
@@ -188,6 +188,17 @@ def _file_sha1(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _cache_envelope_matches(path: Path, expected_key: str) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return (
+        payload.get("schema_version") == CACHE_SCHEMA_VERSION
+        and payload.get("cache_key") == expected_key
+    )
 
 
 def _find_compatible_cached_normalization(

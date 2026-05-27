@@ -35,7 +35,10 @@ from book_normalizer.gui.i18n import t, voice_category_label, voice_preset_label
 from book_normalizer.gui.ui_scaler import apply_combo_content_width
 from book_normalizer.gui.voice_presets import VOICE_PRESETS
 from book_normalizer.tts.voice_library import default_voice_library_dir, list_saved_voices
-from book_normalizer.tts.voice_mapping import segment_speaker
+from book_normalizer.tts.voice_mapping import (
+    auto_builtin_voice_id_for_segment,
+    segment_speaker,
+)
 
 INTONATION_KEYS = [
     "neutral", "calm", "excited", "joyful", "sad", "angry", "whisper",
@@ -1722,10 +1725,8 @@ class VoiceTableWidget(QWidget):
 
     def _auto_detect(self) -> None:
         """Re-run heuristic voice mapping based on detected roles."""
-        from book_normalizer.gui.voice_presets import LEGACY_VOICE_MAP
         for table_row, _segment_index, seg in self._iter_visible_table_rows():
-            role = seg.get("role", "narrator")
-            target = LEGACY_VOICE_MAP.get(role, "narrator_calm")
+            target = auto_builtin_voice_id_for_segment(seg)
             self._apply_voice_to_segment(_segment_index, target)
             self._refresh_row_display_items(table_row, seg)
             combo = self._table.cellWidget(table_row, 5)

@@ -240,6 +240,102 @@ def test_llm_voice_segmenter_restores_source_dialogue_dash_from_model_boundaries
     assert fake.calls == [PRIMARY_QWEN3_MODEL]
 
 
+def test_llm_voice_segmenter_moves_orphan_quote_and_splits_author_tag() -> None:
+    text = (
+        "И тут, когда дева моей мечты была уже почти готова, вновь появился злой бог Сет. "
+        "«Что-то сдохло?» - спросил потянув носом воздух. "
+        "Но увидев сию деву, бог явственно вздрогнул."
+    )
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {
+                    "role": "narrator",
+                    "text": "И тут, когда дева моей мечты была уже почти готова, вновь появился злой бог Сет. «",
+                    "intonation": "calm",
+                },
+                {
+                    "role": "male",
+                    "section_kind": "dialogue",
+                    "text": "Что-то сдохло?» - спросил потянув носом воздух.",
+                    "intonation": "tense",
+                },
+                {
+                    "role": "male",
+                    "section_kind": "dialogue",
+                    "text": "Но увидев сию деву, бог явственно вздрогнул.",
+                    "intonation": "tense",
+                },
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="ru"))
+
+    assert [row["text"] for row in rows] == [
+        "И тут, когда дева моей мечты была уже почти готова, вновь появился злой бог Сет.",
+        "«Что-то сдохло?»",
+        "- спросил потянув носом воздух.",
+        "Но увидев сию деву, бог явственно вздрогнул.",
+    ]
+    assert [row["role"] for row in rows] == ["narrator", "male", "narrator", "narrator"]
+    assert rows[1]["speaker"] == ""
+    assert [row["voice_id"] for row in rows] == [
+        "narrator_calm",
+        "male_young",
+        "narrator_calm",
+        "narrator_calm",
+    ]
+    assert [row["section_kind"] for row in rows] == [
+        "narration",
+        "dialogue",
+        "narration",
+        "narration",
+    ]
+
+
+def test_llm_voice_segmenter_splits_dash_dialogue_from_author_tags() -> None:
+    text = "- Что это? - спросил он, наконец, дрогнувшим голосом. - Моя невеста, - гордо ответил я."
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {
+                    "role": "male",
+                    "section_kind": "dialogue",
+                    "text": "- Что это? - спросил он, наконец, дрогнувшим голосом. -",
+                    "intonation": "tense",
+                },
+                {
+                    "role": "male",
+                    "section_kind": "dialogue",
+                    "text": "Моя невеста, - гордо ответил я.",
+                    "intonation": "calm",
+                },
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="ru"))
+
+    assert [row["text"] for row in rows] == [
+        "- Что это?",
+        "- спросил он, наконец, дрогнувшим голосом.",
+        "- Моя невеста,",
+        "- гордо ответил я.",
+    ]
+    assert [row["role"] for row in rows] == ["male", "narrator", "male", "narrator"]
+    assert [row["section_kind"] for row in rows] == [
+        "dialogue",
+        "narration",
+        "dialogue",
+        "narration",
+    ]
+
+
 def test_llm_voice_segmenter_keeps_character_metadata_for_roles() -> None:
     text = "Маргарита сказала: «Я вернулась»."
     segmenter = LlmVoiceSegmenter(language="ru")

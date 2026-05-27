@@ -13,6 +13,7 @@ from book_normalizer.gui.pages.synthesis_page import (
     _update_manifest_chunk_text,
 )
 from book_normalizer.gui.widgets.voice_table import VoiceTableWidget
+from book_normalizer.tts.voice_mapping import auto_builtin_voice_id_for_segment
 
 
 def _app():
@@ -74,6 +75,50 @@ def test_voice_table_full_text_editor_rebuilds_segments() -> None:
     assert [segment["text"] for segment in segments] == ["One.", "Two.", "Three."]
     assert segments[2]["voice_id"] == "male_young"
     assert [segment["segment_index"] for segment in segments] == [0, 1, 2]
+
+
+def test_voice_table_auto_detect_uses_character_specific_presets() -> None:
+    app = _app()
+    _ = app
+    table = VoiceTableWidget()
+    table.set_segments([
+        {
+            "segment_index": 0,
+            "chapter_index": 0,
+            "role": "male",
+            "speaker": "Drovosek",
+            "voice_id": "male_young",
+            "intonation": "calm",
+            "text": "First.",
+        },
+        {
+            "segment_index": 1,
+            "chapter_index": 0,
+            "role": "male",
+            "speaker": "Voin",
+            "voice_id": "male_young",
+            "intonation": "calm",
+            "text": "Second.",
+        },
+        {
+            "segment_index": 2,
+            "chapter_index": 0,
+            "role": "female",
+            "speaker": "Pandora",
+            "voice_id": "female_warm",
+            "intonation": "calm",
+            "text": "Third.",
+        },
+    ])
+
+    table._auto_detect()
+
+    segments = table.get_segments()
+    assert [segment["voice_id"] for segment in segments] == [
+        auto_builtin_voice_id_for_segment(segment)
+        for segment in segments
+    ]
+    assert len({segment["voice_id"] for segment in segments[:2]}) > 1
 
 
 def test_manifest_chunk_editor_helpers_update_split_and_merge() -> None:

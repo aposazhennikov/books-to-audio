@@ -68,13 +68,12 @@ def _language_preview_dir(base_dir: Path, language: str) -> Path:
 
 
 def _preview_wav_path(base_dir: Path, voice_id: str, language: str) -> Path:
-    """Return preview WAV path, preserving legacy Russian previews in root."""
+    """Return the best preview WAV path for a voice and UI language."""
     lang = normalize_book_language(language)
     path = _language_preview_dir(base_dir, lang) / f"{voice_id}.wav"
-    if lang == "ru":
-        legacy_path = base_dir / f"{voice_id}.wav"
-        if legacy_path.exists() and not path.exists():
-            return legacy_path
+    legacy_path = base_dir / f"{voice_id}.wav"
+    if legacy_path.exists() and not path.exists():
+        return legacy_path
     return path
 
 

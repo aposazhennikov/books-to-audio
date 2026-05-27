@@ -83,6 +83,28 @@ def _install_fake_tts_modules(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     return captured
 
 
+def test_voice_preview_path_falls_back_to_bundled_root_for_any_language(tmp_path: Path) -> None:
+    preview_dir = tmp_path / "voice_previews"
+    preview_dir.mkdir()
+    bundled = preview_dir / "narrator_calm.wav"
+    bundled.write_bytes(b"root-preview")
+
+    assert voice_preview._preview_wav_path(preview_dir, "narrator_calm", "zh") == bundled
+    assert voice_preview._preview_wav_path(preview_dir, "narrator_calm", "kk") == bundled
+
+
+def test_voice_preview_path_prefers_generated_language_sample(tmp_path: Path) -> None:
+    preview_dir = tmp_path / "voice_previews"
+    zh_dir = preview_dir / "zh"
+    zh_dir.mkdir(parents=True)
+    bundled = preview_dir / "narrator_calm.wav"
+    generated = zh_dir / "narrator_calm.wav"
+    bundled.write_bytes(b"root-preview")
+    generated.write_bytes(b"zh-preview")
+
+    assert voice_preview._preview_wav_path(preview_dir, "narrator_calm", "zh") == generated
+
+
 def test_voice_preview_worker_generates_inside_app_process(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

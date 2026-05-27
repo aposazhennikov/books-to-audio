@@ -37,6 +37,35 @@ def _write_manifest(path: Path) -> Path:
     return path
 
 
+def _write_manifest_chunks(path: Path, *, total: int, synthesized: int = 0) -> Path:
+    chunks = []
+    for index in range(total):
+        audio_path = path.parent / f"chunk_{index + 1:03d}.wav"
+        is_done = index < synthesized
+        if is_done:
+            audio_path.write_bytes(b"RIFF$\x00\x00\x00WAVEfmt ")
+        chunks.append(
+            {
+                "chapter_index": 0,
+                "chunk_index": index,
+                "voice_label": "narrator",
+                "text": f"Chunk {index + 1}.",
+                "synthesized": is_done,
+                "audio_file": str(audio_path) if is_done else "",
+            }
+        )
+    path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "chapters": [{"chapter_index": 0, "chunks": chunks}],
+            },
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_synthesis_controller_autostarts_comfyui_before_failing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -94,3 +123,51 @@ def test_synthesis_controller_autostarts_comfyui_before_failing(
     assert result.synthesized == 1
     assert any("trying to start" in line for line in logs)
     assert "ComfyUI started" in logs
+
+
+def test_synthesis_controller_estimates_eta_from_progress_lines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = _write_manifest_chunks(
+        tmp_path / "chunks_manifest_v2.json",
+        total=5,
+        synthesized=2,
+    )
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text("{}", encoding="utf-8")
+
+    class _Client:
+        def __init__(self, base_url: str) -> None:
+            self.base_url = base_url
+
+        def is_reachable(self) -> bool:
+            return True
+
+    class _Builder:
+        def __init__(self, path: Path) -> None:
+            self.path = path
+
+    def fake_synthesize_manifest(**kwargs) -> SynthesisSummary:  # noqa: ANN003
+        kwargs["progress"]("PROGRESS 3/5")
+        return SynthesisSummary(total=5, synthesized=1, skipped=2, failed=0)
+
+    times = iter([100.0, 130.0])
+    monkeypatch.setattr(synthesis_controller.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(synthesis_controller, "ComfyUIClient", _Client)
+    monkeypatch.setattr(synthesis_controller, "WorkflowBuilder", _Builder)
+    monkeypatch.setattr(synthesis_controller, "synthesize_manifest", fake_synthesize_manifest)
+
+    progress: list[tuple[int, int, str, int, int, float, int, int, int]] = []
+    SynthesisController(
+        SynthesisRequest(
+            manifest_path=manifest_path,
+            output_dir=tmp_path / "out",
+            workflow_path=workflow_path,
+            comfyui_url="http://localhost:8188",
+        ),
+        progress=lambda *args: progress.append(args),
+    ).run()
+
+    assert progress[0] == (3, 5, "1m 00s", 0, 0, 0.0, 2, 0, 0)
+    assert progress[-1] == (5, 5, "0s", 0, 0, 0.0, 0, 0, 0)

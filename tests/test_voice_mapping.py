@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+from book_normalizer.tts.voice_mapping import (
+    AUTO_BUILTIN_VOICES_BY_ROLE,
+    apply_auto_builtin_voice_ids,
+    auto_builtin_voice_id_for_segment,
+)
+
+
+def test_auto_builtin_voice_mapping_spreads_named_male_characters() -> None:
+    names = ["Drovosek", "Golem", "Lev", "Voin", "Set", "Otec"]
+    voice_ids = [
+        auto_builtin_voice_id_for_segment({"role": "male", "speaker": name})
+        for name in names
+    ]
+
+    assert len(set(voice_ids)) > 1
+    assert set(voice_ids) <= set(AUTO_BUILTIN_VOICES_BY_ROLE["male"])
+    assert auto_builtin_voice_id_for_segment({"role": "male", "speaker": "Set"}) == (
+        auto_builtin_voice_id_for_segment({"role": "male", "speaker": "Set"})
+    )
+
+
+def test_auto_builtin_voice_mapping_spreads_named_female_characters() -> None:
+    names = ["Pandora", "Woman", "Margarita", "Anna", "Alice"]
+    voice_ids = [
+        auto_builtin_voice_id_for_segment({"role": "female", "speaker": name})
+        for name in names
+    ]
+
+    assert len(set(voice_ids)) > 1
+    assert set(voice_ids) <= set(AUTO_BUILTIN_VOICES_BY_ROLE["female"])
+
+
+def test_auto_builtin_voice_mapping_uses_emotion_for_unnamed_dialogue() -> None:
+    assert auto_builtin_voice_id_for_segment({"role": "male", "emotion": "tense"}) == (
+        "male_confident"
+    )
+    assert auto_builtin_voice_id_for_segment({"role": "female", "emotion": "whisper"}) == (
+        "female_gentle"
+    )
+    assert auto_builtin_voice_id_for_segment({"role": "narrator"}) == "narrator_calm"
+
+
+def test_apply_auto_builtin_voice_ids_mutates_segments() -> None:
+    segments = [
+        {"role": "male", "speaker": "Drovosek", "voice_id": "male_young"},
+        {"role": "female", "speaker": "Pandora", "voice_id": "female_warm"},
+    ]
+
+    apply_auto_builtin_voice_ids(segments)
+
+    assert segments[0]["voice_id"] == auto_builtin_voice_id_for_segment(segments[0])
+    assert segments[1]["voice_id"] == auto_builtin_voice_id_for_segment(segments[1])

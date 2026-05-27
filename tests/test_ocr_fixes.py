@@ -2,7 +2,11 @@
 
 import pytest
 
-from book_normalizer.normalization.ocr_fixes import fix_mixed_script
+from book_normalizer.normalization.ocr_fixes import (
+    fix_mixed_script,
+    fix_ocr_artifacts,
+    fix_russian_particle_hyphens,
+)
 
 
 @pytest.mark.parametrize(
@@ -36,3 +40,29 @@ def test_mixed_in_context() -> None:
     result = fix_mixed_script("Он вышел Ha улицу и сказал: «Hет!»")
     assert "На" in result
     assert "Нет" in result
+
+
+def test_russian_particle_hyphens_restored() -> None:
+    text = "Он умолял вывести их из пустыни хоть куданибудь."
+    assert fix_russian_particle_hyphens(text) == (
+        "Он умолял вывести их из пустыни хоть куда-нибудь."
+    )
+
+
+def test_russian_particle_hyphen_fix_handles_common_pronouns() -> None:
+    text = "ктото, чтолибо, гденибудь, какойто, откудато"
+    assert fix_russian_particle_hyphens(text) == (
+        "кто-то, что-либо, где-нибудь, какой-то, откуда-то"
+    )
+
+
+def test_russian_particle_hyphen_fix_does_not_touch_ordinary_words() -> None:
+    text = "Это зато работает без лишних правок."
+    assert fix_russian_particle_hyphens(text) == text
+
+
+def test_ocr_artifacts_restore_russian_particle_hyphens() -> None:
+    text = "Он умолял вывести их из пустыни хоть куданибудь."
+    assert fix_ocr_artifacts(text) == (
+        "Он умолял вывести их из пустыни хоть куда-нибудь."
+    )

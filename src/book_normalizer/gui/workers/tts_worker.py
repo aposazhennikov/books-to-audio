@@ -60,6 +60,7 @@ class ExportSegmentsWorker(QThread):
             from book_normalizer.dialogue.attribution import SpeakerMode, create_attributor
             from book_normalizer.dialogue.detector import DialogueDetector
             from book_normalizer.stress.rendering import render_annotated_chapters_for_tts
+            from book_normalizer.tts.voice_mapping import apply_auto_builtin_voice_ids
 
             metadata = getattr(self._book, "metadata", None)
             language = normalize_book_language(getattr(metadata, "language", "ru"))
@@ -122,6 +123,8 @@ class ExportSegmentsWorker(QThread):
                     }
                     for segment in extract_segments_book(annotated)
                 ]
+
+            apply_auto_builtin_voice_ids(manifest)
 
             self._output_dir.mkdir(parents=True, exist_ok=True)
             manifest_path = self._output_dir / "segments_manifest.json"

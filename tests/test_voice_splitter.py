@@ -291,3 +291,76 @@ class TestBuildChunksFromSegments:
         assert len(chunks) == 2
         assert chunks[0]["pause_after_ms"] == DEFAULT_PARAGRAPH_PAUSE_MS
         assert chunks[0]["boundary_after"] == "paragraph"
+
+    def test_build_chunks_repairs_stale_llm_dialogue_boundaries(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "language": "ru",
+                "voice_id": "narrator_calm",
+                "role": "narrator",
+                "section_kind": "narration",
+                "intonation": "calm",
+                "text": "И тут вновь появился злой бог Сет. «",
+            },
+            {
+                "chapter_index": 0,
+                "language": "ru",
+                "voice_id": "male_young",
+                "role": "male",
+                "section_kind": "dialogue",
+                "intonation": "tense",
+                "text": "Что-то сдохло?» - спросил потянув носом воздух.",
+            },
+            {
+                "chapter_index": 0,
+                "language": "ru",
+                "voice_id": "male_young",
+                "role": "male",
+                "section_kind": "dialogue",
+                "intonation": "tense",
+                "text": "Но увидев сию деву, бог явственно вздрогнул.",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments)
+
+        assert [chunk["text"] for chunk in chunks] == [
+            "И тут вновь появился злой бог Сет.",
+            "«Что-то сдохло?»",
+            "- спросил потянув носом воздух.",
+            "Но увидев сию деву, бог явственно вздрогнул.",
+        ]
+        assert [chunk["voice_id"] for chunk in chunks] == [
+            "narrator_calm",
+            "male_confident",
+            "narrator_calm",
+            "narrator_calm",
+        ]
+
+    def test_build_chunks_refreshes_default_character_voice_ids(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "voice_id": "male_young",
+                "role": "male",
+                "speaker": "Drovosek",
+                "intonation": "calm",
+                "text": "First line.",
+            },
+            {
+                "chapter_index": 0,
+                "voice_id": "male_young",
+                "role": "male",
+                "speaker": "Voin",
+                "intonation": "calm",
+                "text": "Second line.",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments)
+
+        assert [chunk["voice_id"] for chunk in chunks] == [
+            "male_confident",
+            "male_young",
+        ]

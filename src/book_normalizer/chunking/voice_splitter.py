@@ -154,6 +154,17 @@ def build_chunks_from_segments(
     if not segments:
         return []
 
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    language = next(
+        (str(seg.get("language") or "").strip() for seg in segments if seg.get("language")),
+        "ru",
+    )
+    segments = repair_segment_dialogue_boundaries(
+        [dict(seg) for seg in segments],
+        language=language,
+    )
+
     chunks: list[dict[str, Any]] = []
     chunk_indices: dict[int, int] = {}
 

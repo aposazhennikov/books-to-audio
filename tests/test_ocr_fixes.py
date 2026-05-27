@@ -7,6 +7,7 @@ from book_normalizer.normalization.ocr_fixes import (
     fix_ocr_artifacts,
     fix_russian_particle_hyphens,
 )
+from book_normalizer.normalization.pipeline import NormalizationPipeline
 
 
 @pytest.mark.parametrize(
@@ -72,4 +73,11 @@ def test_ocr_artifacts_restore_russian_particle_hyphens() -> None:
     text = "Он умолял вывести их из пустыни хоть куданибудь."
     assert fix_ocr_artifacts(text) == (
         "Он умолял вывести их из пустыни хоть куда-нибудь."
+    )
+
+
+def test_pipeline_restores_particle_hyphen_after_line_hyphen_repair() -> None:
+    text = "А мы-\nто, идиоты, эксцентриситет высчитывали."
+    assert NormalizationPipeline.for_language("ru").normalize_text(text) == (
+        "А мы-то, идиоты, эксцентриситет высчитывали."
     )

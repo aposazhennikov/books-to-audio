@@ -17,7 +17,11 @@ from book_normalizer.normalization.cleanup import (
 )
 from book_normalizer.normalization.encoding import fix_common_mojibake, normalize_encoding_artifacts
 from book_normalizer.normalization.numbers import expand_numbers
-from book_normalizer.normalization.ocr_fixes import fix_mixed_script, fix_ocr_artifacts
+from book_normalizer.normalization.ocr_fixes import (
+    fix_mixed_script,
+    fix_ocr_artifacts,
+    fix_russian_particle_hyphens,
+)
 from book_normalizer.normalization.paragraphs import collapse_empty_lines, strip_paragraph_indents
 from book_normalizer.normalization.punctuation import (
     adapt_punctuation_for_tts,
@@ -44,6 +48,7 @@ DEFAULT_STAGES: list[tuple[str, TextTransform]] = [
     ("fix_ocr_artifacts", fix_ocr_artifacts),
     ("normalize_whitespace", normalize_whitespace),
     ("repair_hyphenated_words", repair_hyphenated_words),
+    ("fix_russian_particle_hyphens", fix_russian_particle_hyphens),
     ("repair_broken_lines", repair_broken_lines),
     ("remove_page_numbers", remove_page_numbers),
     ("remove_publisher_boilerplate", remove_publisher_boilerplate),

@@ -156,8 +156,9 @@ def apply_widget_scale_metrics(root: QWidget, scale: float) -> None:
         if isinstance(widget, QPushButton):
             if widget.property("compactActionButton"):
                 target = max(
-                    round(28 * scale),
-                    widget.fontMetrics().height() + round(4 * scale),
+                    round(34 * scale),
+                    widget.sizeHint().height(),
+                    widget.fontMetrics().height() + round(14 * scale),
                 )
                 widget.setMinimumHeight(target)
                 widget.setMaximumHeight(target)

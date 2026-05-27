@@ -10,6 +10,7 @@ from typing import Any
 from book_normalizer.chunking.manifest_v2 import flatten_manifest, load_manifest
 from book_normalizer.comfyui.client import ComfyUIClient
 from book_normalizer.comfyui.generation_options import GenerationOptions
+from book_normalizer.comfyui.server import ComfyUIStartError, ensure_local_comfyui
 from book_normalizer.comfyui.synthesis import (
     collect_pending_chunks,
     count_done_chunks,
@@ -61,6 +62,8 @@ class SynthesisRequest:
     asr_device: str = "auto"
     asr_timeout_seconds: float = 180.0
     max_resynthesis_attempts: int = 2
+    auto_start_comfyui: bool = True
+    comfyui_start_wait_seconds: float = 300.0
 
 
 @dataclass(frozen=True)
@@ -104,6 +107,8 @@ class SynthesisController:
 
         self._emit_status("__loading__")
         client = ComfyUIClient(request.comfyui_url)
+        if not client.is_reachable():
+            self._try_start_comfyui()
         if not client.is_reachable():
             raise ConnectionError(f"ComfyUI server not reachable at {request.comfyui_url}")
         self._emit_log(f"ComfyUI: connected to {request.comfyui_url}")
@@ -202,6 +207,24 @@ class SynthesisController:
             skipped=skipped,
         )
 
+    def _try_start_comfyui(self) -> None:
+        """Start local ComfyUI when the request allows it and the API is down."""
+        request = self._request
+        if not request.auto_start_comfyui:
+            return
+
+        self._emit_log(f"ComfyUI: {request.comfyui_url} is not reachable; trying to start local portable server...")
+        try:
+            result = ensure_local_comfyui(
+                request.comfyui_url,
+                wait_seconds=request.comfyui_start_wait_seconds,
+            )
+        except ComfyUIStartError as exc:
+            raise ConnectionError(
+                f"ComfyUI server not reachable at {request.comfyui_url}; auto-start failed: {exc}"
+            ) from exc
+        self._emit_log(result.message)
+
     def _run_quality_gates(self, manifest: dict[str, Any], request: SynthesisRequest) -> None:
         """Run configured post-synthesis QA gates and update the manifest."""
         if request.artifact_qa or request.quality_loop:
@@ -286,4 +309,3 @@ class SynthesisController:
     def _emit_log(self, line: str) -> None:
         if self._log:
             self._log(line)
-

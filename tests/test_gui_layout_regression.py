@@ -366,18 +366,35 @@ def test_chunk_editor_action_buttons_are_not_clipped() -> None:
 
     table = window._voices_page._voice_table
     assert table._editor_tabs.isVisible()
-    for button in (
-        table._btn_segment_split,
-        table._btn_segment_merge,
-        table._btn_segment_delete_empty,
-        table._btn_segment_delete,
-        table._btn_segment_restore,
-    ):
-        parent = button.parentWidget()
-        assert parent is not None
-        assert button.geometry().bottom() <= parent.rect().bottom()
-        bottom_in_window = button.mapTo(window, button.rect().bottomLeft()).y()
-        assert bottom_in_window <= window.rect().bottom()
+    tab_buttons = (
+        (
+            0,
+            (
+                table._btn_segment_split,
+                table._btn_segment_merge,
+                table._btn_segment_delete_empty,
+                table._btn_segment_delete,
+                table._btn_segment_restore,
+            ),
+        ),
+        (
+            1,
+            (
+                table._btn_full_refresh,
+                table._btn_full_apply,
+            ),
+        ),
+    )
+    for tab_index, buttons in tab_buttons:
+        table._editor_tabs.setCurrentIndex(tab_index)
+        render_widget(window, 1180, 760, scale=1.0)
+        for button in buttons:
+            assert button.height() >= button.sizeHint().height(), button.text()
+            parent = button.parentWidget()
+            assert parent is not None
+            assert button.geometry().bottom() <= parent.rect().bottom()
+            bottom_in_window = button.mapTo(window, button.rect().bottomLeft()).y()
+            assert bottom_in_window <= window.rect().bottom()
 
     window.close()
     window.deleteLater()

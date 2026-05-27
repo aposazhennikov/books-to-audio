@@ -420,7 +420,6 @@ class VoiceTableWidget(QWidget):
             self._btn_segment_restore,
         ):
             button.setProperty("compactActionButton", True)
-            button.setFixedHeight(28)
         actions.addStretch()
         outer.addLayout(actions)
         return panel
@@ -471,7 +470,6 @@ class VoiceTableWidget(QWidget):
         actions.addWidget(self._btn_full_apply)
         for button in (self._btn_full_refresh, self._btn_full_apply):
             button.setProperty("compactActionButton", True)
-            button.setFixedHeight(28)
         actions.addStretch()
         outer.addLayout(actions)
         return panel
@@ -512,6 +510,7 @@ class VoiceTableWidget(QWidget):
         self._btn_full_refresh.setText(t("voice.editor_refresh_full"))
         self._btn_full_apply.setText(t("voice.editor_apply_full"))
         self._apply_toolbar_labels()
+        self._sync_editor_action_button_metrics()
         self._update_segment_char_count()
         self._update_full_char_count()
         if self._segments:
@@ -626,6 +625,7 @@ class VoiceTableWidget(QWidget):
         self._editor_tabs.setMinimumHeight(
             max(148, min(190, round(150 * self._ui_scale))),
         )
+        self._sync_editor_action_button_metrics()
         self._apply_table_layout()
         self._sync_splitter_layout()
 
@@ -661,6 +661,7 @@ class VoiceTableWidget(QWidget):
             self._btn_segment_delete_empty.setText(t("voice.editor_delete_empty"))
             self._btn_segment_delete.setText(t("voice.editor_delete"))
             self._btn_segment_restore.setText(t("voice.editor_restore"))
+            self._sync_editor_action_button_metrics()
             return
 
         self._btn_all_narrator.setText(t("voice.compact_narrator"))
@@ -675,6 +676,23 @@ class VoiceTableWidget(QWidget):
         self._btn_segment_delete_empty.setText(t("voice.compact_empty"))
         self._btn_segment_delete.setText(t("voice.compact_delete"))
         self._btn_segment_restore.setText(t("voice.compact_restore"))
+        self._sync_editor_action_button_metrics()
+
+    def _sync_editor_action_button_metrics(self) -> None:
+        """Keep editor action buttons tall enough for styled text."""
+        buttons = (
+            self._btn_segment_split,
+            self._btn_segment_merge,
+            self._btn_segment_delete_empty,
+            self._btn_segment_delete,
+            self._btn_segment_restore,
+            self._btn_full_refresh,
+            self._btn_full_apply,
+        )
+        for button in buttons:
+            target = max(round(34 * self._ui_scale), button.sizeHint().height())
+            button.setMinimumHeight(target)
+            button.setMaximumHeight(target)
 
     def _apply_table_layout(self) -> None:
         """Apply column visibility and widget widths for the current mode."""

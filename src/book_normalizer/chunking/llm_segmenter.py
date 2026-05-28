@@ -125,6 +125,7 @@ _RU_MALE_ATTRIBUTION = (
     "проронил",
     "добавил",
     "продолжил",
+    "продолжал",
     "заметил",
     "подтвердил",
     "возразил",
@@ -173,6 +174,7 @@ _RU_FEMALE_ATTRIBUTION = (
     "проронила",
     "добавила",
     "продолжила",
+    "продолжала",
     "заметила",
     "подтвердила",
     "возразила",
@@ -1482,6 +1484,7 @@ def repair_segment_dialogue_boundaries(
     from book_normalizer.tts.voice_mapping import auto_builtin_voice_id_for_segment
 
     recent_dialogue_speakers: list[tuple[str, str]] = []
+    pending_continuation_speaker: tuple[str, str] | None = None
     repaired_segments = _split_mixed_dialogue_segments(
         _repair_dialogue_segment_boundaries(segments),
         language=language,
@@ -1498,6 +1501,20 @@ def repair_segment_dialogue_boundaries(
             or row.get("role_description")
             or row.get("description")
         )
+        if (
+            pending_continuation_speaker is not None
+            and section_kind == "dialogue"
+            and not speaker
+            and role in {"unknown", "narrator"}
+        ):
+            pending_speaker, pending_role = pending_continuation_speaker
+            speaker = pending_speaker
+            if pending_role in {"male", "female"}:
+                role = pending_role
+            if speaker and not character_description:
+                character_description = (
+                    "Direct-speech character inferred from adjacent author tag."
+                )
         role, speaker, section_kind, character_description = _repair_dialogue_metadata(
             role=role,
             speaker=speaker,
@@ -1521,6 +1538,15 @@ def repair_segment_dialogue_boundaries(
                 speaker=speaker,
                 role=role,
             )
+            pending_continuation_speaker = None
+        elif section_kind == "narration":
+            pending_continuation_speaker = _narration_continuation_speaker(
+                str(row.get("text") or ""),
+                language=language,
+                recent_dialogue_speakers=recent_dialogue_speakers,
+            )
+        else:
+            pending_continuation_speaker = None
         row["role"] = role
         row["speaker"] = speaker
         row["section_kind"] = section_kind
@@ -1764,9 +1790,10 @@ def _clean_ru_speaker(value: str) -> str:
         return ""
     if not re.fullmatch(_RU_SPEAKER_TOKEN, speaker):
         return ""
-    if is_definitely_not_person_reference(speaker):
+    speaker_gender = infer_person_gender(speaker)
+    if is_definitely_not_person_reference(speaker) and not speaker_gender:
         return ""
-    if speaker[0].islower() and not infer_person_gender(speaker):
+    if speaker[0].islower() and not speaker_gender:
         return ""
     if speaker[0].islower():
         speaker = speaker[0].upper() + speaker[1:]
@@ -1830,6 +1857,26 @@ def _alternate_dialogue_speaker(
                 continue
             return speaker, speaker_role
     return "", ""
+
+
+def _narration_continuation_speaker(
+    text: str,
+    *,
+    language: str,
+    recent_dialogue_speakers: list[tuple[str, str]],
+) -> tuple[str, str] | None:
+    """Infer who keeps speaking after an adjacent author tag."""
+
+    if normalize_book_language(language) != "ru":
+        return None
+    if not recent_dialogue_speakers or not _contains_ru_attribution_word(text):
+        return None
+    speaker, role = _infer_ru_dialogue_speaker(text)
+    if speaker:
+        return speaker, role if role in {"male", "female"} else infer_person_gender(speaker)
+    if _dash_starts_narrator_tag(text, "ru"):
+        return recent_dialogue_speakers[-1]
+    return None
 
 
 def _remember_dialogue_speaker(

@@ -79,9 +79,13 @@ def infer_person_gender(word: str) -> str:
             return "male"
         if "femn" in tag:
             return "female"
+        if cleaned[:1].isupper() and "ms-f" in tag:
+            return "male"
     if _looks_like_capitalized_inflected_male_name(cleaned, parses):
         return "male"
     if _looks_like_capitalized_male_name(cleaned, parses):
+        return "male"
+    if _looks_like_capitalized_foreign_male_name(cleaned, parses):
         return "male"
     return ""
 
@@ -91,6 +95,8 @@ def is_definitely_not_person_reference(word: str) -> bool:
 
     cleaned = str(word or "").strip().split()[0] if str(word or "").strip() else ""
     if not cleaned:
+        return False
+    if infer_person_gender(cleaned):
         return False
     parses = parse_word(cleaned)
     if not parses:
@@ -119,7 +125,9 @@ def is_definitely_not_person_reference(word: str) -> bool:
     if first_pos == "VERB":
         return True
     first_score = float(getattr(parses[0], "score", 0.0))
-    return bool(first_pos == "NOUN" and "inan" in first_tag and first_score >= 0.58)
+    if first_pos == "NOUN" and "inan" in first_tag and first_score >= 0.58:
+        return True
+    return bool(_all_top_parses_are_inanimate_nouns(parses))
 
 
 def _has_person_name_parse(parses: list[Any]) -> bool:
@@ -163,8 +171,72 @@ def _looks_like_capitalized_male_name(word: str, parses: list[Any]) -> bool:
     first_score = float(getattr(parses[0], "score", 0.0)) if parses else 0.0
     if first_tag is not None:
         first_pos = getattr(first_tag, "POS", None)
-        if first_pos in {"INFN", "GRND", "ADVB", "CONJ", "PRCL", "PREP"}:
+        if first_pos in {
+            "NPRO",
+            "ADJF",
+            "ADJS",
+            "PRTF",
+            "PRTS",
+            "INFN",
+            "GRND",
+            "ADVB",
+            "CONJ",
+            "PRCL",
+            "PREP",
+        }:
             return False
         if first_pos == "NOUN" and "inan" in first_tag and first_score >= 0.58:
             return False
     return True
+
+
+def _looks_like_capitalized_foreign_male_name(word: str, parses: list[Any]) -> bool:
+    """Return true for proper-looking foreign masculine names ending in о/и."""
+
+    if not word[:1].isupper() or not word.replace("-", "").isalpha():
+        return False
+    lowered = word.casefold()
+    if lowered.endswith(("ие", "ия", "ние")) or not lowered.endswith(("о", "и")):
+        return False
+    if any("femn" in getattr(parse, "tag", "") for parse in parses[:5]):
+        return False
+    first_tag = getattr(parses[0], "tag", None) if parses else None
+    first_score = float(getattr(parses[0], "score", 0.0)) if parses else 0.0
+    if first_tag is not None:
+        first_pos = getattr(first_tag, "POS", None)
+        if first_pos in {
+            "NPRO",
+            "ADJF",
+            "ADJS",
+            "PRTF",
+            "PRTS",
+            "INFN",
+            "GRND",
+            "ADVB",
+            "CONJ",
+            "PRCL",
+            "PREP",
+        }:
+            return False
+        if first_pos == "NOUN" and "inan" in first_tag and first_score >= 0.58:
+            return False
+    return True
+
+
+def _all_top_parses_are_inanimate_nouns(parses: list[Any]) -> bool:
+    if not parses:
+        return False
+    checked = 0
+    for parse in parses[:5]:
+        tag = getattr(parse, "tag", None)
+        if tag is None:
+            continue
+        pos = getattr(tag, "POS", None)
+        if pos != "NOUN":
+            continue
+        checked += 1
+        if "anim" in tag or "Name" in tag or "Surn" in tag:
+            return False
+        if "inan" not in tag:
+            return False
+    return checked > 0

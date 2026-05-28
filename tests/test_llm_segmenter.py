@@ -1173,6 +1173,73 @@ def test_repaired_dialogue_refreshes_voice_when_speaker_role_conflicts() -> None
     assert repaired[0]["voice_id"].startswith("female_")
 
 
+def test_repaired_dialogue_continues_previous_speaker_after_author_tag() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "male",
+            "voice_id": "male_young",
+            "speaker": "Сосед",
+            "section_kind": "dialogue",
+            "text": "- Знаешь,",
+            "intonation": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 1,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "- сказало чучело шагов через двадцать,",
+            "intonation": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 2,
+            "language": "ru",
+            "role": "unknown",
+            "voice_id": "narrator_calm",
+            "section_kind": "dialogue",
+            "text": "- давай подпишем с тобой договор.",
+            "intonation": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[2]["speaker"] == "Сосед"
+    assert repaired[2]["role"] == "male"
+    assert repaired[2]["voice_id"].startswith("male_")
+
+
+def test_repaired_dialogue_infers_speaker_from_imperfective_author_tag() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "unknown",
+            "voice_id": "narrator_calm",
+            "section_kind": "dialogue",
+            "text": "И говорит, - не прерывая повествования продолжал Лев, не выдай,",
+            "intonation": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[0]["speaker"] == "Лев"
+    assert repaired[0]["role"] == "male"
+    assert repaired[0]["voice_id"].startswith("male_")
+
+
 def test_ru_speaker_filter_rejects_lowercase_non_person_candidates() -> None:
     from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
 
@@ -1248,6 +1315,34 @@ def test_ru_speaker_filter_rejects_capitalized_non_person_candidates() -> None:
     assert dialogue[0]["speaker"] == ""
     assert dialogue[1]["speaker"] == "Боккардини"
     assert dialogue[2]["speaker"] == ""
+
+
+def test_ru_speaker_filter_rejects_capitalized_inanimate_candidate() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "unknown",
+            "voice_id": "narrator_calm",
+            "speaker": "\u0412\u043e\u0441\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u0435",
+            "section_kind": "dialogue",
+            "text": (
+                "- \u0417\u0430\u0447\u0435\u043c-\u0442\u043e \u044d\u0442\u0430 "
+                "\u0441\u0442\u0440\u0430\u043d\u043d\u0430\u044f \u043c\u0430\u0448\u0438\u043d\u0430 "
+                "\u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442?"
+            ),
+            "intonation": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[0]["speaker"] == ""
+    assert repaired[0]["role"] == "unknown"
+    assert not repaired[0]["voice_id"].startswith("narrator")
 
 
 def test_llm_provided_ru_speaker_is_filtered_with_same_person_rules() -> None:

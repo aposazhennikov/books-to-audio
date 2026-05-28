@@ -154,6 +154,8 @@ def auto_builtin_voice_id_for_segment(segment: dict[str, Any]) -> str:
     """
 
     role = canonical_role_for_segment(segment)
+    if role == "unknown" and str(segment.get("section_kind") or "").strip().lower() == "dialogue":
+        role = "male"
     if role not in AUTO_BUILTIN_VOICES_BY_ROLE:
         role = "narrator"
 

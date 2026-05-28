@@ -49,7 +49,10 @@ if defined CHECK_ONLY (
 )
 echo Checking local Ollama server...
 "%VENV_PY%" -m book_normalizer.llm.ollama_server 30
-if errorlevel 1 goto error
+if errorlevel 1 (
+    echo Ollama is not ready. GUI will start; LLM features require Ollama setup.
+    call :say_ru_b64 "T2xsYW1hINC90LUg0LPQvtGC0L7QstCwLiBHVUkg0LfQsNC/0YPRgdGC0LjRgtGB0Y86IExMTS3RhNGD0L3QutGG0LjQuCDRgtGA0LXQsdGD0Y7RgiBPbGxhbWEu"
+)
 
 echo Starting books-to-audio GUI...
 "%VENV_PY%" -m book_normalizer.gui.app %*

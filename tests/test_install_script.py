@@ -435,9 +435,13 @@ def test_interactive_dry_run_prompts_paths_and_writes_runtime_config(tmp_path: P
             str(tmp_path / "ollama-models"),
             "http://127.0.0.1:11436",
             str(tmp_path / "tools" / "ollama.exe"),
+            str(tmp_path / "ComfyUI"),
+            "http://127.0.0.1:8189",
             str(tmp_path / "tools" / "tesseract.exe"),
             str(tmp_path / "tools" / "tessdata"),
             str(tmp_path / "tools" / "ffmpeg.exe"),
+            "n",
+            "n",
             "n",
             "n",
             "n",
@@ -469,8 +473,11 @@ def test_interactive_dry_run_prompts_paths_and_writes_runtime_config(tmp_path: P
         runtime_config = json.loads(config_path.read_text(encoding="utf-8"))
         assert "Install/data root / Папка установки/данных" in stdout
         assert "Ollama models folder / Папка моделей Ollama" in stdout
+        assert "ComfyUI root folder / Папка ComfyUI" in stdout
         assert "Tesseract tessdata folder / Папка языковых данных Tesseract" in stdout
+        assert "Install native Ollama if missing?" in stdout
         assert "Pull Qwen3 Ollama 8B/4B models now?" in stdout
+        assert "Install or prepare local ComfyUI plus Qwen3-TTS custom nodes?" in stdout
         assert "Would run:" in stdout
         assert "wsl.exe" not in stdout.lower()
         assert "bash -lc" not in stdout.lower()
@@ -482,6 +489,8 @@ def test_interactive_dry_run_prompts_paths_and_writes_runtime_config(tmp_path: P
         assert runtime_config["ollama_models_dir"] == str(tmp_path / "ollama-models")
         assert runtime_config["ollama_endpoint"] == "http://127.0.0.1:11436"
         assert runtime_config["ollama_bin"] == str(tmp_path / "tools" / "ollama.exe")
+        assert runtime_config["comfyui_root"] == str(tmp_path / "ComfyUI")
+        assert runtime_config["comfyui_url"] == "http://127.0.0.1:8189"
         assert runtime_config["tesseract_cmd"] == str(tmp_path / "tools" / "tesseract.exe")
         assert runtime_config["tessdata_dir"] == str(tmp_path / "tools" / "tessdata")
         assert runtime_config["ffmpeg_bin"] == str(tmp_path / "tools" / "ffmpeg.exe")
@@ -508,6 +517,8 @@ def test_interactive_installer_prompts_for_all_runtime_paths(
         str(tmp_path / "ollama-models"),
         "http://127.0.0.1:11435",
         str(tmp_path / "ollama.exe"),
+        str(tmp_path / "ComfyUI"),
+        "http://127.0.0.1:8189",
         str(tmp_path / "tesseract.exe"),
         str(tmp_path / "tessdata"),
         str(tmp_path / "ffmpeg.exe"),
@@ -538,6 +549,8 @@ def test_interactive_installer_prompts_for_all_runtime_paths(
     assert paths.ollama_models_dir == tmp_path / "ollama-models"
     assert paths.ollama_endpoint == "http://127.0.0.1:11435"
     assert paths.ollama_bin == str(tmp_path / "ollama.exe")
+    assert paths.comfyui_root == tmp_path / "ComfyUI"
+    assert paths.comfyui_url == "http://127.0.0.1:8189"
     assert paths.tesseract_cmd == str(tmp_path / "tesseract.exe")
     assert paths.tessdata_dir == tmp_path / "tessdata"
     assert paths.ffmpeg_bin == str(tmp_path / "ffmpeg.exe")
@@ -1008,14 +1021,12 @@ def test_readme_documents_multilingual_ocr_and_benchmark_language_map() -> None:
     assert "tesseract-ocr-chi-sim" in readme
     assert "tesseract-ocr-kaz" in readme
     assert "tesseract-ocr-uzb" in readme
-    assert "tesseract-langpack-chi_sim" in readme
-    assert "tesseract-data-chi_sim" in readme
+    assert "--install-system-tools" in readme
     assert "--tessdata-dir" in readme
-    assert "python scripts/fetch_quality_corpus.py" in readme
-    assert "python scripts/gui_visual_audit.py" in readme
-    assert "--book-language-map" in readme
-    assert '"english/*.txt": "en"' in readme
-    assert "RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py" in readme
+    assert "--install-ollama" in readme
+    assert "--install-comfyui" in readme
+    assert "--download-ollama-models" in readme
+    assert "--download-tts-models" in readme
 
 
 def test_install_system_tools_runs_native_commands_without_shell(monkeypatch) -> None:

@@ -21,6 +21,10 @@ data/
 .venv-wsl/
 .venv-windows/
 books/
+/ComfyUI/
+/ollama-models/
+/hf-cache/
+/books-to-audio-models/
 venv/
 env/
 .env

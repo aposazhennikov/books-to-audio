@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -21,6 +22,9 @@ from typing import TextIO
 MIN_PYTHON = (3, 10)
 DEFAULT_EXTRAS = {"audio", "gui", "llm", "ocr"}
 DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434"
+DEFAULT_COMFYUI_URL = "http://localhost:8188"
+DEFAULT_COMFYUI_REPO = "https://github.com/comfy-org/ComfyUI.git"
+DEFAULT_COMFYUI_QWEN_NODE_REPO = "https://github.com/flybirdxx/ComfyUI-Qwen-TTS.git"
 DEFAULT_OLLAMA_MODELS = (
     "hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M",
     "hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M",
@@ -39,6 +43,8 @@ HASH_MANIFEST_PATH = Path("data/install_hashes.json")
 TESSDATA_HASH_LABEL = "tessdata"
 TTS_HASH_LABEL = "tts_models"
 OLLAMA_HASH_LABEL = "ollama_models"
+OLLAMA_RUNTIME_HASH_LABEL = "ollama_runtime"
+COMFYUI_RUNTIME_HASH_LABEL = "comfyui_runtime"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 VERIFY_MODULES = {
     "core": [
@@ -83,6 +89,9 @@ class InstallPaths:
     ffmpeg_bin: str
     ollama_models_dir: Path = Path("ollama-models")
     tessdata_dir: Path | None = None
+    comfyui_root: Path = Path("ComfyUI")
+    comfyui_url: str = DEFAULT_COMFYUI_URL
+    comfyui_custom_node_repo: str = DEFAULT_COMFYUI_QWEN_NODE_REPO
 
 
 class _TeeStream:
@@ -187,11 +196,17 @@ def main() -> int:
     if args.download_tessdata:
         _download_tessdata(paths, args.verify_hashes)
 
+    if args.install_ollama:
+        _install_ollama(paths, args.verify_hashes)
+
     if args.download_ollama_models:
         _pull_ollama_models(paths, args.verify_hashes)
 
     if args.download_tts_models:
         _install_tts_models(venv_python, paths, args.verify_hashes)
+
+    if args.install_comfyui:
+        _install_comfyui(paths, args.comfyui_repo, args.verify_hashes)
 
     print()
     _say("Installation complete.", "Установка завершена.", "ok")
@@ -225,6 +240,28 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--ollama-endpoint", default="", help="Local Ollama endpoint. Default: http://localhost:11434")
     parser.add_argument("--ollama-bin", default="", help="Path or command name for Ollama. Default: ollama")
+    parser.add_argument(
+        "--install-ollama",
+        action="store_true",
+        help="Install native Ollama if it is not already available.",
+    )
+    parser.add_argument("--comfyui-root", default="", help="Local ComfyUI root folder.")
+    parser.add_argument("--comfyui-url", default="", help="Local ComfyUI endpoint. Default: http://localhost:8188")
+    parser.add_argument(
+        "--comfyui-repo",
+        default=DEFAULT_COMFYUI_REPO,
+        help=f"ComfyUI git repository. Default: {DEFAULT_COMFYUI_REPO}",
+    )
+    parser.add_argument(
+        "--comfyui-custom-node-repo",
+        default=DEFAULT_COMFYUI_QWEN_NODE_REPO,
+        help=f"Qwen3-TTS ComfyUI custom node git repository. Default: {DEFAULT_COMFYUI_QWEN_NODE_REPO}",
+    )
+    parser.add_argument(
+        "--install-comfyui",
+        action="store_true",
+        help="Install or prepare a local ComfyUI checkout plus Qwen3-TTS custom nodes.",
+    )
     parser.add_argument("--tesseract-bin", default="", help="Path or command name for Tesseract OCR.")
     parser.add_argument("--tessdata-dir", default="", help="Optional Tesseract tessdata language-pack folder.")
     parser.add_argument("--ffmpeg-bin", default="", help="Path or command name for FFmpeg.")
@@ -345,6 +382,8 @@ def _print_install_summary(
         ("Hugging Face cache", "Кэш Hugging Face", str(paths.hf_cache_dir)),
         ("Ollama models folder", "Папка моделей Ollama", str(paths.ollama_models_dir)),
         ("Ollama endpoint/bin", "Ollama адрес/команда", f"{paths.ollama_endpoint} ({paths.ollama_bin})"),
+        ("ComfyUI root/url", "ComfyUI папка/адрес", f"{paths.comfyui_root} ({paths.comfyui_url})"),
+        ("ComfyUI Qwen nodes", "ComfyUI Qwen nodes", paths.comfyui_custom_node_repo),
         ("Tesseract OCR", "Tesseract OCR", paths.tesseract_cmd),
         ("Tesseract tessdata", "Языковые данные Tesseract", str(paths.tessdata_dir or "auto / авто")),
         ("FFmpeg", "FFmpeg", paths.ffmpeg_bin),
@@ -408,7 +447,21 @@ def _resolve_install_paths(args: argparse.Namespace, project_root: Path) -> Inst
         "Ollama command/path",
         "Команда/путь Ollama",
         args.ollama_bin,
-        "ollama",
+        _default_ollama_bin(),
+        interactive,
+    )
+    comfyui_root = _prompt_path(
+        "ComfyUI root folder",
+        "Папка ComfyUI",
+        getattr(args, "comfyui_root", ""),
+        install_root / "ComfyUI",
+        interactive,
+    )
+    comfyui_url = _prompt_text(
+        "ComfyUI endpoint",
+        "Адрес ComfyUI",
+        getattr(args, "comfyui_url", ""),
+        DEFAULT_COMFYUI_URL,
         interactive,
     )
     tesseract_cmd = _prompt_text(
@@ -442,6 +495,9 @@ def _resolve_install_paths(args: argparse.Namespace, project_root: Path) -> Inst
         tessdata_dir=tessdata_dir,
         ffmpeg_bin=ffmpeg_bin,
         ollama_models_dir=ollama_models_dir,
+        comfyui_root=comfyui_root,
+        comfyui_url=comfyui_url,
+        comfyui_custom_node_repo=getattr(args, "comfyui_custom_node_repo", DEFAULT_COMFYUI_QWEN_NODE_REPO),
     )
 
 
@@ -499,6 +555,11 @@ def _prompt_text(
 def _resolve_optional_downloads(args: argparse.Namespace) -> None:
     if not _should_prompt(args):
         return
+    args.install_ollama = getattr(args, "install_ollama", False) or _prompt_yes_no(
+        "Install native Ollama if missing?",
+        "Установить нативную Ollama, если она не найдена?",
+        default=False,
+    )
     args.download_tessdata = args.download_tessdata or _prompt_yes_no(
         "Download local Tesseract language packs for ru/en/zh/kk/uz? This avoids sudo for OCR languages.",
         (
@@ -515,6 +576,11 @@ def _resolve_optional_downloads(args: argparse.Namespace) -> None:
     args.download_tts_models = args.download_tts_models or _prompt_yes_no(
         "Download default Qwen3-TTS model now?",
         "Скачать стандартную Qwen3-TTS модель сейчас?",
+        default=False,
+    )
+    args.install_comfyui = getattr(args, "install_comfyui", False) or _prompt_yes_no(
+        "Install or prepare local ComfyUI plus Qwen3-TTS custom nodes?",
+        "Установить или подготовить локальный ComfyUI плюс Qwen3-TTS custom nodes?",
         default=False,
     )
     args.verify_hashes = args.verify_hashes or _prompt_yes_no(
@@ -536,6 +602,20 @@ def _default_models_dir() -> Path:
     if platform.system() == "Windows":
         return Path("D:/ComfyUI-external/models")
     return Path.home() / "books-to-audio-models"
+
+
+def _default_ollama_bin() -> str:
+    found = shutil.which("ollama")
+    if found:
+        return found
+    if platform.system() == "Windows":
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if local_appdata:
+            candidate = Path(local_appdata) / "Programs" / "Ollama" / "ollama.exe"
+            if candidate.exists():
+                return str(candidate)
+        return "ollama"
+    return "ollama"
 
 
 def _default_command(command: str) -> str:
@@ -640,6 +720,9 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
         "ollama_models_dir": str(paths.ollama_models_dir),
         "ollama_endpoint": paths.ollama_endpoint,
         "ollama_bin": paths.ollama_bin,
+        "comfyui_root": str(paths.comfyui_root),
+        "comfyui_url": paths.comfyui_url,
+        "comfyui_custom_node_repo": paths.comfyui_custom_node_repo,
         "tesseract_cmd": paths.tesseract_cmd,
         "tessdata_dir": str(paths.tessdata_dir) if paths.tessdata_dir else "",
         "ffmpeg_bin": paths.ffmpeg_bin,
@@ -660,6 +743,9 @@ def _write_runtime_config(paths: InstallPaths, project_root: Path) -> None:
                 _env_assignment("OLLAMA_MODELS", paths.ollama_models_dir),
                 _env_assignment("BOOKS_TO_AUDIO_OLLAMA_ENDPOINT", paths.ollama_endpoint),
                 _env_assignment("BOOKS_TO_AUDIO_OLLAMA_BIN", paths.ollama_bin),
+                _env_assignment("BOOKS_TO_AUDIO_COMFYUI_ROOT", paths.comfyui_root),
+                _env_assignment("COMFYUI_ROOT", paths.comfyui_root),
+                _env_assignment("BOOKS_TO_AUDIO_COMFYUI_URL", paths.comfyui_url),
                 _env_assignment("BOOKS_TO_AUDIO_TESSERACT_CMD", paths.tesseract_cmd),
                 *(
                     [
@@ -689,6 +775,210 @@ def _env_assignment(key: str, value: object) -> str:
         return f"{key}={text}"
     escaped = text.replace("'", "'\\''")
     return f"{key}='{escaped}'"
+
+
+def _install_ollama(paths: InstallPaths, verify_hashes: bool) -> None:
+    """Install native Ollama when the configured executable is not available."""
+    if _command_available(paths.ollama_bin):
+        _say(
+            f"Ollama is already installed: {paths.ollama_bin}",
+            f"Ollama уже установлена: {paths.ollama_bin}",
+            "ok",
+        )
+        _verify_runtime_file_hash(OLLAMA_RUNTIME_HASH_LABEL, paths.ollama_bin, verify_hashes)
+        return
+
+    _say("Installing native Ollama...", "Устанавливаю нативную Ollama...", "info")
+    system = platform.system()
+    if system == "Windows":
+        _run_native_install_command(
+            [
+                "winget",
+                "install",
+                "-e",
+                "--silent",
+                "--disable-interactivity",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+                "--id",
+                "Ollama.Ollama",
+            ]
+        )
+    elif system == "Darwin":
+        _run_native_install_command(["brew", "install", "ollama"])
+    elif system == "Linux":
+        _install_ollama_linux()
+    else:
+        raise SystemExit(f"Automatic Ollama install is not supported on {system}. Install Ollama manually.")
+
+    resolved = _default_ollama_bin()
+    if not _command_available(resolved):
+        raise SystemExit(
+            "Ollama install command finished, but the executable was not found. "
+            "Set it explicitly with --ollama-bin."
+        )
+    paths.ollama_bin = resolved
+    _say(f"Ollama installed: {paths.ollama_bin}", f"Ollama установлена: {paths.ollama_bin}", "ok")
+    _verify_runtime_file_hash(OLLAMA_RUNTIME_HASH_LABEL, paths.ollama_bin, verify_hashes)
+
+
+def _install_ollama_linux() -> None:
+    """Install Ollama on Linux using the vendor install script."""
+    with tempfile.TemporaryDirectory(prefix="books-to-audio-ollama-") as temp_dir:
+        script_path = Path(temp_dir) / "install_ollama.sh"
+        urllib.request.urlretrieve("https://ollama.com/install.sh", script_path)
+        subprocess.run(["sh", str(script_path)], check=True)
+
+
+def _run_native_install_command(command: list[str]) -> None:
+    print("+ " + " ".join(_quote(part) for part in command))
+    subprocess.run(command, check=True)
+
+
+def _verify_runtime_file_hash(label: str, command: str, verify_hashes: bool) -> None:
+    if not verify_hashes:
+        return
+    executable = _resolve_command_path(command)
+    if executable is None:
+        _say(
+            f"Cannot hash runtime executable because it was not found: {command}",
+            f"Не могу посчитать хэш executable, файл не найден: {command}",
+            "warn",
+        )
+        return
+    _verify_or_write_hash(label, executable, metadata={"executable": str(executable)})
+
+
+def _resolve_command_path(command: str) -> Path | None:
+    path = Path(command).expanduser()
+    if path.is_absolute() or path.parent != Path("."):
+        return path if path.exists() else None
+    found = shutil.which(command)
+    return Path(found) if found else None
+
+
+def _install_comfyui(paths: InstallPaths, comfyui_repo: str, verify_hashes: bool) -> None:
+    """Install or prepare a source-layout ComfyUI checkout with Qwen3-TTS nodes."""
+    root = paths.comfyui_root
+    if _looks_like_comfyui_root(root):
+        _say(f"ComfyUI is already installed: {root}", f"ComfyUI уже установлен: {root}", "ok")
+    else:
+        if not _command_available("git"):
+            raise SystemExit("Git is required to install ComfyUI. Install Git or provide an existing --comfyui-root.")
+        root.parent.mkdir(parents=True, exist_ok=True)
+        _say(f"Cloning ComfyUI into {root}...", f"Клонирую ComfyUI в {root}...", "info")
+        _run_git(["clone", comfyui_repo, str(root)])
+
+    comfy_python = _ensure_comfyui_python(root)
+    requirements = _comfyui_requirements_path(root)
+    if requirements.exists():
+        _run([str(comfy_python), "-m", "pip", "install", "-r", str(requirements)], paths)
+
+    _install_comfyui_custom_nodes(root, comfy_python, paths)
+    _write_comfyui_extra_model_paths(root, paths.models_dir)
+
+    if verify_hashes:
+        _verify_or_write_hash(
+            COMFYUI_RUNTIME_HASH_LABEL,
+            root,
+            metadata={
+                "comfyui_repo": comfyui_repo,
+                "custom_node_repo": paths.comfyui_custom_node_repo,
+            },
+        )
+
+
+def _install_comfyui_custom_nodes(root: Path, comfy_python: Path, paths: InstallPaths) -> None:
+    custom_nodes = _comfyui_custom_nodes_dir(root)
+    custom_nodes.mkdir(parents=True, exist_ok=True)
+    repo_name = _repo_folder_name(paths.comfyui_custom_node_repo)
+    node_dir = custom_nodes / repo_name
+    if node_dir.exists():
+        _say(
+            f"Qwen3-TTS custom nodes already installed: {node_dir}",
+            f"Qwen3-TTS custom nodes уже установлены: {node_dir}",
+            "ok",
+        )
+    else:
+        if not _command_available("git"):
+            raise SystemExit("Git is required to install ComfyUI custom nodes.")
+        _say(
+            f"Cloning Qwen3-TTS custom nodes into {node_dir}...",
+            f"Клонирую Qwen3-TTS custom nodes в {node_dir}...",
+            "info",
+        )
+        _run_git(["clone", paths.comfyui_custom_node_repo, str(node_dir)])
+
+    requirements = node_dir / "requirements.txt"
+    if requirements.exists():
+        _run([str(comfy_python), "-m", "pip", "install", "-r", str(requirements), "--no-cache-dir"], paths)
+
+
+def _ensure_comfyui_python(root: Path) -> Path:
+    embedded = root / "python_embeded" / "python.exe"
+    if embedded.exists():
+        return embedded
+
+    venv_dir = root / ".venv"
+    python = _venv_python(venv_dir)
+    if not python.exists():
+        _say(
+            f"Creating ComfyUI virtual environment: {venv_dir}",
+            f"Создаю virtualenv для ComfyUI: {venv_dir}",
+            "info",
+        )
+        subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+    subprocess.run([str(python), "-m", "pip", "install", "--upgrade", *INSTALL_TOOL_PACKAGES], check=True)
+    return python
+
+
+def _looks_like_comfyui_root(root: Path) -> bool:
+    return (
+        (root / "python_embeded" / "python.exe").exists()
+        and (root / "ComfyUI" / "main.py").exists()
+    ) or (root / "main.py").exists()
+
+
+def _comfyui_requirements_path(root: Path) -> Path:
+    portable = root / "ComfyUI" / "requirements.txt"
+    if portable.exists():
+        return portable
+    return root / "requirements.txt"
+
+
+def _comfyui_custom_nodes_dir(root: Path) -> Path:
+    portable = root / "ComfyUI" / "custom_nodes"
+    if (root / "ComfyUI" / "main.py").exists():
+        return portable
+    return root / "custom_nodes"
+
+
+def _write_comfyui_extra_model_paths(root: Path, models_dir: Path) -> None:
+    target = root / "extra_model_paths.yaml"
+    text = (
+        "books_to_audio:\n"
+        f"  base_path: {models_dir.as_posix()}\n"
+        "  audio_encoders: audio_encoders\n"
+        "  tts: audio_encoders\n"
+        "  qwen-tts: audio_encoders\n"
+    )
+    target.write_text(text, encoding="utf-8")
+    _say(
+        f"ComfyUI model path config written: {target}",
+        f"Конфиг путей моделей ComfyUI записан: {target}",
+        "ok",
+    )
+
+
+def _repo_folder_name(repo_url: str) -> str:
+    name = repo_url.rstrip("/").rsplit("/", 1)[-1]
+    return name[:-4] if name.endswith(".git") else name
+
+
+def _run_git(args: list[str]) -> None:
+    command = ["git", *args]
+    print("+ " + " ".join(_quote(part) for part in command))
+    subprocess.run(command, check=True)
 
 
 def _pull_ollama_models(paths: InstallPaths, verify_hashes: bool) -> None:
@@ -913,9 +1203,9 @@ def _hash_tree(path: Path) -> dict[str, object]:
     if not path.exists():
         raise SystemExit(f"Cannot hash missing path: {path}")
     digest = hashlib.sha256()
-    files = [p for p in path.rglob("*") if p.is_file()]
+    files = [path] if path.is_file() else [p for p in path.rglob("*") if p.is_file()]
     for file_path in sorted(files):
-        rel = file_path.relative_to(path).as_posix()
+        rel = file_path.name if path.is_file() else file_path.relative_to(path).as_posix()
         digest.update(rel.encode("utf-8"))
         with file_path.open("rb") as fh:
             for chunk in iter(lambda: fh.read(1024 * 1024), b""):
@@ -959,6 +1249,9 @@ def _installer_env(paths: InstallPaths) -> dict[str, str]:
     env["OLLAMA_MODELS"] = str(paths.ollama_models_dir)
     env["BOOKS_TO_AUDIO_OLLAMA_ENDPOINT"] = paths.ollama_endpoint
     env["BOOKS_TO_AUDIO_OLLAMA_BIN"] = paths.ollama_bin
+    env["BOOKS_TO_AUDIO_COMFYUI_ROOT"] = str(paths.comfyui_root)
+    env["COMFYUI_ROOT"] = str(paths.comfyui_root)
+    env["BOOKS_TO_AUDIO_COMFYUI_URL"] = paths.comfyui_url
     env["BOOKS_TO_AUDIO_TESSERACT_CMD"] = paths.tesseract_cmd
     if paths.tessdata_dir:
         env["BOOKS_TO_AUDIO_TESSDATA_DIR"] = str(paths.tessdata_dir)

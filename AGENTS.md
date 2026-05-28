@@ -13,8 +13,10 @@ Do not commit:
 - `books/`
 - `output/`
 - `data/`
+- `ComfyUI/`
 - `ollama-models/`
 - `hf-cache/`
+- `books-to-audio-models/`
 - `.env`, `.env.*`
 - temporary editor, OS, log, cache, and generated files
 

@@ -132,6 +132,10 @@ python install.py --recreate              # recreate virtual environment
 python install.py --dry-run               # show install plan without changing files
 python install.py --yes                   # use defaults without prompts
 python install.py --interactive           # ask for paths and optional downloads
+python install.py --install-system-tools  # install native Tesseract/FFmpeg/GUI packages where supported
+python install.py --install-ollama        # install native Ollama if missing
+python install.py --install-comfyui       # prepare local ComfyUI + Qwen3-TTS custom nodes
+python install.py --tessdata-dir /path/to/tessdata
 ```
 
 Manual fallback:
@@ -235,6 +239,19 @@ or manually:
 ollama pull hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
 ollama pull hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
 ```
+
+Prepare a full local runtime on a new machine:
+
+```bash
+python install.py --interactive \
+  --install-system-tools \
+  --install-ollama \
+  --download-ollama-models \
+  --download-tts-models \
+  --install-comfyui
+```
+
+The installer asks whether to install Ollama and ComfyUI in interactive mode. If they are already installed, it reports the existing path and skips reinstalling. Use `--ollama-bin`, `--comfyui-root`, and `--models-dir` to provide custom locations.
 
 ### Resource Requirements
 
@@ -425,6 +442,9 @@ python install.py --recreate              # пересоздать virtualenv
 python install.py --dry-run               # показать план установки
 python install.py --yes                   # использовать значения по умолчанию
 python install.py --interactive           # спросить пути и загрузки
+python install.py --install-system-tools  # установить системные Tesseract/FFmpeg/GUI пакеты где поддерживается
+python install.py --install-ollama        # установить Ollama, если ее нет
+python install.py --install-comfyui       # подготовить локальный ComfyUI + Qwen3-TTS custom nodes
 ```
 
 ### Куда скачиваются модели
@@ -473,6 +493,19 @@ python install.py --download-ollama-models
 ollama pull hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
 ollama pull hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
 ```
+
+Полная подготовка нового компьютера:
+
+```bash
+python install.py --interactive \
+  --install-system-tools \
+  --install-ollama \
+  --download-ollama-models \
+  --download-tts-models \
+  --install-comfyui
+```
+
+В интерактивном режиме installer спрашивает, устанавливать ли Ollama и ComfyUI. Если они уже установлены, он сообщает текущий путь и не переустанавливает. Для кастомных путей используйте `--ollama-bin`, `--comfyui-root` и `--models-dir`.
 
 ### Требования к ресурсам
 

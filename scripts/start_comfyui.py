@@ -96,8 +96,8 @@ def start_comfyui(
     pid_file: Path | None = None,
 ) -> None:
     """Start ComfyUI detached through Windows cmd when available."""
-    python_exe = root / "python_embeded" / "python.exe"
-    main_py = root / "ComfyUI" / "main.py"
+    python_exe = _comfyui_python(root)
+    main_py = _comfyui_main(root)
     if _running_on_linux_windows_host() and _cmd_exe_available():
         command = _powershell_start_process_command(
             python_exe=_windows_path(python_exe),
@@ -181,7 +181,24 @@ def _probe_host_for_listen_host(host: str) -> str:
 
 
 def _looks_like_portable_comfyui(root: Path) -> bool:
-    return (root / "python_embeded" / "python.exe").exists() and (root / "ComfyUI" / "main.py").exists()
+    return _comfyui_python(root).exists() and _comfyui_main(root).exists()
+
+
+def _comfyui_python(root: Path) -> Path:
+    embedded = root / "python_embeded" / "python.exe"
+    if embedded.exists():
+        return embedded
+    windows_venv = root / ".venv" / "Scripts" / "python.exe"
+    if windows_venv.exists():
+        return windows_venv
+    return root / ".venv" / "bin" / "python"
+
+
+def _comfyui_main(root: Path) -> Path:
+    portable = root / "ComfyUI" / "main.py"
+    if portable.exists():
+        return portable
+    return root / "main.py"
 
 
 def _running_on_linux_windows_host() -> bool:

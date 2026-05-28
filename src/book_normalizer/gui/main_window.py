@@ -435,7 +435,7 @@ class MainWindow(QMainWindow):
                 self._on_chunks_built(str(cached_chunks))
                 return
             self._statusbar.showMessage(t("auto.chunks"))
-            QTimer.singleShot(0, self._voices_page._build_tts_chunks)
+            self._voices_page._build_tts_chunks()
 
     def _on_chunks_built(self, chunks_path: str) -> None:
         """Called when TTS chunks are built from segments."""

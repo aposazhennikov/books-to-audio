@@ -748,7 +748,7 @@ class VoiceTableWidget(QWidget):
         """Hide the chunk editor until there is something meaningful to edit."""
         has_segments = bool(self._segments)
         has_multiple_visible_rows = self._visible_row_count() > 1
-        self._chapter_nav_panel.setVisible(has_segments)
+        self._chapter_nav_panel.setVisible(has_segments and not self._ultra_dense_mode)
         self._preset_toolbar_panel.setVisible(has_segments and not self._ultra_dense_mode)
         self._quick_apply_panel.setVisible(has_segments and not self._ultra_dense_mode)
         self._editor_tabs.setVisible(has_segments and not self._dense_mode)

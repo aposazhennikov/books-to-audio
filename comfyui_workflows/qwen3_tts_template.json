@@ -11,9 +11,9 @@
       "language": "{{LANGUAGE}}",
       "instruct": "{{INSTRUCT}}",
       "max_new_tokens": 2048,
-      "top_p": 0.8,
-      "top_k": 20,
-      "temperature": 1.0,
+      "top_p": 0.7,
+      "top_k": 15,
+      "temperature": 0.65,
       "repetition_penalty": 1.05,
       "attention": "auto",
       "unload_model_after_generate": true

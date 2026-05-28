@@ -8,7 +8,13 @@ from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from book_normalizer.comfyui.generation_options import GenerationOptions
+from book_normalizer.comfyui.generation_options import (
+    DEFAULT_SEED,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TOP_K,
+    DEFAULT_TOP_P,
+    GenerationOptions,
+)
 from book_normalizer.gui.i18n import t
 from book_normalizer.languages import normalize_book_language
 from book_normalizer.runtime_paths import configured_ollama_endpoint
@@ -161,12 +167,12 @@ class TTSSynthesisWorker(QThread):
         comfyui_url: str = "http://localhost:8188",
         workflow_path: str = "",
         failed_only: bool = False,
-        temperature: float = 1.0,
-        top_p: float = 0.8,
-        top_k: int = 20,
+        temperature: float = DEFAULT_TEMPERATURE,
+        top_p: float = DEFAULT_TOP_P,
+        top_k: int = DEFAULT_TOP_K,
         repetition_penalty: float = 1.05,
         max_new_tokens: int = 2048,
-        seed: int = -1,
+        seed: int = DEFAULT_SEED,
         speech_rate: float = 1.0,
         output_format: str = "flac",
         merge_chapters: bool = True,

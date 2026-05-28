@@ -5,19 +5,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+DEFAULT_TEMPERATURE = 0.65
+DEFAULT_TOP_P = 0.70
+DEFAULT_TOP_K = 15
+DEFAULT_REPETITION_PENALTY = 1.05
+DEFAULT_MAX_NEW_TOKENS = 2048
+DEFAULT_SEED = 42
+DEFAULT_SPEECH_RATE = 1.0
+
 
 @dataclass(frozen=True)
 class GenerationOptions:
     """Stable synthesis knobs that can be injected into workflow nodes."""
 
     batch_size: int = 1
-    temperature: float = 1.0
-    top_p: float = 0.8
-    top_k: int = 20
-    repetition_penalty: float = 1.05
-    max_new_tokens: int = 2048
-    seed: int = -1
-    speech_rate: float = 1.0
+    temperature: float = DEFAULT_TEMPERATURE
+    top_p: float = DEFAULT_TOP_P
+    top_k: int = DEFAULT_TOP_K
+    repetition_penalty: float = DEFAULT_REPETITION_PENALTY
+    max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS
+    seed: int = DEFAULT_SEED
+    speech_rate: float = DEFAULT_SPEECH_RATE
     output_format: str = "both"
 
     def for_attempt(
@@ -71,13 +79,13 @@ def generation_options_from_mapping(value: GenerationOptions | dict[str, Any] | 
         return GenerationOptions()
     return GenerationOptions(
         batch_size=_int_value(value.get("batch_size"), 1),
-        temperature=_float_value(value.get("temperature"), 1.0),
-        top_p=_float_value(value.get("top_p"), 0.8),
-        top_k=_int_value(value.get("top_k"), 20),
-        repetition_penalty=_float_value(value.get("repetition_penalty"), 1.05),
-        max_new_tokens=_int_value(value.get("max_new_tokens"), 2048),
-        seed=_int_value(value.get("seed"), -1),
-        speech_rate=_float_value(value.get("speech_rate"), 1.0),
+        temperature=_float_value(value.get("temperature"), DEFAULT_TEMPERATURE),
+        top_p=_float_value(value.get("top_p"), DEFAULT_TOP_P),
+        top_k=_int_value(value.get("top_k"), DEFAULT_TOP_K),
+        repetition_penalty=_float_value(value.get("repetition_penalty"), DEFAULT_REPETITION_PENALTY),
+        max_new_tokens=_int_value(value.get("max_new_tokens"), DEFAULT_MAX_NEW_TOKENS),
+        seed=_int_value(value.get("seed"), DEFAULT_SEED),
+        speech_rate=_float_value(value.get("speech_rate"), DEFAULT_SPEECH_RATE),
         output_format=str(value.get("output_format") or "both"),
     )
 

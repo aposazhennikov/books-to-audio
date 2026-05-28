@@ -481,6 +481,71 @@ def test_quoted_term_with_explanatory_dash_stays_narrator() -> None:
     assert [chunk["role"] for chunk in chunks] == ["narrator"]
 
 
+def test_quoted_term_with_stale_speaker_markup_rejoins_narration() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+    from book_normalizer.chunking.voice_splitter import build_chunks_from_segments
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "Долго-долго он говорил мне о добавочной стоимости и ругал какой-то НДС.",
+            "intonation": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 1,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "Предложил мне стать его",
+            "intonation": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 2,
+            "language": "ru",
+            "role": "male",
+            "speaker": "Маркс",
+            "voice_id": "male_confident",
+            "section_kind": "dialogue",
+            "text": "«дилером», но тут пришёл Сет,",
+            "intonation": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 3,
+            "language": "ru",
+            "role": "male",
+            "speaker": "Сет",
+            "voice_id": "male_young",
+            "section_kind": "dialogue",
+            "text": "сказал опять что «провайдер» и забрал Маркса с собой.",
+            "intonation": "calm",
+        },
+    ]
+
+    chunks = build_chunks_from_segments(
+        repair_segment_dialogue_boundaries(rows, language="ru"),
+        max_chunk_chars=500,
+    )
+
+    assert [chunk["text"] for chunk in chunks] == [
+        (
+            "Долго-долго он говорил мне о добавочной стоимости и ругал какой-то НДС. "
+            "Предложил мне стать его «дилером», но тут пришёл Сет, "
+            "сказал опять что «провайдер» и забрал Маркса с собой."
+        )
+    ]
+    assert [chunk["role"] for chunk in chunks] == ["narrator"]
+    assert [chunk["voice_id"] for chunk in chunks] == ["narrator_calm"]
+
+
 def test_dash_dialogue_splits_before_attribution_without_space_after_punctuation() -> None:
     from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
 

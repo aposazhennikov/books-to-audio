@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from book_normalizer.comfyui.generation_options import GenerationOptions
 from book_normalizer.comfyui.workflow_builder import (
     WorkflowBuilder,
     WorkflowBuilderError,
@@ -73,6 +74,22 @@ def test_voice_tone_to_instruct_maps_bright_emotional_tones() -> None:
     instruct = voice_tone_to_instruct("women", "cheerful")
 
     assert "Весело" in instruct
+
+
+def test_narrator_calm_instruct_keeps_delivery_stable() -> None:
+    instruct = voice_tone_to_instruct("narrator", "calm")
+
+    assert "steady audiobook narrator delivery" in instruct
+    assert "Do not shout" in instruct
+
+
+def test_generation_options_default_to_stable_audiobook_sampling() -> None:
+    options = GenerationOptions().for_attempt(0)
+
+    assert options["temperature"] == 0.65
+    assert options["top_p"] == 0.70
+    assert options["top_k"] == 15
+    assert options["seed"] == 42
 
 
 def test_workflow_builder_uses_custom_speaker_override(tmp_path: Path) -> None:

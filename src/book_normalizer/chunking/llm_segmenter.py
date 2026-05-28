@@ -1848,8 +1848,8 @@ def _repair_dialogue_metadata(
     if (
         role in {"male", "female", "unknown"}
         and section_kind == "dialogue"
-        and not speaker
         and not _looks_like_direct_speech(text, language)
+        and (not speaker or _dialogue_markup_looks_like_narration(text, language))
     ):
         return "narrator", "", "narration", ""
 
@@ -1899,6 +1899,25 @@ def _repair_dialogue_metadata(
 
 def _has_direct_speech_marker(text: str, language: str) -> bool:
     return _starts_with_direct_speech_marker(text, language)
+
+
+def _dialogue_markup_looks_like_narration(text: str, language: str) -> bool:
+    """Return true when LLM speaker markup contradicts the text shape."""
+    stripped = str(text or "").strip()
+    if not stripped:
+        return False
+    if stripped[0] in _OPENING_QUOTE_CHARS:
+        quote = stripped[0]
+        close_quote = _CLOSING_QUOTE_BY_OPENING.get(quote, quote)
+        if stripped.find(close_quote, 1) < 0:
+            return False
+        speech, tail = _take_quoted_speech(stripped)
+        if not tail and re.search(r"[.!?…][»\"'”’]?[.!?…]?\s*$", speech):
+            return False
+        return not _opening_quote_starts_direct_speech(stripped, language)
+    if normalize_book_language(language) == "ru":
+        return stripped[0].islower()
+    return False
 
 
 def _infer_dialogue_speaker(text: str, language: str) -> tuple[str, str]:

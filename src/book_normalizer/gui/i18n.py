@@ -1939,8 +1939,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u0431\u044b\u0441\u0442\u0440\u0435\u0435",
     },
     "synth.seed": {
-        "en": "Seed (-1=random):",
-        "ru": "Seed (-1=random):",
+        "en": "Seed (fixed=stable):",
+        "ru": "Seed (fixed=stable):",
     },
     "synth.model_help": {
         "en": "Choose the Qwen CustomVoice model for rendering voices assigned in Step 3. 1.7B is better quality; 0.6B is faster and lighter.",
@@ -2004,10 +2004,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "synth.temperature_help": {
         "en": (
-            "Range: 0.10-2.00. Default: 1.00.\n"
+            "Range: 0.10-2.00. Default: 0.65.\n"
             "Lower values make pronunciation steadier and more predictable.\n"
             "Higher values add variation and expression, but can increase artifacts, odd pauses, or unstable speech.\n"
-            "Good first moves: 0.80-0.95 for stability, 1.05-1.15 for a slightly livelier voice."
+            "Use 0.55-0.75 for stable audiobooks; raise it only when a voice sounds too flat."
         ),
         "ru": (
             "Диапазон: 0.10-2.00. По умолчанию: 1.00.\n"
@@ -2018,7 +2018,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "synth.top_p_help": {
         "en": (
-            "Range: 0.10-1.00. Default: 0.80.\n"
+            "Range: 0.10-1.00. Default: 0.70.\n"
             "Top-p keeps only the smallest group of likely choices whose total probability reaches this value.\n"
             "Lower values are stricter and can reduce strange phrasing. Higher values allow more alternatives.\n"
             "Try 0.70-0.85 for audiobooks; 0.90+ only if the voice sounds too constrained."
@@ -2032,7 +2032,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "synth.top_k_help": {
         "en": (
-            "Range: 1-200. Default: 20.\n"
+            "Range: 1-200. Default: 15.\n"
             "At each generation step the model can choose only from the top K most likely audio tokens.\n"
             "1 is almost deterministic and can sound flat or stuck. 10-30 is a safe audiobook range.\n"
             "50-100 gives more variety, but can add pronunciation drift. 100+ is experimental."
@@ -2084,9 +2084,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "synth.seed_help": {
         "en": (
-            "Range: -1 or 0-2147483647. Default: -1.\n"
-            "-1 means random every run, so the same text/settings can sound slightly different.\n"
-            "Set any fixed number, for example 42, when you want repeatable previews and reruns.\n"
+            "Range: -1 or 0-2147483647. Default: 42.\n"
+            "A fixed number keeps previews and full reruns repeatable.\n"
+            "-1 means random every run, so the same text/settings can sound different.\n"
             "Changing the seed is useful when settings are good but one fragment came out unlucky."
         ),
         "ru": (

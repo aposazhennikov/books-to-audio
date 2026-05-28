@@ -43,7 +43,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from book_normalizer.comfyui.client import ComfyUIClient, ComfyUIError
-from book_normalizer.comfyui.generation_options import GenerationOptions
+from book_normalizer.comfyui.generation_options import (
+    DEFAULT_SEED,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TOP_K,
+    DEFAULT_TOP_P,
+    GenerationOptions,
+)
 from book_normalizer.comfyui.synthesis import collect_pending_chunks, save_manifest, synthesize_manifest
 from book_normalizer.comfyui.synthesis import load_manifest as load_manifest_v2
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder, WorkflowBuilderError
@@ -260,12 +266,12 @@ def main(argv: list[str] | None = None) -> None:
         help="Max automatic resynthesis attempts per bad chunk (default: 2).",
     )
     parser.add_argument("--batch-size", type=int, default=1, help="Generation batch size metadata.")
-    parser.add_argument("--temperature", type=float, default=1.0, help="TTS sampling temperature.")
-    parser.add_argument("--top-p", type=float, default=0.8, help="TTS top-p sampling.")
-    parser.add_argument("--top-k", type=int, default=20, help="TTS top-k sampling.")
+    parser.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE, help="TTS sampling temperature.")
+    parser.add_argument("--top-p", type=float, default=DEFAULT_TOP_P, help="TTS top-p sampling.")
+    parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K, help="TTS top-k sampling.")
     parser.add_argument("--repetition-penalty", type=float, default=1.05, help="TTS repetition penalty.")
     parser.add_argument("--max-new-tokens", type=int, default=2048, help="TTS max new tokens.")
-    parser.add_argument("--seed", type=int, default=-1, help="TTS seed; -1 lets retries derive one.")
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="TTS seed; use -1 for random generation.")
     parser.add_argument("--speech-rate", type=float, default=1.0, help="TTS speech rate when supported.")
     args = parser.parse_args(argv)
 

@@ -51,6 +51,12 @@ from book_normalizer.chunking.manifest_v2 import (
     split_chunk_text,
     update_chunk_text,
 )
+from book_normalizer.comfyui.generation_options import (
+    DEFAULT_SEED,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TOP_K,
+    DEFAULT_TOP_P,
+)
 from book_normalizer.gui.i18n import TRANSLATIONS, t
 from book_normalizer.gui.ui_scaler import apply_combo_content_width
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
@@ -996,7 +1002,7 @@ class SynthesisPage(QWidget):
         self._temperature_spin.setRange(0.1, 2.0)
         self._temperature_spin.setSingleStep(0.05)
         self._temperature_spin.setDecimals(2)
-        self._temperature_spin.setValue(1.0)
+        self._temperature_spin.setValue(DEFAULT_TEMPERATURE)
         self._temperature_label = QLabel()
         controls.addRow(
             self._label_with_help(self._temperature_label, "synth.temperature_help"),
@@ -1007,7 +1013,7 @@ class SynthesisPage(QWidget):
         self._top_p_spin.setRange(0.1, 1.0)
         self._top_p_spin.setSingleStep(0.05)
         self._top_p_spin.setDecimals(2)
-        self._top_p_spin.setValue(0.80)
+        self._top_p_spin.setValue(DEFAULT_TOP_P)
         self._top_p_label = QLabel()
         controls.addRow(
             self._label_with_help(self._top_p_label, "synth.top_p_help"),
@@ -1016,7 +1022,7 @@ class SynthesisPage(QWidget):
 
         self._top_k_spin = QSpinBox()
         self._top_k_spin.setRange(1, 200)
-        self._top_k_spin.setValue(20)
+        self._top_k_spin.setValue(DEFAULT_TOP_K)
         self._top_k_label = QLabel()
         controls.addRow(
             self._label_with_help(self._top_k_label, "synth.top_k_help"),
@@ -1080,7 +1086,7 @@ class SynthesisPage(QWidget):
 
         self._seed_spin = QSpinBox()
         self._seed_spin.setRange(-1, 2_147_483_647)
-        self._seed_spin.setValue(-1)
+        self._seed_spin.setValue(DEFAULT_SEED)
         self._seed_spin.setSpecialValueText("-1 (random)")
         self._seed_label = QLabel()
         controls.addRow(

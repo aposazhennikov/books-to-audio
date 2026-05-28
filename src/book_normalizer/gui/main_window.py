@@ -25,6 +25,12 @@ from book_normalizer.chunking.manifest_v2 import (
     flatten_manifest,
     load_manifest,
 )
+from book_normalizer.comfyui.generation_options import (
+    DEFAULT_SEED,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TOP_K,
+    DEFAULT_TOP_P,
+)
 from book_normalizer.gui.dialog_styles import apply_readable_message_box_style
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, set_language, t
 from book_normalizer.gui.pages.assembly_page import AssemblyPage
@@ -380,12 +386,12 @@ class MainWindow(QMainWindow):
         format_idx = synthesis._output_format_combo.findData("wav")
         if format_idx >= 0:
             synthesis._output_format_combo.setCurrentIndex(format_idx)
-        synthesis._temperature_spin.setValue(1.0)
-        synthesis._top_p_spin.setValue(0.8)
-        synthesis._top_k_spin.setValue(20)
+        synthesis._temperature_spin.setValue(DEFAULT_TEMPERATURE)
+        synthesis._top_p_spin.setValue(DEFAULT_TOP_P)
+        synthesis._top_k_spin.setValue(DEFAULT_TOP_K)
         synthesis._repetition_penalty_spin.setValue(1.05)
         synthesis._max_new_tokens_spin.setValue(4096)
-        synthesis._seed_spin.setValue(-1)
+        synthesis._seed_spin.setValue(DEFAULT_SEED)
         synthesis._set_speech_rate_value(1.0)
 
         self._assembly_page._pause_same.setValue(300)

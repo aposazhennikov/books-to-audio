@@ -76,14 +76,14 @@ class _SmoothProgressBar(QProgressBar):
         self._value_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.setTextVisible(False)
 
-    def displayValue(self) -> float:
+    def _get_display_value(self) -> float:
         return self._display_value
 
-    def setDisplayValue(self, value: float) -> None:
+    def _set_display_value(self, value: float) -> None:
         self._display_value = value
         self.update()
 
-    displayValue = pyqtProperty(float, fget=displayValue, fset=setDisplayValue)
+    displayValue = pyqtProperty(float, fget=_get_display_value, fset=_set_display_value)  # noqa: N815 - Qt property name.
 
     def setValue(self, value: int) -> None:  # noqa: N802 - Qt API name.
         value = max(self.minimum(), min(value, self.maximum()))

@@ -1,31 +1,101 @@
 # Books to Audio
 
-Books to Audio - инструмент для подготовки русскоязычных книг к озвучке:
-загрузка PDF/TXT/EPUB/FB2/DOCX, нормализация текста, разметка глав и реплик,
-нарезка на TTS-чанки, синтез через ComfyUI/Qwen3-TTS и сборка WAV/MP3.
+Production-ready desktop and CLI pipeline for turning books into structured audiobook assets.
 
-GUI доступен на русском, английском, китайском, казахском и узбекском языках.
-Нормализация, LLM-разметка голосов и chunk manifest покрывают языки
-`ru/en/zh/kk/uz`; русские правила ударений и `ё` применяются только для `ru`.
+Books to Audio loads TXT, PDF, EPUB, FB2, and DOCX files, normalizes text, detects chapters and dialogue, prepares TTS chunks, sends them to ComfyUI/Qwen3-TTS, runs quality checks, and assembles WAV/MP3 audiobook chapters.
 
-## Поддерживаемые OS
+The app UI supports five languages: Russian, English, Chinese, Kazakh, and Uzbek. This README includes setup and operating notes in all five languages.
 
-| OS | Статус | Комментарий |
+## Project Overview
+
+Books to Audio is not just a text-to-speech launcher. It is an end-to-end audiobook preparation system for long-form books, especially books that need cleanup, chapter detection, dialogue handling, voice planning, chunked synthesis, and final audio assembly.
+
+The project includes:
+
+- **Desktop GUI** for loading books, normalizing text, reviewing chapters, assigning voices, downloading models, running synthesis, and assembling output.
+- **CLI tools** for repeatable production runs, diagnostics, batch processing, QA, mastering, and packaging.
+- **Book loaders** for `TXT`, `PDF`, `EPUB`, `FB2`, and `DOCX`.
+- **OCR support** for scanned PDFs through Tesseract.
+- **Text normalization** for punctuation, whitespace, OCR artifacts, abbreviations, numbers, Russian `ё`, stress hints, and language-aware cleanup.
+- **LLM-assisted processing** through local Ollama/Qwen models for smarter normalization, segmentation, and dialogue/voice markup.
+- **Chapter and dialogue pipeline** that builds a structured book representation instead of sending one giant text blob to TTS.
+- **Voice and role tooling** for character inventories, speaker attribution, voice presets, and casting plans.
+- **ComfyUI/Qwen3-TTS synthesis** using the v2 chunk manifest workflow.
+- **Audio QA and assembly** for checking generated chunks, retrying failed items, and producing chapter-level WAV/MP3 files.
+- **Production reports and manifests** so long runs can be resumed, audited, and debugged.
+
+Typical output is a project folder in `output/` with normalized text, chapter files, Qwen/LLM chunks, `chunks_manifest_v2.json`, generated audio chunks, QA reports, and assembled chapter audio.
+
+## Contents
+
+- [English](#english)
+- [Русский](#русский)
+- [中文](#中文)
+- [Қазақша](#қазақша)
+- [O'zbekcha](#ozbekcha)
+
+---
+
+## English
+
+### What The App Does
+
+Books to Audio is a local-first audiobook production tool:
+
+1. Imports books from `TXT`, `PDF`, `EPUB`, `FB2`, or `DOCX`.
+2. Extracts text; scanned PDFs can use Tesseract OCR.
+3. Normalizes punctuation, whitespace, numbers, OCR artifacts, and language-specific text issues.
+4. Detects chapters, dialogue, speakers, roles, and voice assignments.
+5. Creates a v2 chunk manifest: `chunks_manifest_v2.json`.
+6. Sends chunks to ComfyUI with Qwen3-TTS workflows.
+7. Saves chunk audio, retries failures, runs artifact/ASR quality checks, and assembles final chapters.
+
+Core capabilities:
+
+| Area | What it does |
+| --- | --- |
+| Book import | Reads TXT, PDF, EPUB, FB2, and DOCX sources. |
+| OCR | Uses Tesseract for scanned PDFs when native text extraction is not enough. |
+| Normalization | Cleans punctuation, whitespace, OCR artifacts, numbers, abbreviations, and language-specific text issues. |
+| LLM processing | Uses local Ollama/Qwen models for normalization, chunking, dialogue analysis, and voice markup. |
+| Structure | Detects chapters, dialogue, speakers, roles, and production metadata. |
+| TTS preparation | Creates `chunks_manifest_v2.json` with chapter-aware, voice-aware synthesis chunks. |
+| Synthesis | Sends chunks to ComfyUI/Qwen3-TTS workflows and records per-chunk status. |
+| QA and assembly | Checks audio artifacts/ASR, retries failed chunks, and assembles WAV/MP3 chapter files. |
+
+The supported production path is:
+
+```text
+Book file -> text extraction/OCR -> normalization -> chaptering -> role markup
+-> chunks_manifest_v2.json -> ComfyUI/Qwen3-TTS -> audio chunks
+-> QA -> assembled WAV/MP3 chapters
+```
+
+### Supported Platforms
+
+| OS | Status | Notes |
 | --- | --- | --- |
-| Windows 10/11 | Поддерживается | Есть `install.bat` и `run_gui.bat`. TTS pipeline uses `chunks_manifest_v2.json` + ComfyUI. |
-| Linux | Поддерживается | Основной путь для локального GPU/CUDA TTS. GUI работает через PyQt6. |
-| macOS | Поддерживается | GUI, OCR, LLM-чанкинг и работа с ComfyUI. Локальный CUDA TTS недоступен на Mac, используйте ComfyUI/remote GPU. |
+| Windows 10/11 | Supported | Use `install.bat` and `run_gui.bat`. |
+| Linux | Supported | Best target for local CUDA/GPU TTS and ComfyUI. |
+| macOS | Supported | GUI, OCR, LLM, and remote/local ComfyUI endpoints work. CUDA-only direct TTS is not a production path on macOS. |
 
-Минимальная версия Python: **3.10+**. Рекомендуется Python **3.12**.
+Python requirement: **Python 3.10+**. Python **3.12** is recommended.
 
-## Быстрый старт
-
-Склонируйте репозиторий и запустите установщик.
+### Clone The Repository
 
 ```bash
 git clone <repo-url>
 cd books-to-audio
 ```
+
+Replace `<repo-url>` with your GitHub repository URL, for example:
+
+```bash
+git clone https://github.com/<owner>/<repo>.git
+cd books-to-audio
+```
+
+### Install
 
 Windows:
 
@@ -42,41 +112,39 @@ chmod +x install.sh run_gui.sh
 ./run_gui.sh
 ```
 
-Универсальный вариант для любой OS:
+Cross-platform installer:
 
 ```bash
 python install.py
 ```
 
-После установки запускайте через wrapper (`run_gui.bat` / `run_gui.sh`) или через Python из virtualenv.
-
-Windows:
-
-```powershell
-.venv-windows\Scripts\python.exe -m book_normalizer.gui.app
-```
-
-Linux/macOS:
+Useful installer profiles:
 
 ```bash
-.venv/bin/python -m book_normalizer.gui.app
+python install.py                         # desktop profile: GUI + OCR + LLM + audio helpers
+python install.py --minimal               # core dependencies only
+python install.py --with-dev              # pytest + ruff
+python install.py --with-asr              # ASR QA dependencies
+python install.py --with-stress           # optional Silero stress support
+python install.py --with-tts              # direct Qwen-TTS runtime
+python install.py --with-sage             # Qwen-TTS + SageAttention, Linux/CUDA oriented
+python install.py --recreate              # recreate virtual environment
+python install.py --dry-run               # show install plan without changing files
+python install.py --yes                   # use defaults without prompts
+python install.py --interactive           # ask for paths and optional downloads
 ```
 
-`install.py` создает `.venv`, обновляет `pip`, ставит пакет в editable-режиме,
-проверяет импорты, спрашивает пути для моделей/Hugging Face/Ollama в
-интерактивном терминале и сохраняет их в `data/local_runtime_paths.json`.
-Для Ollama-моделей можно выбрать отдельную папку через
-`--ollama-models-dir`; installer передает ее в native Ollama как
-`OLLAMA_MODELS`, поэтому `ollama pull` не пишет модели в неожиданное место.
-Windows wrapper `install.bat` использует `.venv-windows`, чтобы не смешивать
-Windows GUI и Linux `.venv`. По умолчанию ставится desktop-профиль: GUI, OCR,
-LLM-клиент и audio helpers. `install.log` перезаписывается при каждом запуске.
+Manual fallback:
 
-## Системные зависимости
+```bash
+pip install -r requirements.txt
+```
 
-Python-зависимости ставит `install.py`. Системные утилиты зависят от OS и нужны для отдельных функций.
+For new production installs, prefer `install.py` because it writes runtime paths, configures local model locations, and works consistently across Windows, Linux, and macOS.
 
-### Windows
+### System Dependencies
+
+Windows:
 
 ```powershell
 winget install Python.Python.3.12
@@ -84,9 +152,7 @@ winget install -e --silent --disable-interactivity --accept-package-agreements -
 winget install -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --id Gyan.FFmpeg
 ```
 
-Если Windows покажет UAC/installer confirmation, подтвердите установку. После установки Tesseract перезапустите терминал, чтобы обновился `PATH`.
-
-### Ubuntu/Debian
+Ubuntu/Debian:
 
 ```bash
 sudo apt-get update
@@ -96,254 +162,33 @@ sudo apt-get install -y python3 python3-venv python3-pip \
   ffmpeg libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0 fonts-noto-cjk
 ```
 
-### Fedora
-
-```bash
-sudo dnf install python3 python3-pip tesseract \
-  tesseract-langpack-eng tesseract-langpack-rus tesseract-langpack-chi_sim \
-  tesseract-langpack-kaz tesseract-langpack-uzb ffmpeg \
-  libglvnd-glx libxkbcommon-x11 xcb-util-cursor google-noto-sans-cjk-fonts
-```
-
-### Arch Linux
-
-```bash
-sudo pacman -S python python-pip tesseract \
-  tesseract-data-eng tesseract-data-rus tesseract-data-chi_sim \
-  tesseract-data-kaz tesseract-data-uzb ffmpeg \
-  libgl libxkbcommon-x11 xcb-util-cursor noto-fonts-cjk
-```
-
-### macOS
+macOS:
 
 ```bash
 brew install python tesseract tesseract-lang ffmpeg
 ```
 
-Если GUI не нужен, используйте `python install.py --minimal` или уберите GUI extra:
+### Where Models Are Downloaded
 
-```bash
-python install.py --without-gui
-```
-
-## Профили установки
-
-```bash
-python install.py                         # desktop: GUI + OCR + LLM + audio helpers
-python install.py --minimal               # только core-зависимости
-python install.py --with-dev              # pytest + ruff
-python install.py --with-stress           # silero-stress для ударений
-python install.py --with-tts              # прямой Qwen-TTS runner, лучше Linux/CUDA
-python install.py --with-sage             # Qwen-TTS + SageAttention, только Linux/CUDA
-python install.py --recreate              # пересоздать .venv
-python install.py --dry-run               # показать план без установки
-python install.py --yes                   # не спрашивать пути, взять defaults/flags
-python install.py --interactive           # явно спросить пути и optional downloads
-python install.py --ollama-models-dir D:/OllamaModels
-python install.py --tesseract-bin "C:/Program Files/Tesseract-OCR/tesseract.exe" --tessdata-dir "C:/Program Files/Tesseract-OCR/tessdata"
-python install.py --download-tessdata     # локальные OCR-языки eng/rus/chi_sim/kaz/uzb без sudo
-python install.py --download-ollama-models
-python install.py --download-tts-models --verify-hashes
-```
-
-Старый вариант тоже работает:
-
-```bash
-pip install -r requirements.txt
-```
-
-Но для новых установок предпочтителен `install.py`, потому что он одинаково работает на Windows, Linux и macOS и дает подсказки по системным пакетам.
-
-## Проверка окружения
-
-После установки:
-
-```bash
-# Windows
-.venv-windows\Scripts\normalize-book.exe doctor --skip-network
-
-# Linux/macOS
-.venv/bin/normalize-book doctor --skip-network
-```
-
-Полная проверка с Ollama и ComfyUI:
-
-```bash
-normalize-book doctor
-```
-
-Если команда `normalize-book` не найдена, активируйте виртуальное окружение.
-
-Windows:
-
-```powershell
-.venv-windows\Scripts\activate
-```
-
-Linux/macOS:
-
-```bash
-source .venv/bin/activate
-```
-
-## Настройка OCR
-
-OCR нужен только для сканов PDF. Для обычных EPUB/FB2/TXT/DOCX можно работать без Tesseract.
-
-Проверьте:
-
-```bash
-tesseract --version
-tesseract --list-langs
-```
-
-Для книг на поддерживаемых языках должны быть доступны коды `eng`, `rus`,
-`chi_sim`, `kaz`, `uzb`. Если их нет, запустите native installer. Флаг
-`--download-tessdata` скачивает языковые файлы в локальную ignored-папку
-`data/tessdata` и прописывает ее в runtime config, поэтому не требует `sudo`:
-
-```bash
-# Windows
-install.bat --interactive --install-system-tools --download-tessdata
-
-# Linux/macOS
-./install.sh --interactive --install-system-tools --download-tessdata
-```
-
-## Настройка LLM через нативную Ollama
-
-LLM используется для нормализации текста и умной разметки голосов. Ollama должна
-работать нативно в той OS, где запускается приложение, либо быть доступной по
-HTTP endpoint. Важно не держать одновременно несколько больших моделей:
-приложение отправляет запросы через native `/api/chat`, использует
-`num_parallel=1`, `num_ctx=4096`, `think=false`, `keep_alive` и выгружает модели
-после батчей.
-
-Установка Ollama:
-
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-ollama serve
-```
-
-На Windows можно поставить Ollama Desktop или указать полный путь к `ollama.exe`
-в `install.py --ollama-bin`. Главное, чтобы `http://localhost:11434` отвечал из
-приложения; в dev shell должен быть доступен тот же endpoint.
-Если модели должны лежать на другом диске, запускайте installer с
-`--ollama-models-dir` или укажите путь в interactive-режиме; он сохранится в
-`data/local_runtime_paths.json` и `.env`, а `ollama pull` получит `OLLAMA_MODELS`.
-
-Рекомендуемые модели для 8 GB VRAM / 16 GB RAM:
-
-```bash
-ollama pull hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
-ollama pull hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
-```
-
-Маршрутизация языков:
+The installer writes local runtime settings to:
 
 ```text
-ru/en/zh/kk/uz -> hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
-fallback       -> hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
+data/local_runtime_paths.json
 ```
 
-По умолчанию приложение использует native Ollama endpoint:
+The same values are also written to `.env` for local runs.
 
-```text
-http://localhost:11434
-```
+Default model/cache locations:
 
-`gemma3:12b` не используется по умолчанию: размер модели плюс KV/cache слишком
-рискованны для 8 GB VRAM.
+| Asset | Default / Config | Environment variable |
+| --- | --- | --- |
+| Qwen3-TTS / ComfyUI models | Windows: `D:/ComfyUI-external/models`; Linux/WSL: `/mnt/d/ComfyUI-external/models`; or `--models-dir` | `BOOKS_TO_AUDIO_MODELS_DIR`, `COMFYUI_MODELS_DIR` |
+| TTS model subfolder | `<models-dir>/audio_encoders/` | same as above |
+| Hugging Face cache | `--hf-cache-dir` or installer-selected folder | `HF_HOME` |
+| Ollama models | `<repo>/ollama-models` by default or `--ollama-models-dir` | `BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR`, `OLLAMA_MODELS` |
+| Local Tesseract language data | `<repo>/data/tessdata` when using `--download-tessdata` | `BOOKS_TO_AUDIO_TESSDATA_DIR`, `TESSDATA_PREFIX` |
 
-Если включить `LLM/GPU нормализация`, книга получает metadata-флаг
-`llm_processing_enabled`, а вкладка голосов автоматически выбирает LLM smart
-markup с тем же language/model profile. Если 8B не проходит validation,
-приложение пробует 4B; если модели не сохраняют текст, создается review report
-с проблемными окнами вместо тихого downgrade.
-
-Ручной benchmark качества:
-
-```bash
-python scripts/quality_benchmark.py
-RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama
-RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama --ollama-lightweight --languages en --max-chars 300
-RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py --run-ollama --languages ru --book-glob "*.fb2" --limit-books 1 --max-chars 350
-python scripts/quality_benchmark.py --skip-synthetic --book-glob "*.pdf" --limit-books 1
-```
-
-Воспроизводимый public corpus для `en/zh/kk/uz` можно скачать без коммита самих
-текстов:
-
-```bash
-python scripts/fetch_quality_corpus.py --out-dir output/public_quality_corpus
-python scripts/quality_benchmark.py \
-  --skip-synthetic \
-  --books-dir output/public_quality_corpus \
-  --languages en,zh,kk,uz \
-  --book-language-map output/public_quality_corpus/languages.json \
-  --out-dir output/quality_reports_public_corpus
-```
-
-Для реального многоязычного корпуса задавайте язык на файл через JSON-карту,
-иначе TXT/DOCX/PDF без метаданных будут проверяться с общим `--book-language`.
-Пример `books/languages.json`:
-
-```json
-{
-  "english/*.txt": "en",
-  "china/*.epub": "zh",
-  "kazakh/*.fb2": "kk",
-  "uzbek/*.pdf": "uz"
-}
-```
-
-Запуск:
-
-```bash
-python scripts/quality_benchmark.py \
-  --skip-synthetic \
-  --books-dir books \
-  --languages en,zh,kk,uz \
-  --book-language-map books/languages.json
-
-RUN_OLLAMA_TESTS=1 python scripts/quality_benchmark.py \
-  --run-ollama \
-  --books-dir books \
-  --languages en,zh,kk,uz \
-  --book-language-map books/languages.json \
-  --limit-books 4 \
-  --max-chars 600
-```
-
-Отчеты пишутся в `output/quality_reports`. Локальные книги из `books/` используются только для проверки и не коммитятся.
-
-## Настройка TTS
-
-Рекомендуемый production-путь - ComfyUI с Qwen3-TTS nodes.
-
-1. Запустите ComfyUI.
-2. Убедитесь, что API доступен на `http://localhost:8188`.
-3. Положите или настройте workflow в `comfyui_workflows/qwen3_tts_template.json`.
-4. В workflow должны быть placeholders:
-   - `{{TEXT}}`
-   - `{{VOICE_ID}}`
-   - `{{INSTRUCT}}`
-   - `{{OUTPUT_FILENAME}}`
-
-Модели можно хранить в общем каталоге и указать его через переменную:
-
-```bash
-export BOOKS_TO_AUDIO_MODELS_DIR="/path/to/ComfyUI/models"
-```
-
-Windows PowerShell:
-
-```powershell
-$env:BOOKS_TO_AUDIO_MODELS_DIR="D:\ComfyUI-external\models"
-```
-
-Ожидаемая структура:
+Expected Qwen3-TTS structure:
 
 ```text
 models/
@@ -353,50 +198,59 @@ models/
     Qwen3-TTS-Tokenizer-12Hz/
 ```
 
-### Установка TTS-моделей из Hugging Face
+Download TTS models:
 
-В GUI откройте вкладку **Синтез**, заранее выберите папку **Models dir** и нажмите
-**Скачать модели**. Приложение скачает нужные Qwen3-TTS репозитории с Hugging Face
-в выбранную папку, например:
-
-```text
-models/
-  audio_encoders/
-    Qwen3-TTS-12Hz-1.7B-CustomVoice/
-    Qwen3-TTS-12Hz-1.7B-Base/
-    Qwen3-TTS-Tokenizer-12Hz/
+```bash
+python install.py --download-tts-models
 ```
 
-CLI-вариант:
+or:
 
 ```bash
 normalize-book install-tts-models --models-dir /path/to/models \
   --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --with-base
 ```
 
-Предупреждение: модели большие, скачивание может занять много времени и потребовать
-несколько гигабайт свободного места. Нужен доступ в интернет к Hugging Face; если
-репозиторий требует авторизации, задайте `HF_TOKEN` или передайте `--token`.
-Python-зависимость для скачивания: `huggingface-hub` (ставится через `install.py`).
-Для прямого Qwen-TTS runner также нужны `qwen-tts`, `torch`, `soundfile`, `numpy`;
-на практике для production-озвучки рекомендуется нативный CUDA GPU-хост или
-ComfyUI endpoint с достаточной VRAM.
-
-Direct `scripts/tts_runner.py` legacy flow has been removed. Use `chunks_manifest_v2.json` + ComfyUI synthesis.
+If Hugging Face requires authentication:
 
 ```bash
-python install.py --with-tts
+export HF_TOKEN="<your-token>"
 ```
 
-SageAttention:
+Windows PowerShell:
+
+```powershell
+$env:HF_TOKEN="<your-token>"
+```
+
+Download Ollama models:
 
 ```bash
-python install.py --with-sage
+python install.py --download-ollama-models
 ```
 
-На macOS прямой CUDA runner не является production-путем. Используйте ComfyUI на другом GPU-хосте или внешний endpoint.
+or manually:
 
-## Запуск GUI
+```bash
+ollama pull hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
+ollama pull hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
+```
+
+### Resource Requirements
+
+Minimum for text normalization and GUI:
+
+| Resource | Minimum | Recommended |
+| --- | --- | --- |
+| CPU | 4 cores | 8+ cores |
+| RAM | 8 GB | 16-32 GB |
+| Disk | 10 GB free | 50+ GB free for models, books, and output |
+| GPU | Not required for text-only workflow | NVIDIA GPU for production TTS |
+| VRAM | Not required for text-only workflow | 8 GB minimum for the recommended local Qwen/Ollama setup; 12-24 GB preferred for heavier TTS/QA workloads |
+
+Production audiobook generation with ComfyUI/Qwen3-TTS needs a GPU host with enough VRAM for the selected TTS workflow. Model downloads can consume many gigabytes and should be placed on a fast SSD.
+
+### Start The App
 
 Windows:
 
@@ -410,33 +264,28 @@ Linux/macOS:
 ./run_gui.sh
 ```
 
-Или напрямую:
+Direct module run:
 
 ```bash
 python -m book_normalizer.gui.app
 ```
 
-Визуальный аудит GUI с PNG-скриншотами и JSON-summary:
+CLI health check:
 
 ```bash
-python scripts/gui_visual_audit.py --out-dir output/gui_visual_audit
+normalize-book doctor --skip-network
+normalize-book doctor
 ```
 
-## CLI workflow
+### Production CLI Workflow
 
-Нормализовать книгу:
-
-```bash
-normalize-book process books/mybook.pdf --out output --ocr-mode auto
-```
-
-Рекомендуемый pipeline без синтеза:
+Normalize and prepare a book:
 
 ```bash
 normalize-book pipeline books/mybook.pdf --out output --llm-normalize
 ```
 
-Pipeline с ComfyUI-синтезом и сборкой глав:
+Run ComfyUI synthesis and assemble chapters:
 
 ```bash
 normalize-book pipeline books/mybook.pdf \
@@ -447,7 +296,7 @@ normalize-book pipeline books/mybook.pdf \
   --assemble
 ```
 
-Собрать уже синтезированные chunks:
+Assemble already synthesized chunks:
 
 ```bash
 python scripts/assemble_chapter.py \
@@ -456,7 +305,7 @@ python scripts/assemble_chapter.py \
   --all
 ```
 
-## Структура output
+### Output Structure
 
 ```text
 output/mybook_pdf/
@@ -470,22 +319,7 @@ output/mybook_pdf/
   audit_log.json
 ```
 
-## Что хранить в репозитории
-
-В git должны попадать только код, тесты, документация, workflow templates и маленькие ассеты.
-
-Не коммитим:
-
-- `.venv/`, `.venv-windows/`, `venv/`, `env/`
-- `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `.coverage`
-- `books/`
-- `output/`
-- `data/`
-- временные файлы редакторов и OS
-
-`books/` и `output/` специально добавлены в `.gitignore`: локальные книги и результаты работы остаются у пользователя и не засоряют репозиторий.
-
-## Разработка
+### Development
 
 ```bash
 python install.py --with-dev
@@ -493,41 +327,630 @@ python -m ruff check .
 python -m pytest
 ```
 
-CI запускается на Windows, Ubuntu и macOS.
+---
 
-## Troubleshooting
+## Русский
 
-`No module named book_normalizer`:
+### Что делает приложение
+
+Books to Audio - локальный production-инструмент для подготовки аудиокниг из длинных текстов. Он не просто запускает TTS, а готовит книгу к озвучке: достает текст, чистит его, разбивает на главы и реплики, помогает разметить роли и голоса, синтезирует чанки через ComfyUI/Qwen3-TTS, проверяет результат и собирает финальные аудиофайлы.
+
+1. Загружает книги из `TXT`, `PDF`, `EPUB`, `FB2`, `DOCX`.
+2. Извлекает текст; для сканированных PDF может использовать Tesseract OCR.
+3. Нормализует пунктуацию, пробелы, числа, OCR-ошибки и языковые особенности.
+4. Определяет главы, диалоги, говорящих, роли и распределение голосов.
+5. Создает v2-манифест чанков: `chunks_manifest_v2.json`.
+6. Отправляет чанки в ComfyUI через Qwen3-TTS workflow.
+7. Сохраняет аудио чанков, повторяет ошибки, запускает QA и собирает финальные главы.
+
+Основные возможности:
+
+| Зона | Что делает |
+| --- | --- |
+| Импорт книг | Читает TXT, PDF, EPUB, FB2 и DOCX. |
+| OCR | Обрабатывает сканированные PDF через Tesseract, если обычного извлечения текста недостаточно. |
+| Нормализация | Исправляет пунктуацию, пробелы, OCR-артефакты, числа, сокращения, `ё`, ударения и языковые особенности. |
+| LLM-обработка | Использует локальные Ollama/Qwen модели для нормализации, чанкинга, диалогов и разметки голосов. |
+| Структура книги | Находит главы, диалоги, говорящих, роли и production metadata. |
+| Подготовка к TTS | Создает `chunks_manifest_v2.json` с чанками, привязанными к главам и голосам. |
+| Синтез | Отправляет чанки в ComfyUI/Qwen3-TTS и сохраняет статус каждого аудиофрагмента. |
+| QA и сборка | Проверяет аудио, повторяет неудачные чанки и собирает WAV/MP3 главы. |
+
+Production-путь:
+
+```text
+Файл книги -> извлечение/OCR -> нормализация -> главы -> роли
+-> chunks_manifest_v2.json -> ComfyUI/Qwen3-TTS -> audio chunks
+-> QA -> WAV/MP3 главы
+```
+
+### Поддерживаемые платформы
+
+| OS | Статус | Комментарий |
+| --- | --- | --- |
+| Windows 10/11 | Поддерживается | Используйте `install.bat` и `run_gui.bat`. |
+| Linux | Поддерживается | Лучший вариант для локального CUDA/GPU TTS и ComfyUI. |
+| macOS | Поддерживается | GUI, OCR, LLM и ComfyUI endpoint работают. CUDA-only runner не является production-путем на macOS. |
+
+Требование: **Python 3.10+**. Рекомендуется **Python 3.12**.
+
+### Клонирование репозитория
+
+```bash
+git clone <repo-url>
+cd books-to-audio
+```
+
+Пример:
+
+```bash
+git clone https://github.com/<owner>/<repo>.git
+cd books-to-audio
+```
+
+### Установка
+
+Windows:
+
+```powershell
+install.bat
+run_gui.bat
+```
+
+Linux/macOS:
+
+```bash
+chmod +x install.sh run_gui.sh
+./install.sh
+./run_gui.sh
+```
+
+Универсально:
 
 ```bash
 python install.py
 ```
 
-OCR не работает:
+Полезные профили:
 
 ```bash
-tesseract --version
-tesseract --list-langs
+python install.py                         # desktop: GUI + OCR + LLM + audio helpers
+python install.py --minimal               # только базовые зависимости
+python install.py --with-dev              # pytest + ruff
+python install.py --with-asr              # зависимости для ASR QA
+python install.py --with-stress           # Silero stress
+python install.py --with-tts              # прямой Qwen-TTS runtime
+python install.py --with-sage             # Qwen-TTS + SageAttention, Linux/CUDA
+python install.py --recreate              # пересоздать virtualenv
+python install.py --dry-run               # показать план установки
+python install.py --yes                   # использовать значения по умолчанию
+python install.py --interactive           # спросить пути и загрузки
 ```
 
-Проверьте, что установлен русский language pack.
+### Куда скачиваются модели
 
-GUI не стартует на Linux:
+Installer сохраняет пути в:
 
-```bash
-sudo apt-get install -y libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0
+```text
+data/local_runtime_paths.json
 ```
 
-MP3 не создается:
+и дублирует их в `.env`.
 
-```bash
-ffmpeg -version
+| Что хранится | Путь / настройка | Переменная окружения |
+| --- | --- | --- |
+| Qwen3-TTS / ComfyUI модели | Windows: `D:/ComfyUI-external/models`; Linux/WSL: `/mnt/d/ComfyUI-external/models`; или `--models-dir` | `BOOKS_TO_AUDIO_MODELS_DIR`, `COMFYUI_MODELS_DIR` |
+| Папка TTS-моделей | `<models-dir>/audio_encoders/` | те же |
+| Hugging Face cache | `--hf-cache-dir` или выбранная папка | `HF_HOME` |
+| Ollama модели | по умолчанию `<repo>/ollama-models` или `--ollama-models-dir` | `BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR`, `OLLAMA_MODELS` |
+| Tesseract языки | `<repo>/data/tessdata` при `--download-tessdata` | `BOOKS_TO_AUDIO_TESSDATA_DIR`, `TESSDATA_PREFIX` |
+
+Ожидаемая структура:
+
+```text
+models/
+  audio_encoders/
+    Qwen3-TTS-12Hz-1.7B-Base/
+    Qwen3-TTS-12Hz-1.7B-CustomVoice/
+    Qwen3-TTS-Tokenizer-12Hz/
 ```
 
-ComfyUI недоступен:
+Скачать TTS-модели:
 
 ```bash
+python install.py --download-tts-models
+```
+
+Скачать Ollama-модели:
+
+```bash
+python install.py --download-ollama-models
+```
+
+или вручную:
+
+```bash
+ollama pull hf.co/Qwen/Qwen3-8B-GGUF:Q4_K_M
+ollama pull hf.co/Qwen/Qwen3-4B-GGUF:Q4_K_M
+```
+
+### Требования к ресурсам
+
+| Ресурс | Минимум | Рекомендуется |
+| --- | --- | --- |
+| CPU | 4 ядра | 8+ ядер |
+| RAM | 8 GB | 16-32 GB |
+| Диск | 10 GB свободно | 50+ GB для моделей, книг и output |
+| GPU | Не нужен для text-only workflow | NVIDIA GPU для production TTS |
+| VRAM | Не нужен для text-only workflow | 8 GB минимум; 12-24 GB лучше для тяжелого TTS/QA |
+
+Для production-синтеза через ComfyUI/Qwen3-TTS нужен GPU-хост. Модели большие, лучше хранить их на быстром SSD.
+
+### Запуск
+
+Windows:
+
+```powershell
+run_gui.bat
+```
+
+Linux/macOS:
+
+```bash
+./run_gui.sh
+```
+
+Проверка окружения:
+
+```bash
+normalize-book doctor --skip-network
 normalize-book doctor
 ```
 
-Проверьте, что ComfyUI запущен и API доступен по `http://localhost:8188`.
+### Production CLI
+
+```bash
+normalize-book pipeline books/mybook.pdf --out output --llm-normalize
+```
+
+С синтезом и сборкой:
+
+```bash
+normalize-book pipeline books/mybook.pdf \
+  --out output \
+  --llm-normalize \
+  --synthesize \
+  --workflow comfyui_workflows/qwen3_tts_template.json \
+  --assemble
+```
+
+---
+
+## 中文
+
+### 应用功能
+
+Books to Audio 是一个本地优先的有声书生产工具。它不只是启动 TTS，而是完成长篇书籍生产流程：文本提取、清理、章节和对话结构化、角色/语音规划、分块合成、质量检查和最终音频组装。
+
+1. 导入 `TXT`、`PDF`、`EPUB`、`FB2`、`DOCX`。
+2. 提取文本；扫描版 PDF 可使用 Tesseract OCR。
+3. 清理标点、空白、数字、OCR 错误和语言相关问题。
+4. 识别章节、对话、说话人、角色和语音分配。
+5. 生成 v2 分块清单：`chunks_manifest_v2.json`。
+6. 通过 ComfyUI/Qwen3-TTS 合成音频。
+7. 保存音频分块、重试失败项、执行 QA，并合成最终章节音频。
+
+核心能力：
+
+| 模块 | 功能 |
+| --- | --- |
+| 书籍导入 | 读取 TXT、PDF、EPUB、FB2、DOCX。 |
+| OCR | 使用 Tesseract 处理扫描版 PDF。 |
+| 文本清理 | 修复标点、空白、OCR 错误、数字、缩写和语言相关问题。 |
+| LLM 处理 | 通过本地 Ollama/Qwen 进行规范化、分块、对话分析和语音标注。 |
+| 结构化 | 识别章节、对话、说话人、角色和 production metadata。 |
+| TTS 准备 | 生成按章节和语音组织的 `chunks_manifest_v2.json`。 |
+| 音频合成 | 将分块发送到 ComfyUI/Qwen3-TTS，并记录每个分块状态。 |
+| QA 和组装 | 检查音频、重试失败分块，并生成 WAV/MP3 章节文件。 |
+
+Production 流程：
+
+```text
+Book file -> extraction/OCR -> normalization -> chapters -> roles
+-> chunks_manifest_v2.json -> ComfyUI/Qwen3-TTS -> audio chunks
+-> QA -> WAV/MP3 chapters
+```
+
+### 支持平台
+
+| OS | 状态 | 说明 |
+| --- | --- | --- |
+| Windows 10/11 | 支持 | 使用 `install.bat` 和 `run_gui.bat`。 |
+| Linux | 支持 | 推荐用于本地 CUDA/GPU TTS 和 ComfyUI。 |
+| macOS | 支持 | 支持 GUI、OCR、LLM 和 ComfyUI endpoint；CUDA-only TTS 不适合作为 macOS production 路径。 |
+
+要求：**Python 3.10+**，推荐 **Python 3.12**。
+
+### 克隆仓库
+
+```bash
+git clone <repo-url>
+cd books-to-audio
+```
+
+示例：
+
+```bash
+git clone https://github.com/<owner>/<repo>.git
+cd books-to-audio
+```
+
+### 安装
+
+Windows:
+
+```powershell
+install.bat
+run_gui.bat
+```
+
+Linux/macOS:
+
+```bash
+chmod +x install.sh run_gui.sh
+./install.sh
+./run_gui.sh
+```
+
+跨平台：
+
+```bash
+python install.py
+```
+
+常用参数：
+
+```bash
+python install.py --minimal
+python install.py --with-dev
+python install.py --with-asr
+python install.py --with-stress
+python install.py --with-tts
+python install.py --with-sage
+python install.py --interactive
+python install.py --download-tts-models
+python install.py --download-ollama-models
+```
+
+### 模型下载位置
+
+安装器将运行时路径写入：
+
+```text
+data/local_runtime_paths.json
+```
+
+并写入 `.env`。
+
+| 资源 | 路径 / 配置 | 环境变量 |
+| --- | --- | --- |
+| Qwen3-TTS / ComfyUI 模型 | Windows: `D:/ComfyUI-external/models`; Linux/WSL: `/mnt/d/ComfyUI-external/models`; 或 `--models-dir` | `BOOKS_TO_AUDIO_MODELS_DIR`, `COMFYUI_MODELS_DIR` |
+| TTS 子目录 | `<models-dir>/audio_encoders/` | 同上 |
+| Hugging Face 缓存 | `--hf-cache-dir` | `HF_HOME` |
+| Ollama 模型 | 默认 `<repo>/ollama-models` 或 `--ollama-models-dir` | `BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR`, `OLLAMA_MODELS` |
+| Tesseract 语言数据 | `<repo>/data/tessdata` | `BOOKS_TO_AUDIO_TESSDATA_DIR`, `TESSDATA_PREFIX` |
+
+下载模型：
+
+```bash
+python install.py --download-tts-models
+python install.py --download-ollama-models
+```
+
+### 资源要求
+
+| 资源 | 最低 | 推荐 |
+| --- | --- | --- |
+| CPU | 4 核 | 8+ 核 |
+| RAM | 8 GB | 16-32 GB |
+| 磁盘 | 10 GB 可用 | 50+ GB |
+| GPU | 纯文本流程不需要 | production TTS 推荐 NVIDIA GPU |
+| VRAM | 纯文本流程不需要 | 至少 8 GB；12-24 GB 更好 |
+
+### 启动和 CLI
+
+```bash
+python -m book_normalizer.gui.app
+normalize-book doctor
+normalize-book pipeline books/mybook.pdf --out output --llm-normalize
+normalize-book pipeline books/mybook.pdf --out output --llm-normalize --synthesize --workflow comfyui_workflows/qwen3_tts_template.json --assemble
+```
+
+---
+
+## Қазақша
+
+### Қолданба не істейді
+
+Books to Audio - ұзақ кітаптарды аудиокітап өндірісіне дайындайтын жергілікті құрал. Ол тек TTS іске қоспайды: мәтінді шығарады, тазалайды, тараулар мен диалогтарды құрылымдайды, рөлдер мен дауыстарды жоспарлайды, чанктарды синтездейді, сапаны тексереді және финалдық аудионы жинайды.
+
+1. `TXT`, `PDF`, `EPUB`, `FB2`, `DOCX` файлдарын ашады.
+2. Мәтінді шығарады; сканерленген PDF үшін Tesseract OCR қолдана алады.
+3. Пунктуацияны, бос орындарды, сандарды, OCR қателерін және тілдік ерекшеліктерді түзетеді.
+4. Тарауларды, диалогтарды, кейіпкерлерді, рөлдерді және дауыстарды анықтайды.
+5. `chunks_manifest_v2.json` манифесін жасайды.
+6. Чанктарды ComfyUI/Qwen3-TTS workflow арқылы синтездейді.
+7. Аудио чанктарды сақтайды, қателерді қайта өңдейді, QA жүргізеді және финалдық тарауларды жинайды.
+
+Негізгі мүмкіндіктер:
+
+| Бөлім | Қызметі |
+| --- | --- |
+| Кітап импорты | TXT, PDF, EPUB, FB2 және DOCX оқиды. |
+| OCR | Сканерленген PDF файлдарын Tesseract арқылы өңдейді. |
+| Мәтінді тазалау | Пунктуацияны, бос орындарды, OCR қателерін, сандарды және тілдік ерекшеліктерді түзетеді. |
+| LLM өңдеу | Жергілікті Ollama/Qwen арқылы нормализация, чанкинг, диалог және дауыс белгілеу жасайды. |
+| Құрылым | Тарауларды, диалогтарды, сөйлеушілерді, рөлдерді және production metadata анықтайды. |
+| TTS дайындау | Тараулар мен дауыстарға байланыстырылған `chunks_manifest_v2.json` жасайды. |
+| Синтез | Чанктарды ComfyUI/Qwen3-TTS жүйесіне жібереді және статусын сақтайды. |
+| QA және жинау | Аудионы тексереді, сәтсіз чанктарды қайталайды және WAV/MP3 тарауларын жинайды. |
+
+Production ағымы:
+
+```text
+Кітап файлы -> мәтін/OCR -> нормализация -> тараулар -> рөлдер
+-> chunks_manifest_v2.json -> ComfyUI/Qwen3-TTS -> audio chunks
+-> QA -> WAV/MP3 тараулар
+```
+
+### Платформалар
+
+| OS | Күйі | Ескерту |
+| --- | --- | --- |
+| Windows 10/11 | Қолдау бар | `install.bat`, `run_gui.bat`. |
+| Linux | Қолдау бар | CUDA/GPU TTS және ComfyUI үшін ең ыңғайлы. |
+| macOS | Қолдау бар | GUI, OCR, LLM және ComfyUI endpoint жұмыс істейді. |
+
+Талап: **Python 3.10+**, ұсынылады **Python 3.12**.
+
+### Репозиторийді көшіру
+
+```bash
+git clone <repo-url>
+cd books-to-audio
+```
+
+Мысал:
+
+```bash
+git clone https://github.com/<owner>/<repo>.git
+cd books-to-audio
+```
+
+### Орнату
+
+Windows:
+
+```powershell
+install.bat
+run_gui.bat
+```
+
+Linux/macOS:
+
+```bash
+chmod +x install.sh run_gui.sh
+./install.sh
+./run_gui.sh
+```
+
+Барлық жүйелер үшін:
+
+```bash
+python install.py
+```
+
+Қосымша параметрлер:
+
+```bash
+python install.py --minimal
+python install.py --with-dev
+python install.py --with-asr
+python install.py --with-stress
+python install.py --with-tts
+python install.py --with-sage
+python install.py --interactive
+python install.py --download-tts-models
+python install.py --download-ollama-models
+```
+
+### Модельдер қайда сақталады
+
+Орнатушы жолдарды мына файлға жазады:
+
+```text
+data/local_runtime_paths.json
+```
+
+| Ресурс | Жол / баптау | Environment variable |
+| --- | --- | --- |
+| Qwen3-TTS / ComfyUI models | Windows: `D:/ComfyUI-external/models`; Linux/WSL: `/mnt/d/ComfyUI-external/models`; немесе `--models-dir` | `BOOKS_TO_AUDIO_MODELS_DIR`, `COMFYUI_MODELS_DIR` |
+| TTS ішкі папкасы | `<models-dir>/audio_encoders/` | сол айнымалылар |
+| Hugging Face cache | `--hf-cache-dir` | `HF_HOME` |
+| Ollama models | әдетте `<repo>/ollama-models` немесе `--ollama-models-dir` | `BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR`, `OLLAMA_MODELS` |
+| Tesseract тіл деректері | `<repo>/data/tessdata` | `BOOKS_TO_AUDIO_TESSDATA_DIR`, `TESSDATA_PREFIX` |
+
+Модельдерді жүктеу:
+
+```bash
+python install.py --download-tts-models
+python install.py --download-ollama-models
+```
+
+### Ресурс талаптары
+
+| Ресурс | Минимум | Ұсынылады |
+| --- | --- | --- |
+| CPU | 4 core | 8+ core |
+| RAM | 8 GB | 16-32 GB |
+| Disk | 10 GB бос орын | 50+ GB |
+| GPU | text-only үшін қажет емес | production TTS үшін NVIDIA GPU |
+| VRAM | text-only үшін қажет емес | кемінде 8 GB; 12-24 GB жақсырақ |
+
+### Іске қосу
+
+```bash
+python -m book_normalizer.gui.app
+normalize-book doctor
+normalize-book pipeline books/mybook.pdf --out output --llm-normalize
+normalize-book pipeline books/mybook.pdf --out output --llm-normalize --synthesize --workflow comfyui_workflows/qwen3_tts_template.json --assemble
+```
+
+---
+
+## O'zbekcha
+
+### Ilova nima qiladi
+
+Books to Audio - uzun kitoblarni audiokitob ishlab chiqarishga tayyorlaydigan lokal vosita. U faqat TTS ishga tushirmaydi: matnni ajratadi, tozalaydi, boblar va dialoglarni tuzadi, rollar va ovozlarni rejalashtiradi, chanklarni sintez qiladi, sifatni tekshiradi va yakuniy audioni yig'adi.
+
+1. `TXT`, `PDF`, `EPUB`, `FB2`, `DOCX` fayllarini yuklaydi.
+2. Matnni ajratadi; skanerlangan PDF uchun Tesseract OCR ishlatilishi mumkin.
+3. Tinish belgilari, bo'shliqlar, raqamlar, OCR xatolari va tilga xos muammolarni normallashtiradi.
+4. Boblar, dialoglar, personajlar, rollar va ovozlarni aniqlaydi.
+5. `chunks_manifest_v2.json` manifestini yaratadi.
+6. Chanklarni ComfyUI/Qwen3-TTS workflow orqali sintez qiladi.
+7. Audio chanklarni saqlaydi, xatolarni qayta ishlaydi, QA bajaradi va yakuniy boblarni yig'adi.
+
+Asosiy imkoniyatlar:
+
+| Bo'lim | Vazifasi |
+| --- | --- |
+| Kitob importi | TXT, PDF, EPUB, FB2 va DOCX o'qiydi. |
+| OCR | Skanerlangan PDF fayllarini Tesseract orqali qayta ishlaydi. |
+| Matnni tozalash | Tinish belgilari, bo'shliqlar, OCR xatolari, raqamlar va tilga xos muammolarni tuzatadi. |
+| LLM ishlovi | Lokal Ollama/Qwen orqali normalizatsiya, chanking, dialog va ovoz belgilashni bajaradi. |
+| Tuzilma | Boblar, dialoglar, gapiruvchilar, rollar va production metadata ni aniqlaydi. |
+| TTS tayyorlash | Boblar va ovozlarga bog'langan `chunks_manifest_v2.json` yaratadi. |
+| Sintez | Chanklarni ComfyUI/Qwen3-TTS ga yuboradi va har bir chank statusini saqlaydi. |
+| QA va yig'ish | Audioni tekshiradi, muvaffaqiyatsiz chanklarni qayta ishlaydi va WAV/MP3 boblarini yig'adi. |
+
+Production oqimi:
+
+```text
+Kitob fayli -> matn/OCR -> normalizatsiya -> boblar -> rollar
+-> chunks_manifest_v2.json -> ComfyUI/Qwen3-TTS -> audio chunks
+-> QA -> WAV/MP3 boblar
+```
+
+### Platformalar
+
+| OS | Holat | Izoh |
+| --- | --- | --- |
+| Windows 10/11 | Qo'llab-quvvatlanadi | `install.bat`, `run_gui.bat`. |
+| Linux | Qo'llab-quvvatlanadi | CUDA/GPU TTS va ComfyUI uchun eng yaxshi yo'l. |
+| macOS | Qo'llab-quvvatlanadi | GUI, OCR, LLM va ComfyUI endpoint ishlaydi. |
+
+Talab: **Python 3.10+**, tavsiya etiladi **Python 3.12**.
+
+### Repozitoriyni klonlash
+
+```bash
+git clone <repo-url>
+cd books-to-audio
+```
+
+Misol:
+
+```bash
+git clone https://github.com/<owner>/<repo>.git
+cd books-to-audio
+```
+
+### O'rnatish
+
+Windows:
+
+```powershell
+install.bat
+run_gui.bat
+```
+
+Linux/macOS:
+
+```bash
+chmod +x install.sh run_gui.sh
+./install.sh
+./run_gui.sh
+```
+
+Universal:
+
+```bash
+python install.py
+```
+
+Foydali parametrlar:
+
+```bash
+python install.py --minimal
+python install.py --with-dev
+python install.py --with-asr
+python install.py --with-stress
+python install.py --with-tts
+python install.py --with-sage
+python install.py --interactive
+python install.py --download-tts-models
+python install.py --download-ollama-models
+```
+
+### Modellar qayerga yuklanadi
+
+Installer yo'llarni shu faylga yozadi:
+
+```text
+data/local_runtime_paths.json
+```
+
+| Resurs | Yo'l / sozlama | Environment variable |
+| --- | --- | --- |
+| Qwen3-TTS / ComfyUI models | Windows: `D:/ComfyUI-external/models`; Linux/WSL: `/mnt/d/ComfyUI-external/models`; yoki `--models-dir` | `BOOKS_TO_AUDIO_MODELS_DIR`, `COMFYUI_MODELS_DIR` |
+| TTS ichki papkasi | `<models-dir>/audio_encoders/` | yuqoridagi |
+| Hugging Face cache | `--hf-cache-dir` | `HF_HOME` |
+| Ollama models | odatda `<repo>/ollama-models` yoki `--ollama-models-dir` | `BOOKS_TO_AUDIO_OLLAMA_MODELS_DIR`, `OLLAMA_MODELS` |
+| Tesseract til fayllari | `<repo>/data/tessdata` | `BOOKS_TO_AUDIO_TESSDATA_DIR`, `TESSDATA_PREFIX` |
+
+Modellarni yuklash:
+
+```bash
+python install.py --download-tts-models
+python install.py --download-ollama-models
+```
+
+### Resurs talablari
+
+| Resurs | Minimum | Tavsiya |
+| --- | --- | --- |
+| CPU | 4 core | 8+ core |
+| RAM | 8 GB | 16-32 GB |
+| Disk | 10 GB bo'sh joy | 50+ GB |
+| GPU | text-only uchun shart emas | production TTS uchun NVIDIA GPU |
+| VRAM | text-only uchun shart emas | kamida 8 GB; 12-24 GB yaxshiroq |
+
+### Ishga tushirish
+
+```bash
+python -m book_normalizer.gui.app
+normalize-book doctor
+normalize-book pipeline books/mybook.pdf --out output --llm-normalize
+normalize-book pipeline books/mybook.pdf --out output --llm-normalize --synthesize --workflow comfyui_workflows/qwen3_tts_template.json --assemble
+```
+
+---
+
+## Runtime Notes
+
+- Use `normalize-book doctor` before a production run.
+- Use the v2 manifest path only. Legacy v1/direct runner flows are removed.
+- ComfyUI must expose its API, usually at `http://localhost:8188`.
+- Ollama must expose its API, usually at `http://localhost:11434`.

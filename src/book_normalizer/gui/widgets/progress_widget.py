@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import time
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QRectF, Qt, QTimer, pyqtProperty
+from PyQt6.QtGui import QColor, QLinearGradient, QPainter
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -60,6 +61,122 @@ def _format_duration(seconds: float) -> str:
     return f"{hours}h {minutes:02d}m"
 
 
+class _SmoothProgressBar(QProgressBar):
+    """Paint progress locally so indeterminate motion is smooth on Windows."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._display_value = 0.0
+        self._busy_phase = 0.0
+        self._busy_timer = QTimer(self)
+        self._busy_timer.setInterval(16)
+        self._busy_timer.timeout.connect(self._advance_busy_phase)
+        self._value_animation = QPropertyAnimation(self, b"displayValue", self)
+        self._value_animation.setDuration(280)
+        self._value_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.setTextVisible(False)
+
+    def displayValue(self) -> float:
+        return self._display_value
+
+    def setDisplayValue(self, value: float) -> None:
+        self._display_value = value
+        self.update()
+
+    displayValue = pyqtProperty(float, fget=displayValue, fset=setDisplayValue)
+
+    def setValue(self, value: int) -> None:  # noqa: N802 - Qt API name.
+        value = max(self.minimum(), min(value, self.maximum()))
+        if self.maximum() == 0:
+            super().setValue(value)
+            self._display_value = float(value)
+            self.update()
+            return
+        previous = self._display_value
+        super().setValue(value)
+        if abs(previous - value) < 0.01 or not self.isVisible():
+            self._display_value = float(value)
+            self.update()
+            return
+        self._value_animation.stop()
+        self._value_animation.setStartValue(previous)
+        self._value_animation.setEndValue(float(value))
+        self._value_animation.start()
+
+    def setMaximum(self, maximum: int) -> None:  # noqa: N802 - Qt API name.
+        super().setMaximum(maximum)
+        self._sync_busy_timer()
+        if maximum > 0:
+            self._display_value = min(self._display_value, float(maximum))
+        self.update()
+
+    def setRange(self, minimum: int, maximum: int) -> None:  # noqa: N802 - Qt API name.
+        super().setRange(minimum, maximum)
+        self._sync_busy_timer()
+        if maximum > 0:
+            self._display_value = min(max(self._display_value, float(minimum)), float(maximum))
+        self.update()
+
+    def showEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API name.
+        super().showEvent(event)
+        self._sync_busy_timer()
+
+    def hideEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API name.
+        self._busy_timer.stop()
+        super().hideEvent(event)
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API name.
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        radius = min(6.0, rect.height() / 2)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(226, 232, 240, 210))
+        painter.drawRoundedRect(rect, radius, radius)
+
+        if self.maximum() == 0:
+            self._paint_busy_chunk(painter, rect, radius)
+            return
+
+        span = self.maximum() - self.minimum()
+        if span <= 0:
+            return
+        ratio = (self._display_value - self.minimum()) / span
+        width = max(0.0, min(1.0, ratio)) * rect.width()
+        if width <= 0:
+            return
+        fill = QRectF(rect.left(), rect.top(), width, rect.height())
+        painter.setBrush(self._fill_gradient(fill))
+        painter.drawRoundedRect(fill, radius, radius)
+
+    def _paint_busy_chunk(self, painter: QPainter, rect: QRectF, radius: float) -> None:
+        chunk_width = min(max(rect.width() * 0.34, 120.0), 360.0)
+        x = rect.left() - chunk_width + self._busy_phase * (rect.width() + chunk_width)
+        chunk = QRectF(x, rect.top(), chunk_width, rect.height())
+        painter.setClipRect(rect)
+        painter.setBrush(self._fill_gradient(chunk))
+        painter.drawRoundedRect(chunk, radius, radius)
+        painter.setClipping(False)
+
+    def _fill_gradient(self, rect: QRectF) -> QLinearGradient:
+        gradient = QLinearGradient(rect.left(), rect.center().y(), rect.right(), rect.center().y())
+        gradient.setColorAt(0.0, QColor("#2563eb"))
+        gradient.setColorAt(1.0, QColor("#14b8a6"))
+        return gradient
+
+    def _advance_busy_phase(self) -> None:
+        self._busy_phase = (self._busy_phase + 0.008) % 1.0
+        self.update()
+
+    def _sync_busy_timer(self) -> None:
+        if self.maximum() == 0 and self.isVisible():
+            if not self._busy_timer.isActive():
+                self._busy_timer.start()
+        else:
+            self._busy_timer.stop()
+
+
 class ProgressWidget(QWidget):
     """Combined progress bar with status text and ETA."""
 
@@ -88,7 +205,7 @@ class ProgressWidget(QWidget):
         bar_layout = QHBoxLayout(self._bar_row)
         bar_layout.setContentsMargins(0, 0, 0, 0)
         bar_layout.setSpacing(8)
-        self._bar = QProgressBar()
+        self._bar = _SmoothProgressBar()
         self._bar.setMinimum(0)
         self._bar.setMaximum(100)
         self._bar.setValue(0)
@@ -124,6 +241,13 @@ class ProgressWidget(QWidget):
 
     def set_busy(self, text: str) -> None:
         """Show indeterminate progress (spinner) with text."""
+        if self._status_kind == "progress" and self._bar.maximum() > 0:
+            self._status.setText(text)
+            self._ensure_timing_started()
+            self._bar_row.setVisible(True)
+            self._apply_time_text()
+            return
+
         self._status_kind = "busy"
         self._ensure_timing_started()
         self._status.setText(text)

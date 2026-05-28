@@ -264,6 +264,128 @@ _UZ_ATTRIBUTION_RE = re.compile(
     re.IGNORECASE,
 )
 
+_DELIVERY_CUE_RE_BY_LANGUAGE: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
+    "ru": (
+        (
+            "whisper",
+            re.compile(
+                r"\b(?:прошептал(?:а|и|о)?|шепнул(?:а|и|о)?|шептал(?:а|и|о)?|"
+                r"зашептал(?:а|и|о)?|зашептала|шёпотом|шепотом|полушёпотом|полушепотом)\b",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "joyful",
+            re.compile(
+                r"\b(?:рассмеял(?:ся|ась|ись)?|рассмеялась|смеясь|с улыбкой|"
+                r"весело|радостно|улыбнул(?:ся|ась|ись)?)\b",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "sad",
+            re.compile(
+                r"\b(?:грустно|печально|печальным|печальной|с грустью|жаль|"
+                r"сожалени(?:ем|я)|промямлил(?:а|и|о)?|пробормотал(?:а|и|о)?)\b",
+                re.IGNORECASE,
+            ),
+        ),
+    ),
+    "en": (
+        (
+            "whisper",
+            re.compile(
+                r"\b(?:whispered|whispers?|murmured|murmurs?|hushed|in\s+a\s+whisper)\b",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "joyful",
+            re.compile(
+                r"\b(?:laughed|laughing|chuckled|smiled|cheerfully|happily|joyfully)\b",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "sad",
+            re.compile(
+                r"\b(?:sadly|sorrowfully|with\s+sadness|regretfully|mumbled|"
+                r"muttered|with\s+a\s+sad\s+look)\b",
+                re.IGNORECASE,
+            ),
+        ),
+    ),
+    "zh": (
+        (
+            "whisper",
+            re.compile(
+                "(?:\u4f4e\u58f0|\u8f7b\u58f0|\u6084\u58f0|\u5c0f\u58f0|"
+                "\u8033\u8bed|\u4f4e\u8bed)"
+            ),
+        ),
+        (
+            "joyful",
+            re.compile(
+                "(?:\u7b11\u7740|\u7b11\u9053|\u5927\u7b11|\u5fae\u7b11|"
+                "\u9ad8\u5174\u5730|\u5feb\u6d3b\u5730)"
+            ),
+        ),
+        (
+            "sad",
+            re.compile(
+                "(?:\u96be\u8fc7\u5730|\u4f24\u5fc3\u5730|\u60b2\u4f24\u5730|"
+                "\u60cb\u60dc|\u9057\u61be\u5730|\u4f24\u611f)"
+            ),
+        ),
+    ),
+    "kk": (
+        (
+            "whisper",
+            re.compile(
+                r"\b(?:сыбырлады|сыбырлап|сыбыр\s+етті|сыбыр\s+қақты)\b",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "joyful",
+            re.compile(
+                r"\b(?:күліп|күлді|қуанып|қуанышты|көңілді)\b",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "sad",
+            re.compile(
+                r"\b(?:мұңды|мұңайып|қайғылы|өкінішпен|жабырқап)\b",
+                re.IGNORECASE,
+            ),
+        ),
+    ),
+    "uz": (
+        (
+            "whisper",
+            re.compile(
+                r"\b(?:pichirladi|pichirlab|shivirladi|shivirlab|past\s+ovozda)\b",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "joyful",
+            re.compile(
+                r"\b(?:kulib|kuldi|quvonib|xursand|quvnoq)\b",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "sad",
+            re.compile(
+                r"\b(?:g['ʻʼ]?amgin|qayg['ʻʼ]?uli|afsus|achinib|xafa|mungli)\b",
+                re.IGNORECASE,
+            ),
+        ),
+    ),
+}
+
 _SEGMENT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -1592,7 +1714,95 @@ def repair_segment_dialogue_boundaries(
         row.pop("_direct_speech_repaired", None)
         row.pop("_narration_repaired", None)
         rows.append(row)
-    return rows
+    return _apply_delivery_cues(rows, language=language)
+
+
+def _apply_delivery_cues(
+    rows: list[dict[str, Any]],
+    *,
+    language: str,
+) -> list[dict[str, Any]]:
+    """Apply emotional delivery to dialogue adjacent to speech tags."""
+
+    if not rows:
+        return rows
+    cues_by_index = {
+        index: cues
+        for index, row in enumerate(rows)
+        if (cues := _delivery_cues_for_text(str(row.get("text") or ""), language))
+    }
+    if not cues_by_index:
+        return rows
+
+    result = [dict(row) for row in rows]
+    for index, cues in cues_by_index.items():
+        if _row_is_explicit_dialogue(result[index]):
+            _mark_row_delivery(result[index], cues)
+            if _has_direct_speech_marker(str(result[index].get("text") or ""), language):
+                continue
+
+        previous_index = _adjacent_dialogue_index(result, index, step=-1)
+        if previous_index is not None:
+            _mark_row_delivery(result[previous_index], cues)
+
+        next_index = _adjacent_dialogue_index(result, index, step=1)
+        if next_index is not None:
+            _mark_row_delivery(result[next_index], cues)
+
+    return result
+
+
+def _delivery_cues_for_text(text: str, language: str) -> list[str]:
+    patterns = _DELIVERY_CUE_RE_BY_LANGUAGE.get(
+        normalize_book_language(language),
+        _DELIVERY_CUE_RE_BY_LANGUAGE["ru"],
+    )
+    return [emotion for emotion, regex in patterns if regex.search(text or "")]
+
+
+def _adjacent_dialogue_index(
+    rows: list[dict[str, Any]],
+    start_index: int,
+    *,
+    step: int,
+) -> int | None:
+    index = start_index + step
+    if index < 0 or index >= len(rows):
+        return None
+    row = rows[index]
+    if str(row.get("section_kind") or "") in _SYSTEM_SECTION_KINDS:
+        return None
+    if _row_is_dialogue(row):
+        return index
+    return None
+
+
+def _row_is_dialogue(row: dict[str, Any]) -> bool:
+    text = str(row.get("text") or "").lstrip()
+    return (
+        _row_is_explicit_dialogue(row)
+        or bool(text and text[0] in "\"“”«»‹›「」『』《》—–-")
+    )
+
+
+def _row_is_explicit_dialogue(row: dict[str, Any]) -> bool:
+    return bool(row.get("is_dialogue")) or str(row.get("section_kind") or "") == "dialogue"
+
+
+def _mark_row_delivery(row: dict[str, Any], cues: list[str]) -> None:
+    emotion = cues[0] if cues else ""
+    if not emotion:
+        return
+    intonation = _clean_intonation(row.get("intonation") or row.get("voice_tone") or "")
+    if intonation and intonation not in {"calm", "neutral", emotion}:
+        if not intonation.startswith(emotion):
+            row["intonation"] = f"{emotion} {intonation}"
+    else:
+        row["intonation"] = emotion
+
+    current_emotion = _clean_intonation(row.get("emotion") or "")
+    if not current_emotion or current_emotion in {"calm", "neutral"}:
+        row["emotion"] = emotion
 
 
 def _legacy_voice_text(item: dict[str, Any]) -> str:

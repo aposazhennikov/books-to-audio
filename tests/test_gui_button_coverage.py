@@ -365,6 +365,7 @@ def test_main_window_auto_pipeline_runs_all_steps_with_quality_settings(
     window._normalize_page._selected_path = str(book_path)
     window._normalize_page._path_label.setText(str(book_path))
     window._normalize_page._btn_run.setEnabled(True)
+    monkeypatch.setattr(window, "_ask_auto_pipeline_cache_choice", lambda _source: "restore")
 
     qtbot.mouseClick(window._btn_auto_pipeline, QtCore.Qt.MouseButton.LeftButton)
     qtbot.waitUntil(lambda: not window._auto_pipeline_active, timeout=2000)
@@ -556,6 +557,62 @@ def test_main_window_auto_pipeline_reuses_cached_chunks_manifest(
     assert window.statusBar().currentMessage() == t("auto.complete")
     cached_manifest = json.loads(chunks_path.read_text(encoding="utf-8"))
     assert cached_manifest["chapters"][0]["chunks"][0]["audio_file"] == str(audio_path)
+
+
+def test_main_window_auto_pipeline_fresh_choice_ignores_cached_chunks_manifest(
+    qapp,
+    qtbot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_dir = tmp_path / "cached_out"
+    output_dir.mkdir()
+    segments_path = output_dir / "segments_manifest.json"
+    roles_path = output_dir / "roles_manifest.json"
+    segments_path.write_text(
+        json.dumps(
+            [
+                {
+                    "segment_index": 0,
+                    "chapter_index": 0,
+                    "role": "narrator",
+                    "voice_id": "narrator_calm",
+                    "text": "Cached line.",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    roles_path.write_text('{"roles": []}', encoding="utf-8")
+    (output_dir / "chunks_manifest_v2.json").write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "book_title": "Cached",
+                "language": "en",
+                "chapters": [{"chapter_index": 0, "chunks": []}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    built: dict[str, bool] = {}
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._output_dir = output_dir
+    window._auto_pipeline_active = True
+    window._auto_pipeline_cache_choice = "fresh"
+    monkeypatch.setattr(
+        window._voices_page,
+        "_build_tts_chunks",
+        lambda: built.update({"called": True}),
+    )
+
+    window._on_roles_segments_ready(str(segments_path), str(roles_path))
+
+    assert built["called"] is True
 
 
 def test_main_window_auto_pipeline_requires_selected_book(qapp, qtbot) -> None:

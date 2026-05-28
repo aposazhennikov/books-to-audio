@@ -1217,6 +1217,227 @@ def test_repaired_dialogue_continues_previous_speaker_after_author_tag() -> None
     assert repaired[2]["voice_id"].startswith("male_")
 
 
+def test_repaired_dialogue_marks_previous_quote_as_whisper_from_author_tag() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "male",
+            "voice_id": "male_young",
+            "speaker": "Илья",
+            "section_kind": "dialogue",
+            "text": "- Не шуми.",
+            "intonation": "calm",
+            "emotion": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 1,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "- прошептал он.",
+            "intonation": "calm",
+            "emotion": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[0]["intonation"] == "whisper"
+    assert repaired[0]["emotion"] == "whisper"
+    assert repaired[0]["voice_id"].startswith("male_")
+    assert repaired[1]["intonation"] == "calm"
+
+
+def test_repaired_dialogue_marks_next_quote_as_whisper_from_preface_tag() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "en",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "She whispered:",
+            "intonation": "calm",
+            "emotion": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 1,
+            "language": "en",
+            "role": "female",
+            "voice_id": "female_warm",
+            "speaker": "Mara",
+            "section_kind": "dialogue",
+            "text": "\"Stay here.\"",
+            "intonation": "tense",
+            "emotion": "fearful",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="en")
+
+    assert repaired[1]["intonation"] == "whisper tense"
+    assert repaired[1]["emotion"] == "fearful"
+    assert repaired[1]["voice_id"].startswith("female_")
+
+
+def test_whisper_delivery_cues_cover_supported_book_languages() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    cases = [
+        ("zh", "\u4ed6\u4f4e\u58f0\u8bf4\u3002"),
+        ("kk", "ол сыбырлады."),
+        ("uz", "u pichirladi."),
+    ]
+    for language, tag_text in cases:
+        rows = [
+            {
+                "chapter_index": 0,
+                "segment_index": 0,
+                "language": language,
+                "role": "male",
+                "voice_id": "male_young",
+                "section_kind": "dialogue",
+                "text": "\u201c\u79d8\u5bc6\u3002\u201d" if language == "zh" else "\"Secret.\"",
+                "intonation": "calm",
+                "emotion": "calm",
+            },
+            {
+                "chapter_index": 0,
+                "segment_index": 1,
+                "language": language,
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "section_kind": "narration",
+                "text": tag_text,
+                "intonation": "calm",
+                "emotion": "calm",
+            },
+        ]
+
+        repaired = repair_segment_dialogue_boundaries(rows, language=language)
+
+        assert repaired[0]["intonation"] == "whisper", language
+        assert repaired[0]["emotion"] == "whisper", language
+
+
+def test_repaired_dialogue_marks_previous_quote_as_joyful_from_laugh_tag() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "female",
+            "voice_id": "female_warm",
+            "speaker": "Анна",
+            "section_kind": "dialogue",
+            "text": "\"Ты умеешь, когда хочешь.\"",
+            "intonation": "calm",
+            "emotion": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 1,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "- рассмеялась она.",
+            "intonation": "calm",
+            "emotion": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[0]["intonation"] == "joyful"
+    assert repaired[0]["emotion"] == "joyful"
+    assert repaired[0]["voice_id"].startswith("female_")
+
+
+def test_repaired_dialogue_marks_previous_quote_as_sad_from_speech_tag() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "male",
+            "voice_id": "male_young",
+            "speaker": "Илья",
+            "section_kind": "dialogue",
+            "text": "\"Да, мне действительно было жаль.\"",
+            "intonation": "calm",
+            "emotion": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 1,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "- грустно промямлил он.",
+            "intonation": "calm",
+            "emotion": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[0]["intonation"] == "sad"
+    assert repaired[0]["emotion"] == "sad"
+    assert repaired[0]["voice_id"].startswith("male_")
+
+
+def test_repaired_dialogue_marks_next_quote_as_sad_from_leading_context() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": "Он посмотрел на меня печальным взглядом и сказал:",
+            "intonation": "calm",
+            "emotion": "calm",
+        },
+        {
+            "chapter_index": 0,
+            "segment_index": 1,
+            "language": "ru",
+            "role": "male",
+            "voice_id": "male_young",
+            "speaker": "Илья",
+            "section_kind": "dialogue",
+            "text": "\"Я все понимаю, это моя вина.\"",
+            "intonation": "calm",
+            "emotion": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[1]["intonation"] == "sad"
+    assert repaired[1]["emotion"] == "sad"
+    assert repaired[1]["voice_id"].startswith("male_")
+
+
 def test_repaired_dialogue_infers_speaker_from_imperfective_author_tag() -> None:
     from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
 

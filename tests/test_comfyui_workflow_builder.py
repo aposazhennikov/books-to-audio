@@ -69,6 +69,12 @@ def test_workflow_builder_replaces_language_placeholder(tmp_path: Path) -> None:
     assert workflow["1"]["inputs"]["language"] == "Chinese"
 
 
+def test_voice_tone_to_instruct_maps_bright_emotional_tones() -> None:
+    instruct = voice_tone_to_instruct("women", "cheerful")
+
+    assert "Весело" in instruct
+
+
 def test_workflow_builder_uses_custom_speaker_override(tmp_path: Path) -> None:
     template = _write_template(
         tmp_path / "workflow.json",

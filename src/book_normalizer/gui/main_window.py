@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QStatusBar,
     QTabWidget,
@@ -24,6 +25,7 @@ from book_normalizer.chunking.manifest_v2 import (
     flatten_manifest,
     load_manifest,
 )
+from book_normalizer.gui.dialog_styles import apply_readable_message_box_style
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, set_language, t
 from book_normalizer.gui.pages.assembly_page import AssemblyPage
 from book_normalizer.gui.pages.normalize_page import NormalizePage
@@ -49,6 +51,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(application_icon())
         self._output_dir: Path | None = None
         self._auto_pipeline_active = False
+        self._auto_pipeline_cache_choice: str | None = None
         self._setup_ui()
         self._connect_signals()
         self._retranslate()
@@ -296,12 +299,48 @@ class MainWindow(QMainWindow):
         if self._auto_pipeline_active:
             return
 
+        cache_choice = self._ask_auto_pipeline_cache_choice(source)
+        if cache_choice == "cancel":
+            self._statusbar.showMessage(t("auto.cancelled"))
+            return
+
         self._auto_pipeline_active = True
+        self._auto_pipeline_cache_choice = cache_choice
         self._btn_auto_pipeline.setEnabled(False)
         self._tabs.setCurrentIndex(0)
         self._apply_auto_quality_settings()
         self._statusbar.showMessage(t("auto.normalizing"))
-        self._normalize_page.run_normalization(cache_choice="restore")
+        self._normalize_page.run_normalization(cache_choice=cache_choice)
+
+    def _ask_auto_pipeline_cache_choice(self, source: Path) -> str:
+        """Ask whether the automatic pipeline should reuse completed cached stages."""
+        box = QMessageBox(self)
+        apply_readable_message_box_style(box)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(t("auto.cache_dialog_title"))
+        box.setText(t("auto.cache_dialog_text", name=source.name))
+        box.setInformativeText(t("auto.cache_dialog_informative"))
+        restore_button = box.addButton(
+            t("auto.cache_restore_button"),
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        fresh_button = box.addButton(
+            t("auto.cache_run_fresh_button"),
+            QMessageBox.ButtonRole.ActionRole,
+        )
+        cancel_button = box.addButton(
+            t("auto.cache_cancel_button"),
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        box.setDefaultButton(restore_button)
+        box.setEscapeButton(cancel_button)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is restore_button:
+            return "restore"
+        if clicked is fresh_button:
+            return "fresh"
+        return "cancel"
 
     def _apply_auto_quality_settings(self) -> None:
         """Configure pages for highest-quality unattended generation."""
@@ -369,9 +408,10 @@ class MainWindow(QMainWindow):
             self._tabs.setCurrentIndex(1)
             if self._auto_pipeline_active:
                 self._statusbar.showMessage(t("auto.roles"))
+                cache_choice = self._auto_pipeline_cache_choice
                 QTimer.singleShot(
                     0,
-                    lambda: self._roles_page.run_role_extraction(cache_choice="restore"),
+                    lambda: self._roles_page.run_role_extraction(cache_choice=cache_choice),
                 )
 
     def _on_roles_segments_ready(self, segments_path: str, _roles_path: str) -> None:
@@ -380,7 +420,11 @@ class MainWindow(QMainWindow):
         self._statusbar.showMessage(t("status.roles_done"))
         self._tabs.setCurrentIndex(2)
         if self._auto_pipeline_active:
-            cached_chunks = self._cached_chunks_manifest()
+            cached_chunks = (
+                self._cached_chunks_manifest()
+                if self._auto_pipeline_cache_choice != "fresh"
+                else None
+            )
             if cached_chunks is not None:
                 self._on_chunks_built(str(cached_chunks))
                 return
@@ -437,6 +481,7 @@ class MainWindow(QMainWindow):
         if not self._auto_pipeline_active:
             return
         self._auto_pipeline_active = False
+        self._auto_pipeline_cache_choice = None
         self._btn_auto_pipeline.setEnabled(True)
         self._tabs.setCurrentIndex(4)
         self._statusbar.showMessage(t("auto.complete"))
@@ -446,6 +491,7 @@ class MainWindow(QMainWindow):
         if not self._auto_pipeline_active:
             return
         self._auto_pipeline_active = False
+        self._auto_pipeline_cache_choice = None
         self._btn_auto_pipeline.setEnabled(True)
         self._statusbar.showMessage(t("auto.failed", msg=msg))
 

@@ -74,3 +74,22 @@ def test_progress_widget_elapsed_clock_keeps_running_in_busy_mode(
     assert not widget._bar_row.isVisible()
 
     widget.deleteLater()
+
+
+def test_progress_widget_status_updates_do_not_reset_determinate_progress(
+    qapp,
+    monkeypatch,
+) -> None:
+    now = {"value": 100.0}
+    monkeypatch.setattr(progress_widget.time, "monotonic", lambda: now["value"])
+    widget = ProgressWidget()
+
+    widget.set_progress(4, 142, "10m 00s")
+    widget.set_busy("OCR: recognizing page 5/142, segment 1/1...")
+
+    assert widget._status.text() == "OCR: recognizing page 5/142, segment 1/1..."
+    assert widget._bar.maximum() == 142
+    assert widget._bar.value() == 4
+    assert "10m 00s" in widget._eta.text()
+
+    widget.deleteLater()

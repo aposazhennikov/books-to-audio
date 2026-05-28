@@ -105,6 +105,79 @@ class TestPdfLoader:
         book = loader.load(pdf_file)
         assert any(r["stage"] == "loading" for r in book.audit_trail)
 
+    @patch("book_normalizer.loaders.pdf_loader.PdfLoader._extract_text")
+    def test_reflows_isolated_justified_words_into_parenthetical_gap(
+        self,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_extract.return_value = (
+            "Гор спросил (мир\n\n"
+            "ему\n\n"
+            "особенно\n\n"
+            "по\n\n"
+            "пятницам). Новый абзац."
+        )
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+        book = PdfLoader().load(pdf_file)
+        paragraphs = [p.raw_text for p in book.chapters[0].paragraphs]
+
+        assert paragraphs == [
+            "Гор спросил (мир ему особенно по пятницам). Новый абзац.",
+        ]
+
+    @patch("book_normalizer.loaders.pdf_loader.PdfLoader._extract_text")
+    def test_reflows_isolated_justified_words_inside_final_parenthetical(
+        self,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_extract.return_value = (
+            "Гор спросил (мир\nпятницам). Я ответил.\n\n"
+            "ему\n\n"
+            "особенно\n\n"
+            "по\n\n"
+            "Новый абзац."
+        )
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+        book = PdfLoader().load(pdf_file)
+        paragraphs = [p.raw_text for p in book.chapters[0].paragraphs]
+
+        assert paragraphs == [
+            "Гор спросил (мир ему особенно по пятницам). Я ответил.",
+            "Новый абзац.",
+        ]
+
+    @patch("book_normalizer.loaders.pdf_loader.PdfLoader._extract_text")
+    def test_reflows_parenthetical_page_break_words(
+        self,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_extract.return_value = (
+            "Талисманы эти ничем взгляд)).\n\n"
+            "не\n\n"
+            "были\n\n"
+            "заряжены\n\n"
+            "(на\n\n"
+            "мой\n\n"
+            "Пока я извинялся."
+        )
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+        book = PdfLoader().load(pdf_file)
+        paragraphs = [p.raw_text for p in book.chapters[0].paragraphs]
+
+        assert paragraphs == [
+            "Талисманы эти ничем не были заряжены (на мой взгляд)).",
+            "Пока я извинялся.",
+        ]
+
 
 class TestOcrModeSelection:
     def test_extract_pdf_with_ocr_mode_off_returns_only_native(self, tmp_path: Path) -> None:

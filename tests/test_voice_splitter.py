@@ -311,6 +311,41 @@ class TestBuildChunksFromSegments:
         assert chunks[0]["pause_after_ms"] == DEFAULT_PARAGRAPH_PAUSE_MS
         assert chunks[0]["boundary_after"] == "paragraph"
 
+    def test_repaired_narrator_chunks_are_coalesced_after_dialogue_demotion(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "language": "ru",
+                "voice_id": "male_young",
+                "intonation": "calm",
+                "role": "male",
+                "section_kind": "dialogue",
+                "text": (
+                    "Но благостный Осирис сказал, что от наколдованной водки он косеет, "
+                    "а Гор,"
+                ),
+            },
+            {
+                "chapter_index": 0,
+                "language": "ru",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "role": "narrator",
+                "section_kind": "narration",
+                "text": "- он указал перстом на великолепного бога - блюёт.",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments)
+
+        assert len(chunks) == 1
+        assert chunks[0]["role"] == "narrator"
+        assert chunks[0]["voice_id"] == "narrator_calm"
+        assert chunks[0]["text"] == (
+            "Но благостный Осирис сказал, что от наколдованной водки он косеет, "
+            "а Гор, - он указал перстом на великолепного бога - блюёт."
+        )
+
     def test_build_chunks_repairs_stale_llm_dialogue_boundaries(self) -> None:
         segments = [
             {

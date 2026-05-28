@@ -1075,6 +1075,8 @@ def _find_next_inline_attribution_start(text: str, language: str) -> int | None:
         return None
     for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL):
         speech_start = match.start("speech")
+        if language == "ru" and _ru_speech_prefix_is_indirect(match.group("speech")):
+            continue
         if speech_start == 0 or re.search(r"[.!?…]\s*$", text[:speech_start]):
             return speech_start
     return None
@@ -1397,6 +1399,8 @@ def _split_inline_attribution_match(
         ):
             match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
             if match:
+                if _ru_speech_prefix_is_indirect(match.group("speech")):
+                    continue
                 return match.group("speech").strip(), match.group("tag").strip()
     if language == "en":
         match = re.search(
@@ -1415,13 +1419,25 @@ def _looks_like_direct_speech(text: str, language: str) -> bool:
         return True
     if _split_inline_attribution(text, language) is not None:
         return True
-    if language == "ru" and _contains_ru_attribution_word(text):
-        return True
     return False
 
 
 def _contains_ru_attribution_word(text: str) -> bool:
     return bool(re.search(rf"\b(?:{_ru_attribution_pattern()})\b", text or "", re.IGNORECASE))
+
+
+def _ru_speech_prefix_is_indirect(text: str) -> bool:
+    stripped = (text or "").lstrip()
+    if not stripped or stripped[0] in _QUOTE_CHARS or stripped[0] in _DASH_CHARS:
+        return False
+    return bool(
+        re.search(
+            rf"\b(?:{_ru_attribution_pattern()})\b\s*,?\s+"
+            r"(?:что|чтобы|будто|словно|как|где|куда|откуда|когда|почему|зачем|ли)\b",
+            stripped,
+            re.IGNORECASE,
+        )
+    )
 
 
 def _ru_attribution_pattern() -> str:

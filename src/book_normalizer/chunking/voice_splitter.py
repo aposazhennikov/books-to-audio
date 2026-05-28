@@ -308,6 +308,10 @@ def build_chunks_from_segments(
         len(segments),
     )
     repaired_chunks = repair_segment_dialogue_boundaries(chunks, language=language)
+    repaired_chunks = _coalesce_adjacent_compatible_chunks(
+        repaired_chunks,
+        max_chunk_chars=max_chunk_chars,
+    )
     _renumber_chunk_indices(repaired_chunks)
     return repaired_chunks
 
@@ -318,6 +322,58 @@ def _renumber_chunk_indices(chunks: list[dict[str, Any]]) -> None:
         chapter_index = int(chunk.get("chapter_index") or 0)
         chunk["chunk_index"] = next_indexes.get(chapter_index, 0)
         next_indexes[chapter_index] = chunk["chunk_index"] + 1
+
+
+def _coalesce_adjacent_compatible_chunks(
+    chunks: list[dict[str, Any]],
+    *,
+    max_chunk_chars: int,
+) -> list[dict[str, Any]]:
+    if not chunks:
+        return []
+    result: list[dict[str, Any]] = []
+    for chunk in chunks:
+        current = dict(chunk)
+        if result and _chunks_can_coalesce(result[-1], current, max_chunk_chars=max_chunk_chars):
+            previous = result[-1]
+            previous["text"] = f"{previous.get('text', '').strip()} {current.get('text', '').strip()}".strip()
+            _add_pause_fields(
+                previous,
+                int(current.get("pause_after_ms") or 0),
+                str(current.get("boundary_after") or ""),
+            )
+            continue
+        result.append(current)
+    return result
+
+
+def _chunks_can_coalesce(
+    left: dict[str, Any],
+    right: dict[str, Any],
+    *,
+    max_chunk_chars: int,
+) -> bool:
+    left_text = str(left.get("text") or "").strip()
+    right_text = str(right.get("text") or "").strip()
+    if not left_text or not right_text:
+        return False
+    if len(left_text) + 1 + len(right_text) > max_chunk_chars:
+        return False
+    if str(left.get("boundary_after") or "") in {"paragraph", "scene", "chapter"}:
+        return False
+    if int(left.get("chapter_index") or 0) != int(right.get("chapter_index") or 0):
+        return False
+    for key in ("voice_id", "intonation", "language", "role"):
+        if str(left.get(key) or "") != str(right.get(key) or ""):
+            return False
+    return _coalesce_role_metadata(left) == _coalesce_role_metadata(right)
+
+
+def _coalesce_role_metadata(chunk: dict[str, Any]) -> dict[str, str]:
+    metadata = _segment_role_metadata(chunk)
+    if metadata.get("emotion", "").casefold() in {"calm", "neutral"}:
+        metadata.pop("emotion", None)
+    return metadata
 
 
 # ── Legacy chunk-level API (kept for backward compatibility) ──

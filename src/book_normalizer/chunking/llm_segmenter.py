@@ -29,7 +29,7 @@ from book_normalizer.normalization.morphology import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_WINDOW_CHARS = 900
-_CACHE_VERSION = "llm-segmenter-v6-narrator-dialogue-boundaries"
+_CACHE_VERSION = "llm-segmenter-v7-normalized-source-whitespace"
 
 ROLE_TO_VOICE_ID = {
     "narrator": "narrator_calm",
@@ -835,11 +835,20 @@ class LlmVoiceSegmenter:
 
 def _chapter_text(chapter: object) -> str:
     paragraphs = list(getattr(chapter, "paragraphs", []) or [])
-    return "\n\n".join(
-        str(getattr(para, "normalized_text", "") or getattr(para, "raw_text", "")).strip()
-        for para in paragraphs
-        if str(getattr(para, "normalized_text", "") or getattr(para, "raw_text", "")).strip()
-    )
+    normalized: list[str] = []
+    for para in paragraphs:
+        text = _normalize_segment_source_text(
+            str(getattr(para, "normalized_text", "") or getattr(para, "raw_text", ""))
+        )
+        if text:
+            normalized.append(text)
+    return "\n\n".join(normalized)
+
+
+def _normalize_segment_source_text(text: str) -> str:
+    """Collapse layout-only whitespace before LLM segmentation."""
+    lines = [re.sub(r"[^\S\r\n]+", " ", line).strip() for line in str(text or "").splitlines()]
+    return "\n".join(lines).strip()
 
 
 def _build_windows(text: str, max_chars: int) -> list[str]:
@@ -1040,6 +1049,7 @@ def _split_dialogue_and_narration_text(
         if _starts_with_opening_quote(remaining) and (
             role_is_dialogue
             or _opening_quote_starts_direct_speech(remaining, language)
+            or _previous_narrator_tag_invites_quoted_speech(parts, language)
         ):
             speech, remaining = _take_quoted_speech(remaining)
             parts.append(("speech", speech))
@@ -1165,12 +1175,42 @@ def _find_next_dialogue_marker(text: str, language: str) -> int | None:
             continue
         if (
             char in _OPENING_QUOTE_CHARS
-            and _opening_quote_starts_direct_speech(text[index:], language)
+            and (
+                _opening_quote_starts_direct_speech(text[index:], language)
+                or _quote_after_ru_attribution_colon(text, index, language)
+            )
         ):
             return index
         if char in _DASH_CHARS and _dash_can_start_embedded_dialogue(text, index, language):
             return index
     return None
+
+
+def _quote_after_ru_attribution_colon(text: str, quote_index: int, language: str) -> bool:
+    """Return true for short quoted speech introduced by a Russian speech tag."""
+    if normalize_book_language(language) != "ru":
+        return False
+    before = text[:quote_index].rstrip()
+    if not before.endswith(":"):
+        return False
+    probe = before[:-1].rstrip()
+    return bool(re.search(rf"\b(?:{_ru_attribution_pattern()})\b(?:\s+[\wА-Яа-яЁё-]+){{0,4}}$", probe, re.IGNORECASE))
+
+
+def _previous_narrator_tag_invites_quoted_speech(
+    parts: list[tuple[str, str]],
+    language: str,
+) -> bool:
+    if not parts or normalize_book_language(language) != "ru":
+        return False
+    kind, text = parts[-1]
+    if kind != "narrator":
+        return False
+    stripped = text.rstrip()
+    if not stripped.endswith(":"):
+        return False
+    probe = stripped[:-1].rstrip()
+    return bool(re.search(rf"\b(?:{_ru_attribution_pattern()})\b(?:\s+[\wА-Яа-яЁё-]+){{0,4}}$", probe, re.IGNORECASE))
 
 
 def _dash_can_start_embedded_dialogue(text: str, index: int, language: str) -> bool:
@@ -1523,6 +1563,10 @@ def _split_inline_attribution_match(
             if match:
                 if _ru_speech_prefix_is_indirect(match.group("speech")):
                     continue
+                if not match.group("tag").lstrip().startswith(tuple(_DASH_CHARS)):
+                    speech = match.group("speech").lstrip()
+                    if not speech or speech[0] not in (_QUOTE_CHARS | _DASH_CHARS):
+                        continue
                 return match.group("speech").strip(), match.group("tag").strip()
     if language == "en":
         match = re.search(
@@ -1621,6 +1665,7 @@ def repair_segment_dialogue_boundaries(
     from book_normalizer.chunking.manifest_v2 import role_for_voice_id
     from book_normalizer.tts.voice_mapping import auto_builtin_voice_id_for_segment
 
+    source_text = " ".join(str(segment.get("text") or "") for segment in segments)
     recent_dialogue_speakers: list[tuple[str, str]] = []
     pending_continuation_speaker: tuple[str, str] | None = None
     repaired_segments = _split_mixed_dialogue_segments(
@@ -1714,7 +1759,14 @@ def repair_segment_dialogue_boundaries(
         row.pop("_direct_speech_repaired", None)
         row.pop("_narration_repaired", None)
         rows.append(row)
-    return _apply_delivery_cues(rows, language=language)
+    rows = _apply_delivery_cues(rows, language=language)
+    if source_text and not _segments_preserve_source(source_text, rows):
+        logger.warning(
+            "Dialogue boundary repair changed segment text order/content; "
+            "keeping original segments."
+        )
+        return [dict(segment) for segment in segments]
+    return rows
 
 
 def _apply_delivery_cues(

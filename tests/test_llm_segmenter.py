@@ -172,6 +172,27 @@ def test_llm_voice_segmenter_sends_quoted_source_as_json_input() -> None:
     assert payload["text"] == text
 
 
+def test_llm_voice_segmenter_collapses_source_layout_spaces_before_prompting() -> None:
+    raw_text = "из   класса,    потрепал    по    голове    и сказал:"
+    prompt_text = "из класса, потрепал по голове и сказал:"
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "text": prompt_text, "intonation": "calm"},
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(raw_text, language="ru"))
+
+    user_content = fake.messages[0][1]["content"]
+    payload = json.loads(user_content.split("INPUT_JSON:\n", 1)[1])
+    assert payload["text"] == prompt_text
+    assert [row["text"] for row in rows] == [prompt_text]
+
+
 def test_llm_voice_segmenter_falls_back_when_primary_loses_text() -> None:
     text = "Alpha beta gamma."
     segmenter = LlmVoiceSegmenter(language="en")
@@ -544,6 +565,88 @@ def test_quoted_term_with_stale_speaker_markup_rejoins_narration() -> None:
     ]
     assert [chunk["role"] for chunk in chunks] == ["narrator"]
     assert [chunk["voice_id"] for chunk in chunks] == ["narrator_calm"]
+
+
+def test_short_quoted_speech_after_ru_attribution_colon_keeps_source_order() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = (
+        "\u042f \u0441\u043f\u0440\u043e\u0441\u0438\u043b: "
+        "\u00ab\u0422\u043e\u0433\u0434\u0430 \u0447\u0442\u043e \u0436\u0435 "
+        "\u0432\u044b\u0441\u0448\u0430\u044f \u0441\u0442\u0435\u043f\u0435\u043d\u044c "
+        "\u0441\u0435\u043a\u0440\u0435\u0442\u043d\u043e\u0441\u0442\u0438?\u00bb "
+        "\u041e\u0442\u0435\u0446 \u0448\u0451\u043f\u043e\u0442\u043e\u043c "
+        "\u0441\u043a\u0430\u0437\u0430\u043b: "
+        "\u00ab\u0418\u0437\u0433\u043d\u0430\u0442\u044c \u0438\u0437 "
+        "\u0410\u0434\u0430\u00bb. "
+        "\u0412 \u043e\u0431\u0449\u0435\u043c, \u044f \u0432\u0441\u0435 "
+        "\u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043b."
+    )
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [
+        "\u042f \u0441\u043f\u0440\u043e\u0441\u0438\u043b:",
+        (
+            "\u00ab\u0422\u043e\u0433\u0434\u0430 \u0447\u0442\u043e \u0436\u0435 "
+            "\u0432\u044b\u0441\u0448\u0430\u044f \u0441\u0442\u0435\u043f\u0435\u043d\u044c "
+            "\u0441\u0435\u043a\u0440\u0435\u0442\u043d\u043e\u0441\u0442\u0438?\u00bb"
+        ),
+        "\u041e\u0442\u0435\u0446 \u0448\u0451\u043f\u043e\u0442\u043e\u043c \u0441\u043a\u0430\u0437\u0430\u043b:",
+        "\u00ab\u0418\u0437\u0433\u043d\u0430\u0442\u044c \u0438\u0437 \u0410\u0434\u0430\u00bb.",
+        (
+            "\u0412 \u043e\u0431\u0449\u0435\u043c, \u044f \u0432\u0441\u0435 "
+            "\u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043b."
+        ),
+    ]
+    assert [row["role"] for row in repaired] == [
+        "narrator",
+        "male",
+        "narrator",
+        "male",
+        "narrator",
+    ]
+
+
+def test_short_quoted_inscription_without_attribution_stays_narration() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    text = (
+        "\u041d\u0430 \u043a\u0430\u0436\u0434\u043e\u043c \u0441\u0442\u043e\u044f\u043b\u0430 "
+        "\u043f\u0435\u0447\u0430\u0442\u044c \u0441 \u043d\u0430\u0434\u043f\u0438\u0441\u044c\u044e: "
+        "\u00ab\u041a\u0430\u0437\u043d\u0438\u0442\u044c "
+        "\u043f\u0440\u043e\u0447\u0438\u0442\u0430\u0432\u0448\u0435\u0433\u043e "
+        "\u043d\u0435\u043c\u0435\u0434\u043b\u0435\u043d\u043d\u043e\u00bb."
+    )
+    rows = [
+        {
+            "chapter_index": 0,
+            "segment_index": 0,
+            "language": "ru",
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "section_kind": "narration",
+            "text": text,
+            "intonation": "calm",
+        }
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert [row["text"] for row in repaired] == [text]
+    assert [row["role"] for row in repaired] == ["narrator"]
 
 
 def test_dash_dialogue_splits_before_attribution_without_space_after_punctuation() -> None:

@@ -1402,6 +1402,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Building TTS chunks from {n} segments\u2026",
         "ru": "Собираем TTS-чанки из {n} сегментов\u2026",
     },
+    "voice.saving": {
+        "en": "Saving manifest to {path}\u2026",
+        "ru": "Сохраняем манифест: {path}\u2026",
+    },
     "voice.segments_ready": {
         "en": "\u2714 {n} segments ready. Review roles and text, then click "
               "'Build TTS Chunks'.",
@@ -1414,9 +1418,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u2714 Собрано {n} TTS-чанков! "
               "Перейдите на \u00abСинтез\u00bb, чтобы собрать аудио.",
     },
+    "voice.chunks_saved": {
+        "en": "\u2714 Saved {n} TTS chunks: {path}",
+        "ru": "\u2714 Сохранено {n} TTS-чанков: {path}",
+    },
     "voice.saved": {
         "en": "\u2714 Saved: {path}",
         "ru": "\u2714 Сохранено: {path}",
+    },
+    "voice.action_error": {
+        "en": "Could not finish action: {msg}",
+        "ru": "Не удалось завершить действие: {msg}",
     },
     "voice.manifest_path": {
         "en": "Manifest: {path}",

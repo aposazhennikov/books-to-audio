@@ -26,12 +26,14 @@ assembly_page = pytest.importorskip("book_normalizer.gui.pages.assembly_page")
 normalize_page = pytest.importorskip("book_normalizer.gui.pages.normalize_page")
 roles_page = pytest.importorskip("book_normalizer.gui.pages.roles_page")
 synthesis_page = pytest.importorskip("book_normalizer.gui.pages.synthesis_page")
+voices_page = pytest.importorskip("book_normalizer.gui.pages.voices_page")
 voice_preview = pytest.importorskip("book_normalizer.gui.widgets.voice_preview")
 
 AssemblyPage = assembly_page.AssemblyPage
 MainWindow = main_window.MainWindow
 NormalizePage = normalize_page.NormalizePage
 SynthesisPage = synthesis_page.SynthesisPage
+VoicesPage = voices_page.VoicesPage
 VoicePreviewPanel = voice_preview.VoicePreviewPanel
 VoiceTableWidget = pytest.importorskip(
     "book_normalizer.gui.widgets.voice_table",
@@ -916,6 +918,54 @@ def test_synthesis_manifest_directory_and_chunk_buttons_click_through(
 
     qtbot.mouseClick(page._btn_install_models, QtCore.Qt.MouseButton.LeftButton)
     assert str(tmp_path / "models") in page._status.text()
+
+
+def test_voice_save_and_build_actions_report_completion(
+    qapp,
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    manifest_path = _write_manifest(tmp_path / "segments_manifest.json")
+    output_dir = tmp_path / "out"
+    book = Book(
+        chapters=[
+            Chapter(
+                title="Chapter 1",
+                paragraphs=[
+                    Paragraph(
+                        raw_text="Alpha beta gamma.",
+                        normalized_text="Alpha beta gamma.",
+                    ),
+                ],
+                index=0,
+            )
+        ],
+        metadata=Metadata(title="Button Coverage", language="en"),
+    )
+
+    page = VoicesPage()
+    qtbot.addWidget(page)
+    page.set_book(book, output_dir)
+    page.load_segments_manifest(manifest_path)
+    render_widget(page, 1180, 760, scale=1.0)
+
+    qtbot.mouseClick(page._btn_save, QtCore.Qt.MouseButton.LeftButton)
+    assert not page._btn_save.isEnabled()
+    qtbot.waitUntil(lambda: page._save_worker is None, timeout=5000)
+    assert t("voice.saved", path=str(manifest_path)) in page._action_status.text()
+    assert page._action_status.isVisible()
+
+    built: list[str] = []
+    page.chunks_built.connect(built.append)
+    qtbot.mouseClick(page._btn_build, QtCore.Qt.MouseButton.LeftButton)
+    assert not page._btn_build.isEnabled()
+    qtbot.waitUntil(lambda: page._build_worker is None, timeout=5000)
+
+    chunks_path = output_dir / "chunks_manifest_v2.json"
+    assert built == [str(chunks_path)]
+    assert chunks_path.exists()
+    assert "TTS" in page._action_status.text()
+    assert str(chunks_path) in page._action_status.text()
 
 
 def test_synthesis_run_buttons_use_worker_wiring_without_real_tts(

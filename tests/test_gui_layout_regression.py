@@ -732,7 +732,14 @@ def test_loaded_llm_chunk_page_keeps_settings_controls_inside_panel() -> None:
         )
 
     assert page._llm_panel.isVisible()
-    assert page._top_tabs.height() >= 188
+    assert page._top_tabs.height() >= 170
+    nav_rect = _rect_in_window(window, page._voice_table._chapter_nav_panel)
+    action_rect = _rect_in_window(window, page._action_panel)
+    assert nav_rect.top() - action_rect.bottom() <= 32
+    assert _rect_in_window(window, page._btn_load).left() - _rect_in_window(
+        window,
+        page._btn_detect,
+    ).right() <= 12
 
     window.close()
     window.deleteLater()

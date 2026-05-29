@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QComboBox,
@@ -34,6 +34,103 @@ from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
 from book_normalizer.runtime_paths import configured_ollama_endpoint
 
 
+class SaveVoiceManifestWorker(QThread):
+    """Save a segment/chunk manifest without blocking the GUI thread."""
+
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        *,
+        path: Path,
+        segments: list[dict],
+        manifest_is_v2: bool,
+        manifest_meta: dict,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._path = path
+        self._segments = segments
+        self._manifest_is_v2 = manifest_is_v2
+        self._manifest_meta = manifest_meta
+
+    def run(self) -> None:
+        try:
+            data: object = self._segments
+            if self._manifest_is_v2 or self._path.name.endswith("_v2.json"):
+                from book_normalizer.chunking.manifest import chunks_to_v2_manifest
+
+                data = chunks_to_v2_manifest(
+                    self._segments,
+                    book_title=str(
+                        self._manifest_meta.get("book_title") or self._path.parent.name,
+                    ),
+                    chunker=str(self._manifest_meta.get("chunker") or "gui"),
+                    model=str(self._manifest_meta.get("model") or ""),
+                    max_chunk_chars=self._manifest_meta.get("max_chunk_chars"),
+                )
+            self._path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            self.finished.emit(str(self._path))
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
+class BuildTtsChunksWorker(QThread):
+    """Build TTS chunks and write the v2 manifest off the GUI thread."""
+
+    finished = pyqtSignal(str, int)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        *,
+        segments: list[dict],
+        output_dir: Path,
+        book_title: str,
+        language: str,
+        max_chunk_chars: int,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._segments = segments
+        self._output_dir = output_dir
+        self._book_title = book_title
+        self._language = language
+        self._max_chunk_chars = max_chunk_chars
+
+    def run(self) -> None:
+        try:
+            from book_normalizer.chunking.manifest import chunks_to_v2_manifest
+            from book_normalizer.chunking.voice_splitter import (
+                build_chunks_from_segments,
+            )
+
+            chunks = build_chunks_from_segments(
+                self._segments,
+                max_chunk_chars=self._max_chunk_chars,
+            )
+            self._output_dir.mkdir(parents=True, exist_ok=True)
+            chunks_path = self._output_dir / "chunks_manifest_v2.json"
+            manifest = chunks_to_v2_manifest(
+                chunks,
+                book_title=self._book_title,
+                language=self._language,
+                chunker="gui",
+                max_chunk_chars=self._max_chunk_chars,
+            )
+            chunks_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            self.finished.emit(str(chunks_path), len(chunks))
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
 class VoicesPage(QWidget):
     """Page for smart segment review, role assignment, and TTS chunk export."""
 
@@ -45,6 +142,8 @@ class VoicesPage(QWidget):
         self._output_dir: Path | None = None
         self._manifest_path: Path | None = None
         self._worker: ExportSegmentsWorker | None = None
+        self._save_worker: SaveVoiceManifestWorker | None = None
+        self._build_worker: BuildTtsChunksWorker | None = None
         self._ui_scale = 1.0
         self._compact_mode = False
         self._llm_layout_compact: bool | None = None
@@ -179,19 +278,21 @@ class VoicesPage(QWidget):
         self._btn_detect.clicked.connect(self._run_detection)
         self._btn_detect.setEnabled(False)
         action_row.addWidget(self._btn_detect)
-        action_row.addStretch(1)
 
         self._btn_load = QPushButton()
+        self._btn_load.setMaximumWidth(150)
         self._btn_load.clicked.connect(self._load_manifest)
         action_row.addWidget(self._btn_load)
 
         self._btn_save = QPushButton()
+        self._btn_save.setMaximumWidth(150)
         self._btn_save.clicked.connect(self._save_manifest)
         self._btn_save.setEnabled(False)
         action_row.addWidget(self._btn_save)
 
         self._btn_build = QPushButton()
         self._btn_build.setMinimumHeight(34)
+        self._btn_build.setMaximumWidth(300)
         self._btn_build.clicked.connect(self._build_tts_chunks)
         self._btn_build.setEnabled(False)
         self._btn_build.setStyleSheet(
@@ -212,7 +313,24 @@ class VoicesPage(QWidget):
             "}",
         )
         action_row.addWidget(self._btn_build)
+        action_row.addStretch(1)
         left_layout.addWidget(self._action_panel)
+
+        self._action_status = QLabel("")
+        self._action_status.setWordWrap(False)
+        self._action_status.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self._action_status.setStyleSheet(
+            "color: rgba(15,118,110,0.92); font-size: 11px;"
+            "font-weight: 700; padding: 0 2px;",
+        )
+        self._action_status.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse,
+        )
+        self._action_status.setVisible(False)
+        left_layout.addWidget(self._action_status)
 
         self._progress = ProgressWidget()
         left_layout.addWidget(self._progress)
@@ -321,6 +439,8 @@ class VoicesPage(QWidget):
         self._btn_save.setText(t("voice.save_manifest"))
         self._btn_save.setToolTip(t("voice.save_manifest_tip"))
         self._btn_build.setText(t("voice.build_chunks"))
+        if self._action_status.text():
+            self._sync_action_status_visibility()
         self._preview_title.setText(t("chunks.preset_panel"))
         self._top_tabs.setTabText(0, t("chunks.settings_panel"))
         self._top_tabs.setTabText(1, t("chunks.preset_panel"))
@@ -381,6 +501,14 @@ class VoicesPage(QWidget):
             minimum = 188
         if self.height() > 0:
             has_segments = bool(self._voice_table.get_segments())
+            if has_segments and self._worker is None:
+                target = min(
+                    target,
+                    max(
+                        content_needed,
+                        round((146 if height_compact else 158) * self._ui_scale),
+                    ),
+                )
             editor_visible = has_segments and not self._voice_table._dense_mode
             if ultra_dense:
                 table_reserve = 145
@@ -445,6 +573,7 @@ class VoicesPage(QWidget):
         self._manifest_label.setVisible(
             bool(self._manifest_label.text()) and show_secondary_status,
         )
+        self._sync_action_status_visibility()
         for button in (
             self._btn_detect,
             self._btn_load,
@@ -727,6 +856,7 @@ class VoicesPage(QWidget):
         self._worker.start()
 
     def _on_detection_done(self, manifest_path: str) -> None:
+        self._worker = None
         self._manifest_path = Path(manifest_path)
         self._voice_table.load_manifest(self._manifest_path)
         self._btn_detect.setEnabled(True)
@@ -761,6 +891,7 @@ class VoicesPage(QWidget):
         )
 
     def _on_error(self, msg: str) -> None:
+        self._worker = None
         self._btn_detect.setEnabled(True)
         self._progress.set_status(f"Error: {msg}")
 
@@ -768,51 +899,44 @@ class VoicesPage(QWidget):
 
     def _build_tts_chunks(self) -> None:
         """Group user-assigned segments into TTS-ready chunks."""
-        from book_normalizer.chunking.manifest import chunks_to_v2_manifest
-        from book_normalizer.chunking.voice_splitter import (
-            build_chunks_from_segments,
-        )
-
         segments = self._voice_table.get_active_segments()
         if not segments:
             return
 
-        self._progress.set_busy(
-            t("voice.building_chunks", n=len(segments)),
-        )
-
-        chunks = build_chunks_from_segments(
-            segments,
-            max_chunk_chars=self._chunk_size.value(),
-        )
-
         if not self._output_dir:
             self._output_dir = Path(".")
 
-        self._output_dir.mkdir(parents=True, exist_ok=True)
-        chunks_path = self._output_dir / "chunks_manifest_v2.json"
         metadata = getattr(self._book, "metadata", None)
         language = normalize_book_language(getattr(metadata, "language", "ru"))
-        manifest = chunks_to_v2_manifest(
-            chunks,
+        self._set_action_status(t("voice.building_chunks", n=len(segments)))
+        self._progress.set_busy(t("voice.building_chunks", n=len(segments)))
+        self._set_chunk_actions_enabled(False)
+        self._build_worker = BuildTtsChunksWorker(
+            segments=_copy_segments_for_worker(segments),
+            output_dir=self._output_dir,
             book_title=self._output_dir.name,
             language=language,
-            chunker="gui",
             max_chunk_chars=self._chunk_size.value(),
+            parent=self,
         )
-        chunks_path.write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        self._build_worker.finished.connect(self._on_chunks_built)
+        self._build_worker.error.connect(self._on_background_action_error)
+        self._build_worker.finished.connect(lambda *_args: self._clear_build_worker())
+        self._build_worker.error.connect(lambda _msg: self._clear_build_worker())
+        self._build_worker.start()
 
-        self._progress.set_status(
-            t("voice.chunks_done", n=len(chunks)),
-        )
-        self._manifest_label.setText(
-            t("voice.manifest_path", path=str(chunks_path)),
-        )
+    def _on_chunks_built(self, chunks_path: str, chunk_count: int) -> None:
+        self._progress.set_status(t("voice.chunks_done", n=chunk_count))
+        self._set_action_status(t("voice.chunks_saved", n=chunk_count, path=chunks_path))
+        self._manifest_label.setText(t("voice.manifest_path", path=chunks_path))
         self._manifest_label.setVisible(True)
-        self.chunks_built.emit(str(chunks_path))
+        self.chunks_built.emit(chunks_path)
+        self._set_chunk_actions_enabled(True)
+        self._refresh_loaded_layout()
+
+    def _clear_build_worker(self) -> None:
+        self._build_worker = None
+        self._set_chunk_actions_enabled(True)
         self._refresh_loaded_layout()
 
     # ── Load / Save ──
@@ -847,15 +971,57 @@ class VoicesPage(QWidget):
                 self._manifest_path = Path(path)
             else:
                 return
-        self._voice_table.save_to_file(self._manifest_path)
-        self._progress.set_status(
-            t("voice.saved", path=str(self._manifest_path)),
+        self._set_action_status(t("voice.saving", path=str(self._manifest_path)))
+        self._progress.set_busy(t("voice.saving", path=str(self._manifest_path)))
+        self._set_chunk_actions_enabled(False)
+        self._save_worker = SaveVoiceManifestWorker(
+            path=self._manifest_path,
+            segments=_copy_segments_for_worker(self._voice_table.get_segments()),
+            manifest_is_v2=self._voice_table._manifest_is_v2,
+            manifest_meta=dict(self._voice_table._manifest_meta),
+            parent=self,
         )
-        self._manifest_label.setText(
-            t("voice.manifest_path", path=str(self._manifest_path)),
-        )
+        self._save_worker.finished.connect(self._on_manifest_saved)
+        self._save_worker.error.connect(self._on_background_action_error)
+        self._save_worker.finished.connect(lambda _path: self._clear_save_worker())
+        self._save_worker.error.connect(lambda _msg: self._clear_save_worker())
+        self._save_worker.start()
+
+    def _on_manifest_saved(self, path: str) -> None:
+        self._progress.set_status(t("voice.saved", path=path))
+        self._set_action_status(t("voice.saved", path=path))
+        self._manifest_label.setText(t("voice.manifest_path", path=path))
         self._manifest_label.setVisible(True)
+        self._set_chunk_actions_enabled(True)
         self._refresh_loaded_layout()
+
+    def _clear_save_worker(self) -> None:
+        self._save_worker = None
+        self._set_chunk_actions_enabled(True)
+        self._refresh_loaded_layout()
+
+    def _on_background_action_error(self, msg: str) -> None:
+        self._progress.set_status(t("voice.action_error", msg=msg))
+        self._set_action_status(t("voice.action_error", msg=msg), error=True)
+        self._set_chunk_actions_enabled(True)
+
+    def _set_chunk_actions_enabled(self, enabled: bool) -> None:
+        has_segments = bool(self._voice_table.get_segments())
+        self._btn_save.setEnabled(enabled and has_segments)
+        self._btn_build.setEnabled(enabled and bool(self._voice_table.get_active_segments()))
+        self._btn_load.setEnabled(enabled)
+        self._btn_detect.setEnabled(enabled and self._book is not None)
+
+    def _set_action_status(self, text: str, *, error: bool = False) -> None:
+        self._action_status.setText(text)
+        color = "rgba(185,28,28,0.95)" if error else "rgba(15,118,110,0.92)"
+        self._action_status.setStyleSheet(
+            f"color: {color}; font-size: 11px; font-weight: 700; padding: 0 2px;",
+        )
+        self._sync_action_status_visibility()
+
+    def _sync_action_status_visibility(self) -> None:
+        self._action_status.setVisible(bool(self._action_status.text()))
 
     def get_manifest_path(self) -> Path | None:
         """Return path to the current manifest file."""
@@ -866,3 +1032,8 @@ class VoicesPage(QWidget):
         self._sync_compact_mode()
         self._sync_settings_panel_height()
         self.updateGeometry()
+
+
+def _copy_segments_for_worker(segments: list[dict]) -> list[dict]:
+    """Return a thread-owned shallow copy of segment dictionaries."""
+    return [dict(segment) for segment in segments]

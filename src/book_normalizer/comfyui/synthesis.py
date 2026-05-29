@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+import wave
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,9 +21,11 @@ from book_normalizer.comfyui.generation_options import (
     generation_options_from_mapping,
 )
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
+from book_normalizer.tts.audio_smoothing import smooth_wav_silence
 from book_normalizer.tts.voice_mapping import voice_mapping_candidates
 
 ProgressCallback = Callable[[str], None]
+RecoveryCallback = Callable[[ComfyUIError, int], ComfyUIClient | None]
 
 
 @dataclass(frozen=True)
@@ -190,6 +193,8 @@ def synthesize_manifest(
     speaker_overrides: dict[str, str] | None = None,
     generation_options: GenerationOptions | dict[str, Any] | None = None,
     progress: ProgressCallback | None = None,
+    recovery: RecoveryCallback | None = None,
+    max_recovery_retries: int = 0,
 ) -> SynthesisSummary:
     """Synthesize all pending chunks and update the manifest after each chunk."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -252,32 +257,57 @@ def synthesize_manifest(
         )
 
         started = time.monotonic()
-        try:
-            workflow = builder.build(
-                text=text,
-                voice_label=voice_label,
-                voice_tone=voice_tone,
-                output_filename=output_filename,
-                language=language,
-                speaker_override=resolve_speaker_override(
-                    chunk,
-                    voice_label,
-                    speaker_overrides,
-                ),
-                generation_options=effective_options,
-                speaker=str(chunk.get("speaker") or ""),
-                emotion=str(chunk.get("emotion") or ""),
-                section_kind=str(chunk.get("section_kind") or ""),
-                director=chunk.get("director") if isinstance(chunk.get("director"), dict) else None,
-                resynthesis_attempt=attempt,
-            )
-            client.synthesize_chunk(workflow, output_path, timeout=chunk_timeout)
-        except ComfyUIError as exc:
-            failed += 1
-            chunk["failed"] = True
-            chunk["error"] = str(exc)
-            emit(f"  ERROR: {exc}")
-            save_manifest(manifest_path, manifest)
+        smoothing = None
+        chunk_done = False
+        recovery_limit = max(0, int(max_recovery_retries))
+        for recovery_attempt in range(recovery_limit + 1):
+            try:
+                workflow = builder.build(
+                    text=text,
+                    voice_label=voice_label,
+                    voice_tone=voice_tone,
+                    output_filename=output_filename,
+                    language=language,
+                    speaker_override=resolve_speaker_override(
+                        chunk,
+                        voice_label,
+                        speaker_overrides,
+                    ),
+                    generation_options=effective_options,
+                    speaker=str(chunk.get("speaker") or ""),
+                    emotion=str(chunk.get("emotion") or ""),
+                    section_kind=str(chunk.get("section_kind") or ""),
+                    director=chunk.get("director") if isinstance(chunk.get("director"), dict) else None,
+                    resynthesis_attempt=attempt,
+                )
+                client.synthesize_chunk(workflow, output_path, timeout=chunk_timeout)
+                try:
+                    smoothing = smooth_wav_silence(output_path)
+                except (OSError, ValueError, wave.Error, EOFError):
+                    smoothing = None
+                chunk_done = True
+                break
+            except ComfyUIError as exc:
+                chunk["failed"] = True
+                chunk["error"] = str(exc)
+                emit(f"  ERROR: {exc}")
+                save_manifest(manifest_path, manifest)
+                if recovery is None or recovery_attempt >= recovery_limit:
+                    failed += 1
+                    break
+                next_attempt = recovery_attempt + 1
+                emit(
+                    "  Recovery: restarting/checking ComfyUI "
+                    f"(attempt {next_attempt}/{recovery_limit})..."
+                )
+                recovered_client = recovery(exc, next_attempt)
+                if recovered_client is not None:
+                    client = recovered_client
+                chunk["failed"] = False
+                chunk["error"] = ""
+                save_manifest(manifest_path, manifest)
+
+        if not chunk_done:
             continue
 
         elapsed = time.monotonic() - started
@@ -289,6 +319,14 @@ def synthesize_manifest(
         chunk["error"] = ""
         chunk["audio_file"] = str(output_path)
         chunk["last_generation_options"] = effective_options
+        if smoothing is not None:
+            chunk["audio_postprocess"] = {"silence_smoothing": smoothing.to_dict()}
+            if smoothing.changed:
+                emit(
+                    "    Smoothed silence: "
+                    f"removed {smoothing.removed_silence_ms}ms, "
+                    f"max gap was {smoothing.max_silence_ms}ms"
+                )
         done += 1
         synthesized_now += 1
         emit(f"PROGRESS {done}/{total}")

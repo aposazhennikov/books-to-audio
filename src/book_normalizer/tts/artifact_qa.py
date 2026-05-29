@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from book_normalizer.chunking.manifest_v2 import chunk_is_excluded, ensure_v2_manifest
+from book_normalizer.tts.audio_smoothing import inspect_silence_gaps
 from book_normalizer.tts.quality_gate import (
     BAD_QA_STATUSES,
     compact_issue_reason,
@@ -41,6 +42,8 @@ class ArtifactQaConfig:
     dropout_window_ms: int = 80
     dropout_rms_ratio: float = 0.08
     repeated_audio_threshold: float = 0.20
+    max_silence_gap_ms: int = 1200
+    excessive_silence_ratio_threshold: float = 0.08
 
 
 @dataclass
@@ -263,6 +266,8 @@ def inspect_artifacts(path: Path, *, config: ArtifactQaConfig | None = None) -> 
             "crest_factor_db": 0.0,
             "dropout_score": 0.0,
             "repeated_audio_score": 0.0,
+            "max_silence_ms": 0.0,
+            "excessive_silence_ratio": 0.0,
         }
     abs_samples = [abs(value) for value in samples]
     peak = max(abs_samples)
@@ -277,6 +282,7 @@ def inspect_artifacts(path: Path, *, config: ArtifactQaConfig | None = None) -> 
         "crest_factor_db": crest,
         "dropout_score": _dropout_score(samples, sample_rate, cfg),
         "repeated_audio_score": _repeated_audio_score(samples, sample_rate),
+        **inspect_silence_gaps(path),
     }
 
 
@@ -293,6 +299,8 @@ def _score_artifacts(
     crest = stats["crest_factor_db"]
     dropout = stats["dropout_score"]
     repeated = stats["repeated_audio_score"]
+    max_silence_ms = stats.get("max_silence_ms", 0.0)
+    excessive_silence = stats.get("excessive_silence_ratio", 0.0)
 
     if duration <= 0:
         item.issues.append(ArtifactIssue("zero_duration", "error", "WAV has zero duration."))
@@ -341,6 +349,18 @@ def _score_artifacts(
                 "error",
                 "Audio contains repeated waveform windows that may sound like stutter.",
                 score=repeated,
+            )
+        )
+    if (
+        max_silence_ms > config.max_silence_gap_ms
+        or excessive_silence > config.excessive_silence_ratio_threshold
+    ):
+        item.issues.append(
+            ArtifactIssue(
+                "excessive_silence_gap",
+                "warning",
+                f"Audio contains an unusually long silence gap ({max_silence_ms:.0f} ms).",
+                score=max_silence_ms,
             )
         )
 

@@ -94,9 +94,14 @@ TONE_TO_RUSSIAN: dict[str, str] = {
 _DEFAULT_TONE_RU = "Ровно и чётко."
 _STABLE_NARRATOR_TONES = {"calm", "neutral"}
 _STABLE_NARRATOR_INSTRUCT = (
-    "Keep a steady audiobook narrator delivery across adjacent chunks: "
-    "same calm emotional color, same medium-slow pace, even volume. "
-    "Do not shout, do not become excited, and do not sound sleepy."
+    "Сохраняй единый голос аудиокниги между соседними фрагментами: "
+    "одинаковая спокойная окраска, средний ровный темп, стабильная громкость. "
+    "Говори плавно, без внезапных долгих пауз между словами, без крика, "
+    "без резких смен интонации и без сонливости."
+)
+_SMOOTH_DELIVERY_INSTRUCT = (
+    "Произноси текст слитно и естественно: обычные паузы только на знаках "
+    "препинания, без случайных остановок на 5-10 секунд внутри фразы."
 )
 
 # ── Placeholder tokens ────────────────────────────────────────────────────────
@@ -370,7 +375,7 @@ def voice_tone_to_instruct(
     full_tone = " ".join(str(voice_tone or "").strip().split())
     first_word = full_tone.lower().split()[0] if full_tone else ""
     tone_sentence = TONE_TO_RUSSIAN.get(first_word, _DEFAULT_TONE_RU)
-    parts = [role_prefix, tone_sentence]
+    parts = [role_prefix, tone_sentence, _SMOOTH_DELIVERY_INSTRUCT]
     if voice_label == "narrator" and first_word in _STABLE_NARRATOR_TONES:
         parts.append(_STABLE_NARRATOR_INSTRUCT)
     if full_tone and full_tone.lower() != first_word:
@@ -387,7 +392,7 @@ def voice_tone_to_instruct(
             parts.append(f"{key.replace('_', ' ').title()}: {value}.")
     if resynthesis_attempt > 0:
         parts.append(
-            "Speak clearly with stable volume, no repeated syllables, no rushed delivery."
+            "Говори четко, со стабильной громкостью, без повторов слогов и без ускорения."
         )
     return " ".join(parts)
 

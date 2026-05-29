@@ -77,6 +77,7 @@ class SynthesisRequest:
     max_resynthesis_attempts: int = 2
     auto_start_comfyui: bool = True
     comfyui_start_wait_seconds: float = 300.0
+    comfyui_recovery_retries: int = 2
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,18 @@ class SynthesisController:
                 0,
             )
 
+        def recover_comfyui(_exc: Exception, attempt: int) -> ComfyUIClient | None:
+            self._emit_log(f"ComfyUI recovery attempt {attempt}: checking local server...")
+            self._try_start_comfyui(restart=True)
+            recovered = ComfyUIClient(request.comfyui_url)
+            if not recovered.is_reachable():
+                raise ConnectionError(
+                    f"ComfyUI server not reachable after recovery attempt {attempt} "
+                    f"at {request.comfyui_url}"
+                )
+            self._emit_log("ComfyUI recovery: server is reachable; retrying current chunk.")
+            return recovered
+
         synthesized_total = 0
         skipped = done_start
         max_passes = max(1, int(request.max_resynthesis_attempts) + 1)
@@ -190,6 +203,8 @@ class SynthesisController:
                 speaker_overrides=speaker_overrides,
                 generation_options=request.generation_options,
                 progress=on_line,
+                recovery=recover_comfyui if request.auto_start_comfyui else None,
+                max_recovery_retries=request.comfyui_recovery_retries,
             )
             synthesized_total += summary.synthesized
             skipped = summary.skipped
@@ -229,17 +244,19 @@ class SynthesisController:
             skipped=skipped,
         )
 
-    def _try_start_comfyui(self) -> None:
+    def _try_start_comfyui(self, *, restart: bool = False) -> None:
         """Start local ComfyUI when the request allows it and the API is down."""
         request = self._request
         if not request.auto_start_comfyui:
             return
 
-        self._emit_log(f"ComfyUI: {request.comfyui_url} is not reachable; trying to start local portable server...")
+        action = "restarting" if restart else "trying to start"
+        self._emit_log(f"ComfyUI: {request.comfyui_url} is not reachable; {action} local portable server...")
         try:
             result = ensure_local_comfyui(
                 request.comfyui_url,
                 wait_seconds=request.comfyui_start_wait_seconds,
+                restart=restart,
             )
         except ComfyUIStartError as exc:
             raise ConnectionError(

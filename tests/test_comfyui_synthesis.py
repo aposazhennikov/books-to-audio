@@ -32,6 +32,15 @@ class _Client:
         return output_path
 
 
+class _FailOnceClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def synthesize_chunk(self, workflow: dict, output_path: Path, timeout: float) -> Path:
+        self.calls += 1
+        raise ComfyUIError("timeout")
+
+
 def _manifest() -> dict:
     return {
         "version": 2,
@@ -184,6 +193,41 @@ def test_synthesize_manifest_marks_failed_chunk(tmp_path: Path) -> None:
     assert summary.failed == 1
     assert chunk["failed"] is True
     assert chunk["error"] == "boom"
+
+
+def test_synthesize_manifest_recovers_and_retries_current_chunk(tmp_path: Path) -> None:
+    manifest = _manifest()
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    failing_client = _FailOnceClient()
+    recovered_client = _Client()
+    recovery_errors: list[str] = []
+    lines: list[str] = []
+
+    def recover(exc: ComfyUIError, attempt: int) -> _Client:
+        recovery_errors.append(f"{attempt}:{exc}")
+        return recovered_client
+
+    summary = synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=failing_client,  # type: ignore[arg-type]
+        builder=_Builder(),  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+        progress=lines.append,
+        recovery=recover,  # type: ignore[arg-type]
+        max_recovery_retries=1,
+    )
+
+    chunk = manifest["chapters"][0]["chunks"][0]
+    assert summary.synthesized == 1
+    assert summary.failed == 0
+    assert failing_client.calls == 1
+    assert recovered_client.calls == 1
+    assert recovery_errors == ["1:timeout"]
+    assert chunk["synthesized"] is True
+    assert chunk["failed"] is False
+    assert "PROGRESS 1/1" in lines
 
 
 def test_synthesize_manifest_failed_only_skips_unfailed_chunks(tmp_path: Path) -> None:

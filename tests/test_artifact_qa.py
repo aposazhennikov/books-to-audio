@@ -8,6 +8,7 @@ from book_normalizer.tts.artifact_qa import (
     annotate_manifest_with_artifacts,
     run_artifact_qa,
 )
+from book_normalizer.tts.audio_smoothing import smooth_wav_silence
 from book_normalizer.tts.quality_gate import split_problem_chunks_for_retry
 
 
@@ -90,6 +91,32 @@ def test_artifact_qa_detects_repeated_audio_windows(tmp_path: Path) -> None:
     chunk = result.chunks[0]
     assert chunk.status == "failed"
     assert "repeated_audio" in {issue.kind for issue in chunk.issues}
+
+
+def test_silence_smoothing_compresses_long_internal_gap(tmp_path: Path) -> None:
+    audio_path = tmp_path / "gap.wav"
+    tone = [int(math.sin(index / 8.0) * 5000) for index in range(800)]
+    _write_wav(audio_path, tone + [0] * 16_000 + tone, sample_rate=8000)
+
+    result = smooth_wav_silence(audio_path)
+
+    assert result.changed is True
+    assert result.max_silence_ms >= 1900
+    assert result.removed_silence_ms >= 1400
+    with wave.open(str(audio_path), "rb") as wav:
+        assert wav.getnframes() < 800 + 16_000 + 800
+
+
+def test_artifact_qa_warns_about_excessive_silence_gap(tmp_path: Path) -> None:
+    audio_path = tmp_path / "gap.wav"
+    tone = [int(math.sin(index / 8.0) * 5000) for index in range(800)]
+    _write_wav(audio_path, tone + [0] * 16_000 + tone, sample_rate=8000)
+
+    result = run_artifact_qa(_manifest(audio_path), manifest_path=tmp_path / "chunks_manifest_v2.json")
+
+    chunk = result.chunks[0]
+    assert chunk.status in {"warning", "failed"}
+    assert "excessive_silence_gap" in {issue.kind for issue in chunk.issues}
 
 
 def test_split_problem_chunks_for_retry_splits_repeated_long_chunk() -> None:

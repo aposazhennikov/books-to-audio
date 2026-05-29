@@ -35,10 +35,11 @@ def ensure_local_comfyui(
     wait_seconds: float = 240.0,
     log_dir: Path = Path("output/runtime_logs"),
     root: str = "",
+    restart: bool = False,
 ) -> ComfyUIStartResult:
     """Start a local portable ComfyUI server when the API is not reachable."""
     api_url = system_stats_url(base_url)
-    if probe_url(api_url):
+    if probe_url(api_url) and not restart:
         return ComfyUIStartResult(
             api_url=api_url,
             log_dir=log_dir,
@@ -55,6 +56,16 @@ def ensure_local_comfyui(
     host = _listen_host_from_url(base_url)
     log_dir.mkdir(parents=True, exist_ok=True)
     pid_file = log_dir / "comfyui.pid"
+    if restart:
+        stopped = stop_tracked_comfyui(pid_file)
+        if not stopped and probe_url(api_url):
+            return ComfyUIStartResult(
+                api_url=api_url,
+                log_dir=log_dir,
+                root=portable_root,
+                started=False,
+                message=f"ComfyUI still reachable; restart skipped because no tracked process was stopped: {api_url}",
+            )
     start_comfyui(
         root=portable_root,
         host=host,
@@ -75,6 +86,41 @@ def ensure_local_comfyui(
         started=True,
         message=f"ComfyUI started from {portable_root}: {api_url}",
     )
+
+
+def stop_tracked_comfyui(pid_file: Path) -> bool:
+    """Stop a ComfyUI process recorded in ``pid_file`` when it is safe to do so."""
+    if not pid_file.exists():
+        return False
+    try:
+        pid = int(pid_file.read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        return False
+    if pid <= 0 or not _pid_looks_like_comfyui(pid):
+        return False
+
+    try:
+        if os.name == "nt":
+            result = subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True,
+                timeout=20.0,
+                check=False,
+            )
+            stopped = result.returncode == 0
+        else:
+            os.kill(pid, 15)
+            stopped = True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+    if stopped:
+        try:
+            pid_file.unlink()
+        except OSError:
+            pass
+        time.sleep(3.0)
+    return stopped
 
 
 def is_local_url(base_url: str) -> bool:
@@ -211,6 +257,37 @@ def _listen_host_from_url(base_url: str) -> str:
 
 def _looks_like_portable_comfyui(root: Path) -> bool:
     return _comfyui_python(root).exists() and _comfyui_main(root).exists()
+
+
+def _pid_looks_like_comfyui(pid: int) -> bool:
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-Command",
+                    f"(Get-CimInstance Win32_Process -Filter \"ProcessId = {pid}\").CommandLine",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10.0,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        cmdline = (result.stdout or "").lower()
+    else:
+        try:
+            cmdline = (
+                Path(f"/proc/{pid}/cmdline")
+                .read_text(encoding="utf-8", errors="ignore")
+                .replace("\x00", " ")
+                .lower()
+            )
+        except OSError:
+            return False
+    return "comfyui" in cmdline and "main.py" in cmdline
 
 
 def _comfyui_python(root: Path) -> Path:

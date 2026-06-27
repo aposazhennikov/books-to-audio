@@ -38,6 +38,218 @@ class SynthesisSummary:
     failed: int
 
 
+_LOG_LANGS = {"en", "ru", "zh", "kk", "uz"}
+
+_LOG_MESSAGES: dict[str, dict[str, str]] = {
+    "already_done": {
+        "en": "All {total} chunks already synthesized. Nothing to do.",
+        "ru": "Все {total} чанков уже синтезированы. Делать нечего.",
+        "zh": "全部 {total} 个分块已合成，无需处理。",
+        "kk": "{total} чанктың бәрі синтезделген. Істеу қажет емес.",
+        "uz": "{total} bo'lakning barchasi sintez qilingan. Hech narsa qilish kerak emas.",
+    },
+    "chunks": {
+        "en": "Chunks: {total} total, {done} already done, {pending} to synthesize.",
+        "ru": "Чанки: всего {total}, уже готово {done}, синтезировать {pending}.",
+        "zh": "分块：共 {total}，已完成 {done}，待合成 {pending}。",
+        "kk": "Чанктар: барлығы {total}, дайын {done}, синтезге {pending}.",
+        "uz": "Bo'laklar: jami {total}, tayyor {done}, sintez uchun {pending}.",
+    },
+    "skip_empty": {
+        "en": "  Skipping empty chunk ch{chapter}/chunk{chunk}",
+        "ru": "  Пропуск пустого чанка гл{chapter}/чанк{chunk}",
+        "zh": "  跳过空分块 第{chapter}章/分块{chunk}",
+        "kk": "  Бос чанк өткізіледі {chapter}-тарау/чанк{chunk}",
+        "uz": "  Bo'sh bo'lak o'tkazib yuborildi {chapter}-bob/bo'lak{chunk}",
+    },
+    "synthesizing": {
+        "en": "  Synthesizing ch{chapter}/chunk{chunk} [{role}/{voice}/{tone}] {chars} chars -> {file}",
+        "ru": "  Синтез гл{chapter}/чанк{chunk} [{role}/{voice}/{tone}] {chars} симв. -> {file}",
+        "zh": "  合成 第{chapter}章/分块{chunk} [{role}/{voice}/{tone}] {chars} 字符 -> {file}",
+        "kk": "  Синтез {chapter}-тарау/чанк{chunk} [{role}/{voice}/{tone}] {chars} таңба -> {file}",
+        "uz": "  Sintez {chapter}-bob/bo'lak{chunk} [{role}/{voice}/{tone}] {chars} belgi -> {file}",
+    },
+    "error": {
+        "en": "  ERROR: {error}",
+        "ru": "  ОШИБКА: {error}",
+        "zh": "  错误：{error}",
+        "kk": "  ҚАТЕ: {error}",
+        "uz": "  XATO: {error}",
+    },
+    "recovery": {
+        "en": "  Recovery: restarting/checking ComfyUI (attempt {attempt}/{limit})...",
+        "ru": "  Восстановление: перезапуск/проверка ComfyUI (попытка {attempt}/{limit})...",
+        "zh": "  恢复：重启/检查 ComfyUI（尝试 {attempt}/{limit}）...",
+        "kk": "  Қалпына келтіру: ComfyUI қайта іске қосу/тексеру ({attempt}/{limit})...",
+        "uz": "  Tiklash: ComfyUI qayta ishga tushirish/tekshirish ({attempt}/{limit})...",
+    },
+    "done": {
+        "en": "    Done in {seconds:.1f}s -> {size_kb} KB",
+        "ru": "    Готово за {seconds:.1f}с -> {size_kb} КБ",
+        "zh": "    完成：{seconds:.1f} 秒 -> {size_kb} KB",
+        "kk": "    Дайын: {seconds:.1f}с -> {size_kb} КБ",
+        "uz": "    Tayyor: {seconds:.1f}s -> {size_kb} KB",
+    },
+    "smoothed": {
+        "en": "    Smoothed silence: removed {removed}ms, max gap was {max_gap}ms",
+        "ru": "    Сглажена тишина: удалено {removed} мс, максимум паузы был {max_gap} мс",
+        "zh": "    已平滑静音：移除 {removed}ms，最大间隔 {max_gap}ms",
+        "kk": "    Тыныштық тегістелді: {removed}мс жойылды, ең үлкен үзіліс {max_gap}мс",
+        "uz": "    Jimlik tekislandi: {removed}ms olib tashlandi, eng katta pauza {max_gap}ms",
+    },
+    "complete": {
+        "en": "Synthesis complete: {new} new chunks synthesized ({done}/{total} total done, {failed} failed).",
+        "ru": "Синтез завершён: новых чанков {new} ({done}/{total} всего готово, ошибок {failed}).",
+        "zh": "合成完成：新合成 {new} 个分块（共完成 {done}/{total}，失败 {failed}）。",
+        "kk": "Синтез аяқталды: жаңа чанк {new} ({done}/{total} дайын, қате {failed}).",
+        "uz": "Sintez tugadi: {new} yangi bo'lak ({done}/{total} tayyor, {failed} xato).",
+    },
+}
+
+_ROLE_LABELS: dict[str, dict[str, str]] = {
+    "narrator": {"en": "narrator", "ru": "автор", "zh": "旁白", "kk": "автор", "uz": "muallif"},
+    "men": {"en": "male", "ru": "мужской", "zh": "男声", "kk": "ер", "uz": "erkak"},
+    "women": {"en": "female", "ru": "женский", "zh": "女声", "kk": "әйел", "uz": "ayol"},
+}
+
+_TONE_LABELS: dict[str, dict[str, str]] = {
+    "neutral": {"en": "neutral", "ru": "нейтральная", "zh": "中性", "kk": "бейтарап", "uz": "neytral"},
+    "calm": {"en": "calm", "ru": "спокойная", "zh": "平静", "kk": "тыныш", "uz": "tinch"},
+    "excited": {"en": "excited", "ru": "взволнованная", "zh": "激动", "kk": "толқыған", "uz": "hayajonli"},
+    "joyful": {"en": "joyful", "ru": "радостная", "zh": "欢快", "kk": "қуанышты", "uz": "quvonchli"},
+    "sad": {"en": "sad", "ru": "грустная", "zh": "悲伤", "kk": "мұңды", "uz": "g'amgin"},
+    "angry": {"en": "angry", "ru": "злая", "zh": "愤怒", "kk": "ашулы", "uz": "jahldor"},
+    "whisper": {"en": "whisper", "ru": "шёпот", "zh": "耳语", "kk": "сыбыр", "uz": "shivir"},
+}
+
+_VOICE_LABELS: dict[str, dict[str, str]] = {
+    "narrator_calm": {
+        "en": "Narrator - Calm",
+        "ru": "Диктор - Спокойный",
+        "zh": "旁白 - 平静",
+        "kk": "Диктор - Сабырлы",
+        "uz": "Hikoyachi - Vazmin",
+    },
+    "narrator_energetic": {
+        "en": "Narrator - Energetic",
+        "ru": "Диктор - Энергичный",
+        "zh": "旁白 - 充满活力",
+        "kk": "Диктор - Қуатты",
+        "uz": "Hikoyachi - Jo'shqin",
+    },
+    "narrator_wise": {
+        "en": "Narrator - Wise",
+        "ru": "Диктор - Мудрый",
+        "zh": "旁白 - 睿智",
+        "kk": "Диктор - Дана",
+        "uz": "Hikoyachi - Dono",
+    },
+    "male_young": {
+        "en": "Male - Young",
+        "ru": "Мужской - Молодой",
+        "zh": "男声 - 年轻",
+        "kk": "Ер дауысы - Жас",
+        "uz": "Erkak ovozi - Yosh",
+    },
+    "male_confident": {
+        "en": "Male - Confident",
+        "ru": "Мужской - Уверенный",
+        "zh": "男声 - 自信",
+        "kk": "Ер дауысы - Сенімді",
+        "uz": "Erkak ovozi - Ishonchli",
+    },
+    "male_deep": {
+        "en": "Male - Deep",
+        "ru": "Мужской - Глубокий",
+        "zh": "男声 - 低沉",
+        "kk": "Ер дауысы - Терең",
+        "uz": "Erkak ovozi - Chuqur",
+    },
+    "male_lively": {
+        "en": "Male - Lively",
+        "ru": "Мужской - Живой",
+        "zh": "男声 - 活泼",
+        "kk": "Ер дауысы - Ширақ",
+        "uz": "Erkak ovozi - Tetik",
+    },
+    "male_regional": {
+        "en": "Male - Expressive",
+        "ru": "Мужской - Экспрессивный",
+        "zh": "男声 - 富有表现力",
+        "kk": "Ер дауысы - Әсерлі",
+        "uz": "Erkak ovozi - Ifodali",
+    },
+    "female_warm": {
+        "en": "Female - Warm",
+        "ru": "Женский - Тёплый",
+        "zh": "女声 - 温暖",
+        "kk": "Әйел дауысы - Жылы",
+        "uz": "Ayol ovozi - Iliq",
+    },
+    "female_bright": {
+        "en": "Female - Bright",
+        "ru": "Женский - Яркий",
+        "zh": "女声 - 明亮",
+        "kk": "Әйел дауысы - Жарқын",
+        "uz": "Ayol ovozi - Yorqin",
+    },
+    "female_playful": {
+        "en": "Female - Playful",
+        "ru": "Женский - Игривый",
+        "zh": "女声 - 俏皮",
+        "kk": "Әйел дауысы - Ойнақы",
+        "uz": "Ayol ovozi - O'ynoqi",
+    },
+    "female_gentle": {
+        "en": "Female - Gentle",
+        "ru": "Женский - Нежный",
+        "zh": "女声 - 轻柔",
+        "kk": "Әйел дауысы - Нәзік",
+        "uz": "Ayol ovozi - Muloyim",
+    },
+}
+
+
+def _log_lang(language: str) -> str:
+    normalized = (language or "").strip().lower()
+    return normalized if normalized in _LOG_LANGS else "en"
+
+
+def _localized(mapping: dict[str, dict[str, str]], key: str, language: str, fallback: str = "") -> str:
+    labels = mapping.get(key, {})
+    return labels.get(_log_lang(language), labels.get("en", fallback or key))
+
+
+def _log_text(language: str, key: str, **kwargs: Any) -> str:
+    entry = _LOG_MESSAGES[key]
+    return entry.get(_log_lang(language), entry["en"]).format(**kwargs)
+
+
+def localized_synthesis_line(
+    *,
+    language: str,
+    chapter: int,
+    chunk: int,
+    voice_label: str,
+    voice_id: str,
+    voice_tone: str,
+    chars: int,
+    file_name: str,
+) -> str:
+    """Return a localized per-chunk synthesis log line."""
+    return _log_text(
+        language,
+        "synthesizing",
+        chapter=f"{chapter:03d}",
+        chunk=f"{chunk:03d}",
+        role=_localized(_ROLE_LABELS, voice_label, language, voice_label),
+        voice=_localized(_VOICE_LABELS, voice_id, language, voice_id or "-"),
+        tone=_localized(_TONE_LABELS, voice_tone, language, voice_tone),
+        chars=chars,
+        file=file_name,
+    )
+
+
 def load_manifest(path: Path) -> dict[str, Any]:
     """Load and validate a v2 manifest JSON file."""
     if not path.exists():
@@ -195,6 +407,7 @@ def synthesize_manifest(
     progress: ProgressCallback | None = None,
     recovery: RecoveryCallback | None = None,
     max_recovery_retries: int = 0,
+    log_language: str = "en",
 ) -> SynthesisSummary:
     """Synthesize all pending chunks and update the manifest after each chunk."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -213,10 +426,10 @@ def synthesize_manifest(
             progress(line)
 
     if not pending:
-        emit(f"All {total} chunks already synthesized. Nothing to do.")
+        emit(_log_text(log_language, "already_done", total=total))
         return SynthesisSummary(total=total, synthesized=0, skipped=skipped, failed=0)
 
-    emit(f"Chunks: {total} total, {done_start} already done, {len(pending)} to synthesize.")
+    emit(_log_text(log_language, "chunks", total=total, done=done_start, pending=len(pending)))
     done = done_start
     synthesized_now = 0
     manifest_language = str(manifest.get("language") or "ru")
@@ -226,7 +439,8 @@ def synthesize_manifest(
         chapter_index = int(chapter_entry.get("chapter_index", 0))
         chunk_index = int(chunk.get("chunk_index", 0))
         voice_label = str(chunk.get("voice_label") or "narrator")
-        voice_tone = str(chunk.get("voice_tone") or "calm")
+        voice_id = str(chunk.get("voice_id") or "")
+        voice_tone = str(chunk.get("voice_tone") or "calm").strip().lower()
         text = str(chunk.get("text") or chunk.get(voice_label) or "")
         language = str(chunk.get("language") or manifest_language)
         attempt = int(chunk.get("resynthesis_attempt") or 0)
@@ -240,7 +454,14 @@ def synthesize_manifest(
         chunk["error"] = ""
 
         if not text.strip():
-            emit(f"  Skipping empty chunk ch{chapter_index + 1:03d}/chunk{chunk_index + 1:03d}")
+            emit(
+                _log_text(
+                    log_language,
+                    "skip_empty",
+                    chapter=f"{chapter_index + 1:03d}",
+                    chunk=f"{chunk_index + 1:03d}",
+                )
+            )
             chunk["synthesized"] = True
             chunk["audio_file"] = ""
             done += 1
@@ -252,8 +473,16 @@ def synthesize_manifest(
         output_path = build_output_path(out_dir, chapter_index, chunk_index, voice_label)
         output_filename = output_path.with_suffix("").name
         emit(
-            f"  Synthesizing ch{chapter_index + 1:03d}/chunk{chunk_index + 1:03d} "
-            f"[{voice_label}/{voice_tone}] {len(text)} chars -> {output_path.name}"
+            localized_synthesis_line(
+                language=log_language,
+                chapter=chapter_index + 1,
+                chunk=chunk_index + 1,
+                voice_label=voice_label,
+                voice_id=voice_id,
+                voice_tone=voice_tone,
+                chars=len(text),
+                file_name=output_path.name,
+            )
         )
 
         started = time.monotonic()
@@ -290,15 +519,19 @@ def synthesize_manifest(
             except ComfyUIError as exc:
                 chunk["failed"] = True
                 chunk["error"] = str(exc)
-                emit(f"  ERROR: {exc}")
+                emit(_log_text(log_language, "error", error=exc))
                 save_manifest(manifest_path, manifest)
                 if recovery is None or recovery_attempt >= recovery_limit:
                     failed += 1
                     break
                 next_attempt = recovery_attempt + 1
                 emit(
-                    "  Recovery: restarting/checking ComfyUI "
-                    f"(attempt {next_attempt}/{recovery_limit})..."
+                    _log_text(
+                        log_language,
+                        "recovery",
+                        attempt=next_attempt,
+                        limit=recovery_limit,
+                    )
                 )
                 recovered_client = recovery(exc, next_attempt)
                 if recovered_client is not None:
@@ -312,7 +545,7 @@ def synthesize_manifest(
 
         elapsed = time.monotonic() - started
         size_kb = output_path.stat().st_size // 1024 if output_path.exists() else 0
-        emit(f"    Done in {elapsed:.1f}s -> {size_kb} KB")
+        emit(_log_text(log_language, "done", seconds=elapsed, size_kb=size_kb))
 
         chunk["synthesized"] = True
         chunk["failed"] = False
@@ -323,19 +556,19 @@ def synthesize_manifest(
             chunk["audio_postprocess"] = {"silence_smoothing": smoothing.to_dict()}
             if smoothing.changed:
                 emit(
-                    "    Smoothed silence: "
-                    f"removed {smoothing.removed_silence_ms}ms, "
-                    f"max gap was {smoothing.max_silence_ms}ms"
+                    _log_text(
+                        log_language,
+                        "smoothed",
+                        removed=smoothing.removed_silence_ms,
+                        max_gap=smoothing.max_silence_ms,
+                    )
                 )
         done += 1
         synthesized_now += 1
         emit(f"PROGRESS {done}/{total}")
         save_manifest(manifest_path, manifest)
 
-    emit(
-        f"Synthesis complete: {synthesized_now} new chunks synthesized "
-        f"({done}/{total} total done, {failed} failed)."
-    )
+    emit(_log_text(log_language, "complete", new=synthesized_now, done=done, total=total, failed=failed))
     return SynthesisSummary(
         total=total,
         synthesized=synthesized_now,

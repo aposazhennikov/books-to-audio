@@ -64,6 +64,7 @@ def _manifest() -> dict:
 
 def test_synthesize_manifest_updates_successful_chunk(tmp_path: Path) -> None:
     manifest = _manifest()
+    manifest["chapters"][0]["chunks"][0]["voice_id"] = "narrator_calm"
     manifest_path = tmp_path / "chunks_manifest_v2.json"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     lines: list[str] = []
@@ -83,7 +84,35 @@ def test_synthesize_manifest_updates_successful_chunk(tmp_path: Path) -> None:
     assert client.calls == 1
     assert chunk["synthesized"] is True
     assert Path(chunk["audio_file"]).exists()
+    assert any("[narrator/Narrator - Calm/calm]" in line for line in lines)
     assert "PROGRESS 1/1" in lines
+
+
+def test_synthesize_manifest_localizes_chunk_log(tmp_path: Path) -> None:
+    manifest = _manifest()
+    manifest["chapters"][0]["chunks"][0].update(
+        {
+            "voice_label": "women",
+            "voice_id": "female_gentle",
+            "voice_tone": "calm",
+        }
+    )
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    lines: list[str] = []
+
+    synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=_Client(),  # type: ignore[arg-type]
+        builder=_Builder(),  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+        progress=lines.append,
+        log_language="ru",
+    )
+
+    assert any("Женский - Нежный" in line and "спокойная" in line for line in lines)
+    assert not any("Synthesizing ch" in line for line in lines)
 
 
 def test_synthesize_manifest_passes_manifest_language_to_workflow(tmp_path: Path) -> None:

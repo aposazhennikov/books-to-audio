@@ -50,7 +50,12 @@ from book_normalizer.comfyui.generation_options import (
     DEFAULT_TOP_P,
     GenerationOptions,
 )
-from book_normalizer.comfyui.synthesis import collect_pending_chunks, save_manifest, synthesize_manifest
+from book_normalizer.comfyui.synthesis import (
+    collect_pending_chunks,
+    localized_synthesis_line,
+    save_manifest,
+    synthesize_manifest,
+)
 from book_normalizer.comfyui.synthesis import load_manifest as load_manifest_v2
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder, WorkflowBuilderError
 from book_normalizer.tts.artifact_qa import (
@@ -144,6 +149,7 @@ def synthesize_all(
     out_dir: Path,
     chapter_filter: int | None,
     chunk_timeout: float,
+    log_language: str = "en",
 ) -> None:
     """Main synthesis loop: process each pending chunk sequentially."""
     pending = collect_pending_chunks(manifest, chapter_filter)
@@ -163,6 +169,7 @@ def synthesize_all(
         ch_idx = chapter_entry.get("chapter_index", 0)
         chunk_idx = chunk.get("chunk_index", 0)
         voice_label = chunk.get("voice_label", "narrator")
+        voice_id = chunk.get("voice_id", "")
         voice_tone = chunk.get("voice_tone", "calm")
         text = chunk.get("text", "")
 
@@ -178,8 +185,16 @@ def synthesize_all(
         output_filename = f"chunk_{chunk_idx + 1:03d}_{voice_label}"
 
         print(
-            f"  Synthesizing ch{ch_idx + 1:03d}/chunk{chunk_idx + 1:03d} "
-            f"[{voice_label}/{voice_tone}] {len(text)} chars → {output_path.name}"
+            localized_synthesis_line(
+                language=log_language,
+                chapter=ch_idx + 1,
+                chunk=chunk_idx + 1,
+                voice_label=voice_label,
+                voice_id=str(voice_id or ""),
+                voice_tone=str(voice_tone or "calm"),
+                chars=len(text),
+                file_name=output_path.name,
+            )
         )
 
         t_start = time.monotonic()
@@ -273,6 +288,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--max-new-tokens", type=int, default=2048, help="TTS max new tokens.")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="TTS seed; use -1 for random generation.")
     parser.add_argument("--speech-rate", type=float, default=1.0, help="TTS speech rate when supported.")
+    parser.add_argument(
+        "--log-language",
+        choices=["en", "ru", "zh", "kk", "uz"],
+        default="en",
+        help="Language for synthesis log lines.",
+    )
     args = parser.parse_args(argv)
 
     manifest_path = Path(args.chunks_json)
@@ -330,6 +351,7 @@ def main(argv: list[str] | None = None) -> None:
             failed_only=args.failed_only or pass_index > 0,
             generation_options=generation_options,
             progress=print,
+            log_language=args.log_language,
         )
         if not (args.quality_loop or args.artifact_qa or args.asr_qa_after_synthesis):
             break

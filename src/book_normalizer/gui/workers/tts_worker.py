@@ -20,7 +20,11 @@ from book_normalizer.gui.i18n import get_language, t
 from book_normalizer.languages import normalize_book_language
 from book_normalizer.runtime_paths import configured_ollama_endpoint
 from book_normalizer.tts.model_download import MODEL_DOWNLOAD_WARNING, install_tts_models
-from book_normalizer.tts.synthesis_controller import SynthesisController, SynthesisRequest
+from book_normalizer.tts.synthesis_controller import (
+    SynthesisCancelled,
+    SynthesisController,
+    SynthesisRequest,
+)
 
 
 def _format_eta(seconds: float) -> str:
@@ -266,12 +270,37 @@ class TTSSynthesisWorker(QThread):
                 progress=self.progress.emit,
                 status=self.status.emit,
                 log=self.log_line.emit,
+                cancel_requested=lambda: self._cancelled,
             )
             result = controller.run()
-            if self._cancelled:
+            if self._cancelled or result.cancelled:
                 self.error.emit(t("synth.cancelled"))
                 return
+            if result.status != "completed":
+                if result.status == "review_required":
+                    self.error.emit(
+                        t(
+                            "synth.review_required",
+                            failed=result.failed,
+                            total=result.total,
+                            synthesized=result.synthesized,
+                            skipped=result.skipped,
+                            path=str(result.audio_dir),
+                        )
+                    )
+                    return
+                self.error.emit(
+                    t(
+                        "synth.incomplete_status",
+                        status=result.status,
+                        failed=result.failed,
+                        total=result.total,
+                    )
+                )
+                return
             self.finished.emit(str(result.audio_dir), result.synthesized, result.skipped)
+        except SynthesisCancelled:
+            self.error.emit(t("synth.cancelled"))
         except Exception as exc:
             self.error.emit(format_error_with_action(str(exc)))
 

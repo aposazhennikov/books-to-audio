@@ -7,7 +7,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from book_normalizer.comfyui.client import ComfyUIClient, ensure_pcm_wav
+import pytest
+
+from book_normalizer.comfyui.client import ComfyUICancelled, ComfyUIClient, ensure_pcm_wav
 
 
 class _Response:
@@ -68,6 +70,23 @@ def test_wait_for_completion_reads_audio_output(monkeypatch) -> None:  # noqa: A
         "subfolder": "x",
         "type": "output",
     }
+
+
+def test_wait_for_completion_observes_cancellation(monkeypatch) -> None:  # noqa: ANN001
+    client = ComfyUIClient()
+    polls: list[str] = []
+
+    def fake_history(prompt_id: str) -> dict[str, Any]:
+        polls.append(prompt_id)
+        return {}
+
+    monkeypatch.setattr(client, "get_history", fake_history)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    with pytest.raises(ComfyUICancelled):
+        client.wait_for_completion("abc", timeout=1, cancel_requested=lambda: True)
+
+    assert polls == []
 
 
 def test_download_audio_streams_to_file(monkeypatch, tmp_path: Path) -> None:  # noqa: ANN001

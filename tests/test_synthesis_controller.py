@@ -8,7 +8,11 @@ import pytest
 from book_normalizer.comfyui.server import ComfyUIStartResult
 from book_normalizer.comfyui.synthesis import SynthesisSummary
 from book_normalizer.tts import synthesis_controller
-from book_normalizer.tts.synthesis_controller import SynthesisController, SynthesisRequest
+from book_normalizer.tts.synthesis_controller import (
+    SynthesisCancelled,
+    SynthesisController,
+    SynthesisRequest,
+)
 
 
 def _write_manifest(path: Path) -> Path:
@@ -173,11 +177,61 @@ def test_synthesis_controller_estimates_eta_from_progress_lines(
     assert progress[-1] == (5, 5, "0s", 0, 0, 0.0, 0, 0, 0)
 
 
+def test_synthesis_controller_reports_review_required_for_partial_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = _write_manifest_chunks(
+        tmp_path / "chunks_manifest_v2.json",
+        total=3,
+        synthesized=1,
+    )
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text("{}", encoding="utf-8")
+
+    class _Client:
+        def __init__(self, base_url: str) -> None:
+            self.base_url = base_url
+
+        def is_reachable(self) -> bool:
+            return True
+
+    class _Builder:
+        def __init__(self, path: Path) -> None:
+            self.path = path
+
+    def fake_synthesize_manifest(**_kwargs) -> SynthesisSummary:  # noqa: ANN003
+        return SynthesisSummary(total=3, synthesized=1, skipped=1, failed=1)
+
+    monkeypatch.setattr(synthesis_controller, "ComfyUIClient", _Client)
+    monkeypatch.setattr(synthesis_controller, "WorkflowBuilder", _Builder)
+    monkeypatch.setattr(synthesis_controller, "synthesize_manifest", fake_synthesize_manifest)
+
+    result = SynthesisController(
+        SynthesisRequest(
+            manifest_path=manifest_path,
+            output_dir=tmp_path / "out",
+            workflow_path=workflow_path,
+            comfyui_url="http://localhost:8188",
+            quality_loop=False,
+            artifact_qa=False,
+            asr_qa_after_synthesis=False,
+        ),
+    ).run()
+
+    assert result.status == "review_required"
+    assert result.total == 3
+    assert result.failed == 1
+    assert result.synthesized == 1
+    assert result.skipped == 1
+
+
 def test_synthesis_controller_routes_local_tts_engine_without_comfyui_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     manifest_path = _write_manifest(tmp_path / "chunks_manifest_v2.json")
+    (tmp_path / "models" / "audio_encoders" / "F5-TTS").mkdir(parents=True)
     calls: list[dict] = []
 
     def fake_synthesize_engine_manifest(**kwargs):  # noqa: ANN003
@@ -211,6 +265,53 @@ def test_synthesis_controller_routes_local_tts_engine_without_comfyui_workflow(
     contract = json.loads((tmp_path / "out" / "run_contract.json").read_text(encoding="utf-8"))
     assert contract["parameters"]["models_dir"] == str(tmp_path / "models")
     assert contract["parameters"]["resume_mode"] == "manifest_state"
+
+
+def test_synthesis_controller_marks_cancelled_run_without_completed_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = _write_manifest(tmp_path / "chunks_manifest_v2.json")
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text("{}", encoding="utf-8")
+
+    class _Client:
+        def __init__(self, base_url: str) -> None:
+            self.base_url = base_url
+
+        def is_reachable(self) -> bool:
+            return True
+
+    class _Builder:
+        def __init__(self, path: Path) -> None:
+            self.path = path
+
+    def fake_synthesize_manifest(**kwargs) -> SynthesisSummary:  # noqa: ANN003
+        assert kwargs["cancel_requested"]() is True
+        return SynthesisSummary(total=1, synthesized=0, skipped=0, failed=0, status="cancelled")
+
+    monkeypatch.setattr(synthesis_controller, "ComfyUIClient", _Client)
+    monkeypatch.setattr(synthesis_controller, "WorkflowBuilder", _Builder)
+    monkeypatch.setattr(synthesis_controller, "synthesize_manifest", fake_synthesize_manifest)
+
+    with pytest.raises(SynthesisCancelled):
+        SynthesisController(
+            SynthesisRequest(
+                manifest_path=manifest_path,
+                output_dir=tmp_path / "out",
+                workflow_path=workflow_path,
+                comfyui_url="http://localhost:8188",
+            ),
+            cancel_requested=lambda: True,
+        ).run()
+
+    report = json.loads(
+        (tmp_path / "out" / "stage_reports" / "tts_synthesis_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert report["status"] == "cancelled"
+    assert report["summary"]["cancelled"] is True
 
 
 def test_synthesis_controller_preflights_local_tts_cli_before_synthesis(

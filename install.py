@@ -1453,6 +1453,10 @@ def _system_package_commands(extras: set[str]) -> list[list[str]]:
                     "libxcb-cursor0",
                     "libxkbcommon-x11-0",
                     "fonts-noto-cjk",
+                    "xvfb",
+                    "x11vnc",
+                    "novnc",
+                    "websockify",
                 ])
             return [
                 ["sudo", "apt-get", "update"],
@@ -1477,6 +1481,10 @@ def _system_package_commands(extras: set[str]) -> list[list[str]]:
                     "libxkbcommon-x11",
                     "xcb-util-cursor",
                     "google-noto-sans-cjk-fonts",
+                    "xorg-x11-server-Xvfb",
+                    "x11vnc",
+                    "novnc",
+                    "python3-websockify",
                 ])
             return [["sudo", "dnf", "install", *dict.fromkeys(packages)]]
         if "arch" in distro:
@@ -1498,6 +1506,10 @@ def _system_package_commands(extras: set[str]) -> list[list[str]]:
                     "libxkbcommon-x11",
                     "xcb-util-cursor",
                     "noto-fonts-cjk",
+                    "xorg-server-xvfb",
+                    "x11vnc",
+                    "novnc",
+                    "python-websockify",
                 ])
             return [["sudo", "pacman", "-S", *dict.fromkeys(packages)]]
     return []

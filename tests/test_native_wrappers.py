@@ -40,6 +40,27 @@ def test_gui_wrappers_prefer_current_source_tree() -> None:
     assert "--check" in shell_text
 
 
+def test_posix_gui_wrapper_supports_web_browser_mode() -> None:
+    shell_text = (ROOT / "run_gui.sh").read_text(encoding="utf-8")
+
+    assert "--web" in shell_text
+    assert "Xvfb" in shell_text
+    assert "x11vnc" in shell_text
+    assert "websockify" in shell_text
+    assert "WAYLAND_DISPLAY" in shell_text
+    assert "vnc.html?autoconnect=1&resize=scale" in shell_text
+    assert "ssh -L" in shell_text
+
+
+def test_linux_system_tool_hints_include_web_gui_dependencies() -> None:
+    installer_text = (ROOT / "install.py").read_text(encoding="utf-8")
+
+    assert "xvfb" in installer_text.lower()
+    assert "x11vnc" in installer_text
+    assert "novnc" in installer_text
+    assert "websockify" in installer_text
+
+
 def test_run_gui_batch_keeps_windows_line_endings() -> None:
     batch_bytes = (ROOT / "run_gui.bat").read_bytes()
 

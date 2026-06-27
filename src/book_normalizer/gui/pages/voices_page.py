@@ -551,9 +551,7 @@ class VoicesPage(QWidget):
         editor_dense = self.height() < 600
         controls_compact = width_compact or height_compact
         ultra_dense = self.height() < 430
-        dense = ultra_dense or (
-            editor_dense and not width_compact and self.width() >= 1500
-        )
+        dense = ultra_dense or editor_dense
         table_width = self._voice_table.width() if self._voice_table.width() > 0 else self.width()
         table_compact_threshold = max(960, round(1060 * self._ui_scale * self._ui_scale))
         table_width_compact = table_width < table_compact_threshold

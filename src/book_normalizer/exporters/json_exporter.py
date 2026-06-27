@@ -48,6 +48,9 @@ class JsonExporter:
                     "id": ch.id,
                     "title": ch.title,
                     "index": ch.index,
+                    "work_index": ch.work_index,
+                    "work_title": ch.work_title,
+                    "section_index": ch.section_index,
                     "paragraph_count": len(ch.paragraphs),
                     "char_count": len(ch.normalized_text or ch.raw_text),
                     "paragraphs": [

@@ -101,6 +101,9 @@ class DialogueDetector:
         return AnnotatedChapter(
             chapter_index=chapter.index,
             chapter_title=chapter.title,
+            work_index=chapter.work_index,
+            work_title=chapter.work_title,
+            section_index=chapter.section_index,
             paragraphs=annotated_paragraphs,
         )
 

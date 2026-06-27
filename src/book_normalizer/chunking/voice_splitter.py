@@ -98,6 +98,10 @@ def extract_segments_chapter(
                 VoiceSegment(
                     segment_index=seg_idx,
                     chapter_index=chapter.chapter_index,
+                    chapter_title=chapter.chapter_title,
+                    work_index=chapter.work_index,
+                    work_title=chapter.work_title,
+                    section_index=chapter.section_index,
                     is_dialogue=is_dialogue,
                     role=effective_role,
                     voice_id=NEW_VOICE_ID_MAP[voice_role],
@@ -175,6 +179,7 @@ def build_chunks_from_segments(
     pending_role = _role_from_segment(segments[0])
     pending_language = str(segments[0].get("language") or "").strip()
     pending_meta = _segment_role_metadata(segments[0])
+    pending_structure = _segment_structure_metadata(segments[0])
     pending_pause_after_ms = 0
     pending_boundary_after = ""
 
@@ -197,6 +202,7 @@ def build_chunks_from_segments(
                 "language": pending_language,
                 "intonation": pending_intonation,
                 "text": combined,
+                **pending_structure,
                 **pending_meta,
             }
             _add_pause_fields(
@@ -218,6 +224,7 @@ def build_chunks_from_segments(
                     "language": pending_language,
                     "intonation": pending_intonation,
                     "text": sub,
+                    **pending_structure,
                     **pending_meta,
                 }
                 if offset == len(sub_chunks) - 1:
@@ -246,6 +253,7 @@ def build_chunks_from_segments(
         seg_role = _role_from_segment(seg)
         seg_language = str(seg.get("language") or "").strip()
         seg_meta = _segment_role_metadata(seg)
+        seg_structure = _segment_structure_metadata(seg)
         seg_text = seg.get("text", "").strip()
         if not seg_text:
             continue
@@ -256,6 +264,7 @@ def build_chunks_from_segments(
             and seg_intonation == pending_intonation
             and seg_language == pending_language
             and seg_meta == pending_meta
+            and seg_structure == pending_structure
         )
 
         if same_group and pending_text_parts and pending_pause_after_ms > 0:
@@ -267,6 +276,7 @@ def build_chunks_from_segments(
             pending_role = seg_role
             pending_language = seg_language
             pending_meta = seg_meta
+            pending_structure = seg_structure
             _apply_pending_pause(
                 str(seg.get("boundary_after") or ""),
                 int(seg.get("pause_after_ms") or 0),
@@ -295,6 +305,7 @@ def build_chunks_from_segments(
             pending_role = seg_role
             pending_language = seg_language
             pending_meta = seg_meta
+            pending_structure = seg_structure
             _apply_pending_pause(
                 str(seg.get("boundary_after") or ""),
                 int(seg.get("pause_after_ms") or 0),
@@ -534,6 +545,19 @@ def _segment_role_metadata(seg: dict[str, Any]) -> dict[str, str]:
         )
         if str(seg.get(key) or "").strip()
     }
+
+
+def _segment_structure_metadata(seg: dict[str, Any]) -> dict[str, Any]:
+    """Structure metadata that should travel with generated chunks."""
+    result: dict[str, Any] = {}
+    for key in ("chapter_title", "work_title"):
+        value = str(seg.get(key) or "").strip()
+        if value:
+            result[key] = value
+    for key in ("work_index", "section_index"):
+        if key in seg and seg.get(key) is not None:
+            result[key] = int(seg.get(key) or 0)
+    return result
 
 
 def _is_scene_break_text(text: str) -> bool:

@@ -6,7 +6,7 @@ import logging
 import re
 from dataclasses import dataclass
 
-from book_normalizer.chaptering.patterns import match_chapter_heading
+from book_normalizer.chaptering.patterns import match_chapter_heading, match_work_heading
 from book_normalizer.chaptering.toc_parser import extract_main_titles, find_toc_section, parse_toc_entries
 from book_normalizer.models.book import Book, Chapter, Paragraph
 
@@ -20,6 +20,16 @@ class _HeadingHit:
     paragraph_index: int
     heading_text: str
     pattern_label: str
+
+
+@dataclass
+class _WorkRange:
+    """Internal representation of a top-level work inside one source file."""
+
+    index: int
+    title: str
+    start: int
+    end: int
 
 
 class ChapterDetector:
@@ -49,26 +59,29 @@ class ChapterDetector:
             logger.warning("Book has no paragraphs; returning as-is.")
             return book
 
+        full_text = "\n\n".join(p.raw_text for p in all_paragraphs)
+        toc_para_indices: set[int] = set()
+        toc_range = find_toc_section(full_text)
+        if toc_range:
+            start, end = toc_range
+            toc_para_indices = self._paragraphs_in_range(
+                all_paragraphs, full_text, start, end,
+            )
+
+        work_hits = self._find_work_headings(all_paragraphs, skip_indices=toc_para_indices)
+
         # First try: scan for chapter headings in text.
-        hits = self._find_headings(all_paragraphs)
+        hits = self._find_headings(all_paragraphs, skip_indices=toc_para_indices)
 
         # Recover orphaned "Глава" lines with OCR-damaged numerals.
         hits = self._recover_orphan_glava_headings(all_paragraphs, hits)
 
         # Second try: if no headings or very few (<= 2), try parsing TOC.
         if len(hits) <= 2:
-            full_text = "\n\n".join(p.raw_text for p in all_paragraphs)
-            toc_range = find_toc_section(full_text)
-
             if toc_range:
                 start, end = toc_range
                 toc_text = full_text[start:end]
                 toc_entries = parse_toc_entries(toc_text)
-
-                # Compute paragraph indices that overlap with the TOC text.
-                toc_para_indices = self._paragraphs_in_range(
-                    all_paragraphs, full_text, start, end,
-                )
 
                 if toc_entries:
                     main_titles = extract_main_titles(toc_entries, max_level=0)
@@ -95,16 +108,28 @@ class ChapterDetector:
                         hits = toc_hits
 
         if not hits:
+            if len(work_hits) >= 2:
+                chapters = self._split_at_work_boundaries(all_paragraphs, work_hits, [])
+                new_book = book.model_copy(deep=True)
+                new_book.chapters = chapters
+                self._write_structure_metadata(new_book, chapters, work_hits)
+                new_book.add_audit("chaptering", "work_split", f"works={len(work_hits)}, chapters={len(chapters)}")
+                return new_book
             logger.info("No chapter headings detected; book will have a single chapter.")
+            self._write_structure_metadata(book, book.chapters, work_hits)
             book.add_audit("chaptering", "no_headings", "Single chapter retained.")
             return book
 
-        chapters = self._split_at_headings(all_paragraphs, hits)
+        if len(work_hits) >= 2:
+            chapters = self._split_at_work_boundaries(all_paragraphs, work_hits, hits)
+        else:
+            chapters = self._split_at_headings(all_paragraphs, hits)
         self._normalize_chapter_titles(chapters)
         logger.info("Detected %d chapters.", len(chapters))
 
         new_book = book.model_copy(deep=True)
         new_book.chapters = chapters
+        self._write_structure_metadata(new_book, chapters, work_hits)
         new_book.add_audit("chaptering", "split", f"chapters={len(chapters)}")
         return new_book
 
@@ -117,10 +142,16 @@ class ChapterDetector:
         return result
 
     @staticmethod
-    def _find_headings(paragraphs: list[Paragraph]) -> list[_HeadingHit]:
+    def _find_headings(
+        paragraphs: list[Paragraph],
+        skip_indices: set[int] | None = None,
+    ) -> list[_HeadingHit]:
         """Scan paragraphs for lines that match chapter heading patterns."""
         hits: list[_HeadingHit] = []
+        _skip = skip_indices or set()
         for idx, para in enumerate(paragraphs):
+            if idx in _skip:
+                continue
             text = para.raw_text.strip()
             if not text:
                 continue
@@ -130,26 +161,28 @@ class ChapterDetector:
                 heading_text, label = result
                 hits.append(_HeadingHit(paragraph_index=idx, heading_text=heading_text, pattern_label=label))
 
-        # Remove duplicate headings (keep only the last occurrence).
-        # This handles cases where TOC entries duplicate actual chapter headings.
-        seen_titles: dict[str, int] = {}
-        for i, hit in enumerate(hits):
-            normalized_title = hit.heading_text.strip().upper()
-            if normalized_title in seen_titles:
-                # Mark previous occurrence for removal.
-                seen_titles[normalized_title] = i
-            else:
-                seen_titles[normalized_title] = i
+        return ChapterDetector._filter_numeric_heading_noise(hits)
 
-        # Keep only last occurrence of each title.
-        unique_hits = []
-        last_indices = set(seen_titles.values())
-        for i, hit in enumerate(hits):
-            if i in last_indices:
-                unique_hits.append(hit)
-
-        unique_hits = ChapterDetector._filter_numeric_heading_noise(unique_hits)
-        return unique_hits
+    @staticmethod
+    def _find_work_headings(
+        paragraphs: list[Paragraph],
+        skip_indices: set[int] | None = None,
+    ) -> list[_HeadingHit]:
+        """Scan paragraphs for top-level book/work/volume boundaries."""
+        hits: list[_HeadingHit] = []
+        _skip = skip_indices or set()
+        for idx, para in enumerate(paragraphs):
+            if idx in _skip:
+                continue
+            text = para.raw_text.strip()
+            if not text:
+                continue
+            first_line = text.split("\n", maxsplit=1)[0]
+            result = match_work_heading(first_line)
+            if result:
+                heading_text, label = result
+                hits.append(_HeadingHit(paragraph_index=idx, heading_text=heading_text, pattern_label=label))
+        return hits
 
     @staticmethod
     def _filter_numeric_heading_noise(hits: list[_HeadingHit]) -> list[_HeadingHit]:
@@ -335,6 +368,117 @@ class ChapterDetector:
 
         return unique_hits
 
+    def _split_at_work_boundaries(
+        self,
+        paragraphs: list[Paragraph],
+        work_hits: list[_HeadingHit],
+        chapter_hits: list[_HeadingHit],
+    ) -> list[Chapter]:
+        """Split one source file into top-level works, then chapters inside each work."""
+        work_ranges = self._build_work_ranges(len(paragraphs), work_hits)
+        chapters: list[Chapter] = []
+
+        if work_ranges[0].start > 0:
+            preamble_paras = paragraphs[: work_ranges[0].start]
+            preamble_hits = [
+                h for h in chapter_hits
+                if h.paragraph_index < work_ranges[0].start
+            ]
+            chapters.extend(
+                self._split_range_as_work(
+                    preamble_paras,
+                    preamble_hits,
+                    work_index=-1,
+                    work_title="Preamble",
+                    title_prefix="",
+                )
+            )
+
+        for work_range in work_ranges:
+            local_paragraphs = paragraphs[work_range.start:work_range.end]
+            local_hits = [
+                _HeadingHit(
+                    paragraph_index=h.paragraph_index - work_range.start,
+                    heading_text=h.heading_text,
+                    pattern_label=h.pattern_label,
+                )
+                for h in chapter_hits
+                if work_range.start < h.paragraph_index < work_range.end
+            ]
+            chapters.extend(
+                self._split_range_as_work(
+                    local_paragraphs,
+                    local_hits,
+                    work_index=work_range.index,
+                    work_title=work_range.title,
+                    title_prefix=work_range.title,
+                )
+            )
+
+        for idx, chapter in enumerate(chapters):
+            chapter.index = idx
+        return chapters
+
+    @staticmethod
+    def _build_work_ranges(total_paragraphs: int, work_hits: list[_HeadingHit]) -> list[_WorkRange]:
+        ranges: list[_WorkRange] = []
+        for idx, hit in enumerate(work_hits):
+            end = work_hits[idx + 1].paragraph_index if idx + 1 < len(work_hits) else total_paragraphs
+            if end <= hit.paragraph_index:
+                continue
+            ranges.append(
+                _WorkRange(
+                    index=len(ranges),
+                    title=hit.heading_text,
+                    start=hit.paragraph_index,
+                    end=end,
+                )
+            )
+        return ranges
+
+    def _split_range_as_work(
+        self,
+        paragraphs: list[Paragraph],
+        hits: list[_HeadingHit],
+        *,
+        work_index: int,
+        work_title: str,
+        title_prefix: str,
+    ) -> list[Chapter]:
+        if not paragraphs:
+            return []
+
+        if hits:
+            chapters = self._split_at_headings(paragraphs, hits)
+            chapters = self._drop_work_title_only_preamble(chapters, work_title)
+        else:
+            chapter = Chapter(
+                title=work_title or "Full Text",
+                index=0,
+                paragraphs=paragraphs,
+            )
+            chapters = [chapter] if self._has_meaningful_content(chapter) else []
+
+        for section_index, chapter in enumerate(chapters):
+            chapter.work_index = work_index
+            chapter.work_title = work_title
+            chapter.section_index = section_index
+            if title_prefix and chapter.title and chapter.title != title_prefix:
+                chapter.title = f"{title_prefix} - {chapter.title}"
+        return chapters
+
+    @staticmethod
+    def _drop_work_title_only_preamble(chapters: list[Chapter], work_title: str) -> list[Chapter]:
+        """Drop a synthetic preamble that contains only the work boundary title."""
+        if not chapters or chapters[0].title != "Preamble":
+            return chapters
+        first = chapters[0]
+        text = re.sub(r"\s+", " ", first.raw_text).strip(" .,:;!?")
+        title = re.sub(r"\s+", " ", work_title).strip(" .,:;!?")
+        if text.casefold() == title.casefold():
+            return chapters[1:]
+        return chapters
+
     def _split_at_headings(
         self,
         paragraphs: list[Paragraph],
@@ -474,9 +618,51 @@ class ChapterDetector:
         if len(glava_indices) < 2:
             return
 
-        for seq, ch_idx in enumerate(glava_indices, start=1):
-            ch = chapters[ch_idx]
-            m = glava_re.match(ch.title)
-            if m:
-                prefix = m.group(0).rstrip() + " "
-                ch.title = f"{prefix.strip()} {seq}"
+        by_work: dict[int, list[int]] = {}
+        for ch_idx in glava_indices:
+            by_work.setdefault(chapters[ch_idx].work_index, []).append(ch_idx)
+
+        for indices in by_work.values():
+            if len(indices) < 2:
+                continue
+            for seq, ch_idx in enumerate(indices, start=1):
+                ch = chapters[ch_idx]
+                m = glava_re.match(ch.title)
+                if m:
+                    prefix = m.group(0).rstrip() + " "
+                    ch.title = f"{prefix.strip()} {seq}"
+
+    @staticmethod
+    def _write_structure_metadata(
+        book: Book,
+        chapters: list[Chapter],
+        work_hits: list[_HeadingHit],
+    ) -> None:
+        """Persist a lightweight structure summary for GUI/export review."""
+        work_titles: list[str] = []
+        seen: set[tuple[int, str]] = set()
+        for chapter in chapters:
+            title = chapter.work_title or ""
+            key = (chapter.work_index, title)
+            if title and key not in seen:
+                seen.add(key)
+                work_titles.append(title)
+
+        duplicate_titles: dict[str, int] = {}
+        for chapter in chapters:
+            key = re.sub(r"\s+", " ", chapter.title.casefold()).strip()
+            duplicate_titles[key] = duplicate_titles.get(key, 0) + 1
+
+        repeated_chapter_titles = sorted(
+            title for title, count in duplicate_titles.items()
+            if title and count > 1
+        )
+
+        book.metadata.extra["structure"] = {
+            "work_count": max(len(work_titles), 1 if chapters else 0),
+            "work_titles": work_titles,
+            "detected_work_boundaries": len(work_hits),
+            "chapter_count": len(chapters),
+            "repeated_chapter_titles": repeated_chapter_titles,
+            "needs_review": bool(repeated_chapter_titles) or len(work_hits) >= 2,
+        }

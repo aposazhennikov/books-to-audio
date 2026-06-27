@@ -65,6 +65,9 @@ class Chapter(BaseModel):
     id: str = Field(default_factory=_generate_id)
     title: str = ""
     index: int = 0
+    work_index: int = 0
+    work_title: str = ""
+    section_index: int = 0
     paragraphs: list[Paragraph] = Field(default_factory=list)
     source_span_start: int | None = None
     source_span_end: int | None = None

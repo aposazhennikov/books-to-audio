@@ -53,6 +53,9 @@ class AnnotatedChapter(BaseModel):
 
     chapter_index: int = 0
     chapter_title: str = ""
+    work_index: int = 0
+    work_title: str = ""
+    section_index: int = 0
     paragraphs: list[AnnotatedParagraph] = Field(default_factory=list)
 
     @property
@@ -93,6 +96,10 @@ class VoiceSegment(BaseModel):
 
     segment_index: int = 0
     chapter_index: int = 0
+    chapter_title: str = ""
+    work_index: int = 0
+    work_title: str = ""
+    section_index: int = 0
     is_dialogue: bool = False
     role: SpeakerRole = SpeakerRole.NARRATOR
     voice_id: str = ""

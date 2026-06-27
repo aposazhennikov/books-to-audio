@@ -127,6 +127,9 @@ class ManifestChapterV2(BaseModel):
 
     chapter_index: int = 0
     chapter_title: str = ""
+    work_index: int = 0
+    work_title: str = ""
+    section_index: int = 0
     chunks: list[ManifestChunkV2] = Field(default_factory=list)
 
     def model_post_init(self, _context: Any) -> None:
@@ -138,6 +141,9 @@ class ManifestChapterV2(BaseModel):
         return {
             "chapter_index": self.chapter_index,
             "chapter_title": self.chapter_title,
+            "work_index": self.work_index,
+            "work_title": self.work_title,
+            "section_index": self.section_index,
             "chunks": [chunk.to_record() for chunk in self.chunks],
         }
 
@@ -287,8 +293,26 @@ def chunks_to_manifest(
         chapter_index = int(raw_chunk.get("chapter_index", 0))
         chapter = chapters.setdefault(
             chapter_index,
-            ManifestChapterV2(chapter_index=chapter_index),
+            ManifestChapterV2(
+                chapter_index=chapter_index,
+                chapter_title=str(raw_chunk.get("chapter_title") or ""),
+                work_index=int(raw_chunk.get("work_index") or 0),
+                work_title=str(raw_chunk.get("work_title") or ""),
+                section_index=int(raw_chunk.get("section_index") or 0),
+            ),
         )
+        default_title = f"Chapter {chapter_index + 1}"
+        if (
+            (not chapter.chapter_title or chapter.chapter_title == default_title)
+            and raw_chunk.get("chapter_title")
+        ):
+            chapter.chapter_title = str(raw_chunk.get("chapter_title") or "")
+        if not chapter.work_title and raw_chunk.get("work_title"):
+            chapter.work_title = str(raw_chunk.get("work_title") or "")
+        if raw_chunk.get("work_index") is not None:
+            chapter.work_index = int(raw_chunk.get("work_index") or 0)
+        if raw_chunk.get("section_index") is not None:
+            chapter.section_index = int(raw_chunk.get("section_index") or 0)
         voice_id = str(raw_chunk.get("voice_id") or "")
         voice_label = str(raw_chunk.get("voice_label") or "").strip()
         if voice_label not in VOICE_BY_LABEL:

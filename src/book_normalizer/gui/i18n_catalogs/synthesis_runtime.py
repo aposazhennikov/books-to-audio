@@ -225,11 +225,22 @@ SYNTHESIS_RUNTIME_TRANSLATIONS: dict[str, dict[str, str]] = {'synth.chapter': {'
                                  'Fix or retry failed chunks before assembly. Output: {path}',
                            'ru': 'Синтез требует проверки: не удалось {failed}/{total} чанков. '
                                  'Синтезировано: {synthesized}, пропущено: {skipped}. '
-                                 'Исправьте или повторите упавшие чанки перед сборкой. Папка: {path}'},
+                                 'Исправьте или повторите упавшие чанки перед сборкой. Папка: {path}',
+                           'zh': '合成需要检查：失败 {failed}/{total} 个块。已合成：{synthesized}，'
+                                 '已跳过：{skipped}。请先修复或重试失败块，再进行章节合并。输出：{path}',
+                           'kk': 'Синтезді тексеру қажет: {failed}/{total} бөлік сәтсіз. '
+                                 'Синтезделді: {synthesized}, өткізіп жіберілді: {skipped}. '
+                                 'Жинамас бұрын сәтсіз бөліктерді түзетіңіз немесе қайталаңыз. Бума: {path}',
+                           'uz': 'Sintezni tekshirish kerak: {failed}/{total} bo‘lak bajarilmadi. '
+                                 'Sintez qilindi: {synthesized}, o‘tkazildi: {skipped}. '
+                                 'Yig‘ishdan oldin xato bo‘laklarni tuzating yoki qayta urinib ko‘ring. Papka: {path}'},
  'synth.incomplete_status': {'en': 'Synthesis stopped with status {status}: '
                                    'failed {failed}/{total} chunks.',
                              'ru': 'Синтез остановлен со статусом {status}: '
-                                   'не удалось {failed}/{total} чанков.'},
+                                   'не удалось {failed}/{total} чанков.',
+                             'zh': '合成以状态 {status} 停止：失败 {failed}/{total} 个块。',
+                             'kk': 'Синтез {status} күйімен тоқтады: {failed}/{total} бөлік сәтсіз.',
+                             'uz': 'Sintez {status} holati bilan to‘xtadi: {failed}/{total} bo‘lak bajarilmadi.'},
  'synth.test_done': {'en': 'Test fragment is ready. Output: {path}',
                      'ru': 'Тестовый фрагмент готов. Файл: {path}'},
  'synth.test_done_no_file': {'en': 'Test run finished, but no audio file was found in {path}. '

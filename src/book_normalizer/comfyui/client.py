@@ -42,7 +42,7 @@ class ComfyUIError(Exception):
     """Raised when a ComfyUI API call returns an unexpected response."""
 
 
-class ComfyUICancelled(ComfyUIError):
+class ComfyUICancelledError(ComfyUIError):
     """Raised when a ComfyUI wait/download operation is cancelled cooperatively."""
 
 
@@ -128,7 +128,7 @@ class ComfyUIClient:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if is_cancelled():
-                raise ComfyUICancelled(f"ComfyUI prompt {prompt_id} cancelled")
+                raise ComfyUICancelledError(f"ComfyUI prompt {prompt_id} cancelled")
             history = self.get_history(prompt_id)
             if not history:
                 time.sleep(_POLL_INTERVAL)
@@ -179,7 +179,7 @@ class ComfyUIClient:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if is_cancelled():
-                raise ComfyUICancelled(f"ComfyUI prompt {prompt_id} cancelled")
+                raise ComfyUICancelledError(f"ComfyUI prompt {prompt_id} cancelled")
             history = self.get_history(prompt_id)
             if not history:
                 time.sleep(_POLL_INTERVAL)
@@ -267,7 +267,7 @@ class ComfyUIClient:
         """
         is_cancelled = cancel_requested or (lambda: False)
         if is_cancelled():
-            raise ComfyUICancelled("ComfyUI synthesis cancelled before queueing prompt")
+            raise ComfyUICancelledError("ComfyUI synthesis cancelled before queueing prompt")
         prompt_id = self.queue_prompt(workflow)
         audio_info = self.wait_for_completion(
             prompt_id,
@@ -275,7 +275,7 @@ class ComfyUIClient:
             cancel_requested=is_cancelled,
         )
         if is_cancelled():
-            raise ComfyUICancelled(f"ComfyUI prompt {prompt_id} cancelled before download")
+            raise ComfyUICancelledError(f"ComfyUI prompt {prompt_id} cancelled before download")
         downloaded = self.download_audio(
             audio_info["filename"],
             audio_info["subfolder"],

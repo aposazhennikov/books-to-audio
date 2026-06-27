@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from book_normalizer.comfyui.client import ComfyUICancelled, ComfyUIClient, ensure_pcm_wav
+from book_normalizer.comfyui.client import ComfyUICancelledError, ComfyUIClient, ensure_pcm_wav
 
 
 class _Response:
@@ -83,7 +83,7 @@ def test_wait_for_completion_observes_cancellation(monkeypatch) -> None:  # noqa
     monkeypatch.setattr(client, "get_history", fake_history)
     monkeypatch.setattr("time.sleep", lambda _seconds: None)
 
-    with pytest.raises(ComfyUICancelled):
+    with pytest.raises(ComfyUICancelledError):
         client.wait_for_completion("abc", timeout=1, cancel_requested=lambda: True)
 
     assert polls == []

@@ -16,7 +16,7 @@ from book_normalizer.chunking.manifest_v2 import (
     chunk_is_excluded,
     ensure_v2_manifest,
 )
-from book_normalizer.comfyui.client import ComfyUICancelled, ComfyUIClient, ComfyUIError
+from book_normalizer.comfyui.client import ComfyUICancelledError, ComfyUIClient, ComfyUIError
 from book_normalizer.comfyui.generation_options import (
     GenerationOptions,
     generation_options_from_mapping,
@@ -573,7 +573,7 @@ def synthesize_manifest(
                     smoothing = None
                 chunk_done = True
                 break
-            except ComfyUICancelled:
+            except ComfyUICancelledError:
                 return SynthesisSummary(
                     total=total,
                     synthesized=synthesized_now,

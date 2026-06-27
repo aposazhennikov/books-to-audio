@@ -37,14 +37,14 @@ ocr = [
 ]
 tts = [
     "qwen-tts==0.1.1",
-    "torch==2.7.1",
+    "torch>=2.12.1",
     "soundfile>=0.12,<1",
     "pydub>=0.25,<1",
     "numpy>=1.24",
 ]
 tts-sage = [
     "qwen-tts==0.1.1",
-    "torch==2.7.1",
+    "torch>=2.12.1",
     "soundfile>=0.12,<1",
     "pydub>=0.25,<1",
     "numpy>=1.24",

@@ -14,10 +14,19 @@ def test_tts_extras_pin_heavy_runtime_dependencies() -> None:
     optional_dependencies = _optional_dependencies()
 
     assert "qwen-tts==0.1.1" in optional_dependencies["tts"]
-    assert "torch==2.7.1" in optional_dependencies["tts"]
+    assert "torch>=2.12.1" in optional_dependencies["tts"]
     assert "qwen-tts==0.1.1" in optional_dependencies["tts-sage"]
-    assert "torch==2.7.1" in optional_dependencies["tts-sage"]
+    assert "torch>=2.12.1" in optional_dependencies["tts-sage"]
     assert "sageattention==1.0.6" in optional_dependencies["tts-sage"]
+
+
+def test_tts_extras_do_not_pin_blackwell_incompatible_torch() -> None:
+    optional_dependencies = _optional_dependencies()
+
+    for extra in ("tts", "tts-sage"):
+        torch_specs = [item for item in optional_dependencies[extra] if item.startswith("torch")]
+
+        assert torch_specs == ["torch>=2.12.1"]
 
 
 def test_optional_dependencies_do_not_use_direct_git_references() -> None:

@@ -1,7 +1,7 @@
 # CUDA TTS lock: ComfyUI/Qwen runtime. Install torch with the CUDA index matching the host.
 -r requirements-cpu.lock
 qwen-tts==0.1.1
-torch==2.7.1
-torchaudio==2.7.1
-torchvision==0.22.1
+torch==2.12.1
+torchaudio==2.11.0
+torchvision==0.27.1
 sageattention==1.0.6

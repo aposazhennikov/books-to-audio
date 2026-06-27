@@ -8,6 +8,7 @@ from book_normalizer.normalization.cleanup import (
     remove_page_numbers,
     remove_publisher_boilerplate,
     remove_repeated_headers,
+    strip_ssml_markup,
 )
 from book_normalizer.normalization.paragraphs import collapse_empty_lines
 from book_normalizer.normalization.pipeline import NormalizationPipeline
@@ -111,6 +112,19 @@ class TestCollapseEmptyLines:
         assert result == "A\n\nB"
 
 
+class TestSsmlCleanup:
+    def test_strip_ssml_markup_preserves_dialogue_boundaries(self) -> None:
+        text = (
+            "<speak xml:lang=\"ru-RU\"><s>\u0413\u043b\u0430\u0432\u0430.</s>"
+            "<s>\u2014 \u0412\u044b \u043d\u0435\u043f\u0440\u0430\u0432\u044b.</s></speak>"
+        )
+
+        result = strip_ssml_markup(text)
+
+        assert "<s" not in result
+        assert "\n\u2014 \u0412\u044b \u043d\u0435\u043f\u0440\u0430\u0432\u044b." in result
+
+
 class TestNormalizationPipeline:
     def test_normalize_text(self) -> None:
         pipeline = NormalizationPipeline()
@@ -133,3 +147,11 @@ class TestNormalizationPipeline:
         pipeline = NormalizationPipeline(stages=[])
         pipeline.add_stage("upper", str.upper)
         assert pipeline.normalize_text("hello") == "HELLO"
+
+    def test_ssml_dialogue_survives_pipeline(self) -> None:
+        pipeline = NormalizationPipeline()
+        text = "<speak><s>\u2014 \u0412\u044b \u043d\u0435\u043f\u0440\u0430\u0432\u044b.</s></speak>"
+
+        result = pipeline.normalize_text(text)
+
+        assert result.startswith("\u2014 \u0412\u044b")

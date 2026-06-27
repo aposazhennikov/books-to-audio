@@ -23,8 +23,10 @@ EM_DASH = "\u2014"
 LEFT_QUOTE = "\u00ab"
 RIGHT_QUOTE = "\u00bb"
 
-# Matches a line that starts with em-dash (optionally preceded by whitespace).
-_DIALOGUE_START_RE = re.compile(r"^\s*" + EM_DASH + r"\s*")
+# Matches a line that starts with a dialogue dash. OCR/plain-text sources
+# often use ASCII hyphen or en dash where printed books use an em dash.
+_DIALOGUE_DASH_RE = r"(?:\u2014|\u2013|-)"
+_DIALOGUE_START_RE = re.compile(r"^\s*" + _DIALOGUE_DASH_RE + r"\s*")
 
 # Attribution verbs that signal the narrator is speaking about the character.
 _ATTRIBUTION_VERBS = (
@@ -50,9 +52,10 @@ _ATTRIBUTION_VERBS = (
 
 # Pattern: em-dash followed by attribution verb — marks the narrator remark.
 _NARRATOR_REMARK_RE = re.compile(
-    r"\s*" + EM_DASH + r"\s+(?:" + "|".join(_ATTRIBUTION_VERBS) + r")\b",
+    r"\s*" + _DIALOGUE_DASH_RE + r"\s+(?:" + "|".join(_ATTRIBUTION_VERBS) + r")\b",
     re.IGNORECASE,
 )
+_CONTINUATION_DASH_RE = re.compile(r"\s+" + _DIALOGUE_DASH_RE + r"\s+")
 
 # Quoted speech pattern: «text».
 _QUOTED_SPEECH_RE = re.compile(
@@ -169,17 +172,17 @@ class DialogueDetector:
         if speech_before:
             parts.append((speech_before, True))
 
-        # Strip the leading em-dash from the remark portion.
+        # Strip the leading dialogue dash from the remark portion.
         rest = content[remark_match.start():]
-        rest_clean = rest.lstrip().lstrip(EM_DASH).lstrip()
+        rest_clean = re.sub(r"^\s*" + _DIALOGUE_DASH_RE + r"\s*", "", rest, count=1)
 
-        # Look for a continuation em-dash that resumes direct speech.
-        dash_pos = rest_clean.find(EM_DASH)
-        if dash_pos > 0:
-            remark_text = rest_clean[:dash_pos].rstrip(" ,")
+        # Look for a continuation dash that resumes direct speech.
+        continuation = _CONTINUATION_DASH_RE.search(rest_clean)
+        if continuation:
+            remark_text = rest_clean[:continuation.start()].rstrip(" ,")
             if remark_text:
                 parts.append((remark_text, False))
-            speech_after = rest_clean[dash_pos:].lstrip(EM_DASH).lstrip()
+            speech_after = rest_clean[continuation.end():].lstrip()
             if speech_after:
                 parts.append((speech_after, True))
         else:

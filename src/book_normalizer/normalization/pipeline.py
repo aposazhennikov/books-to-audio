@@ -14,6 +14,7 @@ from book_normalizer.normalization.cleanup import (
     remove_page_numbers,
     remove_publisher_boilerplate,
     remove_repeated_headers,
+    strip_ssml_markup,
 )
 from book_normalizer.normalization.encoding import fix_common_mojibake, normalize_encoding_artifacts
 from book_normalizer.normalization.numbers import expand_numbers
@@ -44,6 +45,7 @@ TextTransform = Callable[[str], str]
 DEFAULT_STAGES: list[tuple[str, TextTransform]] = [
     ("normalize_encoding_artifacts", normalize_encoding_artifacts),
     ("fix_common_mojibake", fix_common_mojibake),
+    ("strip_ssml_markup", strip_ssml_markup),
     ("fix_mixed_script", fix_mixed_script),
     ("fix_ocr_artifacts", fix_ocr_artifacts),
     ("normalize_whitespace", normalize_whitespace),
@@ -69,6 +71,7 @@ DEFAULT_STAGES: list[tuple[str, TextTransform]] = [
 LANGUAGE_NEUTRAL_STAGES: list[tuple[str, TextTransform]] = [
     ("normalize_encoding_artifacts", normalize_encoding_artifacts),
     ("fix_common_mojibake", fix_common_mojibake),
+    ("strip_ssml_markup", strip_ssml_markup),
     ("normalize_whitespace", normalize_whitespace),
     ("repair_hyphenated_words", repair_hyphenated_words),
     ("repair_broken_lines", repair_broken_lines),

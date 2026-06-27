@@ -151,6 +151,17 @@ class TestDialogueDetector:
         lines = result.paragraphs[0].lines
         assert lines[0].is_dialogue
 
+    def test_ascii_dash_dialogue_from_ocr_text(self) -> None:
+        text = "- \u041f\u0440\u0438\u0432\u0435\u0442, - \u0441\u043a\u0430\u0437\u0430\u043b \u043e\u043d."
+        chapter = _make_chapter(text)
+        result = self.detector.detect_chapter(chapter)
+        lines = result.paragraphs[0].lines
+        assert len(lines) == 2
+        assert lines[0].is_dialogue
+        assert lines[0].text == "\u041f\u0440\u0438\u0432\u0435\u0442"
+        assert not lines[1].is_dialogue
+        assert "\u0441\u043a\u0430\u0437\u0430\u043b" in lines[1].text
+
     def test_multiple_attribution_verbs(self) -> None:
         verbs = [
             "\u043e\u0442\u0432\u0435\u0442\u0438\u043b",

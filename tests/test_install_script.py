@@ -1010,7 +1010,12 @@ def test_system_package_hints_are_derived_from_native_command_argv(monkeypatch) 
         "tesseract-ocr-kaz",
         "tesseract-ocr-uzb",
     }.issubset(commands[1])
-    assert "libxcb-cursor0" in commands[1]
+    assert {
+        "libxcb-cursor0",
+        "libxcb-icccm4",
+        "libxcb-keysyms1",
+        "libxcb-xinerama0",
+    }.issubset(commands[1])
     assert "fonts-noto-cjk" in commands[1]
 
 

@@ -22,8 +22,10 @@ class FakeBackend:
         self._text = text
         self._language = language
         self._confidence = confidence
+        self.calls = 0
 
     def transcribe(self, audio_path: Path, *, language: str | None = None) -> AsrTranscript:
+        self.calls += 1
         assert audio_path.exists()
         return AsrTranscript(
             text=self._text,
@@ -140,6 +142,23 @@ def test_run_asr_qa_continues_after_backend_error(tmp_path: Path) -> None:
 
     assert result.status.value == "error"
     assert result.chunks[0].issues[0].kind == "asr_error"
+
+
+def test_run_asr_qa_skips_unsafe_audio_path_without_transcribing(tmp_path: Path) -> None:
+    backend = FakeBackend("unused")
+    manifest = _manifest(tmp_path / "outside.wav")
+    manifest["chapters"][0]["chunks"][0]["audio_file"] = "../outside.wav"
+
+    result = run_asr_qa(
+        manifest,
+        backend=backend,
+        manifest_path=tmp_path / "book" / "chunks_manifest_v2.json",
+    )
+
+    assert backend.calls == 0
+    assert result.status.value == "skipped"
+    assert result.chunks[0].status.value == "skipped"
+    assert result.chunks[0].issues[0].kind == "unsafe_audio_file_path"
 
 
 def test_asr_live_smoke_is_gated(tmp_path: Path) -> None:

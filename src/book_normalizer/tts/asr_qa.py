@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 from book_normalizer.chunking.manifest_v2 import chunk_is_excluded, ensure_v2_manifest
 from book_normalizer.languages import normalize_book_language
+from book_normalizer.tts.manifest_audio_paths import ManifestAudioPathError, resolve_manifest_audio_path
 from book_normalizer.tts.quality_gate import (
     BAD_QA_STATUSES,
     compact_issue_reason,
@@ -358,6 +359,7 @@ def run_asr_qa(
 ) -> AsrQaResult:
     """Run ASR QA over active manifest chunks, continuing after per-chunk errors."""
     cfg = config or AsrQaConfig()
+    manifest_path = manifest_path or _manifest_path_from_record(manifest)
     manifest_record = ensure_v2_manifest(manifest).to_record()
     expected_language = normalize_book_language(cfg.language or manifest_record.get("language"))
     backend_obj = backend or FasterWhisperBackend(
@@ -381,10 +383,28 @@ def run_asr_qa(
             if not isinstance(chunk, dict) or chunk_is_excluded(chunk):
                 continue
             chunk_index = int(chunk.get("chunk_index", 0))
-            audio_path = _resolve_audio_path(str(chunk.get("audio_file") or ""), manifest_path)
-            if audio_path is None:
+            audio_file = str(chunk.get("audio_file") or "")
+            if not audio_file:
                 result.chunks.append(
-                    _skipped_chunk(chapter_index, chunk_index, "ASR skipped: chunk has no audio_file.")
+                    _skipped_chunk(
+                        chapter_index,
+                        chunk_index,
+                        "ASR skipped: chunk has no audio_file.",
+                        issue_kind="missing_audio_file_field",
+                    )
+                )
+                continue
+            try:
+                audio_path = resolve_manifest_audio_path(audio_file, manifest_path)
+            except ManifestAudioPathError as exc:
+                result.chunks.append(
+                    _skipped_chunk(
+                        chapter_index,
+                        chunk_index,
+                        f"ASR skipped: unsafe audio_file path. {exc}",
+                        issue_kind="unsafe_audio_file_path",
+                        audio_file=audio_file,
+                    )
                 )
                 continue
             expected_text = str(chunk.get("text") or "")
@@ -677,19 +697,23 @@ def _transcribe_with_timeout(
         executor.shutdown(wait=False, cancel_futures=True)
 
 
-def _resolve_audio_path(audio_file: str, manifest_path: Path | None) -> Path | None:
-    if not audio_file:
-        return None
-    path = Path(audio_file)
-    if not path.is_absolute() and manifest_path is not None:
-        path = manifest_path.parent / path
-    return path
+def _manifest_path_from_record(manifest: dict[str, Any]) -> Path | None:
+    raw_path = str(manifest.get("_manifest_path") or "")
+    return Path(raw_path) if raw_path else None
 
 
-def _skipped_chunk(chapter_index: int, chunk_index: int, message: str) -> AsrChunkResult:
-    result = AsrChunkResult(chapter_index=chapter_index, chunk_index=chunk_index)
+def _skipped_chunk(
+    chapter_index: int,
+    chunk_index: int,
+    message: str,
+    *,
+    issue_kind: str,
+    audio_file: str = "",
+) -> AsrChunkResult:
+    result = AsrChunkResult(chapter_index=chapter_index, chunk_index=chunk_index, audio_file=audio_file)
     result.status = AsrQaStatus.SKIPPED
     result.preview = message
+    result.issues.append(AsrQaIssue(issue_kind, "warning", message))
     return result
 
 

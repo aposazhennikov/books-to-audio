@@ -112,6 +112,24 @@ chmod +x install.sh run_gui.sh
 ./run_gui.sh
 ```
 
+Remote Linux server, for example vast.ai:
+
+```bash
+chmod +x install.sh run_gui.sh
+python install.py --install-system-tools
+./install.sh
+./run_gui.sh --web
+```
+
+From your laptop, keep an SSH tunnel open:
+
+```bash
+ssh -L 6080:127.0.0.1:6080 user@server
+```
+
+Then open [http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale](http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale).
+The default web GUI binds to `127.0.0.1` on the server so it is intended for SSH tunneling. If you intentionally expose a provider port, use `./run_gui.sh --web --web-host 0.0.0.0 --web-port 6080` and protect it with firewall/provider rules.
+
 Cross-platform installer:
 
 ```bash
@@ -280,6 +298,15 @@ Linux/macOS:
 ```bash
 ./run_gui.sh
 ```
+
+Remote Linux web GUI:
+
+```bash
+./run_gui.sh --web
+ssh -L 6080:127.0.0.1:6080 user@server
+```
+
+Open [http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale](http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale) on your laptop.
 
 Direct module run:
 

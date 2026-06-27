@@ -9,6 +9,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from book_normalizer.gui.i18n import set_language
 from tests.gui.helpers import assert_layout_sane, render_widget
 from tests.gui.helpers import qapp as make_qapp
 
@@ -308,6 +309,7 @@ def test_assembly_page_exposes_production_preflight_controls(qapp, qtbot, tmp_pa
 
 
 def test_assembly_page_blocks_package_until_manifest_is_ready(qapp, qtbot, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    set_language("ru")
     manifest_path = tmp_path / "chunks_manifest_v2.json"
     manifest_path.write_text(
         json.dumps(
@@ -353,14 +355,19 @@ def test_assembly_page_blocks_package_until_manifest_is_ready(qapp, qtbot, tmp_p
 
     assert page._btn_production_preflight.isEnabled()
     assert not page._btn_production_package.isEnabled()
-    assert "Package locked" in page._production_gate_status.text()
+    assert page._production_gate_status.text() == assembly_page.t(
+        "asm.production_gate_audio_missing"
+    )
     page._run_production_package()
 
     assert not started
-    assert "Package locked" in page._progress._status.text()
+    assert page._progress._status.text() == assembly_page.t(
+        "asm.production_gate_audio_missing"
+    )
 
 
 def test_assembly_page_package_button_runs_release_package(qapp, qtbot, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    set_language("ru")
     manifest_path = _write_package_ready_manifest(tmp_path)
     captured: dict = {}
 
@@ -382,7 +389,12 @@ def test_assembly_page_package_button_runs_release_package(qapp, qtbot, tmp_path
     page.set_manifest(manifest_path, tmp_path)
 
     assert not page._btn_production_package.isEnabled()
-    assert "listen to the assembled chapters" in page._production_gate_status.text()
+    assert page._production_gate_status.text() == assembly_page.t(
+        "asm.production_gate_manual_review"
+    )
+    assert page._manual_review_check.text() == assembly_page.t(
+        "asm.production_manual_review_check"
+    )
     page._run_production_package()
     assert captured == {}
 

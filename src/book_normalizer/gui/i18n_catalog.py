@@ -2812,6 +2812,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "kk": "Пакет бұғатталған: ораудан бұрын тарау аудиосын жинаңыз.",
         "uz": "Paket bloklangan: qadoqlashdan oldin bob audiosini yig'ing.",
     },
+    "asm.production_gate_manual_review": {
+        "en": "Package locked: listen to the assembled chapters and explicitly accept the release package.",
+        "ru": "Пакет заблокирован: прослушайте собранные главы и явно подтвердите релизный пакет.",
+        "zh": "打包已锁定：请试听已组装的章节，并明确接受发布包。",
+        "kk": "Пакет бұғатталған: жиналған тарауларды тыңдап, релиз пакетін нақты қабылдаңыз.",
+        "uz": "Paket bloklangan: yig'ilgan boblarni tinglang va reliz paketini aniq tasdiqlang.",
+    },
+    "asm.production_manual_review_check": {
+        "en": "I listened to the assembled chapters and accept this package for production.",
+        "ru": "Я прослушал(а) собранные главы и подтверждаю этот пакет для продакшена.",
+        "zh": "我已试听已组装的章节，并接受此生产包。",
+        "kk": "Жиналған тарауларды тыңдадым және бұл пакетті production үшін қабылдаймын.",
+        "uz": "Yig'ilgan boblarni tingladim va bu paketni production uchun tasdiqlayman.",
+    },
     "asm.production_gate_ready": {
         "en": "Package ready: ASR passed, production QA passed, review is clear, and chapter audio is assembled.",
         "ru": "Пакет готов: ASR и production QA пройдены, review чистый, аудио глав собрано.",

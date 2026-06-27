@@ -32,13 +32,6 @@ from book_normalizer.tts.manifest_assembly import (
 )
 
 _MANUAL_REVIEW_GATE_KEY = "asm.production_gate_manual_review"
-_MANUAL_REVIEW_GATE_MESSAGE = (
-    "Package locked: listen to the assembled chapters and explicitly accept the "
-    "release package."
-)
-_MANUAL_REVIEW_CHECK_TEXT = (
-    "I listened to the assembled chapters and accept this package for production."
-)
 
 
 @dataclass(frozen=True)
@@ -313,7 +306,7 @@ class AssemblyPage(QWidget):
         self._btn_run.setText(t("asm.run"))
         self._production_title.setText(t("asm.production_title"))
         self._production_desc.setText(t("asm.production_desc"))
-        self._manual_review_check.setText(_MANUAL_REVIEW_CHECK_TEXT)
+        self._manual_review_check.setText(t("asm.production_manual_review_check"))
         self._btn_production_preflight.setText(t("asm.production_preflight"))
         self._btn_production_package.setText(t("asm.production_package"))
         self._update_production_buttons()
@@ -578,9 +571,7 @@ def _package_gate_chunks(manifest: dict) -> list[dict]:
 
 
 def _production_gate_message(message_key: str) -> str:
-    """Return user-facing package gate text, including local manual-review copy."""
-    if message_key == _MANUAL_REVIEW_GATE_KEY:
-        return _MANUAL_REVIEW_GATE_MESSAGE
+    """Return user-facing package gate text."""
     return t(message_key)
 
 

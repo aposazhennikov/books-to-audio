@@ -10,6 +10,16 @@ from book_normalizer.gui.i18n_catalog import TRANSLATIONS
 
 _LANG: str = "ru"
 
+_FALLBACK_TRANSLATIONS: dict[str, dict[str, str]] = {
+    "norm.web_upload_selected": {
+        "en": "Uploaded book selected: {name}",
+        "ru": "Загруженная книга выбрана: {name}",
+        "zh": "已选择上传的图书：{name}",
+        "kk": "Жүктелген кітап таңдалды: {name}",
+        "uz": "Yuklangan kitob tanlandi: {name}",
+    },
+}
+
 SUPPORTED_LANGUAGES: tuple[tuple[str, str], ...] = (
     ("ru", "RU  Русский"),
     ("en", "EN  English"),
@@ -161,7 +171,7 @@ def voice_preset_description(preset: object) -> str:
 
 def t(key: str, **kwargs: Any) -> str:
     """Translate key to current language, with optional format kwargs."""
-    entry = TRANSLATIONS.get(key)
+    entry = TRANSLATIONS.get(key) or _FALLBACK_TRANSLATIONS.get(key)
     if not entry:
         return key
     text = entry.get(_LANG, entry.get("en", key))

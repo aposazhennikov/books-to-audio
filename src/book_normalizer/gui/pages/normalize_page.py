@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import platform
 from pathlib import Path
 
@@ -53,6 +55,7 @@ from book_normalizer.runtime_paths import configured_ollama_endpoint
 
 _PDF_EXTENSIONS = {".pdf"}
 _PSM_VALUES = (3, 4, 6, 11, 13)
+_WEB_UPLOAD_POLL_MS = 1500
 logger = logging.getLogger(__name__)
 
 
@@ -157,7 +160,12 @@ class NormalizePage(QWidget):
         self._browse_flash_timer = QTimer(self)
         self._browse_flash_timer.setSingleShot(True)
         self._browse_flash_timer.timeout.connect(self._clear_browse_button_flash)
+        self._web_upload_marker_seen = ""
+        self._web_upload_timer = QTimer(self)
+        self._web_upload_timer.setInterval(_WEB_UPLOAD_POLL_MS)
+        self._web_upload_timer.timeout.connect(self._poll_web_upload_marker)
         self._setup_ui()
+        self._start_web_upload_polling()
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -690,16 +698,55 @@ class NormalizePage(QWidget):
                 set_help_text(button, t(help_key))
 
     def _browse_file(self) -> None:
+        start_dir = os.environ.get("BOOKS_TO_AUDIO_WEB_UPLOAD_DIR", "")
         path, _ = QFileDialog.getOpenFileName(
-            self, t("norm.select_file"), "",
+            self, t("norm.select_file"), start_dir,
             "Books (*.pdf *.txt *.epub *.fb2 *.docx);;All Files (*)",
         )
         if path:
-            self._selected_path = path
-            self._cache_restored_chapters = None
-            self._path_label.setText(path)
-            self._btn_run.setEnabled(True)
-            self._update_ocr_visibility()
+            self._select_book_path(Path(path))
+
+    def _start_web_upload_polling(self) -> None:
+        if self._web_upload_marker_path() is not None:
+            self._web_upload_timer.start()
+
+    @staticmethod
+    def _web_upload_marker_path() -> Path | None:
+        marker = os.environ.get("BOOKS_TO_AUDIO_WEB_UPLOAD_MARKER", "").strip()
+        if marker:
+            return Path(marker)
+        upload_dir = os.environ.get("BOOKS_TO_AUDIO_WEB_UPLOAD_DIR", "").strip()
+        if upload_dir:
+            return Path(upload_dir) / ".latest_book_upload.json"
+        return None
+
+    def _poll_web_upload_marker(self) -> None:
+        marker = self._web_upload_marker_path()
+        if marker is None or not marker.exists():
+            return
+        try:
+            stat = marker.stat()
+            marker_id = f"{stat.st_mtime_ns}:{stat.st_size}"
+            if marker_id == self._web_upload_marker_seen:
+                return
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+            path = Path(str(payload.get("path") or ""))
+        except (OSError, json.JSONDecodeError, TypeError):
+            return
+        if not path.is_file():
+            return
+        self._web_upload_marker_seen = marker_id
+        self._select_book_path(path, from_web_upload=True)
+
+    def _select_book_path(self, path: Path, *, from_web_upload: bool = False) -> None:
+        selected = path.expanduser()
+        self._selected_path = str(selected)
+        self._cache_restored_chapters = None
+        self._path_label.setText(str(selected))
+        self._btn_run.setEnabled(True)
+        self._update_ocr_visibility()
+        if from_web_upload:
+            self._progress.set_status(t("norm.web_upload_selected", name=selected.name))
 
     def flash_browse_button(self, duration_ms: int = 1000) -> None:
         """Briefly highlight the file chooser button."""

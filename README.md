@@ -132,11 +132,12 @@ python install.py --install-system-tools
 From your laptop, keep an SSH tunnel open:
 
 ```bash
-ssh -L 6080:127.0.0.1:6080 user@server
+ssh -L 6080:127.0.0.1:6080 -L 6090:127.0.0.1:6090 user@server
 ```
 
 Then open [http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale](http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale).
-The default web GUI binds to `127.0.0.1` on the server so it is intended for SSH tunneling. If you intentionally expose a provider port, use `./run_gui.sh --web --web-host 0.0.0.0 --web-port 6080` and protect it with firewall/provider rules.
+To upload a book from your laptop browser into the remote GUI, also open [http://127.0.0.1:6090/upload](http://127.0.0.1:6090/upload). Uploaded books are saved on the server and selected automatically in the GUI.
+The default web GUI and upload page bind to `127.0.0.1` on the server so they are intended for SSH tunneling. If you intentionally expose provider ports, use `./run_gui.sh --web --web-host 0.0.0.0 --web-port 6080 --upload-host 0.0.0.0 --upload-port 6090` and protect them with firewall/provider rules.
 
 ### Vast.ai GPU Server Quickstart
 
@@ -217,22 +218,25 @@ chmod +x run_gui.sh
 On your laptop:
 
 ```bash
-ssh -p <PUBLIC_SSH_PORT> -L 6080:127.0.0.1:6080 root@<PUBLIC_IP>
+ssh -p <PUBLIC_SSH_PORT> -L 6080:127.0.0.1:6080 -L 6090:127.0.0.1:6090 root@<PUBLIC_IP>
 ```
 
 Then open [http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale](http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale).
+Open [http://127.0.0.1:6090/upload](http://127.0.0.1:6090/upload) from the same laptop browser to upload `TXT`, `PDF`, `EPUB`, `FB2`, or `DOCX` files into the remote app. The GUI polls the upload marker and selects the latest uploaded book automatically.
 
 If you intentionally want to use a Vast.ai forwarded web port instead of an SSH
-tunnel, bind the web GUI to all interfaces:
+tunnel, bind the web GUI and upload page to all interfaces:
 
 ```bash
-./run_gui.sh --web --web-host 0.0.0.0 --web-port 8080
+./run_gui.sh --web --web-host 0.0.0.0 --web-port 8080 --upload-host 0.0.0.0 --upload-port 6090
 ```
 
-Then open the matching forwarded URL, for example:
+Make sure Vast.ai forwards both ports you choose. Then open the matching
+forwarded URLs, for example:
 
 ```text
 http://137.175.76.24:29586/vnc.html?autoconnect=1&resize=scale
+http://137.175.76.24:<PUBLIC_UPLOAD_PORT>/upload
 ```
 
 Only use direct public access for short tests, and stop it when finished.
@@ -414,10 +418,11 @@ Remote Linux web GUI:
 
 ```bash
 ./run_gui.sh --web
-ssh -L 6080:127.0.0.1:6080 user@server
+ssh -L 6080:127.0.0.1:6080 -L 6090:127.0.0.1:6090 user@server
 ```
 
 Open [http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale](http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale) on your laptop.
+Open [http://127.0.0.1:6090/upload](http://127.0.0.1:6090/upload) to upload a local book into the remote GUI.
 
 Direct module run:
 

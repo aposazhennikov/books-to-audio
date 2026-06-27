@@ -256,6 +256,8 @@ def test_synthesis_page_maps_saved_voices_to_llm_character_roles(
             {
                 "id": voice_id,
                 "name": "Margarita Sad",
+                "source": "comfyui",
+                "comfyui_speaker": "Margarita Sad Speaker",
                 "prompt_file": prompt_path.name,
                 "speech_rate": 0.94,
             },
@@ -300,6 +302,7 @@ def test_synthesis_page_maps_saved_voices_to_llm_character_roles(
 
     assert list(page._role_voice_combos) == ["speaker:Маргарита|emotion:sad"]
     assert clone_config["speaker:Маргарита|emotion:sad"]["saved_voice"] == voice_id
+    assert clone_config["speaker:Маргарита|emotion:sad"]["speaker"] == "Margarita Sad Speaker"
     assert clone_config["speaker:Маргарита|emotion:sad"]["speech_rate"] == 0.94
     assert "Margarita Sad" in page._test_chunk_combo.itemText(0)
 
@@ -321,6 +324,7 @@ def test_synthesis_page_uses_saved_voice_ids_from_manifest_in_preset_mode(
             {
                 "id": voice_id,
                 "name": "Margarita Sad",
+                "source": "comfyui",
                 "prompt_file": prompt_path.name,
                 "speech_rate": 0.94,
             },
@@ -357,6 +361,7 @@ def test_synthesis_page_uses_saved_voice_ids_from_manifest_in_preset_mode(
     assert page._mode_tabs.currentIndex() == 1
     clone_config = json.loads(Path(page._build_temp_sample_voice_config()).read_text(encoding="utf-8"))
     assert clone_config["speaker:Margarita"]["saved_voice"] == voice_id
+    assert clone_config["speaker:Margarita"]["speaker"] == "Margarita Sad"
     assert clone_config["speaker:Margarita"]["speech_rate"] == 0.94
     page.deleteLater()
 

@@ -1295,6 +1295,18 @@ class SynthesisPage(
                 return voice.name
         return voice_id
 
+    def _saved_voice_comfyui_speaker(self, voice_id: str) -> str:
+        """Return the concrete ComfyUI speaker name for a saved voice."""
+        for voice in self._saved_voices:
+            if voice.voice_id != voice_id:
+                continue
+            speaker = voice.comfyui_speaker.strip()
+            if speaker:
+                return speaker
+            if voice.source.strip().lower() == "comfyui":
+                return voice.name.strip()
+        return ""
+
     def _effective_test_voice_label(self, source_voice_id: str) -> str:
         """Return the voice that will actually be used for test synthesis."""
         return self._effective_test_voice_label_for_chunk({"voice_id": source_voice_id})
@@ -1954,6 +1966,9 @@ class SynthesisPage(
                 continue
             key = primary_voice_mapping_key(chunk)
             cfg[key] = {"saved_voice": saved_voice}
+            speaker = self._saved_voice_comfyui_speaker(saved_voice)
+            if speaker:
+                cfg[key]["speaker"] = speaker
             if include_speech_rate:
                 rate = self._saved_voice_rate(saved_voice)
                 if rate:
@@ -2177,6 +2192,9 @@ class SynthesisPage(
                     "saved_voice": saved_voice,
                 }
             }
+            speaker = self._saved_voice_comfyui_speaker(saved_voice)
+            if speaker:
+                cfg["__all__"]["speaker"] = speaker
             if include_speech_rate:
                 cfg["__all__"]["speech_rate"] = (
                     self._saved_voice_rate(saved_voice)
@@ -2188,6 +2206,9 @@ class SynthesisPage(
                 saved_voice = str(combo.currentData() or "")
                 if saved_voice:
                     cfg[role] = {"saved_voice": saved_voice}
+                    speaker = self._saved_voice_comfyui_speaker(saved_voice)
+                    if speaker:
+                        cfg[role]["speaker"] = speaker
                     if include_speech_rate:
                         cfg[role]["speech_rate"] = (
                             self._saved_voice_rate(saved_voice)

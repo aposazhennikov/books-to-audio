@@ -1420,6 +1420,7 @@ def extract_pdf_with_ocr_mode(
             "Running structured PDF extraction with OCR on '%s' (dpi=%d, psm=%d, preprocess=%s)...",
             resolved.name, dpi, psm, preprocess,
         )
+        used_full_page_ocr = False
         if _target_text_unreadable(native_text, language_code):
             logger.info(
                 "Native PDF text is unreadable for language '%s'; using full-page OCR.",
@@ -1433,6 +1434,7 @@ def extract_pdf_with_ocr_mode(
                 psm=psm,
                 preprocess=preprocess,
             )
+            used_full_page_ocr = True
         else:
             try:
                 ocr_structure = _extract_pdf_structured(
@@ -1455,8 +1457,13 @@ def extract_pdf_with_ocr_mode(
                     psm=psm,
                     preprocess=preprocess,
                 )
+                used_full_page_ocr = True
 
-        if _target_text_unreadable(native_text, language_code) and _target_text_unreadable(ocr_text, language_code):
+        if (
+            not used_full_page_ocr
+            and _target_text_unreadable(native_text, language_code)
+            and _target_text_unreadable(ocr_text, language_code)
+        ):
             fallback_text = _ocr_pdf_with_tesseract(
                 resolved,
                 lang=lang,

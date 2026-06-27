@@ -327,6 +327,39 @@ class TestOcrModeSelection:
         assert compare.ocr.text == _good_ocr_text()
         assert compare.ocr.document_type == "ocr_full_page"
 
+    def test_extract_pdf_with_ocr_mode_does_not_repeat_full_page_ocr_for_unreadable_results(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        pdf_file = tmp_path / "unreadable_scan.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+        native_structure = PdfStructuredExtraction(
+            pages={
+                1: PdfPageExtraction(
+                    page_number=1,
+                    pdf_type="programmatic",
+                    page_content=["Co,11;ep'l\\:aHne rJIABA llEPBMI CepreM"],
+                ),
+            },
+            document_type="programmatic",
+        )
+
+        with (
+            patch("book_normalizer.loaders.pdf_loader._tesseract_available", return_value=True),
+            patch("book_normalizer.loaders.pdf_loader._extract_pdf_structured", return_value=native_structure),
+            patch(
+                "book_normalizer.loaders.pdf_loader._ocr_pdf_with_tesseract",
+                return_value="lorem ipsum OCR garbage",
+            ) as full_page_ocr,
+        ):
+            compare = extract_pdf_with_ocr_mode(pdf_file, OcrMode.AUTO)
+
+        full_page_ocr.assert_called_once()
+        assert compare.native.text.startswith("Co,11")
+        assert compare.ocr is not None
+        assert compare.ocr.text == "lorem ipsum OCR garbage"
+        assert compare.ocr.document_type == "ocr_full_page"
+
     def test_missing_tesseract_warning_points_to_native_install_scripts(
         self,
         tmp_path: Path,

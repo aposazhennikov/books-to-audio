@@ -365,7 +365,6 @@ class NormalizeWorker(QThread):
                 select_pdf_text_for_mode,
             )
             from book_normalizer.models.book import Book, Chapter, Metadata
-            from book_normalizer.normalization.cleanup import remove_repeated_headers
 
             t0 = time.time()
             self.progress.emit(t("norm.loading"))
@@ -389,25 +388,26 @@ class NormalizeWorker(QThread):
                             )
                         )
 
-                    self.progress.emit(t("norm.pdf_native_extracting"))
-                    compare = extract_pdf_with_ocr_mode(
-                        self._input_path, effective_ocr,
-                        dpi=self._ocr_dpi, psm=self._ocr_psm,
-                        lang=tesseract_language(self._book_language),
-                        language_code=self._book_language,
-                    )
-                    chosen, stats = select_pdf_text_for_mode(
-                        compare,
-                        ocr,
-                        language_code=self._book_language,
-                    )
+                self.progress.emit(t("norm.pdf_native_extracting"))
+                compare = extract_pdf_with_ocr_mode(
+                    self._input_path,
+                    OcrMode.OFF,
+                    dpi=self._ocr_dpi,
+                    psm=self._ocr_psm,
+                    lang=tesseract_language(self._book_language),
+                    language_code=self._book_language,
+                )
+                chosen, stats = select_pdf_text_for_mode(
+                    compare,
+                    ocr,
+                    language_code=self._book_language,
+                )
 
-                    _ensure_pdf_selection_is_usable(
-                        ocr,
-                        stats,
-                        tesseract_available=tesseract_available,
-                    )
-                else:
+                should_run_full_ocr = effective_ocr in {OcrMode.FORCE, OcrMode.COMPARE}
+                if effective_ocr == OcrMode.AUTO:
+                    should_run_full_ocr = bool(stats.get("native_unreadable"))
+
+                if should_run_full_ocr:
                     self.progress.emit(
                         t(
                             "norm.ocr_prepare",
@@ -415,32 +415,27 @@ class NormalizeWorker(QThread):
                             psm=self._ocr_psm,
                         )
                     )
-                    loader = PdfLoader()
-                    self.progress.emit(t("norm.pdf_native_extracting"))
-                    native_text = remove_repeated_headers(
-                        loader._extract_text(self._input_path.resolve()),
-                        min_occurrences=3,
-                    )
-                    native_variant = PdfTextVariant(kind="native", text=native_text)
-
                     ocr_text = self._ocr_with_progress(
                         self._input_path, ocr, self._ocr_dpi, self._ocr_psm,
                     )
                     ocr_variant = PdfTextVariant(kind="ocr", text=ocr_text)
 
                     compare = PdfOcrCompareResult(
-                        native=native_variant, ocr=ocr_variant,
+                        native=compare.native,
+                        ocr=ocr_variant,
+                        native_structure=compare.native_structure,
                     )
                     chosen, stats = select_pdf_text_for_mode(
                         compare,
                         ocr,
                         language_code=self._book_language,
                     )
-                    _ensure_pdf_selection_is_usable(
-                        ocr,
-                        stats,
-                        tesseract_available=tesseract_available,
-                    )
+
+                _ensure_pdf_selection_is_usable(
+                    ocr,
+                    stats,
+                    tesseract_available=tesseract_available,
+                )
 
                 paragraphs = PdfLoader._split_paragraphs(chosen.text)
                 chapter = Chapter(title="Full Text", index=0, paragraphs=paragraphs)

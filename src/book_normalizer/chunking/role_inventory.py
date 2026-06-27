@@ -137,9 +137,18 @@ def _description_for(segment: dict[str, Any], display_name: str, category: str) 
 
 
 def _is_direct_speech(segment: dict[str, Any]) -> bool:
+    section_kind = str(segment.get("section_kind") or "").strip().lower()
+    if section_kind == "dialogue":
+        return True
+    if section_kind in SYSTEM_ROLE_NAMES or section_kind == "narration":
+        return False
+
+    role = str(segment.get("role") or "").strip().lower()
+    if role in {"male", "female"}:
+        return True
     if "is_dialogue" in segment:
         return bool(segment.get("is_dialogue"))
-    return str(segment.get("role") or "").strip().lower() in {"male", "female"}
+    return False
 
 
 def _emotion_for(segment: dict[str, Any]) -> str:

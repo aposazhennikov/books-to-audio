@@ -40,6 +40,7 @@ MAX_OCR_SYMBOL_NOISE_RATIO = 0.06
 SPREAD_PAGE_RATIO = 1.2
 MIN_STRUCTURED_TEXT_CHARS = 40
 LARGE_IMAGE_PAGE_RATIO = 0.65
+FAST_NATIVE_PAGE_THRESHOLD = 30
 
 
 class PdfLoader(BaseLoader):
@@ -94,6 +95,10 @@ class PdfLoader(BaseLoader):
     @staticmethod
     def _extract_text(path: Path) -> str:
         """Extract full text from all pages of a PDF."""
+        if _should_use_fast_native_pdf_extraction(path):
+            logger.info("Using fast native PDF extraction for large book '%s'.", path.name)
+            return _extract_pdf_native_fast(path)
+
         try:
             structured = _extract_pdf_structured(path, run_ocr=False)
             structured_text = structured.to_text()
@@ -105,17 +110,7 @@ class PdfLoader(BaseLoader):
         except Exception as exc:
             logger.debug("Structured PDF extraction failed, falling back to PyMuPDF: %s", exc)
 
-        import fitz  # PyMuPDF.
-
-        pages: list[str] = []
-        with fitz.open(str(path)) as doc:
-            for page_num in range(len(doc)):
-                page = doc[page_num]
-                page_text = page.get_text("text")
-                if page_text:
-                    pages.append(page_text)
-
-        return "\n\n".join(pages)
+        return _extract_pdf_native_fast(path)
 
     @staticmethod
     def _split_paragraphs(text: str) -> list[Paragraph]:
@@ -134,6 +129,32 @@ class PdfLoader(BaseLoader):
                 )
             )
         return paragraphs
+
+
+def _should_use_fast_native_pdf_extraction(path: Path) -> bool:
+    """Return true when a PDF is large enough that structured extraction is too slow."""
+    try:
+        import fitz
+
+        with fitz.open(str(path)) as doc:
+            return len(doc) > FAST_NATIVE_PAGE_THRESHOLD
+    except Exception:
+        return False
+
+
+def _extract_pdf_native_fast(path: Path) -> str:
+    """Extract native text quickly with PyMuPDF, page by page."""
+    import fitz  # PyMuPDF.
+
+    pages: list[str] = []
+    with fitz.open(str(path)) as doc:
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            page_text = page.get_text("text")
+            if page_text:
+                pages.append(page_text)
+
+    return "\n\n".join(pages)
 
 
 @dataclass
@@ -1375,16 +1396,20 @@ def extract_pdf_with_ocr_mode(
     loader = PdfLoader()
     resolved = path.resolve()
     native_structure: PdfStructuredExtraction | None = None
-    try:
-        native_structure = _extract_pdf_structured(resolved, run_ocr=False)
-        native_text = native_structure.to_text()
-        logger.info("PDF structure detected as %s.", native_structure.document_type)
-    except ImportError as exc:
-        logger.debug("Structured PDF extraction dependencies unavailable: %s", exc)
-        native_text = loader._extract_text(resolved)
-    except Exception as exc:
-        logger.debug("Structured PDF extraction failed, falling back to PyMuPDF: %s", exc)
-        native_text = loader._extract_text(resolved)
+    if _should_use_fast_native_pdf_extraction(resolved):
+        logger.info("Using fast native PDF extraction for large book '%s'.", resolved.name)
+        native_text = _extract_pdf_native_fast(resolved)
+    else:
+        try:
+            native_structure = _extract_pdf_structured(resolved, run_ocr=False)
+            native_text = native_structure.to_text()
+            logger.info("PDF structure detected as %s.", native_structure.document_type)
+        except ImportError as exc:
+            logger.debug("Structured PDF extraction dependencies unavailable: %s", exc)
+            native_text = loader._extract_text(resolved)
+        except Exception as exc:
+            logger.debug("Structured PDF extraction failed, falling back to PyMuPDF: %s", exc)
+            native_text = loader._extract_text(resolved)
 
     native_text = remove_repeated_headers(native_text, min_occurrences=3)
     native_text = _repair_pdf_drop_caps(native_text)

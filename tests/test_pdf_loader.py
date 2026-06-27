@@ -22,6 +22,7 @@ from book_normalizer.loaders.pdf_loader import (
     _prepare_ocr_page_images,
     _repair_ocr_cross_segment_breaks,
     _should_keep_ocr_text,
+    _should_use_fast_native_pdf_extraction,
     _table_converter,
     extract_pdf_with_ocr_mode,
     select_pdf_text_for_mode,
@@ -75,6 +76,18 @@ class TestPdfLoader:
         loader = PdfLoader()
         assert loader.can_load(tmp_path / "book.pdf")
         assert not loader.can_load(tmp_path / "book.txt")
+
+    def test_large_pdf_uses_fast_native_extraction(self, tmp_path: Path) -> None:
+        fitz = pytest.importorskip("fitz")
+        pdf_file = tmp_path / "large.pdf"
+        doc = fitz.open()
+        for _ in range(31):
+            page = doc.new_page()
+            page.insert_text((72, 72), "Book page")
+        doc.save(str(pdf_file))
+        doc.close()
+
+        assert _should_use_fast_native_pdf_extraction(pdf_file) is True
 
     def test_load_nonexistent_file(self, tmp_path: Path) -> None:
         loader = PdfLoader()

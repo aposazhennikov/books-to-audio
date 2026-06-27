@@ -60,3 +60,34 @@ def test_role_inventory_sorts_characters_and_emotion_variants() -> None:
     ]
     assert inventory["total_direct_speech"] == 3
     assert any(role["display_name"] == "Preface" for role in roles)
+
+
+def test_role_inventory_recovers_direct_speech_from_role_metadata() -> None:
+    inventory = build_role_inventory(
+        [
+            {
+                "role": "female",
+                "speaker": "\u041c\u0430\u0440\u0433\u0430\u0440\u0438\u0442\u0430",
+                "section_kind": "dialogue",
+                "is_dialogue": False,
+                "text": "\u0414\u0430!",
+            },
+            {
+                "role": "narrator",
+                "speaker": "\u041c\u0430\u0440\u0433\u0430\u0440\u0438\u0442\u0430",
+                "section_kind": "narration",
+                "is_dialogue": False,
+                "text": "\u0441\u043a\u0430\u0437\u0430\u043b\u0430 \u043e\u043d\u0430.",
+            },
+        ],
+        language="ru",
+    )
+
+    roles = inventory["roles"]
+    margarita = next(
+        role
+        for role in roles
+        if role["display_name"] == "\u041c\u0430\u0440\u0433\u0430\u0440\u0438\u0442\u0430"
+    )
+    assert margarita["direct_speech_count"] == 1
+    assert inventory["total_direct_speech"] == 1

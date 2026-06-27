@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 
 from book_normalizer.chaptering.patterns import match_chapter_heading, match_work_heading
@@ -22,6 +23,11 @@ _LEADING_BOILERPLATE_RE = re.compile(
     r"^\s*(?:приятного\s+чтения|спасибо,\s+что\s+скачали\s+книгу)[.!…:;,\s]*",
     re.IGNORECASE,
 )
+_SSML_HINT_RE = re.compile(r"</?(?:speak|s)\b", re.IGNORECASE)
+_SSML_SENTENCE_TAG_RE = re.compile(r"</?s\b[^>]*>", re.IGNORECASE)
+_SSML_BLOCK_TAG_RE = re.compile(r"</?(?:speak|p)\b[^>]*>", re.IGNORECASE)
+_SSML_BREAK_TAG_RE = re.compile(r"<break\b[^>]*/?>", re.IGNORECASE)
+_SSML_ANY_TAG_RE = re.compile(r"<[^>\n]{1,200}>")
 
 
 def _is_structure_heading_line(text: str) -> bool:
@@ -49,6 +55,19 @@ def is_likely_publisher_boilerplate(text: str) -> bool:
 
     url_chars = sum(len(match.group(0)) for match in _URL_RE.finditer(normalized))
     return has_url and url_chars / max(len(normalized), 1) > 0.35
+
+
+def strip_ssml_markup(text: str) -> str:
+    """Remove SSML tags from text sources while preserving sentence boundaries."""
+    if not _SSML_HINT_RE.search(text):
+        return text
+
+    cleaned = html.unescape(text)
+    cleaned = _SSML_BREAK_TAG_RE.sub("\n", cleaned)
+    cleaned = _SSML_SENTENCE_TAG_RE.sub("\n", cleaned)
+    cleaned = _SSML_BLOCK_TAG_RE.sub("\n", cleaned)
+    cleaned = _SSML_ANY_TAG_RE.sub(" ", cleaned)
+    return cleaned
 
 
 def remove_publisher_boilerplate(text: str) -> str:

@@ -76,6 +76,9 @@ desktop = [
     "soundfile>=0.12,<1",
     "pydub>=0.25,<1",
 ]
+desktop-build = [
+    "PyInstaller>=6.0,<7",
+]
 dev = [
     "build>=1.2,<2",
     "pytest>=8.0,<9",

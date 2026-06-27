@@ -67,6 +67,19 @@ class TestCleanup:
         result = remove_repeated_headers(text, min_occurrences=3)
         assert "Заголовок" not in result
 
+    def test_remove_repeated_headers_keeps_repeated_chapter_headings(self) -> None:
+        text = (
+            "Глава первая,\nТекст.\n"
+            "Глава первая,\nЕщё текст.\n"
+            "Глава первая,\nКонец.\n"
+            "Колонтитул\nКолонтитул\nКолонтитул"
+        )
+
+        result = remove_repeated_headers(text, min_occurrences=3)
+
+        assert result.count("Глава первая,") == 3
+        assert "Колонтитул" not in result
+
     def test_detect_publisher_boilerplate_urls(self) -> None:
         text = (
             "Спасибо, что скачали книгу в бесплатной электронной библиотеке "

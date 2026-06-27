@@ -192,6 +192,59 @@ class TestVoiceAnnotatedChunking:
         assert segments[1].boundary_after == "chapter"
         assert segments[1].pause_after_ms == DEFAULT_CHAPTER_PAUSE_MS
 
+    def test_extract_segments_marks_leading_epigraph(self) -> None:
+        ch = AnnotatedChapter(
+            chapter_index=0,
+            chapter_title="Глава первая",
+            paragraphs=[
+                AnnotatedParagraph(
+                    paragraph_id="p0",
+                    chapter_index=0,
+                    lines=[
+                        DialogueLine(
+                            text="Веревка есть вервие простое. Из учебного наставления для палачей",
+                            role=SpeakerRole.NARRATOR,
+                            paragraph_id="p0",
+                            line_index=0,
+                            is_dialogue=False,
+                        ),
+                    ],
+                ),
+                AnnotatedParagraph(
+                    paragraph_id="p1",
+                    chapter_index=0,
+                    lines=[
+                        DialogueLine(
+                            text="Глава первая, повествующая в общем-то ни о чем",
+                            role=SpeakerRole.NARRATOR,
+                            paragraph_id="p1",
+                            line_index=0,
+                            is_dialogue=False,
+                        ),
+                    ],
+                ),
+                AnnotatedParagraph(
+                    paragraph_id="p2",
+                    chapter_index=0,
+                    lines=[
+                        DialogueLine(
+                            text="Сергей сидел за столом.",
+                            role=SpeakerRole.NARRATOR,
+                            paragraph_id="p2",
+                            line_index=0,
+                            is_dialogue=False,
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        segments = extract_segments_chapter(ch, detect_special_sections=True)
+
+        assert segments[0].section_kind == "epigraph"
+        assert segments[0].voice_id == "narrator_wise"
+        assert segments[1].section_kind == ""
+
 
 class TestChunkAnnotatedBook:
 

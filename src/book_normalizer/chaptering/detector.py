@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from book_normalizer.chaptering.patterns import match_chapter_heading, match_work_heading
 from book_normalizer.chaptering.toc_parser import extract_main_titles, find_toc_section, parse_toc_entries
+from book_normalizer.chunking.annotations import classify_chapter_paragraphs
 from book_normalizer.models.book import Book, Chapter, Paragraph
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ class ChapterDetector:
             return book
 
         full_text = "\n\n".join(p.raw_text for p in all_paragraphs)
+        toc_work_titles = self._extract_toc_work_titles(full_text)
         toc_para_indices: set[int] = set()
         toc_range = find_toc_section(full_text)
         if toc_range:
@@ -75,9 +77,15 @@ class ChapterDetector:
 
         # Recover orphaned "Глава" lines with OCR-damaged numerals.
         hits = self._recover_orphan_glava_headings(all_paragraphs, hits)
+        work_hits = self._augment_work_headings_from_chapter_resets(
+            all_paragraphs,
+            work_hits,
+            hits,
+            toc_work_titles=toc_work_titles,
+        )
 
         # Second try: if no headings or very few (<= 2), try parsing TOC.
-        if len(hits) <= 2:
+        if len(hits) <= 2 and not work_hits:
             if toc_range:
                 start, end = toc_range
                 toc_text = full_text[start:end]
@@ -183,6 +191,92 @@ class ChapterDetector:
                 heading_text, label = result
                 hits.append(_HeadingHit(paragraph_index=idx, heading_text=heading_text, pattern_label=label))
         return hits
+
+    _RE_FIRST_GLAVA = re.compile(
+        r"^\s*[Гг][Лл][Аа][Вв][Аа]\s+(?:1|I|i|[Пп]ервая)\b"
+    )
+    _RE_NUMBERED_WORK_TITLE = re.compile(
+        r"^\s*\d{1,2}\.\s+[А-Яа-яЁё][А-Яа-яЁё\s-]{4,80}$"
+    )
+
+    @staticmethod
+    def _augment_work_headings_from_chapter_resets(
+        paragraphs: list[Paragraph],
+        work_hits: list[_HeadingHit],
+        chapter_hits: list[_HeadingHit],
+        *,
+        toc_work_titles: dict[int, str] | None = None,
+    ) -> list[_HeadingHit]:
+        """
+        Infer work boundaries in omnibus PDFs where each book restarts at
+        "Глава первая" and the work title sits on a nearby numbered title page.
+        """
+        if len(work_hits) >= 2:
+            return work_hits
+
+        first_chapter_hits = [
+            hit for hit in chapter_hits
+            if ChapterDetector._RE_FIRST_GLAVA.match(hit.heading_text)
+        ]
+        if len(first_chapter_hits) < 2:
+            return work_hits
+
+        existing_indices = {hit.paragraph_index for hit in work_hits}
+        inferred: list[_HeadingHit] = []
+        toc_titles = toc_work_titles or {}
+        for sequence, hit in enumerate(first_chapter_hits, start=1):
+            title_index, title = ChapterDetector._find_nearby_numbered_work_title(
+                paragraphs,
+                hit.paragraph_index,
+            )
+            start_index = title_index if title_index is not None else hit.paragraph_index
+            if start_index in existing_indices:
+                continue
+            inferred.append(
+                _HeadingHit(
+                    paragraph_index=start_index,
+                    heading_text=title or toc_titles.get(sequence, f"Book {sequence}"),
+                    pattern_label="work_inferred_chapter_reset",
+                )
+            )
+
+        if not inferred:
+            return work_hits
+        combined = work_hits + inferred
+        combined.sort(key=lambda item: item.paragraph_index)
+        return combined
+
+    @staticmethod
+    def _find_nearby_numbered_work_title(
+        paragraphs: list[Paragraph],
+        chapter_index: int,
+    ) -> tuple[int | None, str | None]:
+        for idx in range(chapter_index - 1, max(-1, chapter_index - 8), -1):
+            text = re.sub(r"\s+", " ", paragraphs[idx].raw_text).strip()
+            if ChapterDetector._RE_NUMBERED_WORK_TITLE.match(text):
+                return idx, text
+        return None, None
+
+    @staticmethod
+    def _extract_toc_work_titles(full_text: str) -> dict[int, str]:
+        """Extract omnibus work titles from simple TOC blocks."""
+        titles: dict[int, str] = {}
+        lines = [line.strip() for line in full_text.splitlines() if line.strip()]
+        book_re = re.compile(r"^Книга\s+(?P<number>\d{1,2})$", re.IGNORECASE)
+        for idx, line in enumerate(lines[:-2]):
+            match = book_re.match(line)
+            if not match:
+                continue
+            title = lines[idx + 1]
+            page = lines[idx + 2]
+            if not re.fullmatch(r"\d{1,4}", page):
+                continue
+            if not re.fullmatch(r"[А-Яа-яЁё][А-Яа-яЁё\s-]{2,80}", title):
+                continue
+            number = int(match.group("number"))
+            normalized_title = re.sub(r"\s+", " ", title).strip()
+            titles[number] = f"{number}. {normalized_title}"
+        return titles
 
     @staticmethod
     def _filter_numeric_heading_noise(hits: list[_HeadingHit]) -> list[_HeadingHit]:
@@ -401,10 +495,10 @@ class ChapterDetector:
                     paragraph_index=h.paragraph_index - work_range.start,
                     heading_text=h.heading_text,
                     pattern_label=h.pattern_label,
-                )
-                for h in chapter_hits
-                if work_range.start < h.paragraph_index < work_range.end
-            ]
+                  )
+                  for h in chapter_hits
+                  if work_range.start <= h.paragraph_index < work_range.end
+              ]
             chapters.extend(
                 self._split_range_as_work(
                     local_paragraphs,
@@ -486,9 +580,13 @@ class ChapterDetector:
     ) -> list[Chapter]:
         """Split paragraph list into chapters at heading boundaries."""
         chapters: list[Chapter] = []
+        starts = [
+            self._leading_epigraph_start(paragraphs, hit.paragraph_index)
+            for hit in hits
+        ]
 
-        if hits[0].paragraph_index > 0:
-            preamble_paras = paragraphs[: hits[0].paragraph_index]
+        if starts[0] > 0:
+            preamble_paras = paragraphs[: starts[0]]
             if preamble_paras:
                 self._reindex_paragraphs(preamble_paras)
                 chapters.append(
@@ -500,11 +598,12 @@ class ChapterDetector:
                 )
 
         for i, hit in enumerate(hits):
-            start = hit.paragraph_index
-            end = hits[i + 1].paragraph_index if i + 1 < len(hits) else len(paragraphs)
+            start = starts[i]
+            heading_start = hit.paragraph_index
+            end = starts[i + 1] if i + 1 < len(hits) else len(paragraphs)
 
             # Get the paragraph containing the heading.
-            heading_para = paragraphs[start]
+            heading_para = paragraphs[heading_start]
             lines = heading_para.raw_text.strip().split('\n')
 
             # Find which line contains the heading.
@@ -520,7 +619,7 @@ class ChapterDetector:
                     break
 
             # Split paragraph at heading line if found.
-            chapter_paras: list[Paragraph] = []
+            chapter_paras: list[Paragraph] = list(paragraphs[start:heading_start])
 
             if heading_line_idx >= 0:
                 # Create new paragraph starting from heading line.
@@ -533,7 +632,7 @@ class ChapterDetector:
                     chapter_paras.append(split_para)
 
                 # Add remaining paragraphs.
-                chapter_paras.extend(paragraphs[start + 1 : end])
+                chapter_paras.extend(paragraphs[heading_start + 1 : end])
 
                 # If there were lines BEFORE heading, add them to previous chapter.
                 if heading_line_idx > 0 and chapters:
@@ -548,10 +647,10 @@ class ChapterDetector:
                 # Heading not found in lines, use standard logic.
                 if len(lines) == 1:
                     # Single-line paragraph, skip it.
-                    chapter_paras = paragraphs[start + 1 : end]
+                    chapter_paras.extend(paragraphs[heading_start + 1 : end])
                 else:
                     # Multi-line paragraph, include it.
-                    chapter_paras = paragraphs[start:end]
+                    chapter_paras.extend(paragraphs[heading_start:end])
 
             # Skip empty chapters (e.g., from table of contents).
             if not chapter_paras:
@@ -573,6 +672,18 @@ class ChapterDetector:
             ch.index = idx
 
         return chapters
+
+    @staticmethod
+    def _leading_epigraph_start(paragraphs: list[Paragraph], heading_index: int) -> int:
+        """Include a short epigraph immediately before a chapter heading."""
+        if heading_index <= 0:
+            return heading_index
+        previous = paragraphs[heading_index - 1].raw_text
+        heading = paragraphs[heading_index].raw_text
+        kinds = classify_chapter_paragraphs([previous, heading])
+        if kinds and kinds[0] == "epigraph":
+            return heading_index - 1
+        return heading_index
 
     @staticmethod
     def _has_meaningful_content(chapter: Chapter) -> bool:

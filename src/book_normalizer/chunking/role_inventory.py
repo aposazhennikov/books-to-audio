@@ -9,6 +9,7 @@ from typing import Any
 
 SYSTEM_ROLE_NAMES = {
     "annotation": "Annotation",
+    "epigraph": "Epigraph",
     "preface": "Preface",
     "epilogue": "Epilogue",
     "chapter_title": "Chapter title",

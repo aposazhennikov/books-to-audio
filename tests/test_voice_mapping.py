@@ -5,6 +5,7 @@ from book_normalizer.tts.voice_mapping import (
     apply_auto_builtin_voice_ids,
     auto_builtin_voice_id_for_segment,
     canonical_role_for_segment,
+    primary_voice_mapping_key,
 )
 
 
@@ -41,6 +42,13 @@ def test_auto_builtin_voice_mapping_uses_emotion_for_unnamed_dialogue() -> None:
         "female_gentle"
     )
     assert auto_builtin_voice_id_for_segment({"role": "narrator"}) == "narrator_calm"
+
+
+def test_special_sections_use_wise_narrator_and_section_mapping_key() -> None:
+    segment = {"role": "narrator", "section_kind": "epigraph", "text": "Из древней книги."}
+
+    assert auto_builtin_voice_id_for_segment(segment) == "narrator_wise"
+    assert primary_voice_mapping_key(segment) == "section:epigraph"
 
 
 def test_unknown_dialogue_uses_character_voice_not_narrator() -> None:

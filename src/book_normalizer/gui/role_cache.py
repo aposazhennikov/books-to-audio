@@ -25,6 +25,7 @@ class RoleCacheSettings:
     llm_endpoint: str
     llm_model: str
     stress_mode: str
+    detect_special_sections: bool = False
 
     def to_key_record(self) -> dict[str, Any]:
         """Return normalized settings suitable for a cache key."""
@@ -34,6 +35,7 @@ class RoleCacheSettings:
             "llm_endpoint": _normalize_endpoint(self.llm_endpoint),
             "llm_model": self.llm_model.strip(),
             "stress_mode": self.stress_mode,
+            "detect_special_sections": self.detect_special_sections,
         }
 
 
@@ -296,6 +298,7 @@ def _metadata_settings_record(raw_settings: object) -> dict[str, Any] | None:
             llm_endpoint=str(raw_settings.get("llm_endpoint", "")),
             llm_model=str(raw_settings.get("llm_model", "")),
             stress_mode=str(raw_settings.get("stress_mode", "")),
+            detect_special_sections=bool(raw_settings.get("detect_special_sections", False)),
         ).to_key_record()
     except (TypeError, ValueError):
         return None

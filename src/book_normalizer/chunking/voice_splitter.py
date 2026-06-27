@@ -10,6 +10,10 @@ import logging
 import re
 from typing import Any
 
+from book_normalizer.chunking.annotations import (
+    classify_chapter_paragraphs,
+    mark_segment_as_special_section,
+)
 from book_normalizer.chunking.splitter import (
     DEFAULT_CHAPTER_PAUSE_MS,
     DEFAULT_MAX_CHUNK_CHARS,
@@ -57,6 +61,8 @@ _BOUNDARY_PRIORITY = {
 
 def extract_segments_chapter(
     chapter: AnnotatedChapter,
+    *,
+    detect_special_sections: bool = False,
 ) -> list[VoiceSegment]:
     """Extract individual voice segments from an annotated chapter.
 
@@ -67,7 +73,17 @@ def extract_segments_chapter(
     segments: list[VoiceSegment] = []
     seg_idx = 0
 
-    for para in chapter.paragraphs:
+    paragraph_texts = [
+        " ".join(line.text.strip() for line in para.lines if line.text.strip())
+        for para in chapter.paragraphs
+    ]
+    section_kinds = (
+        classify_chapter_paragraphs(paragraph_texts)
+        if detect_special_sections
+        else [""] * len(chapter.paragraphs)
+    )
+
+    for para_index, para in enumerate(chapter.paragraphs):
         lines = [line for line in para.lines if line.text.strip()]
         if not lines:
             continue
@@ -93,22 +109,26 @@ def extract_segments_chapter(
             voice_role = (
                 role if role != SpeakerRole.UNKNOWN else SpeakerRole.NARRATOR
             )
+            section_kind = section_kinds[para_index] if para_index < len(section_kinds) else ""
 
-            segments.append(
-                VoiceSegment(
-                    segment_index=seg_idx,
-                    chapter_index=chapter.chapter_index,
-                    chapter_title=chapter.chapter_title,
-                    work_index=chapter.work_index,
-                    work_title=chapter.work_title,
-                    section_index=chapter.section_index,
-                    is_dialogue=is_dialogue,
-                    role=effective_role,
-                    voice_id=NEW_VOICE_ID_MAP[voice_role],
-                    intonation="neutral",
-                    text=combined,
-                )
+            segment = VoiceSegment(
+                segment_index=seg_idx,
+                chapter_index=chapter.chapter_index,
+                chapter_title=chapter.chapter_title,
+                work_index=chapter.work_index,
+                work_title=chapter.work_title,
+                section_index=chapter.section_index,
+                is_dialogue=is_dialogue,
+                role=effective_role,
+                voice_id=NEW_VOICE_ID_MAP[voice_role],
+                intonation="neutral",
+                text=combined,
             )
+            if section_kind and not is_dialogue:
+                data = segment.model_dump()
+                mark_segment_as_special_section(data, section_kind)
+                segment = VoiceSegment.model_validate(data)
+            segments.append(segment)
             seg_idx += 1
 
         if len(segments) > paragraph_start:
@@ -129,11 +149,18 @@ def extract_segments_chapter(
 
 def extract_segments_book(
     chapters: list[AnnotatedChapter],
+    *,
+    detect_special_sections: bool = False,
 ) -> list[VoiceSegment]:
     """Extract all segments from all chapters, flat list."""
     segments: list[VoiceSegment] = []
     for chapter in chapters:
-        segments.extend(extract_segments_chapter(chapter))
+        segments.extend(
+            extract_segments_chapter(
+                chapter,
+                detect_special_sections=detect_special_sections,
+            )
+        )
     logger.info(
         "Segment extraction: %d chapter(s), %d total segments",
         len(chapters),

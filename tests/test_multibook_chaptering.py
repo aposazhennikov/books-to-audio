@@ -65,6 +65,30 @@ def test_multibook_without_chapters_creates_one_section_per_work() -> None:
     assert result.chapters[1].work_title == "Book Two"
 
 
+def test_multibook_can_be_inferred_from_restarted_first_chapters() -> None:
+    book = _book([
+        "1. вход в спираль",
+        "Веревка есть вервие простое. Из учебного наставления для палачей",
+        "Глава первая,",
+        "Текст первой книги.",
+        "Глава вторая,",
+        "Продолжение первой книги.",
+        "2. наследники сета",
+        "Вы неправильную порчу наводите! Из древней рекламации",
+        "Глава первая,",
+        "Текст второй книги.",
+    ])
+
+    result = ChapterDetector().detect_and_split(book)
+
+    assert [chapter.work_title for chapter in result.chapters] == [
+        "1. вход в спираль",
+        "1. вход в спираль",
+        "2. наследники сета",
+    ]
+    assert result.metadata.extra["structure"]["work_count"] == 2
+
+
 def test_supported_language_heading_patterns() -> None:
     assert match_chapter_heading("Chapter One") is not None
     assert match_chapter_heading("Chapter IV") is not None
@@ -73,3 +97,4 @@ def test_supported_language_heading_patterns() -> None:
     assert match_chapter_heading("Тарау 1") is not None
     assert match_work_heading("Book Two") is not None
     assert match_work_heading("第二部") is not None
+    assert match_work_heading("книга лежала на столе рейхсфюрера") is None

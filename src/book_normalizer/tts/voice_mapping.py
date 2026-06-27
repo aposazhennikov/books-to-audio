@@ -9,6 +9,10 @@ from book_normalizer.chunking.manifest_v2 import role_for_voice_id
 from book_normalizer.normalization.morphology import infer_person_gender
 
 NEUTRAL_EMOTIONS = {"", "neutral", "calm"}
+SPECIAL_SECTION_VOICE_IDS = {
+    "annotation": "narrator_wise",
+    "epigraph": "narrator_wise",
+}
 
 AUTO_BUILTIN_VOICES_BY_ROLE = {
     "narrator": ("narrator_calm", "narrator_wise", "narrator_energetic"),
@@ -152,6 +156,10 @@ def auto_builtin_voice_id_for_segment(segment: dict[str, Any]) -> str:
     built-in speaker set. This spreads named characters across that set while
     keeping every occurrence of the same speaker on the same preset.
     """
+
+    section = str(segment.get("section_kind") or "").strip().lower()
+    if section in SPECIAL_SECTION_VOICE_IDS:
+        return SPECIAL_SECTION_VOICE_IDS[section]
 
     role = canonical_role_for_segment(segment)
     if role == "unknown" and str(segment.get("section_kind") or "").strip().lower() == "dialogue":

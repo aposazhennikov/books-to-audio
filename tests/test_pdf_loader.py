@@ -736,6 +736,40 @@ class TestOcrImagePreparation:
             "ПОВЕСТВУЮЩАЯ, В ОБЩЕМ-ТО, НИ О ЧЕМ Сергей сидел за столом.",
         ]
 
+    @pytest.mark.parametrize(
+        ("raw_body", "expected"),
+        [
+            ("ПОВЕСТВУЮЩАЯ, В ОБЩЕМ-ТО, НИ О ЧЕМ ергей сидел за столом.", "Сергей сидел"),
+            ("В КОТОРОЙ ПОЯВЛЯЕТСЯ НАМЕК НА СЮЖЕТ ыганка просочилась в квартиру.", "Цыганка просочилась"),
+            ("СОБЫТИЯ В КОТОРОЙ РАЗВИВАЮТСЯ ВО СНЕ так, господа, у нас мало времени.", "Итак, господа"),
+        ],
+    )
+    def test_postprocess_ocr_text_repairs_lost_decorative_drop_caps(
+        self,
+        raw_body: str,
+        expected: str,
+    ) -> None:
+        raw = f"ГЛАВА ПЕРВАЯ\n{raw_body}"
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert expected in cleaned
+
+    def test_repair_isolated_layout_blocks_keeps_split_chapter_heading(self) -> None:
+        from book_normalizer.loaders.pdf_loader import _repair_isolated_layout_word_blocks
+
+        blocks = [
+            "Веревка есть вервие простое.",
+            "Глава",
+            "первая",
+            "повествующая в общем-то ни о чем",
+        ]
+
+        repaired = _repair_isolated_layout_word_blocks(blocks)
+
+        assert "Глава" in repaired
+        assert "первая" in repaired
+
     def test_postprocess_ocr_text_splits_inline_chapter_heading(self) -> None:
         raw = (
             "Из библии для чиновников ГЛАВА ТРЕТЬЯ -. "

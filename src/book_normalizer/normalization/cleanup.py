@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from book_normalizer.chaptering.patterns import match_chapter_heading, match_work_heading
+
 _URL_RE = re.compile(r"\b(?:https?://|www\.)\S+", re.IGNORECASE)
 _PUBLISHER_BOILERPLATE_PHRASES = (
     "скачали книгу",
@@ -20,6 +22,14 @@ _LEADING_BOILERPLATE_RE = re.compile(
     r"^\s*(?:приятного\s+чтения|спасибо,\s+что\s+скачали\s+книгу)[.!…:;,\s]*",
     re.IGNORECASE,
 )
+
+
+def _is_structure_heading_line(text: str) -> bool:
+    """Return true for book/chapter boundaries that must not be treated as headers."""
+    stripped = text.strip()
+    if not stripped:
+        return False
+    return bool(match_chapter_heading(stripped) or match_work_heading(stripped))
 
 
 def is_likely_publisher_boilerplate(text: str) -> bool:
@@ -83,7 +93,7 @@ def remove_repeated_headers(text: str, min_occurrences: int = 3) -> str:
 
     for line in lines:
         stripped = line.strip()
-        if stripped and len(stripped) < 100:
+        if stripped and len(stripped) < 100 and not _is_structure_heading_line(stripped):
             # Count exact line.
             line_counts[stripped] = line_counts.get(stripped, 0) + 1
 
@@ -106,6 +116,9 @@ def remove_repeated_headers(text: str, min_occurrences: int = 3) -> str:
     cleaned_lines: list[str] = []
     for line in lines:
         stripped = line.strip()
+        if _is_structure_heading_line(stripped):
+            cleaned_lines.append(line)
+            continue
         # Skip if exact match or pattern match.
         if stripped in repeated:
             continue

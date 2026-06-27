@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QGridLayout,
     QHeaderView,
     QLabel,
@@ -48,6 +49,7 @@ _ROLE_NAME_KEYS = {
     "Male character": "voice.role_male",
     "Female character": "voice.role_female",
     "Annotation": "voice.role_annotation",
+    "Epigraph": "voice.role_epigraph",
     "Preface": "voice.role_preface",
     "Epilogue": "voice.role_epilogue",
     "Chapter title": "voice.role_chapter_title",
@@ -130,6 +132,8 @@ class RolesPage(QWidget):
         self._btn_extract.setMaximumWidth(340)
         self._btn_extract.setEnabled(False)
         self._btn_extract.clicked.connect(self._run_role_extraction)
+        self._special_sections_check = QCheckBox()
+        self._special_sections_check.setChecked(False)
         self._apply_control_layout()
         layout.addLayout(controls)
 
@@ -174,6 +178,8 @@ class RolesPage(QWidget):
         self._llm_model_label.setText(t("roles.llm_model"))
         self._llm_model.setPlaceholderText(t("roles.llm_model"))
         self._btn_extract.setText(t("roles.extract"))
+        self._special_sections_check.setText(t("roles.special_sections"))
+        self._special_sections_check.setToolTip(t("roles.special_sections_tip"))
         self._apply_table_headers()
         if self._current_inventory is not None:
             self._populate_table(self._current_inventory)
@@ -192,6 +198,7 @@ class RolesPage(QWidget):
             self._llm_model_label,
             self._llm_model,
             self._btn_extract,
+            self._special_sections_check,
         )
         for widget in widgets:
             self._controls.removeWidget(widget)
@@ -209,7 +216,8 @@ class RolesPage(QWidget):
             self._controls.addWidget(self._llm_model_label, 0, 1, 1, 2)
             self._controls.addWidget(self._llm_endpoint, 1, 0)
             self._controls.addWidget(self._llm_model, 1, 1, 1, 2)
-            self._controls.addWidget(self._btn_extract, 2, 0, 1, 3)
+            self._controls.addWidget(self._special_sections_check, 2, 0, 1, 3)
+            self._controls.addWidget(self._btn_extract, 3, 0, 1, 3)
             return
 
         self._controls.setVerticalSpacing(4)
@@ -224,6 +232,7 @@ class RolesPage(QWidget):
         self._controls.addWidget(self._llm_endpoint, 1, 0)
         self._controls.addWidget(self._llm_model_label, 0, 1)
         self._controls.addWidget(self._llm_model, 1, 1)
+        self._controls.addWidget(self._special_sections_check, 0, 2)
         self._controls.addWidget(self._btn_extract, 1, 2)
 
     def _apply_table_headers(self) -> None:
@@ -296,6 +305,7 @@ class RolesPage(QWidget):
             llm_endpoint=self._llm_endpoint.text().strip() or configured_ollama_endpoint(),
             llm_model=self._llm_model.text().strip() or PRIMARY_QWEN3_MODEL,
             stress_mode="double_vowel",
+            detect_special_sections=self._special_sections_check.isChecked(),
         )
         self._worker.progress.connect(self._progress.set_busy)
         progress_pct = getattr(self._worker, "progress_pct", None)
@@ -328,6 +338,7 @@ class RolesPage(QWidget):
             llm_endpoint=self._llm_endpoint.text().strip() or configured_ollama_endpoint(),
             llm_model=self._llm_model.text().strip() or PRIMARY_QWEN3_MODEL,
             stress_mode="double_vowel",
+            detect_special_sections=self._special_sections_check.isChecked(),
         )
 
     def _find_cached_roles(

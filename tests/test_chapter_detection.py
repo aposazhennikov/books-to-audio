@@ -79,6 +79,22 @@ class TestChapterDetector:
         assert result.chapters[0].title == "Глава 1"
         assert result.chapters[1].title == "Глава 2"
 
+    def test_leading_epigraph_moves_into_following_chapter(self) -> None:
+        book = self._make_book_with_paragraphs([
+            "Глава 1",
+            "Текст первой главы.",
+            "Краткость — родная сестра таланта. Из библии для чиновников",
+            "Глава 2",
+            "Текст второй главы.",
+        ])
+
+        result = ChapterDetector().detect_and_split(book)
+
+        assert len(result.chapters) == 2
+        assert "Краткость" not in result.chapters[0].raw_text
+        assert result.chapters[1].paragraphs[0].raw_text.startswith("Краткость")
+        assert result.chapters[1].paragraphs[1].raw_text == "Глава 2"
+
     def test_no_headings_single_chapter(self) -> None:
         book = self._make_book_with_paragraphs([
             "Обычный текст.",

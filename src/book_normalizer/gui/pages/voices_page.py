@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSpacerItem,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -278,6 +279,8 @@ class VoicesPage(QWidget):
         self._btn_detect.clicked.connect(self._run_detection)
         self._btn_detect.setEnabled(False)
         action_row.addWidget(self._btn_detect)
+        self._load_gap = QSpacerItem(32, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+        action_row.addItem(self._load_gap)
 
         self._btn_load = QPushButton()
         self._btn_load.setMaximumWidth(150)
@@ -573,6 +576,13 @@ class VoicesPage(QWidget):
         self._manifest_label.setVisible(
             bool(self._manifest_label.text()) and show_secondary_status,
         )
+        self._load_gap.changeSize(
+            0 if has_loaded_segments else 32,
+            0,
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Minimum,
+        )
+        self._action_panel.layout().invalidate()
         self._sync_action_status_visibility()
         for button in (
             self._btn_detect,

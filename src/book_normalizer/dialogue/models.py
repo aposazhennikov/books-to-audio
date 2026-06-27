@@ -107,6 +107,10 @@ class VoiceSegment(BaseModel):
     text: str = ""
     pause_after_ms: int = 0
     boundary_after: str = ""
+    speaker: str = ""
+    character_description: str = ""
+    emotion: str = ""
+    section_kind: str = ""
 
 
 class SpeakerAnnotationResult(BaseModel):

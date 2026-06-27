@@ -48,6 +48,7 @@ class ExportSegmentsWorker(QThread):
         llm_model: str = "",
         llm_api_key: str = "",
         stress_mode: str = "double_vowel",
+        detect_special_sections: bool = False,
         parent=None,
     ):
         super().__init__(parent)
@@ -58,9 +59,11 @@ class ExportSegmentsWorker(QThread):
         self._llm_model = llm_model
         self._llm_api_key = llm_api_key
         self._stress_mode = stress_mode
+        self._detect_special_sections = detect_special_sections
 
     def run(self) -> None:
         try:
+            from book_normalizer.chunking.annotations import apply_special_section_marks
             from book_normalizer.chunking.llm_segmenter import LlmVoiceSegmenter
             from book_normalizer.chunking.voice_splitter import extract_segments_book
             from book_normalizer.dialogue.attribution import SpeakerMode, create_attributor
@@ -97,6 +100,11 @@ class ExportSegmentsWorker(QThread):
                     self.progress_pct.emit(done, total, eta)
 
                 manifest = segmenter.segment_book(self._book, progress_callback=report)
+                apply_special_section_marks(
+                    self._book,
+                    manifest,
+                    enabled=self._detect_special_sections,
+                )
             else:
                 self.progress.emit(t("voice.detecting_dialogue"))
                 annotated = DialogueDetector().detect_book(self._book)
@@ -126,8 +134,15 @@ class ExportSegmentsWorker(QThread):
                         "text": segment.text,
                         "pause_after_ms": segment.pause_after_ms,
                         "boundary_after": segment.boundary_after,
+                        "speaker": segment.speaker,
+                        "character_description": segment.character_description,
+                        "emotion": segment.emotion,
+                        "section_kind": segment.section_kind,
                     }
-                    for segment in extract_segments_book(annotated)
+                    for segment in extract_segments_book(
+                        annotated,
+                        detect_special_sections=self._detect_special_sections,
+                    )
                 ]
 
             apply_auto_builtin_voice_ids(manifest)
@@ -332,7 +347,7 @@ class AsrQaWorker(QThread):
             manifest = json.loads(self._manifest_path.read_text(encoding="utf-8"))
             report_path = self._manifest_path.with_name("asr_qa_report.json")
 
-            audio_result = run_audio_qa(manifest, manifest_path=self._manifest_path)
+            audio_result = run_audio_qa(manifest)
             self.log_line.emit(
                 f"Audio QA: {audio_result.checked_files}/{audio_result.synthesized_chunks} checked, "
                 f"{len(audio_result.issues)} issue(s)."

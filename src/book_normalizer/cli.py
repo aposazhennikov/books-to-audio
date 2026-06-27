@@ -869,7 +869,7 @@ def _write_chapter_sanity_report(book: object, output_dir: Path) -> None:
     for chapter in book.chapters:
         work_title = getattr(chapter, "work_title", "") or ""
         if getattr(chapter, "work_index", 0) < 0 or work_title == "Preamble":
-            work_title = ""
+            continue
         key = work_title or "__single_work__"
         work_groups.setdefault(key, []).append(chapter)
 

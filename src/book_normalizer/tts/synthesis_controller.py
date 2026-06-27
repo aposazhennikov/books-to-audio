@@ -55,6 +55,7 @@ from book_normalizer.tts.quality_gate import split_problem_chunks_for_retry
 ProgressCallback = Callable[[int, int, str, int, int, float, int, int, int], None]
 StatusCallback = Callable[[str], None]
 LogCallback = Callable[[str], None]
+CancelRequested = Callable[[], bool]
 
 _LOG_LANGS = {"en", "ru", "zh", "kk", "uz"}
 _LOG_MESSAGES: dict[str, dict[str, str]] = {
@@ -207,6 +208,18 @@ class SynthesisRunResult:
     audio_dir: Path
     synthesized: int
     skipped: int
+    failed: int = 0
+    total: int = 0
+    status: str = "completed"
+
+    @property
+    def cancelled(self) -> bool:
+        """Return true when synthesis stopped by cooperative cancellation."""
+        return self.status == "cancelled"
+
+
+class SynthesisCancelled(RuntimeError):  # noqa: N818
+    """Raised when synthesis is cooperatively cancelled."""
 
 
 class SynthesisController:
@@ -219,11 +232,13 @@ class SynthesisController:
         progress: ProgressCallback | None = None,
         status: StatusCallback | None = None,
         log: LogCallback | None = None,
+        cancel_requested: CancelRequested | None = None,
     ) -> None:
         self._request = request
         self._progress = progress
         self._status = status
         self._log = log
+        self._cancel_requested = cancel_requested or (lambda: False)
 
     def run(self) -> SynthesisRunResult:
         """Run ComfyUI synthesis for the request."""
@@ -255,6 +270,22 @@ class SynthesisController:
         contract_path = write_run_contract(request.output_dir, contract)
         observer = StageObserver(request.output_dir, str(contract["run_id"]), "tts_synthesis")
         observer.log("started", contract_path=str(contract_path))
+
+        def finish_cancelled(*, synthesized: int = 0, skipped: int = 0) -> None:
+            observer.finish(
+                "cancelled",
+                cancelled=True,
+                synthesized=synthesized,
+                skipped=skipped,
+                manifest_path=str(request.manifest_path),
+            )
+
+        def raise_if_cancelled(*, synthesized: int = 0, skipped: int = 0) -> None:
+            if self._cancel_requested():
+                finish_cancelled(synthesized=synthesized, skipped=skipped)
+                raise SynthesisCancelled("Synthesis cancelled by user.")
+
+        raise_if_cancelled()
         unsupported = unsupported_tts_engine_message(request.tts_engine)
         if unsupported:
             observer.log("unsupported_engine", engine=request.tts_engine, message=unsupported)
@@ -272,14 +303,27 @@ class SynthesisController:
         audio_dir = request.output_dir / "audio_chunks"
         engine = get_tts_engine(request.tts_engine)
         if engine is not None and engine.backend != "comfyui":
-            preflight = preflight_engine_command(engine.engine_id, request.models_dir or None)
+            preflight = preflight_engine_command(
+                engine.engine_id,
+                request.models_dir or None,
+                output_dir=audio_dir,
+                clone_config_path=request.clone_config_path,
+            )
             self._emit_log(f"TTS engine: {preflight.display_name} ({preflight.engine_id})")
             self._emit_log(f"Command template: {preflight.command_template}")
             self._emit_log(f"Command preview: {preflight.preview_command}")
+            for check in preflight.checks:
+                status = "ok" if check.ok else "failed"
+                self._emit_log(f"Preflight {check.name}: {status} - {check.message}")
             if not preflight.ok:
+                failed_checks = [
+                    f"{check.name}: {check.message}"
+                    for check in preflight.checks
+                    if check.required and not check.ok
+                ]
                 message = (
-                    f"{preflight.display_name} CLI is not available: "
-                    f"`{preflight.executable}` was not found on PATH.\n"
+                    f"{preflight.display_name} local-command preflight failed.\n"
+                    f"Failed checks: {'; '.join(failed_checks)}\n"
                     f"What to install: {preflight.install_hint}\n"
                     f"Command that would be invoked: {preflight.preview_command}"
                 )
@@ -289,10 +333,14 @@ class SynthesisController:
                     executable=preflight.executable,
                     env_name=preflight.env_name,
                     command_preview=preflight.preview_command,
+                    failed_checks=failed_checks,
                 )
                 observer.finish("failed", error=message)
                 raise FileNotFoundError(message)
             self._emit_log(f"Executable: {preflight.executable_path}")
+            self._emit_log(f"Model path: {preflight.model_path}")
+            if preflight.ffmpeg_path:
+                self._emit_log(f"ffmpeg: {preflight.ffmpeg_path}")
             self._emit_status("__loading__")
             done_start = count_done_chunks(
                 manifest,
@@ -346,7 +394,11 @@ class SynthesisController:
                 clone_config_path=request.clone_config_path,
                 chunk_timeout=request.chunk_timeout,
                 progress=on_engine_line,
+                cancel_requested=self._cancel_requested,
             )
+            if summary.cancelled:
+                finish_cancelled(synthesized=summary.synthesized, skipped=summary.skipped)
+                raise SynthesisCancelled("Synthesis cancelled by user.")
             observer.increment("synthesized_chunks", summary.synthesized)
             observer.increment("failed_chunks", summary.failed)
             observer.increment("skipped_chunks", summary.skipped)
@@ -357,21 +409,40 @@ class SynthesisController:
                 or request.perceptual_qa
                 or request.asr_qa_after_synthesis
             ):
+                raise_if_cancelled(synthesized=summary.synthesized, skipped=summary.skipped)
                 self._run_quality_gates(manifest, request)
                 observer.increment("quality_passes", 1)
 
-            self._emit_progress(total, total, "0s", 0, 0, 0.0, 0, 0, 0)
+            raise_if_cancelled(synthesized=summary.synthesized, skipped=summary.skipped)
+            status = self._summary_status(summary)
+            done = max(0, total - summary.failed)
+            self._emit_progress(
+                done,
+                total,
+                "0s" if summary.failed == 0 else "",
+                0,
+                0,
+                0.0,
+                summary.failed,
+                0,
+                0,
+            )
             observer.finish(
-                "completed",
+                status,
                 elapsed_seconds=0.0,
                 synthesized=summary.synthesized,
                 skipped=summary.skipped,
+                failed=summary.failed,
+                total=summary.total or total,
                 manifest_path=str(request.manifest_path),
             )
             return SynthesisRunResult(
                 audio_dir=audio_dir,
                 synthesized=summary.synthesized,
                 skipped=summary.skipped,
+                failed=summary.failed,
+                total=summary.total or total,
+                status=status,
             )
 
         workflow_path = request.workflow_path
@@ -458,6 +529,8 @@ class SynthesisController:
 
         synthesized_total = 0
         skipped = done_start
+        failed = 0
+        status = "completed"
         max_passes = max(1, int(request.max_resynthesis_attempts) + 1)
         for pass_index in range(max_passes):
             retry_pass = pass_index > 0
@@ -485,9 +558,15 @@ class SynthesisController:
                 recovery=recover_comfyui if request.auto_start_comfyui else None,
                 max_recovery_retries=request.comfyui_recovery_retries,
                 log_language=request.log_language,
+                cancel_requested=self._cancel_requested,
             )
             synthesized_total += summary.synthesized
             skipped = summary.skipped
+            failed = summary.failed
+            status = self._summary_status(summary)
+            if summary.cancelled:
+                finish_cancelled(synthesized=synthesized_total, skipped=skipped)
+                raise SynthesisCancelled("Synthesis cancelled by user.")
             observer.increment("synthesized_chunks", summary.synthesized)
             observer.increment("failed_chunks", summary.failed)
             observer.increment("skipped_chunks", summary.skipped)
@@ -502,6 +581,7 @@ class SynthesisController:
 
             self._run_quality_gates(manifest, request)
             observer.increment("quality_passes", 1)
+            raise_if_cancelled(synthesized=synthesized_total, skipped=skipped)
             if not request.quality_loop:
                 break
 
@@ -517,6 +597,9 @@ class SynthesisController:
                 request.chapter,
                 failed_only=True,
             )
+            failed = max(failed, len(retry_pending))
+            if failed:
+                status = "review_required"
             if not retry_pending:
                 break
             if pass_index == max_passes - 1:
@@ -536,19 +619,45 @@ class SynthesisController:
                 )
             )
 
-        self._emit_progress(total, total, "0s", 0, 0, 0.0, 0, 0, 0)
+        done = max(0, total - failed)
+        self._emit_progress(
+            done,
+            total,
+            "0s" if failed == 0 else "",
+            0,
+            0,
+            0.0,
+            failed,
+            0,
+            0,
+        )
         observer.finish(
-            "completed",
+            status,
             elapsed_seconds=0.0,
             synthesized=synthesized_total,
             skipped=skipped,
+            failed=failed,
+            total=total,
             manifest_path=str(request.manifest_path),
         )
         return SynthesisRunResult(
             audio_dir=audio_dir,
             synthesized=synthesized_total,
             skipped=skipped,
+            failed=failed,
+            total=total,
+            status=status,
         )
+
+    @staticmethod
+    def _summary_status(summary: Any) -> str:
+        """Return a user-visible synthesis status from synthesis counters."""
+        status = str(getattr(summary, "status", "") or "completed")
+        if status == "cancelled":
+            return status
+        if int(getattr(summary, "failed", 0) or 0) > 0:
+            return "review_required"
+        return status if status else "completed"
 
     def _try_start_comfyui(self, *, restart: bool = False) -> None:
         """Start local ComfyUI when the request allows it and the API is down."""

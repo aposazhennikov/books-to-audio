@@ -13,6 +13,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from string import Formatter
 from typing import Any
 
 from book_normalizer.comfyui.synthesis import (
@@ -29,12 +30,17 @@ from book_normalizer.tts.model_download import tts_model_install_path
 from book_normalizer.tts.voice_mapping import primary_voice_mapping_key
 
 ProgressCallback = Callable[[str], None]
+CancelRequested = Callable[[], bool]
 
 logger = logging.getLogger(__name__)
 
 
 class TTSEngineSynthesisError(RuntimeError):
     """Raised when a local TTS engine cannot synthesize a chunk."""
+
+
+class TTSEngineSynthesisCancelled(TTSEngineSynthesisError):  # noqa: N818
+    """Raised when local-engine synthesis is cancelled cooperatively."""
 
 
 @dataclass(frozen=True)
@@ -45,6 +51,16 @@ class TTSEngineCommand:
     command_template: str
     model_id: str
     model_path: Path
+
+
+@dataclass(frozen=True)
+class TTSEnginePreflightCheck:
+    """One structured readiness check for a local-command TTS engine."""
+
+    name: str
+    ok: bool
+    required: bool
+    message: str
 
 
 @dataclass(frozen=True)
@@ -59,11 +75,15 @@ class TTSEnginePreflight:
     executable_path: str | None
     env_name: str
     install_hint: str
+    model_path: str
+    output_dir: str | None
+    ffmpeg_path: str | None
+    checks: tuple[TTSEnginePreflightCheck, ...]
 
     @property
     def ok(self) -> bool:
-        """Return true when the command executable is discoverable."""
-        return self.executable_path is not None
+        """Return true when all required preflight checks pass."""
+        return all(check.ok or not check.required for check in self.checks)
 
 
 DEFAULT_COMMAND_TEMPLATES: dict[str, str] = {
@@ -117,8 +137,10 @@ def synthesize_engine_manifest(
     clone_config_path: Path | None = None,
     chunk_timeout: float = 300.0,
     progress: ProgressCallback | None = None,
+    cancel_requested: CancelRequested | None = None,
 ) -> SynthesisSummary:
     """Synthesize a v2 manifest with a local non-ComfyUI TTS engine."""
+    is_cancelled = cancel_requested or (lambda: False)
     command = resolve_engine_command(engine_id, models_dir)
     clone_config = _load_clone_config(clone_config_path)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -145,6 +167,14 @@ def synthesize_engine_manifest(
     failed = 0
     manifest_language = str(manifest.get("language") or "ru")
     for chapter_entry, chunk in pending:
+        if is_cancelled():
+            return SynthesisSummary(
+                total=total,
+                synthesized=synthesized,
+                skipped=done_start,
+                failed=failed,
+                status="cancelled",
+            )
         chapter_index = int(chapter_entry.get("chapter_index", 0))
         chunk_index = int(chunk.get("chunk_index", 0))
         voice_label = str(chunk.get("voice_label") or "narrator")
@@ -178,6 +208,15 @@ def synthesize_engine_manifest(
                 voice_label=voice_label,
                 voice_ref=voice_ref,
                 timeout=chunk_timeout,
+                cancel_requested=cancel_requested,
+            )
+        except TTSEngineSynthesisCancelled:
+            return SynthesisSummary(
+                total=total,
+                synthesized=synthesized,
+                skipped=done_start,
+                failed=failed,
+                status="cancelled",
             )
         except Exception as exc:
             chunk["failed"] = True
@@ -236,6 +275,9 @@ def resolve_engine_command(
 def preflight_engine_command(
     engine_id_or_model_id: str,
     models_dir: str | Path | None = None,
+    *,
+    output_dir: str | Path | None = None,
+    clone_config_path: str | Path | None = None,
 ) -> TTSEnginePreflight:
     """Check whether a local-command TTS engine can be launched."""
     command = resolve_engine_command(engine_id_or_model_id, models_dir)
@@ -251,6 +293,15 @@ def preflight_engine_command(
         "Install the engine CLI and make `{executable}` available on PATH, "
         "or set {env_name} to a working command template.",
     )
+    checks = _preflight_checks(
+        command,
+        argv,
+        executable_path,
+        output_dir=Path(output_dir) if output_dir else None,
+        clone_config_path=Path(clone_config_path) if clone_config_path else None,
+    )
+    ffmpeg_check = next((check for check in checks if check.name == "ffmpeg"), None)
+    ffmpeg_path = ffmpeg_check.message if ffmpeg_check and ffmpeg_check.ok else None
     return TTSEnginePreflight(
         engine_id=command.engine_id,
         display_name=display_name,
@@ -260,6 +311,10 @@ def preflight_engine_command(
         executable_path=executable_path,
         env_name=env_name,
         install_hint=hint_template.format(env_name=env_name, executable=executable),
+        model_path=str(command.model_path),
+        output_dir=str(output_dir) if output_dir else None,
+        ffmpeg_path=ffmpeg_path,
+        checks=checks,
     )
 
 
@@ -273,8 +328,12 @@ def run_engine_command(
     voice_label: str,
     voice_ref: dict[str, object],
     timeout: float,
+    cancel_requested: CancelRequested | None = None,
 ) -> None:
     """Render a chunk by invoking the selected engine command."""
+    is_cancelled = cancel_requested or (lambda: False)
+    if is_cancelled():
+        raise TTSEngineSynthesisCancelled("TTS engine synthesis cancelled before launch")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="books-to-audio-tts-") as temp_dir_text:
         temp_dir = Path(temp_dir_text)
@@ -299,6 +358,14 @@ def run_engine_command(
             "ref_text_file": str(ref_text_file),
         }
         argv = _render_command(command.command_template, values)
+        if cancel_requested is not None:
+            _run_engine_command_cancellable(
+                argv,
+                command=command,
+                timeout=timeout,
+                cancel_requested=is_cancelled,
+            )
+            return
         try:
             result = subprocess.run(
                 argv,
@@ -330,6 +397,64 @@ def run_engine_command(
             raise TTSEngineSynthesisError(
                 f"TTS engine command failed with exit code {result.returncode}: {stderr}"
             )
+
+
+def _run_engine_command_cancellable(
+    argv: list[str],
+    *,
+    command: TTSEngineCommand,
+    timeout: float,
+    cancel_requested: CancelRequested,
+) -> None:
+    deadline = time.monotonic() + max(1.0, float(timeout))
+    try:
+        process = subprocess.Popen(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except FileNotFoundError as exc:
+        env_name = _engine_env_name(command.engine_id)
+        hint_template = INSTALL_HINTS.get(
+            command.engine_id,
+            "Install the engine CLI or set {env_name} to a working command template.",
+        )
+        install_hint = hint_template.format(env_name=env_name, executable=argv[0])
+        raise TTSEngineSynthesisError(
+            f"TTS engine command was not found: {argv[0]}. "
+            f"{install_hint} "
+            f"Command template: {command.command_template}"
+        ) from exc
+
+    while process.poll() is None:
+        if cancel_requested():
+            _terminate_process(process)
+            raise TTSEngineSynthesisCancelled("TTS engine synthesis cancelled")
+        if time.monotonic() >= deadline:
+            _terminate_process(process)
+            raise TTSEngineSynthesisError(
+                f"TTS engine command timed out after {timeout:.0f}s: {argv[0]}"
+            )
+        time.sleep(0.2)
+
+    stdout, stderr = process.communicate()
+    if process.returncode != 0:
+        detail = (stderr or stdout or "").strip()
+        raise TTSEngineSynthesisError(
+            f"TTS engine command failed with exit code {process.returncode}: {detail}"
+        )
+
+
+def _terminate_process(process: subprocess.Popen[str]) -> None:
+    process.terminate()
+    try:
+        process.wait(timeout=5.0)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5.0)
 
 
 def _engine_command_template(engine_id: str) -> str:
@@ -391,6 +516,148 @@ def _preflight_values(command: TTSEngineCommand) -> dict[str, str]:
         "ref_text": "<reference_text>",
         "ref_text_file": "<temp_reference_text_file>",
     }
+
+
+def _preflight_checks(
+    command: TTSEngineCommand,
+    argv: list[str],
+    executable_path: str | None,
+    *,
+    output_dir: Path | None,
+    clone_config_path: Path | None,
+) -> tuple[TTSEnginePreflightCheck, ...]:
+    checks = [
+        _check_executable(argv[0], executable_path),
+        _check_template(command.command_template),
+        _check_model_path(command.model_path),
+        _check_output_dir(output_dir),
+        _check_reference_inputs(command.command_template, clone_config_path),
+        _check_ffmpeg(),
+    ]
+    return tuple(checks)
+
+
+def _check_executable(executable: str, executable_path: str | None) -> TTSEnginePreflightCheck:
+    if executable_path:
+        return TTSEnginePreflightCheck(
+            "executable",
+            True,
+            True,
+            executable_path,
+        )
+    return TTSEnginePreflightCheck(
+        "executable",
+        False,
+        True,
+        f"{executable} was not found on PATH.",
+    )
+
+
+def _check_template(template: str) -> TTSEnginePreflightCheck:
+    known = set(_preflight_values(TTSEngineCommand("", "", "", Path())).keys())
+    fields = {
+        field_name
+        for _literal, field_name, _format_spec, _conversion in Formatter().parse(template)
+        if field_name
+    }
+    unknown = sorted(field for field in fields if field not in known)
+    has_text = bool(fields & {"text", "text_file"})
+    has_output = bool(fields & {"output_file", "output_dir", "output_name"})
+    problems: list[str] = []
+    if unknown:
+        problems.append(f"unknown placeholders: {', '.join(unknown)}")
+    if not has_text:
+        problems.append("missing a text placeholder")
+    if not has_output:
+        problems.append("missing an output placeholder")
+    if problems:
+        return TTSEnginePreflightCheck("template", False, True, "; ".join(problems))
+    return TTSEnginePreflightCheck("template", True, True, "Command template placeholders are valid.")
+
+
+def _check_model_path(model_path: Path) -> TTSEnginePreflightCheck:
+    if model_path.exists():
+        return TTSEnginePreflightCheck("model", True, True, str(model_path))
+    return TTSEnginePreflightCheck(
+        "model",
+        False,
+        True,
+        f"Model path is missing: {model_path}",
+    )
+
+
+def _check_output_dir(output_dir: Path | None) -> TTSEnginePreflightCheck:
+    if output_dir is None:
+        return TTSEnginePreflightCheck(
+            "output",
+            True,
+            False,
+            "Output directory will be checked when a run starts.",
+        )
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        probe = output_dir / ".books-to-audio-preflight"
+        probe.write_text("", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+    except OSError as exc:
+        return TTSEnginePreflightCheck(
+            "output",
+            False,
+            True,
+            f"Output directory is not writable: {output_dir} ({exc})",
+        )
+    return TTSEnginePreflightCheck("output", True, True, str(output_dir))
+
+
+def _check_reference_inputs(
+    template: str,
+    clone_config_path: Path | None,
+) -> TTSEnginePreflightCheck:
+    fields = {
+        field_name
+        for _literal, field_name, _format_spec, _conversion in Formatter().parse(template)
+        if field_name
+    }
+    if not fields & {"ref_audio", "ref_text", "ref_text_file"}:
+        return TTSEnginePreflightCheck(
+            "reference",
+            True,
+            False,
+            "Command template does not request reference audio/text.",
+        )
+    if clone_config_path is None:
+        return TTSEnginePreflightCheck(
+            "reference",
+            True,
+            False,
+            "Reference audio/text is optional until a custom voice is selected.",
+        )
+    references = _load_clone_config(clone_config_path)
+    missing: list[str] = []
+    for key, entry in references.items():
+        ref_audio = Path(str(entry.get("ref_audio") or ""))
+        ref_text = str(entry.get("ref_text") or "").strip()
+        if not ref_audio.exists():
+            missing.append(f"{key}: missing reference audio {ref_audio}")
+        if not ref_text:
+            missing.append(f"{key}: missing reference text")
+    if missing:
+        return TTSEnginePreflightCheck("reference", False, True, "; ".join(missing))
+    return TTSEnginePreflightCheck("reference", True, True, str(clone_config_path))
+
+
+def _check_ffmpeg() -> TTSEnginePreflightCheck:
+    configured = configured_ffmpeg_bin()
+    candidate = str(configured or "ffmpeg")
+    resolved = str(configured) if configured and Path(configured).exists() else shutil.which(candidate)
+    if resolved:
+        return TTSEnginePreflightCheck("ffmpeg", True, True, resolved)
+    return TTSEnginePreflightCheck(
+        "ffmpeg",
+        False,
+        True,
+        f"ffmpeg was not found: {candidate}",
+    )
 
 
 def _load_clone_config(path: Path | None) -> dict[str, dict[str, object]]:

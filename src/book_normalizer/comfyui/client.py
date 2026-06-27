@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,10 @@ _POLL_INTERVAL = 2.0
 
 class ComfyUIError(Exception):
     """Raised when a ComfyUI API call returns an unexpected response."""
+
+
+class ComfyUICancelled(ComfyUIError):
+    """Raised when a ComfyUI wait/download operation is cancelled cooperatively."""
 
 
 class ComfyUIClient:
@@ -106,6 +111,7 @@ class ComfyUIClient:
         self,
         prompt_id: str,
         timeout: float = 300.0,
+        cancel_requested: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
         """Block until the prompt finishes and return the first output audio info.
 
@@ -118,8 +124,11 @@ class ComfyUIClient:
         Raises:
             ComfyUIError: On timeout or if ComfyUI reports an execution error.
         """
+        is_cancelled = cancel_requested or (lambda: False)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
+            if is_cancelled():
+                raise ComfyUICancelled(f"ComfyUI prompt {prompt_id} cancelled")
             history = self.get_history(prompt_id)
             if not history:
                 time.sleep(_POLL_INTERVAL)
@@ -157,6 +166,7 @@ class ComfyUIClient:
         self,
         prompt_id: str,
         timeout: float = 300.0,
+        cancel_requested: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
         """Block until a prompt finishes, even when it has no audio output.
 
@@ -165,8 +175,11 @@ class ComfyUIClient:
         audio. This method waits for the history entry to finish successfully
         and returns the full history payload.
         """
+        is_cancelled = cancel_requested or (lambda: False)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
+            if is_cancelled():
+                raise ComfyUICancelled(f"ComfyUI prompt {prompt_id} cancelled")
             history = self.get_history(prompt_id)
             if not history:
                 time.sleep(_POLL_INTERVAL)
@@ -237,6 +250,7 @@ class ComfyUIClient:
         workflow: dict[str, Any],
         output_path: Path,
         timeout: float = 300.0,
+        cancel_requested: Callable[[], bool] | None = None,
     ) -> Path:
         """Queue a workflow, wait for it, and download the resulting audio.
 
@@ -251,8 +265,17 @@ class ComfyUIClient:
         Returns:
             Path to the downloaded audio file.
         """
+        is_cancelled = cancel_requested or (lambda: False)
+        if is_cancelled():
+            raise ComfyUICancelled("ComfyUI synthesis cancelled before queueing prompt")
         prompt_id = self.queue_prompt(workflow)
-        audio_info = self.wait_for_completion(prompt_id, timeout=timeout)
+        audio_info = self.wait_for_completion(
+            prompt_id,
+            timeout=timeout,
+            cancel_requested=is_cancelled,
+        )
+        if is_cancelled():
+            raise ComfyUICancelled(f"ComfyUI prompt {prompt_id} cancelled before download")
         downloaded = self.download_audio(
             audio_info["filename"],
             audio_info["subfolder"],

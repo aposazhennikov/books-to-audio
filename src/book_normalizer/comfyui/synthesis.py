@@ -16,7 +16,7 @@ from book_normalizer.chunking.manifest_v2 import (
     chunk_is_excluded,
     ensure_v2_manifest,
 )
-from book_normalizer.comfyui.client import ComfyUIClient, ComfyUIError
+from book_normalizer.comfyui.client import ComfyUICancelled, ComfyUIClient, ComfyUIError
 from book_normalizer.comfyui.generation_options import (
     GenerationOptions,
     generation_options_from_mapping,
@@ -29,6 +29,7 @@ from book_normalizer.tts.voice_mapping import voice_mapping_candidates
 
 ProgressCallback = Callable[[str], None]
 RecoveryCallback = Callable[[ComfyUIError, int], ComfyUIClient | None]
+CancelRequested = Callable[[], bool]
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,12 @@ class SynthesisSummary:
     synthesized: int
     skipped: int
     failed: int
+    status: str = "completed"
+
+    @property
+    def cancelled(self) -> bool:
+        """Return true when synthesis stopped by cooperative cancellation."""
+        return self.status == "cancelled"
 
 
 _LOG_LANGS = {"en", "ru", "zh", "kk", "uz"}
@@ -438,8 +445,10 @@ def synthesize_manifest(
     recovery: RecoveryCallback | None = None,
     max_recovery_retries: int = 0,
     log_language: str = "en",
+    cancel_requested: CancelRequested | None = None,
 ) -> SynthesisSummary:
     """Synthesize all pending chunks and update the manifest after each chunk."""
+    is_cancelled = cancel_requested or (lambda: False)
     out_dir.mkdir(parents=True, exist_ok=True)
     all_pairs = [
         pair for pair in iter_manifest_chunks(manifest, chapter_filter)
@@ -471,6 +480,14 @@ def synthesize_manifest(
     base_generation_options = generation_options_from_mapping(generation_options)
 
     for chapter_entry, chunk in pending:
+        if is_cancelled():
+            return SynthesisSummary(
+                total=total,
+                synthesized=synthesized_now,
+                skipped=skipped,
+                failed=failed,
+                status="cancelled",
+            )
         chapter_index = int(chapter_entry.get("chapter_index", 0))
         chunk_index = int(chunk.get("chunk_index", 0))
         voice_label = str(chunk.get("voice_label") or "narrator")
@@ -544,13 +561,26 @@ def synthesize_manifest(
                     director=chunk.get("director") if isinstance(chunk.get("director"), dict) else None,
                     resynthesis_attempt=attempt,
                 )
-                client.synthesize_chunk(workflow, output_path, timeout=chunk_timeout)
+                client.synthesize_chunk(
+                    workflow,
+                    output_path,
+                    timeout=chunk_timeout,
+                    cancel_requested=is_cancelled,
+                )
                 try:
                     smoothing = smooth_wav_silence(output_path)
                 except (OSError, ValueError, wave.Error, EOFError):
                     smoothing = None
                 chunk_done = True
                 break
+            except ComfyUICancelled:
+                return SynthesisSummary(
+                    total=total,
+                    synthesized=synthesized_now,
+                    skipped=skipped,
+                    failed=failed,
+                    status="cancelled",
+                )
             except ComfyUIError as exc:
                 chunk["failed"] = True
                 chunk["error"] = str(exc)

@@ -6,9 +6,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from book_normalizer.gui.i18n_catalog import TRANSLATIONS
+from book_normalizer.gui.i18n_catalog import (
+    TRANSLATIONS,
+    TranslationMergeReport,
+    enrich_translation_catalog,
+)
 
 _LANG: str = "ru"
+TRANSLATION_RUNTIME_REPORTS: list[TranslationMergeReport] = []
 
 SUPPORTED_LANGUAGES: tuple[tuple[str, str], ...] = (
     ("ru", "RU  Русский"),
@@ -181,8 +186,15 @@ def _install_extra_translations() -> None:
             raise RuntimeError(
                 f"Locale '{lang}' is out of sync: extra={sorted(extra)}"
             )
-        for key, text in catalog.items():
-            TRANSLATIONS[key][lang] = text
+        updates = {key: {lang: text} for key, text in catalog.items()}
+        TRANSLATION_RUNTIME_REPORTS.append(
+            enrich_translation_catalog(
+                TRANSLATIONS,
+                updates,
+                source=f"i18n_extra.{lang}",
+                allow_overrides={(key, lang) for key in updates},
+            )
+        )
 
     polished = {
         "app.title": {
@@ -557,11 +569,20 @@ def _install_extra_translations() -> None:
         },
         "synth.chunks_word": {"zh": "分块"},
     }
-    for key, values in polished.items():
-        TRANSLATIONS[key].update(values)
+    TRANSLATION_RUNTIME_REPORTS.append(
+        enrich_translation_catalog(
+            TRANSLATIONS,
+            polished,
+            source="i18n.polished",
+            allow_overrides={
+                (key, locale)
+                for key, values in polished.items()
+                for locale in values
+            },
+        )
+    )
 
-    TRANSLATIONS.update(
-        {
+    compact_runtime_updates = {
             "voice.select_all": {
                 "en": "☑ All",
                 "ru": "☑ Все",
@@ -794,10 +815,20 @@ def _install_extra_translations() -> None:
                 "uz": "{sec} s",
             },
         }
+    TRANSLATION_RUNTIME_REPORTS.append(
+        enrich_translation_catalog(
+            TRANSLATIONS,
+            compact_runtime_updates,
+            source="i18n.compact_runtime_updates",
+            allow_overrides={
+                (key, locale)
+                for key, values in compact_runtime_updates.items()
+                for locale in values
+            },
+        )
     )
 
-    TRANSLATIONS.update(
-        {
+    asr_runtime_base_updates = {
             "synth.asr_title": {
                 "en": "ASR quality gate",
                 "ru": "ASR-проверка качества",
@@ -998,6 +1029,17 @@ def _install_extra_translations() -> None:
                 ),
             },
         }
+    TRANSLATION_RUNTIME_REPORTS.append(
+        enrich_translation_catalog(
+            TRANSLATIONS,
+            asr_runtime_base_updates,
+            source="i18n.asr_runtime_base_updates",
+            allow_overrides={
+                (key, locale)
+                for key, values in asr_runtime_base_updates.items()
+                for locale in values
+            },
+        )
     )
 
     localized_runtime_updates = {
@@ -1300,16 +1342,36 @@ def _install_extra_translations() -> None:
             "uz": "ASR belgilaridagi birinchi failed, warning yoki error bo'lakka o'tadi, shunda tinglash, matnni tekshirish va qo'lda qayta urinish mumkin.",
         },
     }
-    for key, values in localized_runtime_updates.items():
-        if key in TRANSLATIONS:
-            TRANSLATIONS[key].update(values)
-        else:
-            TRANSLATIONS[key] = values
+    TRANSLATION_RUNTIME_REPORTS.append(
+        enrich_translation_catalog(
+            TRANSLATIONS,
+            localized_runtime_updates,
+            source="i18n.localized_runtime_updates",
+            allow_overrides={
+                (key, locale)
+                for key, values in localized_runtime_updates.items()
+                for locale in values
+            },
+        )
+    )
 
     for key, entry in TRANSLATIONS.items():
         if key.startswith("synth.asr_") or key == "synth.compact_asr_run_now":
-            for code in ("zh", "kk", "uz"):
-                entry.setdefault(code, entry["en"])
+            fallback_updates = {
+                key: {
+                    code: entry["en"]
+                    for code in ("zh", "kk", "uz")
+                    if code not in entry
+                }
+            }
+            if fallback_updates[key]:
+                TRANSLATION_RUNTIME_REPORTS.append(
+                    enrich_translation_catalog(
+                        TRANSLATIONS,
+                        fallback_updates,
+                        source="i18n.asr_fallbacks",
+                    )
+                )
 
 
 _install_extra_translations()

@@ -26,6 +26,14 @@ The project includes:
 
 Typical output is a project folder in `output/` with normalized text, chapter files, Qwen/LLM chunks, `chunks_manifest_v2.json`, generated audio chunks, QA reports, and assembled chapter audio.
 
+## TODO / Product Backlog
+
+- Split oversized GUI and processing modules into smaller, workflow-focused units. Current hotspots include `src/book_normalizer/gui/pages/synthesis_page.py`, `src/book_normalizer/chunking/llm_segmenter.py`, `src/book_normalizer/gui/widgets/voice_table.py`, and `src/book_normalizer/loaders/pdf_loader.py`; the goal is to make UI flows, business rules, and test coverage easier to reason about.
+- Tighten synthesis UX so visible controls match the runnable synthesis backends: ComfyUI/Qwen3-TTS and local-command engines should surface their actual prerequisites and run status, and legacy/ignored options such as resume, compile, and SageAttention should not look like they change the current run when they do not.
+- Add stronger production-readiness gates before assembly/package actions. The GUI should show a clear readiness summary and block or explicitly confirm packaging when QA, ASR, artifact checks, or manual listening review still require attention.
+- Replace automatic-pipeline calls into page-private methods with a small workflow orchestration API. This should make unattended runs easier to test, safer to resume, and less likely to drift when individual page internals change.
+- Improve assembly and production result reporting so "no audio", skipped chapters, missing files, review status, and final package location are structured statuses rather than inferred from user-facing text.
+
 ## Contents
 
 - [English](#english)

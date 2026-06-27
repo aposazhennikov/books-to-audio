@@ -85,7 +85,14 @@ def test_audiobook_package_writes_metadata_concat_and_commands(tmp_path: Path) -
     assert report["author"] == "Ada Author"
     assert len(report["chapters"]) == 2
     assert len(report["commands"]) == 3
+    assert report["loudness_target"] == -18.0
+    assert report["package_qa"]["status"] == "passed"
+    assert (tmp_path / "package" / "package_qa_report.json").exists()
+    checksums = (tmp_path / "package" / "checksums.sha256").read_text(encoding="utf-8")
+    assert "audiobook_package_report.json" in checksums
+    assert any("loudnorm=I=-18" in " ".join(command) for command in report["commands"])
     assert "[CHAPTER]" in ffmetadata
+    assert "genre=Audiobook" in ffmetadata
     assert "title=Arrival" in ffmetadata
     assert "chapter_001_mastered.wav" in concat
     assert result.m4b_path.name == "Package Test.m4b"  # type: ignore[union-attr]
@@ -135,3 +142,23 @@ def test_package_audiobook_cli_dry_run_writes_report(tmp_path: Path) -> None:
     assert report["dry_run"] is True
     assert report["m4b_path"].endswith("Package Test.m4b")
     assert len(report["commands"]) == 1
+
+
+def test_audiobook_package_rejects_invalid_cover(tmp_path: Path) -> None:
+    chapter_dir = tmp_path / "mastered"
+    _write_wav(chapter_dir / "chapter_001_mastered.wav")
+    manifest = _manifest()
+    manifest["chapters"] = manifest["chapters"][:1]
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    cover_path = tmp_path / "cover.txt"
+    cover_path.write_text("not an image", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid cover image"):
+        build_audiobook_package(
+            manifest_path,
+            chapter_audio_dir=chapter_dir,
+            output_dir=tmp_path / "package",
+            cover_path=cover_path,
+            dry_run=True,
+        )

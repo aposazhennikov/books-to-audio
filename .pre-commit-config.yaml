@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: books-to-audio-secret-scan
+        name: Books to Audio secret scan
+        entry: python scripts/secret_scan.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]

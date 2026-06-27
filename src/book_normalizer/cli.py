@@ -354,6 +354,35 @@ def doctor_command(
         click.echo(f"[{check.status.upper():4}] {check.name}: {check.detail}")
 
 
+
+@main.command(name="support-bundle")
+@click.argument("source_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--out",
+    "output_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output zip path. Defaults to support_bundle_redacted.zip in SOURCE_DIR.",
+)
+@click.option("--no-logs", is_flag=True, default=False, help="Do not include .log/.txt diagnostic files.")
+@click.option("--no-json", is_flag=True, default=False, help="Do not include JSON diagnostic files.")
+def support_bundle_command(
+    source_dir: Path,
+    output_path: Path | None,
+    no_logs: bool,
+    no_json: bool,
+) -> None:
+    """Create a redacted support bundle without book text or private paths."""
+    from book_normalizer.diagnostics.support_bundle import create_support_bundle
+
+    result = create_support_bundle(
+        source_dir,
+        output_path=output_path,
+        include_logs=not no_logs,
+        include_json=not no_json,
+    )
+    click.echo(f"Support bundle: {result.bundle_path}")
+    click.echo(f"Redacted files: {len(result.files)}")
 @main.command(name="install-tts-models")
 @click.option(
     "--models-dir",
@@ -928,6 +957,13 @@ def production_qa_command(
 @click.option("--cover", "cover_path", type=click.Path(exists=True, path_type=Path), default=None, help="Cover image.")
 @click.option("--bitrate", default="192k", show_default=True, help="Audio bitrate for MP3/M4B exports.")
 @click.option(
+    "--loudness-target",
+    type=float,
+    default=-18.0,
+    show_default=True,
+    help="Integrated loudness target in LUFS.",
+)
+@click.option(
     "--format",
     "package_format",
     type=click.Choice(["both", "m4b", "mp3", "metadata-only"]),
@@ -945,6 +981,7 @@ def package_audiobook_command(
     author: str,
     cover_path: Path | None,
     bitrate: str,
+    loudness_target: float,
     package_format: str,
     dry_run: bool,
     allow_review: bool,
@@ -966,6 +1003,7 @@ def package_audiobook_command(
             author=author,
             cover_path=cover_path,
             bitrate=bitrate,
+            loudness_target=loudness_target,
             make_m4b=make_m4b,
             make_mp3=make_mp3,
             require_passed_qa=not allow_review,
@@ -997,6 +1035,7 @@ def package_audiobook_command(
 @click.option("--author", default="", help="Audiobook author/artist metadata.")
 @click.option("--cover", "cover_path", type=click.Path(exists=True, path_type=Path), default=None)
 @click.option("--bitrate", default="192k", show_default=True)
+@click.option("--loudness-target", type=float, default=-18.0, show_default=True)
 @click.option("--dry-run-package/--run-ffmpeg-package", default=True, show_default=True)
 @click.option("--allow-review-package", is_flag=True, default=False)
 def production_preflight_command(
@@ -1011,6 +1050,7 @@ def production_preflight_command(
     author: str,
     cover_path: Path | None,
     bitrate: str,
+    loudness_target: float,
     dry_run_package: bool,
     allow_review_package: bool,
 ) -> None:
@@ -1030,6 +1070,7 @@ def production_preflight_command(
             author=author,
             cover_path=cover_path,
             bitrate=bitrate,
+            loudness_target=loudness_target,
             dry_run_package=dry_run_package,
             allow_review_package=allow_review_package,
         )

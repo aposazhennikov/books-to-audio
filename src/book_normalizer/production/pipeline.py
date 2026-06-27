@@ -86,6 +86,7 @@ def run_production_preflight(
     author: str = "",
     cover_path: Path | None = None,
     bitrate: str = "192k",
+    loudness_target: float = -18.0,
     dry_run_package: bool = True,
     allow_review_package: bool = False,
 ) -> ProductionPreflightResult:
@@ -137,6 +138,7 @@ def run_production_preflight(
             author=author,
             cover_path=cover_path,
             bitrate=bitrate,
+            loudness_target=loudness_target,
             require_passed_qa=not allow_review_package,
             dry_run=dry_run_package,
         )

@@ -310,6 +310,7 @@ normalize-book pipeline books/mybook.pdf \
   --llm-normalize \
   --synthesize \
   --workflow comfyui_workflows/qwen3_tts_template.json \
+  --quality-loop \
   --assemble
 ```
 
@@ -322,6 +323,32 @@ python scripts/assemble_chapter.py \
   --all
 ```
 
+
+Prepare production metadata, QA, mastering, and the final audiobook package:
+
+```bash
+normalize-book production-preflight output/mybook_pdf/chunks_manifest_v2.json --package
+normalize-book master output/mybook_pdf/chunks_manifest_v2.json
+normalize-book package-audiobook output/mybook_pdf/chunks_manifest_v2.json \
+  --chapter-audio-dir output/mybook_pdf/mastered \
+  --cover books/cover.jpg \
+  --format both
+```
+
+Final package artifacts include M4B chapter metadata, chapter MP3 exports, cover validation, loudness normalization, package QA, and `checksums.sha256`.
+
+### Operator Guides
+
+- [First successful audiobook in 30 minutes, production checklist, low VRAM, failed chunks](docs/operator-guide.md)
+- [Security, private local folders, secret scan, redacted support bundle](docs/security-privacy.md)
+
+Privacy reminder: `books/`, `output/`, and `data/` are private local folders. They can contain copyrighted books, generated audio, manifests, logs, runtime paths, and user memory. They are ignored by git and should not be committed or sent to support directly.
+
+Create a redacted support bundle instead:
+
+```bash
+normalize-book support-bundle output/mybook_pdf
+```
 ### Output Structure
 
 ```text
@@ -554,6 +581,7 @@ normalize-book pipeline books/mybook.pdf \
   --llm-normalize \
   --synthesize \
   --workflow comfyui_workflows/qwen3_tts_template.json \
+  --quality-loop \
   --assemble
 ```
 

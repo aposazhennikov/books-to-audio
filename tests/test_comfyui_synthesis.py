@@ -83,7 +83,8 @@ def test_synthesize_manifest_updates_successful_chunk(tmp_path: Path) -> None:
     assert summary.synthesized == 1
     assert client.calls == 1
     assert chunk["synthesized"] is True
-    assert Path(chunk["audio_file"]).exists()
+    assert not Path(chunk["audio_file"]).is_absolute()
+    assert (manifest_path.parent / chunk["audio_file"]).exists()
     assert any("[narrator/Narrator - Calm/calm]" in line for line in lines)
     assert "PROGRESS 1/1" in lines
 
@@ -299,7 +300,35 @@ def test_synthesize_manifest_retries_synthesized_chunk_when_audio_is_missing(
 
     assert summary.synthesized == 1
     assert client.calls == 1
-    assert Path(chunk["audio_file"]).exists()
+    assert (manifest_path.parent / chunk["audio_file"]).exists()
+
+
+def test_synthesize_manifest_resume_resolves_relative_audio_from_manifest_dir(
+    tmp_path: Path,
+) -> None:
+    project_dir = tmp_path / "renamed_project"
+    audio_path = project_dir / "audio_chunks" / "chapter_001" / "chunk_001_narrator.wav"
+    audio_path.parent.mkdir(parents=True)
+    audio_path.write_bytes(b"wav")
+    manifest = _manifest()
+    chunk = manifest["chapters"][0]["chunks"][0]
+    chunk["synthesized"] = True
+    chunk["audio_file"] = "audio_chunks/chapter_001/chunk_001_narrator.wav"
+    manifest_path = project_dir / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    client = _Client()
+
+    summary = synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=client,  # type: ignore[arg-type]
+        builder=_Builder(),  # type: ignore[arg-type]
+        out_dir=project_dir / "audio_chunks",
+    )
+
+    assert summary.synthesized == 0
+    assert summary.skipped == 1
+    assert client.calls == 0
 
 
 def test_synthesize_manifest_skips_deleted_chunks(tmp_path: Path) -> None:

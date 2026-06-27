@@ -295,13 +295,14 @@ def collect_pending_chunks(
     chapter_filter: int | None = None,
     *,
     failed_only: bool = False,
+    manifest_path: Path | None = None,
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     """Return chunk pairs that should be synthesized."""
     pending: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for chapter, chunk in iter_manifest_chunks(manifest, chapter_filter):
         if chunk_is_excluded(chunk):
             continue
-        if _chunk_is_done(chunk):
+        if _chunk_is_done(chunk, manifest_path):
             continue
         if failed_only and not chunk.get("failed", False):
             continue
@@ -309,23 +310,47 @@ def collect_pending_chunks(
     return pending
 
 
-def count_done_chunks(manifest: dict[str, Any], chapter_filter: int | None = None) -> int:
+def count_done_chunks(
+    manifest: dict[str, Any],
+    chapter_filter: int | None = None,
+    *,
+    manifest_path: Path | None = None,
+) -> int:
     """Count synthesized chunks matching an optional chapter filter."""
     return sum(
         1
         for _chapter, chunk in iter_manifest_chunks(manifest, chapter_filter)
-        if not chunk_is_excluded(chunk) and _chunk_is_done(chunk)
+        if not chunk_is_excluded(chunk) and _chunk_is_done(chunk, manifest_path)
     )
 
 
-def _chunk_is_done(chunk: dict[str, Any]) -> bool:
+def _chunk_is_done(chunk: dict[str, Any], manifest_path: Path | None = None) -> bool:
     """Return True when a chunk has no work left for synthesis."""
     if not chunk.get("synthesized", False):
         return False
     if not _chunk_text(chunk).strip():
         return True
     audio_file = str(chunk.get("audio_file") or "")
-    return bool(audio_file) and Path(audio_file).exists()
+    audio_path = _resolve_manifest_audio_path(audio_file, manifest_path)
+    return audio_path is not None and audio_path.exists()
+
+
+def _resolve_manifest_audio_path(audio_file: str, manifest_path: Path | None) -> Path | None:
+    """Resolve an audio_file value stored in a chunk manifest."""
+    if not audio_file:
+        return None
+    path = Path(audio_file)
+    if not path.is_absolute() and manifest_path is not None:
+        path = manifest_path.parent / path
+    return path
+
+
+def _manifest_audio_file(output_path: Path, manifest_path: Path) -> str:
+    """Return the portable path value to store in a manifest chunk."""
+    try:
+        return output_path.resolve().relative_to(manifest_path.parent.resolve()).as_posix()
+    except ValueError:
+        return str(output_path)
 
 
 def _chunk_text(chunk: dict[str, Any]) -> str:
@@ -415,9 +440,14 @@ def synthesize_manifest(
         pair for pair in iter_manifest_chunks(manifest, chapter_filter)
         if not chunk_is_excluded(pair[1])
     ]
-    pending = collect_pending_chunks(manifest, chapter_filter, failed_only=failed_only)
+    pending = collect_pending_chunks(
+        manifest,
+        chapter_filter,
+        failed_only=failed_only,
+        manifest_path=manifest_path,
+    )
     total = len(all_pairs)
-    done_start = count_done_chunks(manifest, chapter_filter)
+    done_start = count_done_chunks(manifest, chapter_filter, manifest_path=manifest_path)
     skipped = done_start
     failed = 0
 
@@ -550,7 +580,7 @@ def synthesize_manifest(
         chunk["synthesized"] = True
         chunk["failed"] = False
         chunk["error"] = ""
-        chunk["audio_file"] = str(output_path)
+        chunk["audio_file"] = _manifest_audio_file(output_path, manifest_path)
         chunk["last_generation_options"] = effective_options
         if smoothing is not None:
             chunk["audio_postprocess"] = {"silence_smoothing": smoothing.to_dict()}

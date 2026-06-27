@@ -30,6 +30,7 @@ from book_normalizer.loaders.pdf_ocr_engine import (
 )
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 from book_normalizer.normalization.cleanup import remove_repeated_headers
+from book_normalizer.utils.text import repair_utf8_mojibake
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ class PdfLoader(BaseLoader):
                 "PyMuPDF is required for PDF loading. Install it: pip install PyMuPDF"
             )
 
-        text = self._extract_text(resolved)
+        text = repair_utf8_mojibake(self._extract_text(resolved))
         logger.info("Extracted %d characters from '%s'", len(text), resolved.name)
 
         # Remove repeated headers/footers before splitting into paragraphs.
@@ -1411,6 +1412,7 @@ def extract_pdf_with_ocr_mode(
             logger.debug("Structured PDF extraction failed, falling back to PyMuPDF: %s", exc)
             native_text = loader._extract_text(resolved)
 
+    native_text = repair_utf8_mojibake(native_text)
     native_text = remove_repeated_headers(native_text, min_occurrences=3)
     native_text = _repair_pdf_drop_caps(native_text)
     native_variant = PdfTextVariant(
@@ -1502,6 +1504,7 @@ def extract_pdf_with_ocr_mode(
                 ocr_text = fallback_text
                 ocr_structure = None
 
+        ocr_text = repair_utf8_mojibake(ocr_text)
         ocr_text = remove_repeated_headers(ocr_text, min_occurrences=3)
         ocr_text = _repair_pdf_drop_caps(ocr_text)
         ocr_variant = PdfTextVariant(

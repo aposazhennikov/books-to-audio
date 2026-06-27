@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from book_normalizer.chaptering.detector import ChapterDetector
 from book_normalizer.config import OcrMode
 from book_normalizer.loaders.pdf_loader import (
     PdfLoader,
@@ -107,6 +108,58 @@ class TestPdfLoader:
         assert book.metadata.source_format == "pdf"
         assert len(book.chapters[0].paragraphs) == 2
         assert book.chapters[0].paragraphs[0].raw_text == "Первый абзац."
+
+    @patch("book_normalizer.loaders.pdf_loader.PdfLoader._extract_text")
+    def test_load_repairs_utf8_mojibake_before_paragraph_split(
+        self,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        readable = "Б. М. Моносов\n\nГлава первая\n\nСергей сидел за столом."
+        mock_extract.return_value = readable.encode("utf-8").decode("latin1")
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+        book = PdfLoader().load(pdf_file)
+        paragraphs = [p.raw_text for p in book.chapters[0].paragraphs]
+
+        assert paragraphs == [
+            "Б. М. Моносов",
+            "Глава первая",
+            "Сергей сидел за столом.",
+        ]
+
+    @patch("book_normalizer.loaders.pdf_loader.PdfLoader._extract_text")
+    def test_load_repairs_mojibake_so_chapter_detector_finds_works(
+        self,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        readable = (
+            "Книга первая\n\n"
+            "Глава первая\n\n"
+            "Текст первой книги.\n\n"
+            "Эпилог\n\n"
+            "Финал первой книги.\n\n"
+            "Книга вторая\n\n"
+            "Глава первая\n\n"
+            "Текст второй книги."
+        )
+        mock_extract.return_value = readable.encode("utf-8").decode("latin1")
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+        book = PdfLoader().load(pdf_file)
+        detected = ChapterDetector().detect_and_split(book)
+
+        assert detected.metadata.extra["structure"]["work_count"] == 2
+        assert len(detected.chapters) == 3
+        assert [chapter.work_title for chapter in detected.chapters] == [
+            "Книга первая",
+            "Книга первая",
+            "Книга вторая",
+        ]
+        assert detected.chapters[1].title == "Книга первая - Эпилог"
 
     @patch("book_normalizer.loaders.pdf_loader.PdfLoader._extract_text")
     def test_audit_trail(self, mock_extract: MagicMock, tmp_path: Path) -> None:

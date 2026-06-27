@@ -965,6 +965,8 @@ def info_command(input_path: Path) -> None:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
+    detected_book = ChapterDetector().detect_and_split(book.model_copy(deep=True))
+
     total_paras = sum(len(ch.paragraphs) for ch in book.chapters)
     total_chars = len(book.raw_text)
 
@@ -972,7 +974,19 @@ def info_command(input_path: Path) -> None:
     click.echo(f"Format:     {book.metadata.source_format}")
     click.echo(f"Title:      {book.metadata.title}")
     click.echo(f"Author:     {book.metadata.author}")
-    click.echo(f"Chapters:   {len(book.chapters)}")
+    click.echo(f"Chapters:   {len(detected_book.chapters)}")
+    if len(book.chapters) != len(detected_book.chapters):
+        click.echo(f"Loaded as:  {len(book.chapters)} synthetic chapter(s)")
+    structure = detected_book.metadata.extra.get("structure", {})
+    if structure:
+        click.echo(f"Works:      {structure.get('work_count', 1)}")
+        work_titles = structure.get("work_titles") or []
+        if work_titles:
+            click.echo("Work titles:")
+            for title in work_titles[:10]:
+                click.echo(f"  - {title}")
+            if len(work_titles) > 10:
+                click.echo(f"  ... {len(work_titles) - 10} more")
     click.echo(f"Paragraphs: {total_paras}")
     click.echo(f"Characters: {total_chars:,}")
 

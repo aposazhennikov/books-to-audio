@@ -13,6 +13,7 @@ from typing import Any
 from book_normalizer.chunking.manifest_v2 import chunk_is_excluded, ensure_v2_manifest
 from book_normalizer.runtime_paths import configured_ffmpeg_bin
 from book_normalizer.tts.compatible_audio import export_compatible_mp3
+from book_normalizer.tts.manifest_audio_paths import ManifestAudioPathError, resolve_manifest_audio_path
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,14 @@ def assemble_from_manifest(
         messages: list[str] = []
         missing = 0
         for chunk in chunks:
-            audio_path = _resolve_audio_path(str(chunk["audio_file"]), manifest_path)
+            try:
+                audio_path = resolve_manifest_audio_path(str(chunk["audio_file"]), manifest_path)
+            except ManifestAudioPathError as exc:
+                chunk_index = int(chunk.get("chunk_index", 0)) + 1
+                raise ValueError(
+                    f"Unsafe manifest audio_file for chapter {chapter_number:03d} "
+                    f"chunk {chunk_index:03d}: {exc}"
+                ) from exc
             if not audio_path.exists():
                 missing += 1
                 message = f"Missing audio file {audio_path}"
@@ -159,13 +167,6 @@ def _export_compatible_chapter(out_path: Path, messages: list[str]) -> Path | No
 def _manifest_path_from_record(manifest: dict[str, Any]) -> Path | None:
     raw_path = str(manifest.get("_manifest_path") or "")
     return Path(raw_path) if raw_path else None
-
-
-def _resolve_audio_path(audio_file: str, manifest_path: Path | None) -> Path:
-    path = Path(audio_file)
-    if not path.is_absolute() and manifest_path is not None:
-        path = manifest_path.parent / path
-    return path
 
 
 def assemble_wav_files(

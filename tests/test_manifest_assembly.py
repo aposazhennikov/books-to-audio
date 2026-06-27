@@ -6,6 +6,8 @@ import json
 import wave
 from pathlib import Path
 
+import pytest
+
 from book_normalizer.tts.manifest_assembly import assemble_from_manifest, load_manifest_v2
 
 
@@ -41,6 +43,7 @@ def test_assemble_from_manifest_preserves_manifest_order(tmp_path: Path) -> None
         tmp_path,
         pause_same_voice_ms=0,
         pause_voice_change_ms=100,
+        manifest_path=tmp_path / "chunks_manifest_v2.json",
     )
 
     assert results[0].chunks == 2
@@ -107,7 +110,12 @@ def test_assemble_from_manifest_skips_missing_files_when_not_strict(tmp_path: Pa
         ],
     }
 
-    results = assemble_from_manifest(manifest, tmp_path, strict_missing=False)
+    results = assemble_from_manifest(
+        manifest,
+        tmp_path,
+        strict_missing=False,
+        manifest_path=tmp_path / "chunks_manifest_v2.json",
+    )
 
     assert results[0].skipped is True
     assert results[0].missing == 1
@@ -145,7 +153,12 @@ def test_assemble_from_manifest_skips_excluded_chunks_even_with_stale_audio(
         ],
     }
 
-    results = assemble_from_manifest(manifest, tmp_path, pause_same_voice_ms=0)
+    results = assemble_from_manifest(
+        manifest,
+        tmp_path,
+        pause_same_voice_ms=0,
+        manifest_path=tmp_path / "chunks_manifest_v2.json",
+    )
 
     assert results[0].chunks == 1
     with wave.open(str(tmp_path / "chapter_001.wav"), "rb") as wav:
@@ -177,7 +190,38 @@ def test_assemble_from_manifest_writes_compatible_chapter_sidecar(
 
     monkeypatch.setattr("book_normalizer.tts.manifest_assembly.export_compatible_mp3", fake_export)
 
-    results = assemble_from_manifest(manifest, tmp_path, pause_same_voice_ms=0)
+    results = assemble_from_manifest(
+        manifest,
+        tmp_path,
+        pause_same_voice_ms=0,
+        manifest_path=tmp_path / "chunks_manifest_v2.json",
+    )
 
     assert results[0].compatible_output_path == tmp_path / "chapter_001.MP3"
     assert (tmp_path / "chapter_001.MP3").read_bytes() == b"mp3"
+
+
+def test_assemble_from_manifest_fails_on_audio_path_escape(tmp_path: Path) -> None:
+    manifest = {
+        "version": 2,
+        "chapters": [
+            {
+                "chapter_index": 0,
+                "chunks": [
+                    {
+                        "chunk_index": 0,
+                        "voice": "narrator",
+                        "synthesized": True,
+                        "audio_file": "../outside.wav",
+                    },
+                ],
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="Unsafe manifest audio_file"):
+        assemble_from_manifest(
+            manifest,
+            tmp_path,
+            manifest_path=tmp_path / "book" / "chunks_manifest_v2.json",
+        )

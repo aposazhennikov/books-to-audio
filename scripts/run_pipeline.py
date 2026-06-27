@@ -493,7 +493,7 @@ def run_stage5_asr_qa(
     report_path = manifest_path.with_name("asr_qa_report.json")
 
     print("Audio QA: checking WAV files before ASR...")
-    audio_result = run_audio_qa(manifest)
+    audio_result = run_audio_qa(manifest, manifest_path=manifest_path)
     print(
         f"Audio QA: checked {audio_result.checked_files}/{audio_result.synthesized_chunks} "
         f"synthesized chunks, {len(audio_result.issues)} issue(s)."

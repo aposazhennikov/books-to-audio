@@ -191,12 +191,17 @@ def run_live_tts_smoke(
             chunk_timeout=chunk_timeout,
             progress=progress_lines.append,
         )
-        qa = run_audio_qa(manifest, min_seconds_per_100_chars=0.1)
+        qa = run_audio_qa(
+            manifest,
+            manifest_path=manifest_path,
+            min_seconds_per_100_chars=0.1,
+        )
         assembly = assemble_from_manifest(
             manifest,
             out_dir,
             pause_same_voice_ms=250,
             pause_voice_change_ms=500,
+            manifest_path=manifest_path,
         )
     except (ComfyUIError, OSError, ValueError) as exc:
         report.update({

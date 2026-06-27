@@ -451,7 +451,7 @@ def test_stage5_asr_qa_writes_report_and_manifest_annotations(
                                 "voice_id": "narrator_calm",
                                 "text": "Hello world.",
                                 "synthesized": True,
-                                "audio_file": str(wav_path),
+                                "audio_file": "audio_chunks/chapter_001/chunk_001_narrator.wav",
                             }
                         ],
                     }
@@ -473,5 +473,10 @@ def test_stage5_asr_qa_writes_report_and_manifest_annotations(
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert report["audio_qa"]["checked_files"] == 1
+    assert not any(
+        issue["kind"] == "missing_audio_file"
+        for issue in report["audio_qa"]["issues"]
+    )
     assert report["asr_qa"]["status"] == "passed"
     assert manifest["chapters"][0]["chunks"][0]["asr_qa"]["status"] == "passed"

@@ -153,7 +153,7 @@ def test_synthesis_controller_estimates_eta_from_progress_lines(
         return SynthesisSummary(total=5, synthesized=1, skipped=2, failed=0)
 
     times = iter([100.0, 130.0])
-    monkeypatch.setattr(synthesis_controller.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(synthesis_controller, "monotonic", lambda: next(times))
     monkeypatch.setattr(synthesis_controller, "ComfyUIClient", _Client)
     monkeypatch.setattr(synthesis_controller, "WorkflowBuilder", _Builder)
     monkeypatch.setattr(synthesis_controller, "synthesize_manifest", fake_synthesize_manifest)

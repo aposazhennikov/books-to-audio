@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import time
+from time import monotonic
 
 from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QRectF, Qt, QTimer, pyqtProperty
 from PyQt6.QtGui import QColor, QLinearGradient, QPainter
@@ -289,7 +289,7 @@ class ProgressWidget(QWidget):
 
     def _ensure_timing_started(self) -> None:
         if self._started_at is None:
-            self._started_at = time.monotonic()
+            self._started_at = monotonic()
         if not self._timer.isActive():
             self._timer.start()
 
@@ -307,7 +307,7 @@ class ProgressWidget(QWidget):
         if self._started_at is None:
             self._eta.setText("")
             return
-        elapsed = _format_duration(time.monotonic() - self._started_at)
+        elapsed = _format_duration(monotonic() - self._started_at)
         parts = [f"{_localized_label(_ELAPSED_LABELS)}: {elapsed}"]
         if self._status_kind == "progress":
             _current, _total, eta = self._last_progress

@@ -36,7 +36,7 @@ def test_progress_widget_shows_elapsed_eta_and_remaining_in_all_locales(
     lang: str,
 ) -> None:
     now = {"value": 100.0}
-    monkeypatch.setattr(progress_widget.time, "monotonic", lambda: now["value"])
+    monkeypatch.setattr(progress_widget, "monotonic", lambda: now["value"])
     set_language(lang)
     widget = ProgressWidget()
 
@@ -56,7 +56,7 @@ def test_progress_widget_elapsed_clock_keeps_running_in_busy_mode(
     monkeypatch,
 ) -> None:
     now = {"value": 100.0}
-    monkeypatch.setattr(progress_widget.time, "monotonic", lambda: now["value"])
+    monkeypatch.setattr(progress_widget, "monotonic", lambda: now["value"])
     set_language("en")
     widget = ProgressWidget()
 
@@ -81,7 +81,7 @@ def test_progress_widget_status_updates_do_not_reset_determinate_progress(
     monkeypatch,
 ) -> None:
     now = {"value": 100.0}
-    monkeypatch.setattr(progress_widget.time, "monotonic", lambda: now["value"])
+    monkeypatch.setattr(progress_widget, "monotonic", lambda: now["value"])
     widget = ProgressWidget()
 
     widget.set_progress(4, 142, "10m 00s")

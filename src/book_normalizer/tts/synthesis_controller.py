@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from book_normalizer.chunking.manifest_v2 import flatten_manifest, load_manifest
@@ -299,7 +299,7 @@ class SynthesisController:
                 request.chapter,
                 manifest_path=request.manifest_path,
             )
-            progress_started_at = time.monotonic()
+            progress_started_at = monotonic()
 
             def on_engine_line(line: str) -> None:
                 self._emit_log(line)
@@ -319,7 +319,7 @@ class SynthesisController:
                 synthesized_this_run = max(0, current_done - done_start)
                 eta = "0s" if remaining == 0 else ""
                 if remaining and synthesized_this_run > 0:
-                    elapsed = max(0.0, time.monotonic() - progress_started_at)
+                    elapsed = max(0.0, monotonic() - progress_started_at)
                     eta = _format_eta((elapsed / synthesized_this_run) * remaining)
                 self._emit_progress(
                     current_done,
@@ -405,7 +405,7 @@ class SynthesisController:
 
         done_start = count_done_chunks(manifest, request.chapter)
         current_done = done_start
-        progress_started_at = time.monotonic()
+        progress_started_at = monotonic()
 
         def on_line(line: str) -> None:
             nonlocal current_done
@@ -428,7 +428,7 @@ class SynthesisController:
             if remaining == 0:
                 eta = "0s"
             elif synthesized_this_run > 0:
-                elapsed = max(0.0, time.monotonic() - progress_started_at)
+                elapsed = max(0.0, monotonic() - progress_started_at)
                 eta = _format_eta((elapsed / synthesized_this_run) * remaining)
             self._emit_progress(
                 current_done,

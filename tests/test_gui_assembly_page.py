@@ -16,6 +16,7 @@ QtCore = pytest.importorskip("PyQt6.QtCore")
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 assembly_page = pytest.importorskip("book_normalizer.gui.pages.assembly_page")
 AssemblyPage = assembly_page.AssemblyPage
+AssemblyRunResult = assembly_page.AssemblyRunResult
 AssemblyWorker = assembly_page.AssemblyWorker
 ProductionPreflightWorker = assembly_page.ProductionPreflightWorker
 
@@ -34,9 +35,9 @@ def _write_wav(path: Path, *, frames: int = 240, sample_rate: int = 24000) -> No
         wav.writeframes(b"\x01\x00" * frames)
 
 
-def _run_worker(worker: object) -> tuple[list[str], list[str], list[str]]:
+def _run_worker(worker: object) -> tuple[list[str], list[object], list[str]]:
     progress: list[str] = []
-    finished: list[str] = []
+    finished: list[object] = []
     errors: list[str] = []
     worker.progress.connect(progress.append)
     worker.finished.connect(finished.append)
@@ -104,8 +105,11 @@ def test_assembly_worker_uses_manifest_api_without_subprocess(tmp_path: Path) ->
     assert errors == []
     assert progress
     assert len(finished) == 1
-    assert "chapter_001.wav" in finished[0]
-    assert "1 chunks ->" in finished[0]
+    assert isinstance(finished[0], AssemblyRunResult)
+    assert finished[0].has_audio
+    assert finished[0].assembled_files == 1
+    assert "chapter_001.wav" in finished[0].output
+    assert "1 chunks ->" in finished[0].output
     assert (tmp_path / "chapter_001.wav").exists()
 
 
@@ -139,7 +143,9 @@ def test_assembly_worker_supports_legacy_synthesis_manifest(tmp_path: Path) -> N
 
     assert errors == []
     assert len(finished) == 1
-    assert "chapter_001" in finished[0]
+    assert isinstance(finished[0], AssemblyRunResult)
+    assert finished[0].has_audio
+    assert "chapter_001" in finished[0].output
     assert (output_dir / "audio_chapters" / "chapter_001.wav").exists()
     assert (output_dir / "full_book.wav").exists()
 
@@ -156,7 +162,43 @@ def test_assembly_worker_reports_no_wav_for_empty_legacy_folder(tmp_path: Path) 
     _progress, finished, errors = _run_worker(worker)
 
     assert errors == []
-    assert finished == [f"No WAV chunks in {output_dir / 'audio_chunks'}"]
+    assert len(finished) == 1
+    assert isinstance(finished[0], AssemblyRunResult)
+    assert not finished[0].has_audio
+    assert finished[0].output == f"No WAV chunks in {output_dir / 'audio_chunks'}"
+
+
+def test_assembly_page_uses_structured_result_for_success_status(qapp, qtbot) -> None:  # noqa: ANN001
+    page = AssemblyPage()
+    qtbot.addWidget(page)
+    emitted: list[str] = []
+    page.assembly_finished.connect(emitted.append)
+
+    page._on_finished(
+        AssemblyRunResult(
+            output="No WAV appears in a successful chapter title",
+            assembled_files=1,
+        )
+    )
+
+    assert page._progress._status.text() == assembly_page.t("asm.complete")
+    assert page._output_label.text()
+    assert emitted == ["No WAV appears in a successful chapter title"]
+
+
+def test_assembly_page_uses_structured_result_for_empty_status(qapp, qtbot) -> None:  # noqa: ANN001
+    page = AssemblyPage()
+    qtbot.addWidget(page)
+
+    page._on_finished(
+        AssemblyRunResult(
+            output="Assembly finished without generated audio",
+            assembled_files=0,
+        )
+    )
+
+    assert page._progress._status.text() == assembly_page.t("asm.no_wav_found")
+    assert page._output_label.text() == "Assembly finished without generated audio"
 
 
 def test_production_preflight_worker_runs_pipeline(monkeypatch, tmp_path: Path) -> None:  # noqa: ANN001

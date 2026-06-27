@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import wave
+from dataclasses import dataclass
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
@@ -29,11 +30,25 @@ from book_normalizer.tts.manifest_assembly import (
 )
 
 
+@dataclass(frozen=True)
+class AssemblyRunResult:
+    """Structured assembly outcome for GUI status decisions."""
+
+    output: str
+    assembled_files: int
+    skipped_chapters: int = 0
+    missing_chunks: int = 0
+
+    @property
+    def has_audio(self) -> bool:
+        return self.assembled_files > 0
+
+
 class AssemblyWorker(QThread):
     """Background worker for audio assembly."""
 
     progress = pyqtSignal(str)
-    finished = pyqtSignal(str)
+    finished = pyqtSignal(object)
     error = pyqtSignal(str)
 
     def __init__(
@@ -64,7 +79,7 @@ class AssemblyWorker(QThread):
                     pause_voice_change_ms=self._pause_change,
                     strict_missing=False,
                 )
-                output = _format_manifest_results(results)
+                result = _manifest_run_result(results)
             else:
                 assembler = AudioAssembler(
                     self._output_dir,
@@ -72,12 +87,9 @@ class AssemblyWorker(QThread):
                     pause_speaker_ms=self._pause_change,
                     strict_missing=False,
                 )
-                output = _format_legacy_results(
-                    assembler.assemble(),
-                    audio_dir=self._audio_dir,
-                )
+                result = _legacy_run_result(assembler.assemble(), audio_dir=self._audio_dir)
 
-            self.finished.emit(output)
+            self.finished.emit(result)
 
         except Exception as exc:
             self.error.emit(str(exc))
@@ -334,13 +346,16 @@ class AssemblyPage(QWidget):
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
-    def _on_finished(self, output: str) -> None:
+    def _on_finished(self, result: AssemblyRunResult | str) -> None:
         self._btn_run.setEnabled(True)
-        translated = self._translate_output(output)
-        if "No WAV" in output or "No chapter" in output:
-            self._progress.set_status(t("asm.no_wav_found"))
+        if isinstance(result, AssemblyRunResult):
+            output = result.output
+            has_audio = result.has_audio
         else:
-            self._progress.set_status(t("asm.complete"))
+            output = result
+            has_audio = True
+        translated = self._translate_output(output)
+        self._progress.set_status(t("asm.complete") if has_audio else t("asm.no_wav_found"))
         self._output_label.setText(translated)
         self.assembly_finished.emit(output)
 
@@ -443,6 +458,16 @@ def _format_manifest_results(results: list[ChapterAssemblyResult]) -> str:
     return "\n".join(lines) if lines else "No WAV chunks in manifest"
 
 
+def _manifest_run_result(results: list[ChapterAssemblyResult]) -> AssemblyRunResult:
+    """Return structured GUI result for manifest assembly."""
+    return AssemblyRunResult(
+        output=_format_manifest_results(results),
+        assembled_files=sum(1 for result in results if result.output_path),
+        skipped_chapters=sum(1 for result in results if result.skipped),
+        missing_chunks=sum(result.missing for result in results),
+    )
+
+
 def _format_legacy_results(result: dict[str, Path], *, audio_dir: Path) -> str:
     """Return user-facing assembly details for legacy synthesis_manifest output."""
     if not result:
@@ -453,6 +478,14 @@ def _format_legacy_results(result: dict[str, Path], *, audio_dir: Path) -> str:
         size_mb = path.stat().st_size / 1024 / 1024
         lines.append(f"  {label}: {path.name} -> {duration:.1f}s ({size_mb:.1f} MB)")
     return "\n".join(lines)
+
+
+def _legacy_run_result(result: dict[str, Path], *, audio_dir: Path) -> AssemblyRunResult:
+    """Return structured GUI result for legacy manifest assembly."""
+    return AssemblyRunResult(
+        output=_format_legacy_results(result, audio_dir=audio_dir),
+        assembled_files=len(result),
+    )
 
 
 def _make_pause_spin_compact(spin: QSpinBox) -> None:

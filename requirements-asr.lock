@@ -1,0 +1,5 @@
+# ASR QA lock: desktop-independent local transcription QA.
+-r requirements-cpu.lock
+faster-whisper==1.1.1
+jiwer==4.0.0
+rapidfuzz==3.13.0

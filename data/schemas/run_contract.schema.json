@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://books-to-audio.local/schemas/run_contract.schema.json",
+  "title": "Production run contract",
+  "type": "object",
+  "required": ["schema_version", "run_id", "stage", "parameters", "provenance"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "run_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "stage": { "type": "string" },
+    "resume_from": { "type": "string" },
+    "parameters": { "type": "object" },
+    "provenance": {
+      "type": "object",
+      "required": ["commit", "manifest_hash", "workflow_hash", "voice_preset_hashes", "model_versions"],
+      "properties": {
+        "commit": { "type": "string" },
+        "manifest_path": { "type": "string" },
+        "manifest_hash": { "type": "string" },
+        "workflow_path": { "type": "string" },
+        "workflow_hash": { "type": "string" },
+        "voice_preset_hashes": { "type": "object" },
+        "model_versions": { "type": "object" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

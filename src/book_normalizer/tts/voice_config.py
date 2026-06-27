@@ -10,6 +10,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from book_normalizer.languages import qwen_tts_language
+from book_normalizer.schemas import migrate_json_record, schema_version_for
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ class VoiceProfile(BaseModel):
 class VoiceConfig(BaseModel):
     """Top-level configuration mapping speaker roles to voice profiles."""
 
+    schema_version: int = Field(default_factory=lambda: schema_version_for("voice_config"))
     narrator: VoiceProfile = Field(
         default_factory=lambda: VoiceProfile(name="narrator")
     )
@@ -109,6 +111,7 @@ class VoiceConfig(BaseModel):
     def from_json(cls, path: Path) -> VoiceConfig:
         """Load voice configuration from a JSON file."""
         data = json.loads(path.read_text(encoding="utf-8"))
+        data = migrate_json_record(data, "voice_config")
         return cls(**data)
 
     def to_json(self, path: Path) -> None:

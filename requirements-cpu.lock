@@ -1,0 +1,8 @@
+# CPU-only lock: normalization, chunking, OCR loaders, QA metadata.
+-r requirements.lock
+Pillow==11.2.1
+pytesseract==0.3.13
+soundfile==0.13.1
+pydub==0.25.1
+numpy==2.2.6
+httpx==0.28.1

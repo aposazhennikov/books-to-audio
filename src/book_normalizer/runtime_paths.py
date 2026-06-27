@@ -10,6 +10,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.schemas import migrate_json_record
+
 DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434"
 RUNTIME_CONFIG_ENV = "BOOKS_TO_AUDIO_RUNTIME_CONFIG"
 OLLAMA_ENDPOINT_ENV = "BOOKS_TO_AUDIO_OLLAMA_ENDPOINT"
@@ -47,7 +49,12 @@ def load_runtime_paths() -> dict[str, Any]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    try:
+        return migrate_json_record(data, "runtime_paths")
+    except ValueError:
+        return {}
 
 
 def reset_runtime_path_cache() -> None:

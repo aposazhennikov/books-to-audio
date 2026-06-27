@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "models_dir": "D:/books-to-audio-models",
+  "ollama_models_dir": "D:/books-to-audio/ollama-models",
+  "hf_cache_dir": "D:/books-to-audio/hf-cache",
+  "ollama_endpoint": "http://localhost:11434",
+  "ollama_bin": "ollama",
+  "tesseract_cmd": "",
+  "tessdata_dir": "",
+  "ffmpeg_bin": ""
+}

@@ -15,6 +15,7 @@ from book_normalizer.languages import (
     normalize_book_language,
     qwen_tts_language,
 )
+from book_normalizer.schemas import migrate_json_record, schema_version_for
 
 MANIFEST_VERSION = 2
 DEFAULT_MANIFEST_NAME = "chunks_manifest_v2.json"
@@ -158,6 +159,7 @@ class ManifestV2(BaseModel):
     chunker: str = "gui"
     model: str = ""
     max_chunk_chars: int | None = None
+    production_run: dict[str, Any] | None = None
     chapters: list[ManifestChapterV2] = Field(default_factory=list)
 
     @field_validator("version")
@@ -177,6 +179,7 @@ class ManifestV2(BaseModel):
     def to_record(self) -> dict[str, Any]:
         language = normalize_book_language(self.language)
         record: dict[str, Any] = {
+            "schema_version": schema_version_for("manifest_v2"),
             "version": MANIFEST_VERSION,
             "book_title": self.book_title,
             "language": language,
@@ -188,6 +191,8 @@ class ManifestV2(BaseModel):
             record["model"] = self.model
         if self.max_chunk_chars is not None:
             record["max_chunk_chars"] = self.max_chunk_chars
+        if self.production_run:
+            record["production_run"] = self.production_run
         return record
 
 
@@ -222,6 +227,7 @@ def ensure_v2_manifest(data: object) -> ManifestV2:
         )
     if not isinstance(data, dict):
         raise ManifestV2Error(f"{DEFAULT_MANIFEST_NAME} must be a JSON object.")
+    data = migrate_json_record(data, "manifest_v2")
     if data.get("version", 1) != MANIFEST_VERSION:
         raise ManifestV2Error(
             f"Only {DEFAULT_MANIFEST_NAME} version 2 is supported; got version {data.get('version', 1)!r}."

@@ -1,0 +1,5 @@
+# Desktop GUI lock: CPU profile plus PyQt GUI.
+-r requirements-cpu.lock
+PyQt6==6.9.1
+PyQt6-Qt6==6.9.1
+PyQt6-sip==13.10.2

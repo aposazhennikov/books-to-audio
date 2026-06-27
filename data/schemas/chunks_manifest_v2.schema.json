@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://books-to-audio.local/schemas/chunks_manifest_v2.schema.json",
+  "title": "Chunks manifest v2",
+  "type": "object",
+  "required": ["schema_version", "version", "chapters"],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "version": { "const": 2 },
+    "book_title": { "type": "string" },
+    "language": { "type": "string" },
+    "tts_language": { "type": "string" },
+    "chunker": { "type": "string" },
+    "production_run": { "type": "object" },
+    "chapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["chapter_index", "chunks"],
+        "properties": {
+          "chapter_index": { "type": "integer" },
+          "chapter_title": { "type": "string" },
+          "chunks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["chunk_index", "voice_label", "text"],
+              "properties": {
+                "chunk_index": { "type": "integer" },
+                "voice_label": { "enum": ["narrator", "men", "women"] },
+                "voice_id": { "type": "string" },
+                "voice_tone": { "type": "string" },
+                "text": { "type": "string" },
+                "synthesized": { "type": "boolean" },
+                "failed": { "type": "boolean" },
+                "audio_file": { "type": ["string", "null"] },
+                "asr_qa": { "type": ["object", "null"] },
+                "artifact_qa": { "type": ["object", "null"] }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -16,7 +16,12 @@ build/
 .eggs/
 *.egg
 tools/Tesseract-OCR/
-data/
+data/*
+!data/.gitkeep
+!data/*.example.json
+!data/schemas/
+!data/schemas/*.json
+data/user_memory/
 .venv/
 .venv-wsl/
 .venv-windows/
@@ -40,4 +45,3 @@ coverage.xml
 *.tmp
 *.bak
 *.swp
-data/user_memory/

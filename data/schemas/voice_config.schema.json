@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://books-to-audio.local/schemas/voice_config.schema.json",
+  "title": "Voice config",
+  "type": "object",
+  "required": ["schema_version", "narrator", "male", "female"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "narrator": { "$ref": "#/$defs/profile" },
+    "male": { "$ref": "#/$defs/profile" },
+    "female": { "$ref": "#/$defs/profile" }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "method": { "enum": ["clone", "design", "custom", "saved"] },
+        "ref_audio": { "type": "string" },
+        "ref_text": { "type": "string" },
+        "saved_voice": { "type": "string" },
+        "voice_prompt_path": { "type": "string" },
+        "design_instruct": { "type": "string" },
+        "speaker": { "type": "string" },
+        "language": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

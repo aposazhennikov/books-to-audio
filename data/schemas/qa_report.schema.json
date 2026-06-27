@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://books-to-audio.local/schemas/qa_report.schema.json",
+  "title": "Machine-readable QA report",
+  "type": "object",
+  "required": ["schema_version", "summary"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "manifest_path": { "type": "string" },
+    "summary": { "type": "object" },
+    "audio_qa": { "type": ["object", "null"] },
+    "artifact_qa": { "type": ["object", "null"] },
+    "asr_qa": { "type": ["object", "null"] }
+  },
+  "additionalProperties": true
+}

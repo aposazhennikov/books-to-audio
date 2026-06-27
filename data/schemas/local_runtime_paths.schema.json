@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://books-to-audio.local/schemas/local_runtime_paths.schema.json",
+  "title": "Local runtime paths",
+  "type": "object",
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "models_dir": { "type": "string" },
+    "ollama_models_dir": { "type": "string" },
+    "hf_cache_dir": { "type": "string" },
+    "ollama_endpoint": { "type": "string" },
+    "ollama_bin": { "type": "string" },
+    "tesseract_cmd": { "type": "string" },
+    "tessdata_dir": { "type": "string" },
+    "ffmpeg_bin": { "type": "string" }
+  },
+  "additionalProperties": true
+}

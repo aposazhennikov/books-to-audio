@@ -9,7 +9,7 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
-from book_normalizer.chaptering.patterns import match_chapter_heading
+from book_normalizer.chaptering.patterns import match_chapter_heading, match_work_heading
 from book_normalizer.config import OcrMode
 from book_normalizer.languages import (
     readable_word_ratio,
@@ -118,18 +118,53 @@ class PdfLoader(BaseLoader):
         """Split extracted text into paragraphs by double-newline boundaries."""
         raw_blocks = _repair_isolated_layout_word_blocks(text.split("\n\n"))
         paragraphs: list[Paragraph] = []
-        for idx, block in enumerate(raw_blocks):
-            stripped = block.strip()
-            if not stripped:
-                continue
-            paragraphs.append(
-                Paragraph(
-                    raw_text=stripped,
-                    normalized_text="",
-                    index_in_chapter=idx,
+        for block in raw_blocks:
+            for part in _split_pdf_structural_boundaries(block):
+                stripped = part.strip()
+                if not stripped:
+                    continue
+                paragraphs.append(
+                    Paragraph(
+                        raw_text=stripped,
+                        normalized_text="",
+                        index_in_chapter=len(paragraphs),
+                    )
                 )
-            )
         return paragraphs
+
+
+def _split_pdf_structural_boundaries(text: str) -> list[str]:
+    """Split native PDF blocks when a heading line is embedded mid-block."""
+    lines = text.splitlines()
+    if len(lines) <= 1:
+        return _split_inline_chapter_headings(text.strip()) if text.strip() else []
+
+    parts: list[str] = []
+    current: list[str] = []
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            if current:
+                parts.append("\n".join(current).strip())
+                current = []
+            continue
+        if current and _is_structural_heading_line(line):
+            parts.append("\n".join(current).strip())
+            current = [line]
+            continue
+        current.append(line)
+    if current:
+        parts.append("\n".join(current).strip())
+
+    result: list[str] = []
+    for part in parts:
+        result.extend(_split_inline_chapter_headings(part))
+    return result
+
+
+def _is_structural_heading_line(line: str) -> bool:
+    stripped = line.strip()
+    return bool(match_chapter_heading(stripped) or match_work_heading(stripped))
 
 
 def _should_use_fast_native_pdf_extraction(path: Path) -> bool:

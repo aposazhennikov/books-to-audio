@@ -162,6 +162,39 @@ class TestPdfLoader:
         assert detected.chapters[1].title == "Книга первая - Эпилог"
 
     @patch("book_normalizer.loaders.pdf_loader.PdfLoader._extract_text")
+    def test_load_splits_heading_lines_embedded_in_native_pdf_blocks(
+        self,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_extract.return_value = (
+            "Аннотация\n"
+            "Короткое описание книги.\n"
+            "Книга первая\n"
+            "Глава первая,\n"
+            "Текст первой главы.\n"
+            "Глава вторая,\n"
+            "Текст второй главы.\n"
+            "Эпилог\n"
+            "Финал первой книги.\n"
+            "Книга вторая\n"
+            "Глава первая,\n"
+            "Текст второй книги."
+        )
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+        book = PdfLoader().load(pdf_file)
+        detected = ChapterDetector().detect_and_split(book)
+
+        assert len(book.chapters[0].paragraphs) == 7
+        assert detected.metadata.extra["structure"]["work_count"] == 2
+        assert len(detected.chapters) == 5
+        assert detected.chapters[0].title == "Preamble"
+        assert detected.chapters[1].title == "Книга первая - Глава первая,"
+        assert detected.chapters[3].title == "Книга первая - Эпилог"
+
+    @patch("book_normalizer.loaders.pdf_loader.PdfLoader._extract_text")
     def test_audit_trail(self, mock_extract: MagicMock, tmp_path: Path) -> None:
         mock_extract.return_value = "Текст."
         pdf_file = tmp_path / "test.pdf"

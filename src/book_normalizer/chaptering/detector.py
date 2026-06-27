@@ -754,6 +754,8 @@ class ChapterDetector:
         seen: set[tuple[int, str]] = set()
         for chapter in chapters:
             title = chapter.work_title or ""
+            if chapter.work_index < 0 or title == "Preamble":
+                continue
             key = (chapter.work_index, title)
             if title and key not in seen:
                 seen.add(key)

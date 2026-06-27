@@ -2,96 +2,74 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 from collections.abc import Callable
-from dataclasses import dataclass
-from hashlib import sha1
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.chunking.llm_dialogue_markers import (
+    _dash_starts_narrator_tag as _dash_starts_narrator_tag,
+)
+from book_normalizer.chunking.llm_dialogue_markers import (
+    _starts_with_direct_speech_marker as _starts_with_direct_speech_marker,
+)
+from book_normalizer.chunking.llm_dialogue_markers import (
+    _take_quoted_speech as _take_quoted_speech,
+)
+from book_normalizer.chunking.llm_dialogue_repair import (
+    repair_segment_dialogue_boundaries as repair_segment_dialogue_boundaries,
+)
+from book_normalizer.chunking.llm_dialogue_speaker import (
+    _clean_speaker,
+    _remember_dialogue_speaker,
+    _repair_dialogue_metadata,
+)
+from book_normalizer.chunking.llm_segmenter_cache import LlmSegmenterCacheMixin
 from book_normalizer.chunking.llm_segmenter_config import (
-    _CACHE_VERSION,
-    _CLOSING_QUOTE_BY_OPENING,
-    _DASH_CHARS,
-    _DELIVERY_CUE_RE_BY_LANGUAGE,
-    _EN_FEMALE_ATTRIBUTION_RE,
-    _EN_MALE_ATTRIBUTION_RE,
-    _EN_SPEAKER_RE,
-    _KK_ATTRIBUTION_RE,
-    _KK_SPEAKER_TOKEN,
-    _OPENING_QUOTE_CHARS,
-    _QUOTE_CHARS,
-    _RU_BAD_SPEAKER_TOKENS,
-    _RU_FEMALE_ATTRIBUTION,
-    _RU_FEMALE_ATTRIBUTION_RE,
-    _RU_MALE_ATTRIBUTION,
-    _RU_MALE_ATTRIBUTION_RE,
-    _RU_NEUTRAL_ATTRIBUTION,
-    _RU_SPEAKER_TOKEN,
-    _SEGMENT_SCHEMA,
-    _SYSTEM_PROMPTS,
-    _SYSTEM_SECTION_KINDS,
-    _UZ_ATTRIBUTION_RE,
-    _UZ_SPEAKER_TOKEN,
-    _ZH_BAD_SPEAKER_TOKENS,
-    _ZH_FEMALE_ATTRIBUTION_RE,
-    _ZH_MALE_ATTRIBUTION_RE,
-    _ZH_SPEAKER_RE,
     DEFAULT_WINDOW_CHARS,
     ROLE_TO_VOICE_ID,
-    VOICE_LABEL_TO_ROLE,
 )
+from book_normalizer.chunking.llm_segmenter_failures import (
+    LlmSegmentationError as LlmSegmentationError,
+)
+from book_normalizer.chunking.llm_segmenter_failures import (
+    SegmentationFailure,
+)
+from book_normalizer.chunking.llm_segmenter_fields import (
+    _clean_intonation,
+    _clean_optional,
+    _clean_section_kind,
+    _is_dialogue_segment,
+    _normalize_role,
+)
+from book_normalizer.chunking.llm_segmenter_text import (
+    _build_windows,
+    _chapter_text,
+    _safe_int,
+)
+from book_normalizer.chunking.llm_segmenter_text import (
+    _system_prompt_for_language as _system_prompt_for_language,
+)
+from book_normalizer.chunking.llm_segmenter_text import (
+    _user_prompt_for_window as _user_prompt_for_window,
+)
+from book_normalizer.chunking.llm_segmenter_window import LlmSegmenterWindowMixin
 from book_normalizer.chunking.llm_source_preservation import (
     _canonical_for_preservation as _canonical_for_preservation,
-)
-from book_normalizer.chunking.llm_source_preservation import (
-    _reconcile_segments_to_source,
-    _segments_preserve_source,
 )
 from book_normalizer.chunking.splitter import (
     DEFAULT_CHAPTER_PAUSE_MS,
     DEFAULT_MAX_CHUNK_CHARS,
-    DEFAULT_PARAGRAPH_PAUSE_MS,
     chunk_text,
 )
-from book_normalizer.languages import get_book_language, normalize_book_language
+from book_normalizer.languages import normalize_book_language
 from book_normalizer.llm.model_router import model_plan_for_language
 from book_normalizer.llm.ollama_client import OllamaChatClient
-from book_normalizer.normalization.morphology import (
-    infer_person_gender,
-    is_definitely_not_person_reference,
-)
 
 logger = logging.getLogger(__name__)
 
 
-class LlmSegmentationError(RuntimeError):
-    """Raised when smart segmentation cannot preserve source text."""
-
-
-@dataclass
-class SegmentationFailure:
-    chapter_index: int
-    window_index: int
-    model: str
-    reason: str
-    source_preview: str
-    output_preview: str = ""
-
-    def to_record(self) -> dict[str, Any]:
-        return {
-            "chapter_index": self.chapter_index,
-            "window_index": self.window_index,
-            "model": self.model,
-            "reason": self.reason,
-            "source_preview": self.source_preview,
-            "output_preview": self.output_preview,
-        }
-
-
-class LlmVoiceSegmenter:
+class LlmVoiceSegmenter(LlmSegmenterWindowMixin, LlmSegmenterCacheMixin):
     """Generate segment manifest rows directly from a local Ollama model."""
 
     def __init__(
@@ -255,1621 +233,167 @@ class LlmVoiceSegmenter:
             )
         return rows
 
-    def _segment_window(
-        self,
-        chapter_index: int,
-        window_index: int,
-        window_text: str,
-    ) -> list[dict[str, Any]]:
-        cached = self._load_cache(chapter_index, window_index, window_text)
-        if cached is not None:
-            return cached
-
-        last_error = ""
-        previous_issues: list[str] = []
-        for model in self._model_plan.candidates:
-            for attempt_index in range(1, self._max_retries + 1):
-                try:
-                    attempt = self._client.chat_json_with_fallback(
-                        models=[model],
-                        messages=[
-                            {"role": "system", "content": _system_prompt_for_language(self._language)},
-                            {
-                                "role": "user",
-                                "content": _user_prompt_for_window(
-                                    language=self._language,
-                                    chapter_index=chapter_index,
-                                    window_index=window_index,
-                                    window_text=window_text,
-                                    previous_issues=previous_issues,
-                                ),
-                            },
-                        ],
-                        schema=_SEGMENT_SCHEMA,
-                        temperature=0.1,
-                    )
-                    segments = _normalise_segments(attempt.data)
-                    if not segments:
-                        raise ValueError("empty segments")
-                    reconciled = _reconcile_segments_to_source(window_text, segments)
-                    if reconciled is not None:
-                        segments = reconciled
-                    segments = _repair_dialogue_segment_boundaries(segments)
-                    segments = _split_mixed_dialogue_segments(segments, language=self._language)
-                    if not _segments_preserve_source(window_text, segments):
-                        failure = SegmentationFailure(
-                            chapter_index,
-                            window_index,
-                            model,
-                            "text_preservation_failed",
-                            window_text[:500],
-                            " ".join(seg["text"] for seg in segments)[:500],
-                        )
-                        self._failures.append(failure)
-                        last_error = failure.reason
-                        previous_issues = [
-                            "The previous segment list did not preserve input.text exactly.",
-                            "Return fewer segments if needed, but do not change, drop, or add text.",
-                        ]
-                        self._client.unload_model(model)
-                        continue
-                    self._save_cache(chapter_index, window_index, window_text, segments)
-                    return segments
-                except Exception as exc:  # noqa: BLE001
-                    last_error = f"{type(exc).__name__}: {exc}"
-                    previous_issues = [last_error]
-                    self._failures.append(
-                        SegmentationFailure(
-                            chapter_index,
-                            window_index,
-                            model,
-                            f"attempt {attempt_index}/{self._max_retries}: {last_error}",
-                            window_text[:500],
-                        )
-                    )
-                    self._client.unload_model(model)
-
-        if self._allow_source_fallback:
-            self._failures.append(
-                SegmentationFailure(
-                    chapter_index,
-                    window_index,
-                    "source-preserving-fallback",
-                    f"used_original_text_after_llm_failure: {last_error}",
-                    window_text[:500],
-                    window_text[:500],
-                )
-            )
-            logger.warning(
-                "LLM voice segmentation failed for chapter %d window %d; "
-                "using source-preserving narrator fallback",
-                chapter_index,
-                window_index,
-            )
-            return _source_fallback_segments(window_text)
-
-        self._write_review_report()
-        raise LlmSegmentationError(
-            "LLM voice segmentation failed validation for "
-            f"chapter {chapter_index}, window {window_index}: {last_error}. "
-            f"Review report: {self._review_report_path or '(not configured)'}"
-        )
-
-    def _cache_path(self, chapter_index: int, window_index: int, window_text: str) -> Path | None:
-        if self._cache_dir is None:
-            return None
-        fingerprint = sha1(
-            "\n\0".join((
-                _CACHE_VERSION,
-                self._language,
-                ",".join(self._model_plan.candidates),
-                _system_prompt_for_language(self._language),
-                window_text,
-            )).encode("utf-8")
-        ).hexdigest()[:16]
-        return self._cache_dir / f"segments_ch{chapter_index:03d}_win{window_index:03d}_{fingerprint}.json"
-
-    def _load_cache(
-        self,
-        chapter_index: int,
-        window_index: int,
-        window_text: str,
-    ) -> list[dict[str, Any]] | None:
-        path = self._cache_path(chapter_index, window_index, window_text)
-        if path is None or not path.exists():
-            return None
-        try:
-            loaded = _normalise_segments(json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError):
-            return None
-        if loaded and _segments_preserve_source(window_text, loaded):
-            return loaded
-        return None
-
-    def _save_cache(
-        self,
-        chapter_index: int,
-        window_index: int,
-        window_text: str,
-        segments: list[dict[str, Any]],
-    ) -> None:
-        path = self._cache_path(chapter_index, window_index, window_text)
-        if path is None:
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(segments, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def _write_review_report(self) -> None:
-        if self._review_report_path is None:
-            return
-        self._review_report_path.parent.mkdir(parents=True, exist_ok=True)
-        self._review_report_path.write_text(
-            json.dumps(
-                {
-                    "language": self._language,
-                    "models": list(self._model_plan.candidates),
-                    "failures": [failure.to_record() for failure in self._failures],
-                    "requires_human_review": True,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-
-
-def _chapter_text(chapter: object) -> str:
-    paragraphs = list(getattr(chapter, "paragraphs", []) or [])
-    normalized: list[str] = []
-    for para in paragraphs:
-        text = _normalize_segment_source_text(
-            str(getattr(para, "normalized_text", "") or getattr(para, "raw_text", ""))
-        )
-        if text:
-            normalized.append(text)
-    return "\n\n".join(normalized)
-
-
-def _normalize_segment_source_text(text: str) -> str:
-    """Collapse layout-only whitespace before LLM segmentation."""
-    lines = [re.sub(r"[^\S\r\n]+", " ", line).strip() for line in str(text or "").splitlines()]
-    return "\n".join(lines).strip()
-
-
-def _build_windows(text: str, max_chars: int) -> list[str]:
-    paragraphs = [part.strip() for part in text.split("\n\n") if part.strip()]
-    if not paragraphs and text.strip():
-        paragraphs = [text.strip()]
-    windows: list[str] = []
-    current: list[str] = []
-    current_len = 0
-    for paragraph in paragraphs:
-        paragraph_parts = (
-            chunk_text(paragraph, max_chunk_chars=max_chars)
-            if len(paragraph) > max_chars
-            else [paragraph]
-        )
-        for part in paragraph_parts:
-            sep = 2 if current else 0
-            if current and current_len + sep + len(part) > max_chars:
-                windows.append("\n\n".join(current))
-                current = [part]
-                current_len = len(part)
-            else:
-                current.append(part)
-                current_len += sep + len(part)
-    if current:
-        windows.append("\n\n".join(current))
-    return windows
-
-
-def _normalise_segments(data: Any) -> list[dict[str, Any]]:
-    if isinstance(data, dict):
-        raw_segments = data.get("segments", [])
-    else:
-        raw_segments = data
-    if not isinstance(raw_segments, list):
-        return []
-
-    segments: list[dict[str, Any]] = []
-    for item in raw_segments:
-        if not isinstance(item, dict):
-            continue
-        text = str(item.get("text") or _legacy_voice_text(item)).strip()
-        if not text:
-            continue
-        role = _normalize_role(item.get("role") or item.get("voice") or _legacy_voice_role(item))
-        segments.append(
-            {
-                "role": role,
-                "speaker": _clean_optional(item.get("speaker") or item.get("character")),
-                "character_description": _clean_optional(
-                    item.get("character_description")
-                    or item.get("role_description")
-                    or item.get("description")
-                ),
-                "emotion": _clean_intonation(item.get("emotion") or item.get("intonation") or "calm"),
-                "section_kind": _clean_section_kind(item.get("section_kind"), role),
-                "text": text,
-                "intonation": _clean_intonation(item.get("intonation") or item.get("voice_tone") or "calm"),
-                "pause_after_ms": _safe_int(item.get("pause_after_ms")),
-                "boundary_after": str(item.get("boundary_after") or ""),
-            }
-        )
-    return segments
-
-
-def _repair_dialogue_segment_boundaries(
-    segments: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Move orphan opening dialogue punctuation to the following segment."""
-
-    repaired = [dict(segment) for segment in segments]
-    for index in range(len(repaired) - 1):
-        text = str(repaired[index].get("text") or "")
-        opener = _trailing_dialogue_opener(text)
-        if not opener:
-            continue
-        next_text = str(repaired[index + 1].get("text") or "")
-        if not next_text.strip() or _starts_with_dialogue_marker(next_text):
-            continue
-
-        repaired[index]["text"] = text[: -len(opener)].rstrip()
-        repaired[index + 1]["text"] = _attach_dialogue_opener(opener, next_text)
-
-    return [segment for segment in repaired if str(segment.get("text") or "").strip()]
-
-
-def _attach_dialogue_opener(opener: str, text: str) -> str:
-    marker = opener.strip()
-    if not marker:
-        return text.lstrip()
-    if marker[-1] in _DASH_CHARS:
-        return f"{marker[-1]} {text.lstrip()}"
-    return marker + text.lstrip()
-
-
-def _split_mixed_dialogue_segments(
-    segments: list[dict[str, Any]],
-    *,
-    language: str,
-) -> list[dict[str, Any]]:
-    """Split direct speech away from author tags inside one LLM segment."""
-
-    result: list[dict[str, Any]] = []
-    for segment in segments:
-        text = str(segment.get("text") or "").strip()
-        if not text:
-            continue
-        role = _normalize_role(segment.get("role"))
-        if (
-            _clean_section_kind(segment.get("section_kind"), role)
-            in _SYSTEM_SECTION_KINDS
-        ):
-            result.append(segment)
-            continue
-
-        if (
-            role not in {"male", "female", "unknown"}
-            and not _contains_embedded_direct_speech(text, language)
-        ):
-            result.append(segment)
-            continue
-        parts = _split_dialogue_and_narration_text(
-            text,
-            language=language,
-            role_is_dialogue=role in {"male", "female", "unknown"},
-        )
-        if len(parts) <= 1:
-            result.append(segment)
-            continue
-
-        for part_index, (kind, part_text) in enumerate(parts):
-            row = dict(segment)
-            row["text"] = part_text
-            if part_index < len(parts) - 1:
-                row["pause_after_ms"] = 0
-                row["boundary_after"] = ""
-            if kind == "narrator":
-                row["role"] = "narrator"
-                row["speaker"] = ""
-                row["character_description"] = ""
-                row["section_kind"] = "narration"
-                row["emotion"] = "calm"
-                row["intonation"] = "calm"
-                row["_narration_repaired"] = True
-                row.pop("_direct_speech_repaired", None)
-            else:
-                inferred_speaker, inferred_role = _infer_dialogue_speaker(
-                    _speaker_context_for_part(parts, part_index),
-                    language,
-                )
-                if inferred_speaker and not _clean_optional(row.get("speaker")):
-                    row["speaker"] = inferred_speaker
-                if inferred_role in {"male", "female"}:
-                    row["role"] = inferred_role
-                elif _normalize_role(row.get("role")) == "narrator":
-                    row["role"] = "unknown"
-                if row.get("speaker") and not row.get("character_description"):
-                    row["character_description"] = (
-                        "Direct-speech character inferred from local dialogue context."
-                    )
-                row["section_kind"] = "dialogue"
-                row["_direct_speech_repaired"] = True
-                row.pop("_narration_repaired", None)
-            result.append(row)
-    return result
-
-
-def _speaker_context_for_part(parts: list[tuple[str, str]], part_index: int) -> str:
-    context = parts[part_index][1]
-    if part_index + 1 < len(parts) and parts[part_index + 1][0] == "narrator":
-        context = f"{context} {parts[part_index + 1][1]}"
-    if part_index > 0 and parts[part_index - 1][0] == "narrator":
-        context = f"{parts[part_index - 1][1]} {context}"
-    return context
-
-
-def _split_dialogue_and_narration_text(
-    text: str,
-    *,
-    language: str,
-    role_is_dialogue: bool,
-) -> list[tuple[str, str]]:
-    remaining = text.strip()
-    parts: list[tuple[str, str]] = []
-
-    while remaining:
-        if not role_is_dialogue:
-            if not _starts_with_dialogue_marker(remaining):
-                prefix, remaining_after_prefix = _take_narration_before_direct_speech(
-                    remaining,
-                    language,
-                )
-                if prefix:
-                    parts.append(("narrator", prefix))
-                    remaining = remaining_after_prefix
-                    continue
-
-        if _starts_with_opening_quote(remaining) and (
-            role_is_dialogue
-            or _opening_quote_starts_direct_speech(remaining, language)
-            or _previous_narrator_tag_invites_quoted_speech(parts, language)
-        ):
-            speech, remaining = _take_quoted_speech(remaining)
-            parts.append(("speech", speech))
-            if remaining:
-                narrator, remaining = _take_narrator_tail(remaining)
-                if narrator:
-                    nested = _split_dialogue_and_narration_text(
-                        narrator,
-                        language=language,
-                        role_is_dialogue=False,
-                    )
-                    parts.extend(nested or [("narrator", narrator)])
-            continue
-
-        if (
-            not role_is_dialogue
-            and _starts_with_dash_dialogue(remaining)
-            and _dash_starts_narrator_tag(remaining, language)
-            and not _continues_after_author_tag(parts, remaining)
-        ):
-            narrator, remaining = _take_narrator_tail(remaining)
-            if narrator:
-                parts.append(("narrator", narrator))
-            continue
-
-        if (
-            role_is_dialogue
-            and _starts_with_dash_dialogue(remaining)
-            and _dash_starts_narrator_tag(remaining, language)
-            and _find_nested_dialogue_after_narrator_tag(remaining) is not None
-        ):
-            narrator, remaining = _take_narrator_tail(remaining)
-            if narrator:
-                parts.append(("narrator", narrator))
-            continue
-
-        if (
-            role_is_dialogue
-            and language == "ru"
-            and _starts_with_dash_dialogue(remaining)
-            and _dash_starts_narrator_tag(remaining, language)
-            and _contains_ru_attribution_word(remaining)
-        ):
-            narrator, remaining = _take_narrator_tail(remaining)
-            if narrator:
-                parts.append(("narrator", narrator))
-            continue
-
-        if _starts_with_dash_dialogue(remaining):
-            speech, remaining = _take_dash_speech(remaining, language)
-            parts.append(("speech", speech))
-            if remaining and _dash_starts_narrator_tag(remaining, language):
-                narrator, remaining = _take_narrator_tail(remaining)
-                if narrator:
-                    nested = _split_dialogue_and_narration_text(
-                        narrator,
-                        language=language,
-                        role_is_dialogue=False,
-                    )
-                    parts.extend(nested or [("narrator", narrator)])
-            elif (
-                remaining
-                and language == "ru"
-                and _contains_ru_attribution_word(remaining)
-                and not _starts_with_direct_speech_marker(remaining, language)
-            ):
-                narrator, remaining = _take_narrator_tail(remaining)
-                if narrator:
-                    nested = _split_dialogue_and_narration_text(
-                        narrator,
-                        language=language,
-                        role_is_dialogue=False,
-                    )
-                    parts.extend(nested or [("narrator", narrator)])
-            continue
-
-        inline = _split_inline_attribution(remaining, language)
-        if inline is not None:
-            speech, tail = inline
-            parts.append(("speech", speech))
-            narrator, remaining = _take_narrator_tail(tail)
-            if narrator:
-                nested = _split_dialogue_and_narration_text(
-                    narrator,
-                    language=language,
-                    role_is_dialogue=False,
-                )
-                parts.extend(nested or [("narrator", narrator)])
-            continue
-
-        parts.append(("speech" if role_is_dialogue else "narrator", remaining))
-        break
-
-    return _coalesce_dialogue_parts(parts)
-
-
-def _contains_embedded_direct_speech(text: str, language: str) -> bool:
-    if _starts_with_direct_speech_marker(text, language):
-        return True
-    if language == "ru" and _dash_starts_narrator_tag(text, language):
-        return (
-            _find_nested_dialogue_after_narrator_tag(text) is not None
-            or _find_next_dialogue_marker(text, language) is not None
-        )
-    if _find_next_dialogue_marker(text, language) is not None:
-        return True
-    return _split_inline_attribution(text, language) is not None
-
-
-def _take_narration_before_direct_speech(text: str, language: str) -> tuple[str, str]:
-    marker_index = _find_next_dialogue_marker(text, language)
-    inline_index = _find_next_inline_attribution_start(text, language)
-    candidates = [index for index in (marker_index, inline_index) if index is not None and index > 0]
-    if not candidates:
-        return "", text
-    split_at = min(candidates)
-    return text[:split_at].strip(), text[split_at:].strip()
-
-
-def _find_next_dialogue_marker(text: str, language: str) -> int | None:
-    for index, char in enumerate(text):
-        if index == 0:
-            continue
-        if (
-            char in _OPENING_QUOTE_CHARS
-            and (
-                _opening_quote_starts_direct_speech(text[index:], language)
-                or _quote_after_ru_attribution_colon(text, index, language)
-            )
-        ):
-            return index
-        if char in _DASH_CHARS and _dash_can_start_embedded_dialogue(text, index, language):
-            return index
-    return None
-
-
-def _quote_after_ru_attribution_colon(text: str, quote_index: int, language: str) -> bool:
-    """Return true for short quoted speech introduced by a Russian speech tag."""
-    if normalize_book_language(language) != "ru":
-        return False
-    before = text[:quote_index].rstrip()
-    if not before.endswith(":"):
-        return False
-    probe = before[:-1].rstrip()
-    return bool(re.search(rf"\b(?:{_ru_attribution_pattern()})\b(?:\s+[\wА-Яа-яЁё-]+){{0,4}}$", probe, re.IGNORECASE))
-
-
-def _previous_narrator_tag_invites_quoted_speech(
-    parts: list[tuple[str, str]],
-    language: str,
-) -> bool:
-    if not parts or normalize_book_language(language) != "ru":
-        return False
-    kind, text = parts[-1]
-    if kind != "narrator":
-        return False
-    stripped = text.rstrip()
-    if not stripped.endswith(":"):
-        return False
-    probe = stripped[:-1].rstrip()
-    return bool(re.search(rf"\b(?:{_ru_attribution_pattern()})\b(?:\s+[\wА-Яа-яЁё-]+){{0,4}}$", probe, re.IGNORECASE))
-
-
-def _dash_can_start_embedded_dialogue(text: str, index: int, language: str) -> bool:
-    before = text[:index].rstrip()
-    after = text[index + 1 :].lstrip()
-    if not after:
-        return False
-    if not (not before or re.search(r"[.!?…:]\s*$", before)):
-        return False
-    if language == "ru":
-        return not _dash_starts_narrator_tag(text[index:], language)
-    return after[:1].isupper() or after[:1] in _QUOTE_CHARS
-
-
-def _find_next_inline_attribution_start(text: str, language: str) -> int | None:
-    if language == "ru":
-        pattern = rf"(?P<speech>[^.!?…]+?,)\s*[—–-]\s*(?:\w+\s+){{0,3}}(?:{_ru_attribution_pattern()})\b"
-    elif language == "en":
-        pattern = (
-            r"(?P<speech>[^.!?…]+?[,.!?])\s*(?:he|she|[A-Z][A-Za-z'-]{1,40})\s+"
-            r"(?:said|asked|replied|shouted|whispered|cried|muttered)\b"
-        )
-    else:
-        return None
-    for match in re.finditer(pattern, text, re.IGNORECASE | re.DOTALL):
-        speech_start = match.start("speech")
-        if language == "ru" and _ru_speech_prefix_is_indirect(match.group("speech")):
-            continue
-        if speech_start == 0 or re.search(r"[.!?…]\s*$", text[:speech_start]):
-            return speech_start
-    return None
-
-
-def _trailing_dialogue_opener(text: str) -> str:
-    stripped = text.rstrip()
-    if not stripped:
-        return ""
-    last = stripped[-1]
-    if last in _OPENING_QUOTE_CHARS or last in _DASH_CHARS:
-        return stripped[len(stripped.rstrip("".join(_OPENING_QUOTE_CHARS | _DASH_CHARS))):]
-    return ""
-
-
-def _starts_with_dialogue_marker(text: str) -> bool:
-    stripped = text.lstrip()
-    return bool(stripped and (stripped[0] in _QUOTE_CHARS or stripped[0] in _DASH_CHARS))
-
-
-def _starts_with_direct_speech_marker(text: str, language: str) -> bool:
-    stripped = text.lstrip()
-    if not stripped:
-        return False
-    if stripped[0] in _DASH_CHARS:
-        return not _dash_starts_narrator_tag(stripped, language)
-    if stripped[0] in _OPENING_QUOTE_CHARS:
-        return _opening_quote_starts_direct_speech(stripped, language)
-    return False
-
-
-def _starts_with_opening_quote(text: str) -> bool:
-    stripped = text.lstrip()
-    return bool(stripped and stripped[0] in _OPENING_QUOTE_CHARS)
-
-
-def _starts_with_dash_dialogue(text: str) -> bool:
-    stripped = text.lstrip()
-    return bool(stripped and stripped[0] in _DASH_CHARS)
-
-
-def _take_quoted_speech(text: str) -> tuple[str, str]:
-    stripped = text.lstrip()
-    leading_ws = len(text) - len(stripped)
-    quote = stripped[0]
-    close_quote = _CLOSING_QUOTE_BY_OPENING.get(quote, quote)
-    close_index = stripped.find(close_quote, 1)
-    if close_index < 0:
-        inline = _split_inline_attribution_at_start(stripped, "ru")
-        if inline is not None:
-            speech, tail = inline
-            return speech, tail
-        return text.strip(), ""
-
-    end = leading_ws + close_index + 1
-    while end < len(text) and text[end] in ",.;:!?…":
-        end += 1
-    return text[:end].strip(), text[end:].strip()
-
-
-def _opening_quote_starts_direct_speech(text: str, language: str) -> bool:
-    speech, tail = _take_quoted_speech(text)
-    if not speech:
-        return False
-    if _quoted_speech_has_attribution_tail(speech, tail, language):
-        return True
-
-    core = _quoted_speech_core(speech)
-    if not core:
-        return False
-    words = re.findall(r"[\wА-Яа-яЁё]+", core, flags=re.UNICODE)
-    if len(words) <= 3 and not re.search(r"[!?…！？]|\.{3}", core):
-        return False
-    return bool(re.search(r"[.!?…。！？]\s*$", core))
-
-
-def _quoted_speech_has_attribution_tail(speech: str, tail: str, language: str) -> bool:
-    probe = f"{speech} {tail[:120]}".strip()
-    if language == "ru":
-        if _split_inline_attribution_at_start(probe, language) is not None:
-            return True
-        return _dash_starts_attribution_tag(tail, language)
-
-    inferred_speaker, inferred_role = _infer_dialogue_speaker(probe, language)
-    if inferred_speaker or inferred_role:
-        return True
-    if _split_inline_attribution(probe, language) is not None:
-        return True
-    if tail and _dash_starts_narrator_tag(tail, language):
-        return True
-    return False
-
-
-def _dash_starts_attribution_tag(text: str, language: str) -> bool:
-    stripped = text.lstrip()
-    if not stripped or stripped[0] not in _DASH_CHARS:
-        return False
-    after_dash = stripped[1:].lstrip()
-    if language == "ru":
-        return bool(re.match(rf"(?:{_ru_attribution_pattern()})\b", after_dash, re.IGNORECASE))
-    return _dash_starts_narrator_tag(text, language)
-
-
-def _quoted_speech_core(text: str) -> str:
-    stripped = text.strip()
-    while stripped and stripped[-1] in ",.;:!?…，。！？":
-        stripped = stripped[:-1].rstrip()
-    if len(stripped) >= 2 and stripped[0] in _OPENING_QUOTE_CHARS:
-        close_quote = _CLOSING_QUOTE_BY_OPENING.get(stripped[0], stripped[0])
-        if stripped.endswith(close_quote):
-            stripped = stripped[1:-1].strip()
-    return stripped
-
-
-def _take_dash_speech(text: str, language: str) -> tuple[str, str]:
-    stripped = text.strip()
-    dash_chars = re.escape("".join(_DASH_CHARS))
-    for match in re.finditer(rf"\s*[{dash_chars}]\s*", stripped[1:]):
-        split_at = match.start() + 1
-        speech = stripped[:split_at].rstrip()
-        tail = stripped[split_at:].strip()
-        boundary_found = False
-        if re.search(r"[,.!?…]\s*$", speech) and _dash_starts_narrator_tag(tail, language):
-            boundary_found = True
-        if re.search(r"[.!?…]\s*$", speech) and _dash_starts_new_direct_speech(tail, language):
-            boundary_found = True
-        if not boundary_found:
-            continue
-        inline = _split_dash_speech_at_inline_attribution(speech, language)
-        if inline is not None:
-            inline_speech, inline_tail = inline
-            return inline_speech, f"{inline_tail} {tail}".strip()
-        return speech, tail
-    inline = _split_dash_speech_at_inline_attribution(stripped, language)
-    if inline is not None:
-        return inline
-    narration_tail = _split_dash_speech_before_narration_tail(stripped)
-    if narration_tail is not None:
-        return narration_tail
-    return stripped, ""
-
-
-def _split_dash_speech_at_inline_attribution(text: str, language: str) -> tuple[str, str] | None:
-    if not text.lstrip().startswith(("-", "—", "–")):
-        return None
-    bare_inline = _split_dash_speech_at_bare_inline_attribution(text, language)
-    if bare_inline is not None:
-        return bare_inline
-    inline = _split_inline_attribution_at_start(text, language)
-    if inline is None:
-        return None
-    speech, tag = inline
-    if _dash_starts_narrator_tag(tag, language):
-        return None
-    return speech, tag
-
-
-def _split_dash_speech_at_bare_inline_attribution(
-    text: str,
-    language: str,
-) -> tuple[str, str] | None:
-    if language != "ru":
-        return None
-    stripped = text.strip()
-    if not stripped or stripped[0] not in _DASH_CHARS:
-        return None
-    speaker_after_verb = rf"(?:я|он|она|мы|{_RU_SPEAKER_TOKEN})"
-    pattern = (
-        rf"[,，]{{1,2}}\s*(?P<tag>(?:[\wА-Яа-яЁё-]+\s+){{0,4}}"
-        rf"(?:{_ru_attribution_pattern()})\b\s+{speaker_after_verb}\b.*)"
-    )
-    for match in re.finditer(pattern, stripped, re.IGNORECASE | re.DOTALL):
-        speech = stripped[: match.start()].rstrip()
-        delimiter_match = re.match(r"[,，]{1,2}", stripped[match.start():])
-        delimiter = delimiter_match.group(0) if delimiter_match else ","
-        if len(re.findall(r"[\wА-Яа-яЁё-]+", speech, re.UNICODE)) < 2:
-            continue
-        return f"{speech}{delimiter}", match.group("tag").strip()
-    return None
-
-
-def _split_dash_speech_before_narration_tail(text: str) -> tuple[str, str] | None:
-    stripped = text.strip()
-    if not stripped or stripped[0] not in _DASH_CHARS:
-        return None
-    for pattern in (
-        r"(?P<speech>^[—–-]\s*.+?[!?…][»”\"]\.?)\s+(?P<tail>[А-ЯЁ][^—–-].*)",
-        r"(?P<speech>^[—–-]\s*.+?[!?…])\s+(?P<tail>[А-ЯЁ][^—–-]{1,240}:\s*[—–-]\s+.+)",
-    ):
-        match = re.search(pattern, stripped, re.DOTALL)
-        if match:
-            return match.group("speech").strip(), match.group("tail").strip()
-    return None
-
-
-def _take_narrator_tail(text: str) -> tuple[str, str]:
-    stripped = text.strip()
-    inline_index = _find_next_inline_attribution_start(stripped, "ru")
-    if inline_index is not None and inline_index > 0:
-        return stripped[:inline_index].strip(), stripped[inline_index:].strip()
-
-    nested_index = _find_nested_dialogue_after_narrator_tag(stripped)
-    if nested_index is not None:
-        return stripped[:nested_index].strip(), stripped[nested_index:].strip()
-
-    match = re.search(r"(?<=[.!?…])\s+(?=[\"“„«‹「『《〈—–-]\s*\S)", stripped)
-    if not match:
-        return stripped, ""
-    return stripped[: match.start()].strip(), stripped[match.end():].strip()
-
-
-def _find_nested_dialogue_after_narrator_tag(text: str) -> int | None:
-    for match in re.finditer(r"\s+(?P<dash>[—–-])\s+", text[1:]):
-        index = match.start("dash") + 1
-        previous = text[index - 1] if index > 0 else ""
-        if previous and not (previous.isspace() or previous in ",.!?:…"):
-            continue
-        before = text[:index].strip()
-        after = text[index:].strip()
-        after_dash = after[1:].lstrip() if after and after[0] in _DASH_CHARS else after
-        resumes_after_tag = bool(
-            re.search(r"[,;:]\s*$", before)
-            and (
-                _contains_ru_attribution_word(before)
-                or _dash_starts_narrator_tag(before, "ru")
-            )
-        )
-        if not after_dash or not (
-            after_dash[0].isupper()
-            or after_dash[0] in _QUOTE_CHARS
-            or resumes_after_tag
-        ):
-            continue
-        colon_intro = bool(re.search(r":\s*$", before))
-        long_tag_resumes_speech = bool(
-            _dash_starts_narrator_tag(text, "ru")
-            and re.search(r"[.!?…]\s*$", before)
-            and _dash_starts_new_direct_speech(after, "ru")
-        )
-        if colon_intro or len(before) <= 160 and (
-            _contains_ru_attribution_word(before)
-            or _dash_starts_narrator_tag(before, "ru")
-        ) or long_tag_resumes_speech:
-            return index
-    return None
-
-
-def _continues_after_author_tag(parts: list[tuple[str, str]], text: str) -> bool:
-    if not parts or parts[-1][0] != "narrator":
-        return False
-    previous = parts[-1][1].strip()
-    if not (
-        previous.endswith((",", ";", ":"))
-        and (_contains_ru_attribution_word(previous) or _dash_starts_narrator_tag(previous, "ru"))
-    ):
-        return False
-    stripped = text.lstrip()
-    if not stripped or stripped[0] not in _DASH_CHARS:
-        return False
-    after_dash = stripped[1:].lstrip()
-    return bool(after_dash and after_dash[0].islower())
-
-
-def _dash_starts_new_direct_speech(text: str, language: str) -> bool:
-    stripped = text.lstrip()
-    if not stripped or stripped[0] not in _DASH_CHARS:
-        return False
-    if _dash_starts_narrator_tag(stripped, language):
-        return False
-    after_dash = stripped[1:].lstrip()
-    return bool(after_dash and (after_dash[0].isupper() or after_dash[0] in _QUOTE_CHARS))
-
-
-def _dash_starts_narrator_tag(text: str, language: str) -> bool:
-    stripped = text.lstrip()
-    if not stripped or stripped[0] not in _DASH_CHARS:
-        return False
-    after_dash = stripped[1:].lstrip()
-    if not after_dash:
-        return False
-    if language == "ru":
-        if re.match(rf"(?:{_ru_attribution_pattern()})\b", after_dash, re.IGNORECASE):
-            return True
-        first_sentence = re.split(r"(?<=[.!?…])\s+", after_dash, maxsplit=1)[0]
-        if after_dash[0].islower() and re.search(r"[!?…]", first_sentence):
-            return False
-        return bool(
-            after_dash[0].islower()
-        )
-    if language == "en":
-        return bool(
-            re.search(
-                r"\b(?:said|asked|replied|shouted|whispered|cried|muttered)\b",
-                after_dash[:80],
-                re.IGNORECASE,
-            )
-        )
-    return after_dash[0].islower()
-
-
-def _split_inline_attribution(text: str, language: str) -> tuple[str, str] | None:
-    return _split_inline_attribution_match(text, language, anchored=False)
-
-
-def _split_inline_attribution_at_start(text: str, language: str) -> tuple[str, str] | None:
-    return _split_inline_attribution_match(text, language, anchored=True)
-
-
-def _split_inline_attribution_match(
-    text: str,
-    language: str,
-    *,
-    anchored: bool,
-) -> tuple[str, str] | None:
-    prefix = r"^\s*" if anchored else ""
-    if language == "ru":
-        for pattern in (
-            rf"{prefix}(?P<speech>[^.!?…]+[,，]{{1,2}})\s*(?P<tag>[—–-]\s*(?:\w+\s+){{0,3}}(?:{_ru_attribution_pattern()})\b.*)",
-            rf"{prefix}(?P<speech>[^.!?…]+[,，]{{1,2}})\s*(?P<tag>(?:\w+\s+){{0,5}}(?:{_ru_attribution_pattern()})\b.*)",
-        ):
-            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
-            if match:
-                if _ru_speech_prefix_is_indirect(match.group("speech")):
-                    continue
-                if not match.group("tag").lstrip().startswith(tuple(_DASH_CHARS)):
-                    speech = match.group("speech").lstrip()
-                    if not speech or speech[0] not in (_QUOTE_CHARS | _DASH_CHARS):
-                        continue
-                return match.group("speech").strip(), match.group("tag").strip()
-    if language == "en":
-        match = re.search(
-            rf"{prefix}(?P<speech>.+?[,.!?])\s*(?P<tag>(?:he|she|[A-Z][A-Za-z'-]{{1,40}})\s+"
-            r"(?:said|asked|replied|shouted|whispered|cried|muttered)\b.*)",
-            text,
-            re.IGNORECASE | re.DOTALL,
-        )
-        if match:
-            return match.group("speech").strip(), match.group("tag").strip()
-    return None
-
-
-def _looks_like_direct_speech(text: str, language: str) -> bool:
-    if _starts_with_direct_speech_marker(text, language):
-        return True
-    if _split_inline_attribution(text, language) is not None:
-        return True
-    return False
-
-
-def _contains_ru_attribution_word(text: str) -> bool:
-    return bool(re.search(rf"\b(?:{_ru_attribution_pattern()})\b", text or "", re.IGNORECASE))
-
-
-def _ru_speech_prefix_is_indirect(text: str) -> bool:
-    stripped = (text or "").lstrip()
-    if not stripped or stripped[0] in _QUOTE_CHARS or stripped[0] in _DASH_CHARS:
-        return False
-    return bool(
-        re.search(
-            rf"\b(?:{_ru_attribution_pattern()})\b\s*,?\s+"
-            r"(?:что|чтобы|будто|словно|как|где|куда|откуда|когда|почему|зачем|ли)\b",
-            stripped,
-            re.IGNORECASE,
-        )
-    )
-
-
-def _ru_attribution_pattern() -> str:
-    words = (
-        *_RU_MALE_ATTRIBUTION,
-        *_RU_FEMALE_ATTRIBUTION,
-        *_RU_NEUTRAL_ATTRIBUTION,
-        "указал",
-        "указала",
-    )
-    return "|".join(re.escape(word) for word in words)
-
-
-def _coalesce_dialogue_parts(parts: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    clean_parts = [(kind, re.sub(r"\s+", " ", text).strip()) for kind, text in parts if text.strip()]
-    if not clean_parts:
-        return []
-    result: list[tuple[str, str]] = []
-    for kind, text in clean_parts:
-        should_keep_separate = (
-            kind == "speech"
-            and result
-            and result[-1][0] == kind
-            and _starts_with_dialogue_marker(result[-1][1])
-            and _starts_with_dialogue_marker(text)
-        )
-        if result and result[-1][0] == kind and not should_keep_separate:
-            prev_kind, prev_text = result[-1]
-            result[-1] = (prev_kind, f"{prev_text} {text}".strip())
-        else:
-            result.append((kind, text))
-    return result
-
-
-def _source_fallback_segments(window_text: str) -> list[dict[str, Any]]:
-    """Preserve a failed LLM window as a safe narrator segment."""
-    return [
-        {
-            "role": "narrator",
-            "speaker": "",
-            "character_description": "",
-            "emotion": "neutral",
-            "section_kind": "narration",
-            "text": window_text,
-            "intonation": "calm",
-            "pause_after_ms": 0,
-            "boundary_after": "",
-        }
-    ]
-
-
-def repair_segment_dialogue_boundaries(
-    segments: list[dict[str, Any]],
-    *,
-    language: str,
-) -> list[dict[str, Any]]:
-    """Repair LLM/manual segment rows before grouping them into TTS chunks."""
-
-    from book_normalizer.chunking.manifest_v2 import role_for_voice_id
-    from book_normalizer.tts.voice_mapping import auto_builtin_voice_id_for_segment
-
-    source_text = " ".join(str(segment.get("text") or "") for segment in segments)
-    recent_dialogue_speakers: list[tuple[str, str]] = []
-    pending_continuation_speaker: tuple[str, str] | None = None
-    repaired_segments = _split_mixed_dialogue_segments(
-        _repair_dialogue_segment_boundaries(segments),
-        language=language,
-    )
-    rows: list[dict[str, Any]] = []
-    for segment in repaired_segments:
-        row = dict(segment)
-        original_role = _normalize_role(row.get("role"))
-        role = original_role
-        speaker = _clean_speaker(row.get("speaker"), language)
-        section_kind = _clean_section_kind(row.get("section_kind"), role)
-        character_description = _clean_optional(
-            row.get("character_description")
-            or row.get("role_description")
-            or row.get("description")
-        )
-        if (
-            pending_continuation_speaker is not None
-            and section_kind == "dialogue"
-            and not speaker
-            and role in {"unknown", "narrator"}
-        ):
-            pending_speaker, pending_role = pending_continuation_speaker
-            speaker = pending_speaker
-            if pending_role in {"male", "female"}:
-                role = pending_role
-            if speaker and not character_description:
-                character_description = (
-                    "Direct-speech character inferred from adjacent author tag."
-                )
-        role, speaker, section_kind, character_description = _repair_dialogue_metadata(
-            role=role,
-            speaker=speaker,
-            section_kind=section_kind,
-            character_description=character_description,
-            text=str(row.get("text") or ""),
-            language=language,
-            recent_dialogue_speakers=recent_dialogue_speakers,
-            force_narration=bool(row.get("_narration_repaired")),
-            force_dialogue=bool(row.get("_direct_speech_repaired")),
-        )
-        is_dialogue = _is_dialogue_segment(
-            role=role,
-            section_kind=section_kind,
-            speaker=speaker,
-            text=str(row.get("text") or ""),
-        )
-        if is_dialogue:
-            _remember_dialogue_speaker(
-                recent_dialogue_speakers,
-                speaker=speaker,
-                role=role,
-            )
-            pending_continuation_speaker = None
-        elif section_kind == "narration":
-            pending_continuation_speaker = _narration_continuation_speaker(
-                str(row.get("text") or ""),
-                language=language,
-                recent_dialogue_speakers=recent_dialogue_speakers,
-            )
-        else:
-            pending_continuation_speaker = None
-        row["role"] = role
-        row["speaker"] = speaker
-        row["section_kind"] = section_kind
-        row["character_description"] = character_description
-        row["is_dialogue"] = is_dialogue
-        existing_voice_id = str(row.get("voice_id") or "")
-        existing_voice_role = role_for_voice_id(existing_voice_id, fallback="")
-        voice_role_conflicts = (
-            existing_voice_role in {"male", "female", "narrator"}
-            and role in {"male", "female", "narrator"}
-            and existing_voice_role != role
-        )
-        repaired_voice_conflicts = voice_role_conflicts and (
-            role != original_role
-            or is_dialogue
-            or bool(row.get("_direct_speech_repaired"))
-            or bool(row.get("_narration_repaired"))
-        )
-        if (
-            row.get("_direct_speech_repaired")
-            or row.get("_narration_repaired")
-            or not existing_voice_id
-            or existing_voice_id == ROLE_TO_VOICE_ID.get(original_role)
-            or repaired_voice_conflicts
-        ):
-            row["voice_id"] = auto_builtin_voice_id_for_segment(row)
-        row.pop("_direct_speech_repaired", None)
-        row.pop("_narration_repaired", None)
-        rows.append(row)
-    rows = _apply_delivery_cues(rows, language=language)
-    if source_text and not _segments_preserve_source(source_text, rows):
-        logger.warning(
-            "Dialogue boundary repair changed segment text order/content; "
-            "keeping original segments."
-        )
-        return [dict(segment) for segment in segments]
-    return rows
-
-
-def _apply_delivery_cues(
-    rows: list[dict[str, Any]],
-    *,
-    language: str,
-) -> list[dict[str, Any]]:
-    """Apply emotional delivery to dialogue adjacent to speech tags."""
-
-    if not rows:
-        return rows
-    cues_by_index = {
-        index: cues
-        for index, row in enumerate(rows)
-        if (cues := _delivery_cues_for_text(str(row.get("text") or ""), language))
-    }
-    if not cues_by_index:
-        return rows
-
-    result = [dict(row) for row in rows]
-    for index, cues in cues_by_index.items():
-        if _row_is_explicit_dialogue(result[index]):
-            _mark_row_delivery(result[index], cues)
-            if _has_direct_speech_marker(str(result[index].get("text") or ""), language):
-                continue
-
-        previous_index = _adjacent_dialogue_index(result, index, step=-1)
-        if previous_index is not None:
-            _mark_row_delivery(result[previous_index], cues)
-
-        next_index = _adjacent_dialogue_index(result, index, step=1)
-        if next_index is not None:
-            _mark_row_delivery(result[next_index], cues)
-
-    return result
-
-
-def _delivery_cues_for_text(text: str, language: str) -> list[str]:
-    patterns = _DELIVERY_CUE_RE_BY_LANGUAGE.get(
-        normalize_book_language(language),
-        _DELIVERY_CUE_RE_BY_LANGUAGE["ru"],
-    )
-    return [emotion for emotion, regex in patterns if regex.search(text or "")]
-
-
-def _adjacent_dialogue_index(
-    rows: list[dict[str, Any]],
-    start_index: int,
-    *,
-    step: int,
-) -> int | None:
-    index = start_index + step
-    if index < 0 or index >= len(rows):
-        return None
-    row = rows[index]
-    if str(row.get("section_kind") or "") in _SYSTEM_SECTION_KINDS:
-        return None
-    if _row_is_dialogue(row):
-        return index
-    return None
-
-
-def _row_is_dialogue(row: dict[str, Any]) -> bool:
-    text = str(row.get("text") or "").lstrip()
-    return (
-        _row_is_explicit_dialogue(row)
-        or bool(text and text[0] in "\"“”«»‹›「」『』《》—–-")
-    )
-
-
-def _row_is_explicit_dialogue(row: dict[str, Any]) -> bool:
-    return bool(row.get("is_dialogue")) or str(row.get("section_kind") or "") == "dialogue"
-
-
-def _mark_row_delivery(row: dict[str, Any], cues: list[str]) -> None:
-    emotion = cues[0] if cues else ""
-    if not emotion:
-        return
-    intonation = _clean_intonation(row.get("intonation") or row.get("voice_tone") or "")
-    if intonation and intonation not in {"calm", "neutral", emotion}:
-        if not intonation.startswith(emotion):
-            row["intonation"] = f"{emotion} {intonation}"
-    else:
-        row["intonation"] = emotion
-
-    current_emotion = _clean_intonation(row.get("emotion") or "")
-    if not current_emotion or current_emotion in {"calm", "neutral"}:
-        row["emotion"] = emotion
-
-
-def _legacy_voice_text(item: dict[str, Any]) -> str:
-    for key in ("narrator", "men", "women", "male", "female"):
-        if key in item:
-            return str(item[key])
-    return ""
-
-
-def _legacy_voice_role(item: dict[str, Any]) -> str:
-    for key in ("narrator", "men", "women", "male", "female"):
-        if key in item:
-            return key
-    return "narrator"
-
-
-def _normalize_role(value: Any) -> str:
-    role = str(value or "narrator").strip().lower()
-    return VOICE_LABEL_TO_ROLE.get(role, "narrator")
-
-
-def _repair_dialogue_metadata(
-    *,
-    role: str,
-    speaker: str,
-    section_kind: str,
-    character_description: str,
-    text: str,
-    language: str,
-    recent_dialogue_speakers: list[tuple[str, str]],
-    force_narration: bool = False,
-    force_dialogue: bool = False,
-) -> tuple[str, str, str, str]:
-    if section_kind in _SYSTEM_SECTION_KINDS:
-        return role, speaker, section_kind, character_description
-    if force_narration:
-        return "narrator", "", "narration", ""
-    if force_dialogue:
-        if not section_kind or section_kind == "narration":
-            section_kind = "dialogue"
-        return role, speaker, section_kind, character_description
-
-    if (
-        role in {"male", "female", "unknown"}
-        and section_kind == "dialogue"
-        and not _looks_like_direct_speech(text, language)
-        and (not speaker or _dialogue_markup_looks_like_narration(text, language))
-    ):
-        return "narrator", "", "narration", ""
-
-    if (
-        role == "narrator"
-        and section_kind == "narration"
-        and not speaker
-        and _dash_starts_narrator_tag(text, language)
-    ):
-        return "narrator", "", "narration", ""
-
-    if (
-        section_kind == "dialogue"
-        and language == "ru"
-        and _dash_starts_narrator_tag(text, language)
-        and _contains_ru_attribution_word(text)
-    ):
-        return "narrator", "", "narration", ""
-
-    if not _has_direct_speech_marker(text, language):
-        return role, speaker, section_kind, character_description
-
-    inferred_speaker, inferred_role = _infer_dialogue_speaker(text, language)
-    if inferred_speaker:
-        speaker = speaker or inferred_speaker
-    if inferred_role in {"male", "female"}:
-        role = inferred_role
-    if speaker:
-        speaker_role = infer_person_gender(speaker)
-        if speaker_role in {"male", "female"}:
-            role = speaker_role
-
-    if not speaker:
-        speaker, known_role = _alternate_dialogue_speaker(recent_dialogue_speakers, role)
-        if known_role in {"male", "female"} and role == "narrator":
-            role = known_role
-
-    if role == "narrator":
-        role = "unknown"
-
-    if not section_kind or section_kind == "narration":
-        section_kind = "dialogue"
-    if speaker and not character_description:
-        character_description = "Direct-speech character inferred from local dialogue context."
-    return role, speaker, section_kind, character_description
-
-
-def _has_direct_speech_marker(text: str, language: str) -> bool:
-    return _starts_with_direct_speech_marker(text, language)
-
-
-def _dialogue_markup_looks_like_narration(text: str, language: str) -> bool:
-    """Return true when LLM speaker markup contradicts the text shape."""
-    stripped = str(text or "").strip()
-    if not stripped:
-        return False
-    if stripped[0] in _OPENING_QUOTE_CHARS:
-        quote = stripped[0]
-        close_quote = _CLOSING_QUOTE_BY_OPENING.get(quote, quote)
-        if stripped.find(close_quote, 1) < 0:
-            return False
-        speech, tail = _take_quoted_speech(stripped)
-        if not tail and re.search(r"[.!?…][»\"'”’]?[.!?…]?\s*$", speech):
-            return False
-        return not _opening_quote_starts_direct_speech(stripped, language)
-    if normalize_book_language(language) == "ru":
-        return stripped[0].islower()
-    return False
-
-
-def _infer_dialogue_speaker(text: str, language: str) -> tuple[str, str]:
-    language = normalize_book_language(language)
-    if language == "ru":
-        return _infer_ru_dialogue_speaker(text)
-    if language == "en":
-        return _infer_en_dialogue_speaker(text)
-    if language == "zh":
-        return _infer_zh_dialogue_speaker(text)
-    if language == "kk":
-        return _infer_regex_dialogue_speaker(text, _KK_ATTRIBUTION_RE, _clean_cyrillic_speaker)
-    if language == "uz":
-        return _infer_regex_dialogue_speaker(text, _UZ_ATTRIBUTION_RE, _clean_latin_speaker)
-    return "", ""
-
-
-def _infer_ru_dialogue_speaker(text: str) -> tuple[str, str]:
-    candidates: list[tuple[int, str, str]] = []
-    for regex, role in (
-        (_RU_MALE_ATTRIBUTION_RE, "male"),
-        (_RU_FEMALE_ATTRIBUTION_RE, "female"),
-    ):
-        for match in regex.finditer(text):
-            speaker = _clean_ru_speaker(match.group("speaker"))
-            if speaker:
-                candidates.append((match.start(), speaker, role))
-    for verbs, role in (
-        (_RU_MALE_ATTRIBUTION, "male"),
-        (_RU_FEMALE_ATTRIBUTION, "female"),
-    ):
-        speaker_before = re.compile(
-            rf"\b(?P<speaker>{_RU_SPEAKER_TOKEN})\b"
-            rf"(?:\s+[А-ЯЁа-яё-]{{1,30}}){{0,4}}\s+\b(?:{'|'.join(verbs)})\b",
-            re.IGNORECASE,
-        )
-        for match in speaker_before.finditer(text):
-            speaker = _clean_ru_speaker(match.group("speaker"))
-            if speaker:
-                candidates.append((match.start(), speaker, role))
-    if candidates:
-        _position, speaker, role = max(candidates, key=lambda item: item[0])
-        return speaker, role
-    if _text_has_ru_gendered_attribution(text, _RU_MALE_ATTRIBUTION):
-        return "", "male"
-    if _text_has_ru_gendered_attribution(text, _RU_FEMALE_ATTRIBUTION):
-        return "", "female"
-    pronoun_role = _infer_ru_pronoun_attribution_role(text)
-    if pronoun_role:
-        return "", pronoun_role
-    return "", ""
-
-
-def _infer_ru_pronoun_attribution_role(text: str) -> str:
-    probe = text.casefold()
-    if re.search(r"\b[а-яё]{3,}ла(?:сь)?\s+она\b|\bона\s+[а-яё]{3,}ла(?:сь)?\b", probe):
-        return "female"
-    if re.search(r"\b[а-яё]{3,}л(?:ся)?\s+он\b|\bон\s+[а-яё]{3,}л(?:ся)?\b", probe):
-        return "male"
-
-    if re.search(r"\b[а-яё]{3,}ла(?:сь)?\s+я\b", probe):
-        return "female"
-    if re.search(r"\b[а-яё]{3,}л(?:ся)?\s+я\b", probe):
-        return "male"
-    if re.search(r"\bя\s+(?:[а-яё]+\s+){0,3}[а-яё]{3,}ла(?:сь)?\b", probe):
-        return "female"
-    if re.search(r"\bя\s+(?:[а-яё]+\s+){0,3}[а-яё]{3,}л(?:ся)?\b", probe):
-        return "male"
-    return ""
-
-
-def _infer_en_dialogue_speaker(text: str) -> tuple[str, str]:
-    role = ""
-    if _EN_MALE_ATTRIBUTION_RE.search(text or ""):
-        role = "male"
-    elif _EN_FEMALE_ATTRIBUTION_RE.search(text or ""):
-        role = "female"
-    match = _EN_SPEAKER_RE.search(text or "")
-    if not match:
-        return "", role
-    speaker = _clean_optional(match.group("after") or match.group("before"))
-    return speaker, role or ("unknown" if speaker else "")
-
-
-def _infer_zh_dialogue_speaker(text: str) -> tuple[str, str]:
-    role = ""
-    if _ZH_MALE_ATTRIBUTION_RE.search(text or ""):
-        role = "male"
-    elif _ZH_FEMALE_ATTRIBUTION_RE.search(text or ""):
-        role = "female"
-    for match in _ZH_SPEAKER_RE.finditer(text or ""):
-        speaker = _clean_zh_speaker(match.group("speaker"))
-        if speaker:
-            return speaker, role or "unknown"
-    return "", role
-
-
-def _infer_regex_dialogue_speaker(
-    text: str,
-    regex: re.Pattern[str],
-    cleaner: Callable[[str], str],
-) -> tuple[str, str]:
-    for match in regex.finditer(text or ""):
-        speaker = cleaner(match.group("speaker"))
-        if speaker:
-            return speaker, "unknown"
-    return "", ""
-
-
-def _clean_ru_speaker(value: str) -> str:
-    speaker = re.sub(r"^[\s,.;:!?—–-]+|[\s,.;:!?—–-]+$", "", value or "")
-    if not speaker:
-        return ""
-    if speaker.casefold() in _RU_BAD_SPEAKER_TOKENS:
-        return ""
-    if not re.fullmatch(_RU_SPEAKER_TOKEN, speaker):
-        return ""
-    speaker_gender = infer_person_gender(speaker)
-    if is_definitely_not_person_reference(speaker) and not speaker_gender:
-        return ""
-    if speaker[0].islower() and not speaker_gender:
-        return ""
-    if speaker[0].islower():
-        speaker = speaker[0].upper() + speaker[1:]
-    return _clean_optional(speaker)
-
-
-def _clean_speaker(value: Any, language: str) -> str:
-    speaker = _clean_optional(value)
-    if not speaker:
-        return ""
-    if normalize_book_language(language) != "ru":
-        return speaker
-    if len(speaker.split()) != 1:
-        return speaker
-    if not re.search(r"[А-ЯЁа-яё]", speaker):
-        return speaker
-    return _clean_ru_speaker(speaker)
-
-
-def _clean_cyrillic_speaker(value: str) -> str:
-    speaker = re.sub(r"^[\s,.;:!?—–-]+|[\s,.;:!?—–-]+$", "", value or "")
-    if not re.fullmatch(_KK_SPEAKER_TOKEN, speaker or ""):
-        return ""
-    return _clean_optional(speaker)
-
-
-def _clean_latin_speaker(value: str) -> str:
-    speaker = re.sub(r"^[\s,.;:!?—–-]+|[\s,.;:!?—–-]+$", "", value or "")
-    if not re.fullmatch(_UZ_SPEAKER_TOKEN, speaker or ""):
-        return ""
-    return _clean_optional(speaker)
-
-
-def _clean_zh_speaker(value: str) -> str:
-    speaker = re.sub(
-        r"^[\s，。！？、；：“”‘’「」『』《》〈〉]+|[\s，。！？、；：“”‘’「」『』《》〈〉]+$",
-        "",
-        value or "",
-    )
-    if not speaker or speaker in _ZH_BAD_SPEAKER_TOKENS:
-        return ""
-    if not re.fullmatch(r"[\u3400-\u9fff]{1,12}", speaker):
-        return ""
-    return _clean_optional(speaker)
-
-
-def _text_has_ru_gendered_attribution(text: str, verbs: tuple[str, ...]) -> bool:
-    return bool(re.search(rf"\b(?:{'|'.join(verbs)})\b", text or "", re.IGNORECASE))
-
-
-def _alternate_dialogue_speaker(
-    recent_dialogue_speakers: list[tuple[str, str]],
-    role: str,
-) -> tuple[str, str]:
-    if not recent_dialogue_speakers:
-        return "", ""
-    previous_speaker, _previous_role = recent_dialogue_speakers[-1]
-    for speaker, speaker_role in reversed(recent_dialogue_speakers[:-1]):
-        if speaker and speaker != previous_speaker:
-            if role in {"male", "female"} and speaker_role not in {role, "unknown"}:
-                continue
-            return speaker, speaker_role
-    return "", ""
-
-
-def _narration_continuation_speaker(
-    text: str,
-    *,
-    language: str,
-    recent_dialogue_speakers: list[tuple[str, str]],
-) -> tuple[str, str] | None:
-    """Infer who keeps speaking after an adjacent author tag."""
-
-    if normalize_book_language(language) != "ru":
-        return None
-    if not recent_dialogue_speakers or not _contains_ru_attribution_word(text):
-        return None
-    speaker, role = _infer_ru_dialogue_speaker(text)
-    if speaker:
-        return speaker, role if role in {"male", "female"} else infer_person_gender(speaker)
-    if _dash_starts_narrator_tag(text, "ru"):
-        return recent_dialogue_speakers[-1]
-    return None
-
-
-def _remember_dialogue_speaker(
-    recent_dialogue_speakers: list[tuple[str, str]],
-    *,
-    speaker: str,
-    role: str,
-) -> None:
-    if not speaker:
-        return
-    normalized_role = role if role in {"male", "female"} else "unknown"
-    record = (speaker, normalized_role)
-    if recent_dialogue_speakers and recent_dialogue_speakers[-1] == record:
-        return
-    recent_dialogue_speakers.append(record)
-    del recent_dialogue_speakers[:-8]
-
-
-def _clean_intonation(value: Any) -> str:
-    text = re.sub(r"\s+", " ", str(value or "calm")).strip().lower()
-    return text[:80] or "calm"
-
-
-def _clean_optional(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip()[:180]
-
-
-def _clean_section_kind(value: Any, role: str) -> str:
-    text = re.sub(r"\s+", "_", str(value or "").strip().lower())
-    allowed = {
-        "narration",
-        "dialogue",
-        "annotation",
-        "preface",
-        "epilogue",
-        "chapter_title",
-    }
-    if text in allowed:
-        return text
-    return "dialogue" if role in {"male", "female", "unknown"} else "narration"
-
-
-def _is_dialogue_segment(
-    *,
-    role: str,
-    section_kind: str,
-    speaker: str,
-    text: str,
-) -> bool:
-    """Detect direct speech even when the LLM cannot prove speaker gender."""
-    if role == "narrator" and section_kind == "narration" and not speaker:
-        return False
-    if role in {"male", "female", "unknown"} or section_kind == "dialogue" or speaker:
-        return True
-    stripped = text.lstrip()
-    return bool(stripped and (stripped[0] in _QUOTE_CHARS or stripped[0] in _DASH_CHARS))
-
-
-def _safe_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _system_prompt_for_language(language: str | None) -> str:
-    code = normalize_book_language(language)
-    return _SYSTEM_PROMPTS.get(code, _SYSTEM_PROMPTS["ru"])
-
-
-def _user_prompt_for_window(
-    *,
-    language: str,
-    chapter_index: int,
-    window_index: int,
-    window_text: str,
-    previous_issues: list[str] | None = None,
-) -> str:
-    retry_guard = ""
-    if previous_issues:
-        retry_guard = (
-            "\nPREVIOUS_OUTPUT_FAILED_VALIDATION:\n"
-            + json.dumps({"issues": previous_issues[:6]}, ensure_ascii=False)
-            + "\nThe next answer must preserve input.text exactly. "
-            "If dialogue boundaries are uncertain, return fewer larger segments."
-        )
-    return (
-        "Input is JSON. Segment only input.text. "
-        "Preserve quoted dialogue, apostrophes, punctuation, and word order. "
-        "The ordered concatenation of all segment.text values must reproduce "
-        "input.text exactly after whitespace normalization.\n"
-        "INPUT_JSON:\n"
-        + json.dumps(
-            {
-                "language": get_book_language(language).english_name,
-                "chapter": chapter_index + 1,
-                "window": window_index + 1,
-                "text": window_text,
-            },
-            ensure_ascii=False,
-        )
-        + retry_guard
-    )
-
-
-def apply_paragraph_boundary_pauses(rows: list[dict[str, Any]]) -> None:
-    """Ensure rows that already mark paragraph boundaries carry a pause."""
-
-    for row in rows:
-        if row.get("boundary_after") == "paragraph":
-            row["pause_after_ms"] = max(
-                _safe_int(row.get("pause_after_ms")),
-                DEFAULT_PARAGRAPH_PAUSE_MS,
-            )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

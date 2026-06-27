@@ -1,0 +1,1 @@
+"""Split GUI translation catalogs."""

@@ -4,8 +4,40 @@ Guidance for coding agents and maintainers working in this repository.
 
 Repository rules are split into focused markdown files under `rules/` so they are easier to edit and extend.
 
+Project-specific skills live under `project-skills/`. Use them as optional workflow guidance when the task matches a skill description.
+
 ## Rules
 
 - [Repository hygiene](rules/repository-hygiene.md)
 - [Before editing](rules/before-editing.md)
+- [Git workflow](rules/git-workflow.md)
+- [Tooling preferences](rules/tooling-preferences.md)
+- [State and status](rules/state-and-status.md)
+- [UI truthfulness](rules/ui-truthfulness.md)
+- [UI localization](rules/ui-localization.md)
+- [Production readiness](rules/production-readiness.md)
+- [Portable artifacts](rules/portable-artifacts.md)
+- [Automation boundaries](rules/automation-boundaries.md)
+- [Testing scope](rules/testing-scope.md)
+- [UI verification](rules/ui-verification.md)
+- [Data privacy](rules/data-privacy.md)
+- [Dependency changes](rules/dependency-changes.md)
+- [CLI compatibility](rules/cli-compatibility.md)
+- [Error handling](rules/error-handling.md)
+- [Code organization](rules/code-organization.md)
+- [Fresh verification](rules/fresh-verification.md)
 - [Validation](rules/validation.md)
+
+## Project Skills
+
+Before using a project skill, read its `SKILL.md` fully and follow only the parts relevant to the current task. Prefer these local, reviewed skills over fetching external skill instructions at runtime.
+
+- [Systematic debugging](project-skills/systematic-debugging/SKILL.md): use for bugs, test failures, unexpected behavior, and regressions before proposing fixes.
+- [Test-first development](project-skills/test-first-development/SKILL.md): use for behavior changes, bug fixes, and regressions where a focused test can prove the change.
+- [Verification before completion](project-skills/verification-before-completion/SKILL.md): use before claiming work is done, fixed, passing, committed, or ready.
+- [Code review reception](project-skills/code-review-reception/SKILL.md): use when handling review feedback or external suggestions.
+- [Planning work](project-skills/planning-work/SKILL.md): use before multi-step code changes or architectural edits.
+- [Frontend UI quality](project-skills/frontend-ui-quality/SKILL.md): use for GUI, layout, copy, localization, and visual verification changes.
+- [Skill authoring](project-skills/skill-authoring/SKILL.md): use when creating or modifying project skills.
+
+The skill source audit and rejected sources are documented in [project-skills/SOURCES.md](project-skills/SOURCES.md).

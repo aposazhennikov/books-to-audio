@@ -173,6 +173,39 @@ def test_synthesis_controller_estimates_eta_from_progress_lines(
     assert progress[-1] == (5, 5, "0s", 0, 0, 0.0, 0, 0, 0)
 
 
+def test_synthesis_controller_routes_local_tts_engine_without_comfyui_workflow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = _write_manifest(tmp_path / "chunks_manifest_v2.json")
+    calls: list[dict] = []
+
+    def fake_synthesize_engine_manifest(**kwargs):  # noqa: ANN003
+        calls.append(kwargs)
+        kwargs["progress"]("PROGRESS 1/1")
+        return SynthesisSummary(total=1, synthesized=1, skipped=0, failed=0)
+
+    monkeypatch.setattr(
+        synthesis_controller,
+        "synthesize_engine_manifest",
+        fake_synthesize_engine_manifest,
+    )
+
+    result = SynthesisController(
+        SynthesisRequest(
+            manifest_path=manifest_path,
+            output_dir=tmp_path / "out",
+            workflow_path=tmp_path / "missing-workflow.json",
+            tts_engine="f5-tts",
+            models_dir=str(tmp_path / "models"),
+        ),
+    ).run()
+
+    assert result.synthesized == 1
+    assert calls[0]["engine_id"] == "f5-tts"
+    assert calls[0]["models_dir"] == str(tmp_path / "models")
+
+
 def test_synthesis_controller_runs_perceptual_qa_gate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

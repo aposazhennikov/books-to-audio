@@ -57,36 +57,40 @@ TTS_ENGINES: tuple[TTSEngine, ...] = (
         engine_id="fish-speech-1.5",
         display_name="Fish Speech v1.5",
         model_ids=(FISH_SPEECH_15,),
-        backend="fish-speech",
-        notes="Downloadable now; synthesis needs a Fish Speech runner/workflow.",
+        backend="local-command",
+        runnable=True,
+        notes="Runs through the local Fish Speech CLI adapter.",
     ),
     TTSEngine(
         engine_id="f5-tts",
         display_name="F5-TTS",
         model_ids=(F5_TTS,),
-        backend="f5-tts",
-        notes="Downloadable now; synthesis needs an F5-TTS runner/workflow.",
+        backend="local-command",
+        runnable=True,
+        notes="Runs through the local F5-TTS CLI adapter.",
     ),
     TTSEngine(
         engine_id="xtts-v2",
         display_name="XTTS v2",
         model_ids=(XTTS_V2,),
-        backend="xtts",
-        notes="Downloadable now; synthesis needs an XTTS runner/workflow.",
+        backend="local-command",
+        runnable=True,
+        notes="Runs through the local XTTS/Coqui CLI adapter.",
     ),
     TTSEngine(
         engine_id="cosyvoice-3",
         display_name="CosyVoice 3",
         model_ids=(COSYVOICE_3,),
-        backend="cosyvoice",
-        notes="Downloadable now; synthesis needs a CosyVoice runner/workflow.",
+        backend="local-command",
+        runnable=True,
+        notes="Runs through the local CosyVoice CLI adapter.",
     ),
 )
 
 
 DEFAULT_TTS_ENGINE_ID = "qwen3-customvoice-1.7b"
 RECOMMENDED_TTS_ENGINE_ID = DEFAULT_TTS_ENGINE_ID
-RUNNABLE_TTS_BACKENDS = {"comfyui"}
+RUNNABLE_TTS_BACKENDS = {"comfyui", "local-command"}
 
 
 def get_tts_engine(engine_id_or_model_id: str) -> TTSEngine | None:
@@ -124,4 +128,3 @@ def unsupported_tts_engine_message(engine_id_or_model_id: str) -> str | None:
         f"Current runnable backend: Qwen3 CustomVoice via ComfyUI. "
         f"Missing backend: {engine.backend}."
     )
-

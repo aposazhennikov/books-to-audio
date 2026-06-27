@@ -1,0 +1,342 @@
+"""Local-command synthesis adapters for non-ComfyUI TTS engines."""
+
+from __future__ import annotations
+
+import json
+import os
+import shlex
+import subprocess
+import tempfile
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from book_normalizer.comfyui.synthesis import (
+    SynthesisSummary,
+    build_output_path,
+    collect_pending_chunks,
+    count_done_chunks,
+    save_manifest,
+)
+from book_normalizer.tts.engines import get_tts_engine
+from book_normalizer.tts.model_download import tts_model_install_path
+from book_normalizer.tts.voice_mapping import primary_voice_mapping_key
+
+ProgressCallback = Callable[[str], None]
+
+
+class TTSEngineSynthesisError(RuntimeError):
+    """Raised when a local TTS engine cannot synthesize a chunk."""
+
+
+@dataclass(frozen=True)
+class TTSEngineCommand:
+    """Command template and model location for one local TTS engine."""
+
+    engine_id: str
+    command_template: str
+    model_id: str
+    model_path: Path
+
+
+DEFAULT_COMMAND_TEMPLATES: dict[str, str] = {
+    "fish-speech-1.5": (
+        "fish-speech-cli text-to-speech --text-file {text_file} --output {output_file} "
+        "--model {model_path} --reference-audio {ref_audio} --reference-text-file {ref_text_file}"
+    ),
+    "f5-tts": (
+        "f5-tts_infer-cli --gen_file {text_file} --output_dir {output_dir} "
+        "--output_file {output_name} --ref_audio {ref_audio} --ref_text {ref_text}"
+    ),
+    "xtts-v2": (
+        "tts --model_path {model_path} --text {text} --out_path {output_file} "
+        "--speaker_wav {ref_audio} --language_idx {language}"
+    ),
+    "cosyvoice-3": (
+        "cosyvoice-cli --model-dir {model_path} --text-file {text_file} --output {output_file} "
+        "--prompt-audio {ref_audio} --prompt-text-file {ref_text_file}"
+    ),
+}
+
+
+def synthesize_engine_manifest(
+    *,
+    manifest: dict[str, Any],
+    manifest_path: Path,
+    engine_id: str,
+    out_dir: Path,
+    models_dir: str | Path | None = None,
+    chapter_filter: int | None = None,
+    failed_only: bool = False,
+    clone_config_path: Path | None = None,
+    chunk_timeout: float = 300.0,
+    progress: ProgressCallback | None = None,
+) -> SynthesisSummary:
+    """Synthesize a v2 manifest with a local non-ComfyUI TTS engine."""
+    command = resolve_engine_command(engine_id, models_dir)
+    clone_config = _load_clone_config(clone_config_path)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    total = len(list(_iter_synthesis_chunks(manifest, chapter_filter)))
+    done_start = count_done_chunks(manifest, chapter_filter, manifest_path=manifest_path)
+    pending = collect_pending_chunks(
+        manifest,
+        chapter_filter,
+        failed_only=failed_only,
+        manifest_path=manifest_path,
+    )
+    if not pending:
+        _emit(progress, f"All {total} chunks already synthesized. Nothing to do.")
+        return SynthesisSummary(total=total, synthesized=0, skipped=done_start, failed=0)
+
+    _emit(
+        progress,
+        f"{command.model_id}: {total} total, {done_start} already done, {len(pending)} to synthesize.",
+    )
+
+    done = done_start
+    synthesized = 0
+    failed = 0
+    manifest_language = str(manifest.get("language") or "ru")
+    for chapter_entry, chunk in pending:
+        chapter_index = int(chapter_entry.get("chapter_index", 0))
+        chunk_index = int(chunk.get("chunk_index", 0))
+        voice_label = str(chunk.get("voice_label") or "narrator")
+        voice_id = str(chunk.get("voice_id") or voice_label)
+        text = _chunk_text(chunk, voice_label)
+        language = str(chunk.get("language") or manifest_language)
+        output_path = build_output_path(out_dir, chapter_index, chunk_index, voice_label)
+
+        if not text.strip():
+            chunk["synthesized"] = True
+            chunk["audio_file"] = ""
+            done += 1
+            _emit(progress, f"PROGRESS {done}/{total}")
+            save_manifest(manifest_path, manifest)
+            continue
+
+        _emit(
+            progress,
+            f"  Synthesizing ch{chapter_index + 1:03d}/chunk{chunk_index + 1:03d} "
+            f"[{voice_label}/{voice_id}] {len(text)} chars -> {output_path.name}",
+        )
+        started = time.monotonic()
+        try:
+            voice_ref = _voice_reference_for_chunk(chunk, clone_config)
+            run_engine_command(
+                command,
+                text=text,
+                output_path=output_path,
+                language=language,
+                voice_id=voice_id,
+                voice_label=voice_label,
+                voice_ref=voice_ref,
+                timeout=chunk_timeout,
+            )
+        except Exception as exc:
+            chunk["failed"] = True
+            chunk["error"] = str(exc)
+            failed += 1
+            _emit(progress, f"  ERROR: {exc}")
+            save_manifest(manifest_path, manifest)
+            continue
+
+        if not output_path.exists() or output_path.stat().st_size <= 0:
+            message = f"{command.model_id} finished but did not create audio: {output_path}"
+            chunk["failed"] = True
+            chunk["error"] = message
+            failed += 1
+            _emit(progress, f"  ERROR: {message}")
+            save_manifest(manifest_path, manifest)
+            continue
+
+        chunk["synthesized"] = True
+        chunk["failed"] = False
+        chunk["error"] = ""
+        chunk["audio_file"] = _manifest_audio_file(output_path, manifest_path)
+        chunk["tts_engine"] = engine_id
+        done += 1
+        synthesized += 1
+        _emit(
+            progress,
+            f"    Done in {time.monotonic() - started:.1f}s -> {output_path.stat().st_size // 1024} KB",
+        )
+        _emit(progress, f"PROGRESS {done}/{total}")
+        save_manifest(manifest_path, manifest)
+
+    _emit(
+        progress,
+        f"Synthesis complete: {synthesized} new chunks synthesized "
+        f"({done}/{total} total done, {failed} failed).",
+    )
+    return SynthesisSummary(total=total, synthesized=synthesized, skipped=done_start, failed=failed)
+
+
+def resolve_engine_command(
+    engine_id_or_model_id: str,
+    models_dir: str | Path | None = None,
+) -> TTSEngineCommand:
+    """Resolve command template and local model path for an engine."""
+    engine = get_tts_engine(engine_id_or_model_id)
+    if engine is None:
+        raise TTSEngineSynthesisError(f"Unknown TTS engine: {engine_id_or_model_id}")
+    template = _engine_command_template(engine.engine_id)
+    model_id = engine.primary_model_id
+    model_path = tts_model_install_path(model_id, models_dir)
+    return TTSEngineCommand(engine.engine_id, template, model_id, model_path)
+
+
+def run_engine_command(
+    command: TTSEngineCommand,
+    *,
+    text: str,
+    output_path: Path,
+    language: str,
+    voice_id: str,
+    voice_label: str,
+    voice_ref: dict[str, object],
+    timeout: float,
+) -> None:
+    """Render a chunk by invoking the selected engine command."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="books-to-audio-tts-") as temp_dir_text:
+        temp_dir = Path(temp_dir_text)
+        text_file = temp_dir / "text.txt"
+        ref_text_file = temp_dir / "reference.txt"
+        text_file.write_text(text, encoding="utf-8")
+        ref_text = str(voice_ref.get("ref_text") or "")
+        ref_text_file.write_text(ref_text, encoding="utf-8")
+        values = {
+            "text": text,
+            "text_file": str(text_file),
+            "output_file": str(output_path),
+            "output_dir": str(output_path.parent),
+            "output_name": output_path.name,
+            "model_id": command.model_id,
+            "model_path": str(command.model_path),
+            "language": language,
+            "voice_id": voice_id,
+            "voice_label": voice_label,
+            "ref_audio": str(voice_ref.get("ref_audio") or ""),
+            "ref_text": ref_text,
+            "ref_text_file": str(ref_text_file),
+        }
+        argv = _render_command(command.command_template, values)
+        try:
+            result = subprocess.run(
+                argv,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=max(1.0, float(timeout)),
+            )
+        except FileNotFoundError as exc:
+            raise TTSEngineSynthesisError(
+                f"TTS engine command was not found: {argv[0]}. "
+                f"Install the engine CLI or set {_engine_env_name(command.engine_id)} "
+                "to a working command template."
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise TTSEngineSynthesisError(
+                f"TTS engine command timed out after {timeout:.0f}s: {argv[0]}"
+            ) from exc
+        if result.returncode != 0:
+            stderr = (result.stderr or result.stdout or "").strip()
+            raise TTSEngineSynthesisError(
+                f"TTS engine command failed with exit code {result.returncode}: {stderr}"
+            )
+
+
+def _engine_command_template(engine_id: str) -> str:
+    env_name = _engine_env_name(engine_id)
+    override = os.environ.get(env_name)
+    if override:
+        return override
+    try:
+        return DEFAULT_COMMAND_TEMPLATES[engine_id]
+    except KeyError as exc:
+        raise TTSEngineSynthesisError(
+            f"No command template is configured for TTS engine {engine_id}."
+        ) from exc
+
+
+def _engine_env_name(engine_id: str) -> str:
+    safe = "".join(ch if ch.isalnum() else "_" for ch in engine_id.upper())
+    return f"BOOKS_TO_AUDIO_TTS_{safe}_COMMAND"
+
+
+def _render_command(template: str, values: dict[str, str]) -> list[str]:
+    rendered: list[str] = []
+    skip_previous_option = False
+    for token in shlex.split(template):
+        try:
+            value = token.format(**values)
+        except KeyError as exc:
+            raise TTSEngineSynthesisError(f"Unknown command placeholder: {exc}") from exc
+        if value == "":
+            if rendered and rendered[-1].startswith("-"):
+                rendered.pop()
+            else:
+                skip_previous_option = True
+            continue
+        if skip_previous_option and token.startswith("-"):
+            skip_previous_option = False
+            continue
+        skip_previous_option = False
+        rendered.append(value)
+    if not rendered:
+        raise TTSEngineSynthesisError("TTS engine command template rendered to an empty command.")
+    return rendered
+
+
+def _load_clone_config(path: Path | None) -> dict[str, dict[str, object]]:
+    if not path or not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return {}
+    return {str(key): value for key, value in data.items() if isinstance(value, dict)}
+
+
+def _voice_reference_for_chunk(
+    chunk: dict[str, Any],
+    clone_config: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    keys = [
+        primary_voice_mapping_key(chunk),
+        str(chunk.get("voice_id") or ""),
+        str(chunk.get("voice_label") or ""),
+    ]
+    for key in keys:
+        if key and key in clone_config:
+            return clone_config[key]
+    return {}
+
+
+def _chunk_text(chunk: dict[str, Any], voice_label: str) -> str:
+    return str(chunk.get("text") or chunk.get(voice_label) or "")
+
+
+def _iter_synthesis_chunks(
+    manifest: dict[str, Any],
+    chapter_filter: int | None,
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    from book_normalizer.comfyui.synthesis import iter_manifest_chunks
+
+    return list(iter_manifest_chunks(manifest, chapter_filter))
+
+
+def _manifest_audio_file(output_path: Path, manifest_path: Path) -> str:
+    try:
+        return output_path.resolve().relative_to(manifest_path.parent.resolve()).as_posix()
+    except ValueError:
+        return str(output_path)
+
+
+def _emit(progress: ProgressCallback | None, line: str) -> None:
+    if progress:
+        progress(line)

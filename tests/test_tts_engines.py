@@ -27,10 +27,10 @@ def test_recommended_engine_is_currently_runnable() -> None:
     assert unsupported_tts_engine_message(DEFAULT_TTS_ENGINE_ID) is None
 
 
-def test_alternative_engines_are_downloadable_but_not_runnable_yet() -> None:
-    message = unsupported_tts_engine_message("f5-tts")
+def test_alternative_engines_are_runnable_through_local_command_backend() -> None:
+    engine = get_tts_engine("f5-tts")
 
-    assert message is not None
-    assert "F5-TTS models can be downloaded" in message
-    assert "Missing backend: f5-tts" in message
-
+    assert engine is not None
+    assert engine.runnable is True
+    assert engine.backend == "local-command"
+    assert unsupported_tts_engine_message("f5-tts") is None

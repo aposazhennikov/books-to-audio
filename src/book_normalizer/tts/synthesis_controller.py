@@ -20,6 +20,8 @@ from book_normalizer.comfyui.synthesis import (
     synthesize_manifest,
 )
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
+from book_normalizer.observability import StageObserver
+from book_normalizer.production.run_contract import build_run_contract, write_run_contract
 from book_normalizer.tts.artifact_qa import (
     DEFAULT_ARTIFACT_REPORT_NAME,
     annotate_manifest_with_artifacts,
@@ -35,7 +37,8 @@ from book_normalizer.tts.asr_qa import (
     write_asr_diff,
     write_asr_report,
 )
-from book_normalizer.tts.engines import unsupported_tts_engine_message
+from book_normalizer.tts.engine_synthesis import synthesize_engine_manifest
+from book_normalizer.tts.engines import get_tts_engine, unsupported_tts_engine_message
 from book_normalizer.tts.perceptual_qa import (
     DEFAULT_PERCEPTUAL_BACKENDS,
     DEFAULT_PERCEPTUAL_REPORT_NAME,
@@ -169,6 +172,7 @@ class SynthesisRequest:
     output_dir: Path
     workflow_path: Path
     tts_engine: str = "qwen3-customvoice-1.7b"
+    models_dir: str = ""
     comfyui_url: str = "http://localhost:8188"
     chapter: int | None = None
     chunk_timeout: float = 300.0
@@ -221,19 +225,133 @@ class SynthesisController:
     def run(self) -> SynthesisRunResult:
         """Run ComfyUI synthesis for the request."""
         request = self._request
+        contract = build_run_contract(
+            output_dir=request.output_dir,
+            stage="tts_synthesis",
+            manifest_path=request.manifest_path,
+            workflow_path=request.workflow_path,
+            voice_preset_paths=[request.clone_config_path] if request.clone_config_path else [],
+            model_versions={"tts_engine": request.tts_engine, "asr_model": request.asr_model},
+            resume_from="failed_only" if request.failed_only else "manifest_state",
+            parameters={
+                "chapter": request.chapter,
+                "chunk_timeout": request.chunk_timeout,
+                "failed_only": request.failed_only,
+                "merge_chapters": request.merge_chapters,
+                "quality_loop": request.quality_loop,
+                "artifact_qa": request.artifact_qa,
+                "perceptual_qa": request.perceptual_qa,
+                "perceptual_backends": list(request.perceptual_backends),
+                "asr_qa_after_synthesis": request.asr_qa_after_synthesis,
+                "max_resynthesis_attempts": request.max_resynthesis_attempts,
+                "comfyui_url": request.comfyui_url,
+            },
+        )
+        contract_path = write_run_contract(request.output_dir, contract)
+        observer = StageObserver(request.output_dir, str(contract["run_id"]), "tts_synthesis")
+        observer.log("started", contract_path=str(contract_path))
         unsupported = unsupported_tts_engine_message(request.tts_engine)
         if unsupported:
+            observer.log("unsupported_engine", engine=request.tts_engine, message=unsupported)
+            observer.finish("failed", error=unsupported)
             raise NotImplementedError(unsupported)
 
         manifest_model = load_manifest(request.manifest_path)
         manifest = manifest_model.to_record()
         total = len(flatten_manifest(manifest_model, request.chapter))
         if total == 0:
+            observer.log("empty_manifest", manifest_path=str(request.manifest_path))
+            observer.finish("failed", error="No chunks found")
             raise ValueError("No chunks found in chunks_manifest_v2.json.")
 
         audio_dir = request.output_dir / "audio_chunks"
+        engine = get_tts_engine(request.tts_engine)
+        if engine is not None and engine.backend != "comfyui":
+            self._emit_status("__loading__")
+            done_start = count_done_chunks(
+                manifest,
+                request.chapter,
+                manifest_path=request.manifest_path,
+            )
+            progress_started_at = time.monotonic()
+
+            def on_engine_line(line: str) -> None:
+                self._emit_log(line)
+                observer.log("log_line", line=line)
+                if not line.startswith("PROGRESS "):
+                    return
+                parts = line.split()
+                if len(parts) < 2 or "/" not in parts[1]:
+                    return
+                left, right = parts[1].split("/", 1)
+                try:
+                    current_done = int(left)
+                    total_val = int(right)
+                except ValueError:
+                    return
+                remaining = max(0, total_val - current_done)
+                synthesized_this_run = max(0, current_done - done_start)
+                eta = "0s" if remaining == 0 else ""
+                if remaining and synthesized_this_run > 0:
+                    elapsed = max(0.0, time.monotonic() - progress_started_at)
+                    eta = _format_eta((elapsed / synthesized_this_run) * remaining)
+                self._emit_progress(
+                    current_done,
+                    total_val,
+                    eta,
+                    0,
+                    0,
+                    0.0,
+                    remaining,
+                    0,
+                    0,
+                )
+                observer.counters["done_chunks"] = current_done
+                observer.counters["remaining_chunks"] = remaining
+
+            summary = synthesize_engine_manifest(
+                manifest=manifest,
+                manifest_path=request.manifest_path,
+                engine_id=engine.engine_id,
+                out_dir=audio_dir,
+                models_dir=request.models_dir or None,
+                chapter_filter=request.chapter,
+                failed_only=request.failed_only,
+                clone_config_path=request.clone_config_path,
+                chunk_timeout=request.chunk_timeout,
+                progress=on_engine_line,
+            )
+            observer.increment("synthesized_chunks", summary.synthesized)
+            observer.increment("failed_chunks", summary.failed)
+            observer.increment("skipped_chunks", summary.skipped)
+
+            if (
+                request.quality_loop
+                or request.artifact_qa
+                or request.perceptual_qa
+                or request.asr_qa_after_synthesis
+            ):
+                self._run_quality_gates(manifest, request)
+                observer.increment("quality_passes", 1)
+
+            self._emit_progress(total, total, "0s", 0, 0, 0.0, 0, 0, 0)
+            observer.finish(
+                "completed",
+                elapsed_seconds=0.0,
+                synthesized=summary.synthesized,
+                skipped=summary.skipped,
+                manifest_path=str(request.manifest_path),
+            )
+            return SynthesisRunResult(
+                audio_dir=audio_dir,
+                synthesized=summary.synthesized,
+                skipped=summary.skipped,
+            )
+
         workflow_path = request.workflow_path
         if not workflow_path.exists():
+            observer.log("missing_workflow", path=str(workflow_path))
+            observer.finish("failed", error=f"ComfyUI workflow not found: {workflow_path}")
             raise FileNotFoundError(f"ComfyUI workflow not found: {workflow_path}")
 
         self._emit_status("__loading__")
@@ -241,6 +359,8 @@ class SynthesisController:
         if not client.is_reachable():
             self._try_start_comfyui()
         if not client.is_reachable():
+            observer.log("comfyui_unreachable", url=request.comfyui_url)
+            observer.finish("failed", error=f"ComfyUI server not reachable at {request.comfyui_url}")
             raise ConnectionError(f"ComfyUI server not reachable at {request.comfyui_url}")
         self._emit_log(_log_text(request.log_language, "connected", url=request.comfyui_url))
 
@@ -264,6 +384,7 @@ class SynthesisController:
         def on_line(line: str) -> None:
             nonlocal current_done
             self._emit_log(line)
+            observer.log("log_line", line=line)
             if not line.startswith("PROGRESS "):
                 return
             parts = line.split()
@@ -294,6 +415,8 @@ class SynthesisController:
                 0,
                 0,
             )
+            observer.counters["done_chunks"] = current_done
+            observer.counters["remaining_chunks"] = remaining
 
         def recover_comfyui(_exc: Exception, attempt: int) -> ComfyUIClient | None:
             self._emit_log(_log_text(request.log_language, "recovery_check", attempt=attempt))
@@ -339,6 +462,9 @@ class SynthesisController:
             )
             synthesized_total += summary.synthesized
             skipped = summary.skipped
+            observer.increment("synthesized_chunks", summary.synthesized)
+            observer.increment("failed_chunks", summary.failed)
+            observer.increment("skipped_chunks", summary.skipped)
 
             if not (
                 request.quality_loop
@@ -349,6 +475,7 @@ class SynthesisController:
                 break
 
             self._run_quality_gates(manifest, request)
+            observer.increment("quality_passes", 1)
             if not request.quality_loop:
                 break
 
@@ -384,6 +511,13 @@ class SynthesisController:
             )
 
         self._emit_progress(total, total, "0s", 0, 0, 0.0, 0, 0, 0)
+        observer.finish(
+            "completed",
+            elapsed_seconds=0.0,
+            synthesized=synthesized_total,
+            skipped=skipped,
+            manifest_path=str(request.manifest_path),
+        )
         return SynthesisRunResult(
             audio_dir=audio_dir,
             synthesized=synthesized_total,

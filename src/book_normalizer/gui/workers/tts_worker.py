@@ -15,6 +15,7 @@ from book_normalizer.comfyui.generation_options import (
     DEFAULT_TOP_P,
     GenerationOptions,
 )
+from book_normalizer.diagnostics.error_guidance import format_error_with_action
 from book_normalizer.gui.i18n import get_language, t
 from book_normalizer.languages import normalize_book_language
 from book_normalizer.runtime_paths import configured_ollama_endpoint
@@ -153,7 +154,7 @@ class ExportSegmentsWorker(QThread):
             self.progress.emit(t("voice.exported_segments", n=len(manifest)))
             self.finished.emit(str(manifest_path))
         except Exception as exc:
-            self.error.emit(str(exc))
+            self.error.emit(format_error_with_action(str(exc)))
 
 
 class TTSSynthesisWorker(QThread):
@@ -172,13 +173,9 @@ class TTSSynthesisWorker(QThread):
         model: str = "",
         chapter: int | None = None,
         batch_size: int = 1,
-        resume: bool = False,
         chunk_timeout: int = 300,
-        use_compile: bool = False,
         clone_config: str = "",
-        use_sage_attention: bool = False,
         models_dir: str = "",
-        voice_library_dir: str = "",
         comfyui_url: str = "http://localhost:8188",
         workflow_path: str = "",
         failed_only: bool = False,
@@ -203,6 +200,7 @@ class TTSSynthesisWorker(QThread):
         self._manifest_path = manifest_path
         self._output_dir = output_dir
         self._model = model
+        self._models_dir = models_dir
         self._chapter = chapter
         self._chunk_timeout = chunk_timeout
         self._comfyui_url = comfyui_url
@@ -229,18 +227,6 @@ class TTSSynthesisWorker(QThread):
         self._asr_device = asr_device or "auto"
         self._max_resynthesis_attempts = max_resynthesis_attempts
 
-        # Accepted for source compatibility with older GUI/tests. V2 synthesis
-        # is driven by the manifest and ComfyUI workflow, not runner flags.
-        # clone_config is intentionally not here: it is active v2 input.
-        self._unused_runner_options = {
-            "model": model,
-            "resume": resume,
-            "use_compile": use_compile,
-            "use_sage_attention": use_sage_attention,
-            "models_dir": models_dir,
-            "voice_library_dir": voice_library_dir,
-        }
-
     def cancel(self) -> None:
         """Request cancellation before the next controller step."""
         self._cancelled = True
@@ -259,6 +245,7 @@ class TTSSynthesisWorker(QThread):
                 output_dir=self._output_dir,
                 workflow_path=workflow,
                 tts_engine=self._model,
+                models_dir=self._models_dir,
                 comfyui_url=self._comfyui_url or "http://localhost:8188",
                 chapter=self._chapter,
                 chunk_timeout=float(self._chunk_timeout),
@@ -286,7 +273,7 @@ class TTSSynthesisWorker(QThread):
                 return
             self.finished.emit(str(result.audio_dir), result.synthesized, result.skipped)
         except Exception as exc:
-            self.error.emit(str(exc))
+            self.error.emit(format_error_with_action(str(exc)))
 
 
 class AsrQaWorker(QThread):
@@ -347,7 +334,7 @@ class AsrQaWorker(QThread):
             manifest = json.loads(self._manifest_path.read_text(encoding="utf-8"))
             report_path = self._manifest_path.with_name("asr_qa_report.json")
 
-            audio_result = run_audio_qa(manifest)
+            audio_result = run_audio_qa(manifest, manifest_path=self._manifest_path)
             self.log_line.emit(
                 f"Audio QA: {audio_result.checked_files}/{audio_result.synthesized_chunks} checked, "
                 f"{len(audio_result.issues)} issue(s)."
@@ -410,7 +397,7 @@ class AsrQaWorker(QThread):
                 int(summary["error"]),
             )
         except Exception as exc:
-            self.error.emit(str(exc))
+            self.error.emit(format_error_with_action(str(exc)))
 
 
 class TTSModelInstallWorker(QThread):

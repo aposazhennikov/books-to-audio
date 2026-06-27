@@ -992,11 +992,13 @@ class SynthesisPage(QWidget):
             self._chapter_combo,
         )
 
-        self._resume_check = QCheckBox()
+        self._resume_note = QLabel()
+        self._resume_note.setWordWrap(True)
+        self._resume_note.setStyleSheet("color: rgba(51,65,85,0.72);")
         self._resume_label = QLabel()
         form.addRow(
             self._label_with_help(self._resume_label, "synth.resume_help"),
-            self._resume_check,
+            self._resume_note,
         )
 
         self._batch_size = QSpinBox()
@@ -1024,20 +1026,6 @@ class SynthesisPage(QWidget):
                 "synth.chunk_timeout_help",
             ),
             self._chunk_timeout,
-        )
-
-        self._compile_check = QCheckBox()
-        self._compile_label = QLabel()
-        form.addRow(
-            self._label_with_help(self._compile_label, "synth.compile_help"),
-            self._compile_check,
-        )
-
-        self._sage_check = QCheckBox()
-        self._sage_label = QLabel()
-        form.addRow(
-            self._label_with_help(self._sage_label, "synth.sage_help"),
-            self._sage_check,
         )
 
         layout.addLayout(form)
@@ -1513,11 +1501,7 @@ class SynthesisPage(QWidget):
         self._merge_chapters_check.setText(t("synth.merge_chapters_check"))
         self._chapter_label.setText(t("synth.chapter"))
         self._resume_label.setText(t("synth.resume"))
-        self._resume_check.setText(t("synth.resume_check"))
-        self._compile_label.setText(t("synth.compile"))
-        self._compile_check.setText(t("synth.compile_check"))
-        self._sage_label.setText(t("synth.sage_attention"))
-        self._sage_check.setText(t("synth.sage_check"))
+        self._resume_note.setText(t("synth.resume_note"))
 
         self._sample_title.setText(t("synth.sample_title"))
         self._sample_desc.setText(t("synth.sample_desc"))
@@ -2668,6 +2652,10 @@ class SynthesisPage(QWidget):
         selected = self._chapter_combo.currentData()
         return selected if selected and selected > 0 else None
 
+    def run_synthesis(self) -> None:
+        """Start full TTS synthesis for the loaded manifest."""
+        self._start_synthesis()
+
     def _start_synthesis(self) -> None:
         output_dir = self._current_output_dir()
         if not self._manifest_path or not output_dir:
@@ -2695,13 +2683,9 @@ class SynthesisPage(QWidget):
             model=self._selected_tts_engine_id_or_model(),
             chapter=chapter,
             batch_size=self._batch_size.value(),
-            resume=self._resume_check.isChecked(),
             chunk_timeout=self._chunk_timeout.value(),
-            use_compile=self._compile_check.isChecked(),
             clone_config=clone_config_path,
-            use_sage_attention=self._sage_check.isChecked(),
             models_dir=self._models_dir_edit.text().strip(),
-            voice_library_dir=str(self._voice_library_dir()),
             temperature=self._temperature_spin.value(),
             top_p=self._top_p_spin.value(),
             top_k=self._top_k_spin.value(),
@@ -2779,13 +2763,9 @@ class SynthesisPage(QWidget):
             model=self._selected_tts_engine_id_or_model(),
             chapter=None,
             batch_size=1,
-            resume=False,
             chunk_timeout=self._chunk_timeout.value(),
-            use_compile=self._compile_check.isChecked(),
             clone_config=clone_config_path,
-            use_sage_attention=self._sage_check.isChecked(),
             models_dir=self._models_dir_edit.text().strip(),
-            voice_library_dir=str(self._voice_library_dir()),
             temperature=self._temperature_spin.value(),
             top_p=self._top_p_spin.value(),
             top_k=self._top_k_spin.value(),
@@ -2899,6 +2879,13 @@ class SynthesisPage(QWidget):
     def _run_asr_qa_now(self) -> None:
         self._start_asr_qa_worker()
 
+    def run_asr_qa(
+        self,
+        pending_finish: tuple[str, int, int] | None = None,
+    ) -> None:
+        """Run ASR quality checks for the loaded manifest."""
+        self._start_asr_qa_worker(pending_finish)
+
     def _start_failed_resynthesis(self) -> None:
         """Resynthesize chunks reset or marked bad by QA."""
         output_dir = self._current_output_dir()
@@ -2929,13 +2916,9 @@ class SynthesisPage(QWidget):
             model=self._selected_tts_engine_id_or_model(),
             chapter=self._selected_chapter(),
             batch_size=self._batch_size.value(),
-            resume=True,
             chunk_timeout=self._chunk_timeout.value(),
-            use_compile=self._compile_check.isChecked(),
             clone_config=clone_config_path,
-            use_sage_attention=self._sage_check.isChecked(),
             models_dir=self._models_dir_edit.text().strip(),
-            voice_library_dir=str(self._voice_library_dir()),
             comfyui_url=self._comfyui_url_edit.text().strip() if hasattr(self, "_comfyui_url_edit") else "http://localhost:8188",
             workflow_path=workflow,
             failed_only=True,

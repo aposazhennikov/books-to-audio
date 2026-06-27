@@ -965,13 +965,17 @@ class SynthesisPage(
         )
 
         self._output_format_combo = QComboBox()
-        self._output_format_combo.addItem("FLAC", "flac")
+        self._output_format_combo.addItem("WAV + MP3", "both")
         self._output_format_combo.addItem("WAV", "wav")
-        _make_combo_compact(self._output_format_combo, min_chars=8)
-        self._output_format_label = QLabel()
+        self._output_format_combo.setCurrentIndex(0)
+        self._output_format_combo.setVisible(False)
+        self._audio_output_status = QLabel()
+        self._audio_output_status.setWordWrap(True)
+        self._audio_output_status.setStyleSheet("color: rgba(51,65,85,0.72);")
+        self._audio_output_label = QLabel()
         form.addRow(
-            self._label_with_help(self._output_format_label, "synth.output_format_help"),
-            self._output_format_combo,
+            self._label_with_help(self._audio_output_label, "synth.audio_output_help"),
+            self._audio_output_status,
         )
 
         self._merge_chapters_check = QCheckBox()
@@ -1005,11 +1009,17 @@ class SynthesisPage(
         self._batch_size.setValue(1)
         _center_spinbox_text(self._batch_size)
         self._batch_size.setMaximumWidth(140)
+        self._batch_size.setVisible(False)
         self._batch_label = QLabel()
+        self._batch_label_widget = self._label_with_help(
+            self._batch_label,
+            "synth.batch_unavailable_help",
+        )
         form.addRow(
-            self._label_with_help(self._batch_label, "synth.batch_help"),
+            self._batch_label_widget,
             self._batch_size,
         )
+        form.setRowVisible(self._batch_size, False)
 
         self._chunk_timeout = QSpinBox()
         self._chunk_timeout.setRange(30, 1800)
@@ -1295,6 +1305,18 @@ class SynthesisPage(
                 return voice.name
         return voice_id
 
+    def _saved_voice_comfyui_speaker(self, voice_id: str) -> str:
+        """Return the concrete ComfyUI speaker name for a saved voice."""
+        for voice in self._saved_voices:
+            if voice.voice_id != voice_id:
+                continue
+            speaker = voice.comfyui_speaker.strip()
+            if speaker:
+                return speaker
+            if voice.source.strip().lower() == "comfyui":
+                return voice.name.strip()
+        return ""
+
     def _effective_test_voice_label(self, source_voice_id: str) -> str:
         """Return the voice that will actually be used for test synthesis."""
         return self._effective_test_voice_label_for_chunk({"voice_id": source_voice_id})
@@ -1492,10 +1514,14 @@ class SynthesisPage(
         self._voice_library_dir_edit.setToolTip(t("synth.voice_library_dir_help"))
         self._btn_voice_library_dir.setText(t("synth.choose_dir"))
         self._batch_label.setText(t("synth.batch_size"))
-        self._batch_size.setToolTip(t("synth.batch_help"))
+        self._batch_size.setToolTip(t("synth.batch_unavailable_help"))
         self._chunk_timeout_label.setText(t("synth.chunk_timeout"))
         self._chunk_timeout.setToolTip(t("synth.chunk_timeout_help"))
-        self._output_format_label.setText(t("synth.output_format"))
+        self._audio_output_label.setText(t("synth.audio_output"))
+        self._audio_output_status.setText(t("synth.audio_output_status"))
+        self._audio_output_status.setToolTip(t("synth.audio_output_help"))
+        self._output_format_combo.setItemText(0, t("synth.audio_output_internal_both"))
+        self._output_format_combo.setItemText(1, t("synth.audio_output_internal_wav"))
         self._merge_chapters_label.setText(t("synth.merge_chapters"))
         self._merge_chapters_check.setText(t("synth.merge_chapters_check"))
         self._chapter_label.setText(t("synth.chapter"))
@@ -1954,6 +1980,9 @@ class SynthesisPage(
                 continue
             key = primary_voice_mapping_key(chunk)
             cfg[key] = {"saved_voice": saved_voice}
+            speaker = self._saved_voice_comfyui_speaker(saved_voice)
+            if speaker:
+                cfg[key]["speaker"] = speaker
             if include_speech_rate:
                 rate = self._saved_voice_rate(saved_voice)
                 if rate:
@@ -2177,6 +2206,9 @@ class SynthesisPage(
                     "saved_voice": saved_voice,
                 }
             }
+            speaker = self._saved_voice_comfyui_speaker(saved_voice)
+            if speaker:
+                cfg["__all__"]["speaker"] = speaker
             if include_speech_rate:
                 cfg["__all__"]["speech_rate"] = (
                     self._saved_voice_rate(saved_voice)
@@ -2188,6 +2220,9 @@ class SynthesisPage(
                 saved_voice = str(combo.currentData() or "")
                 if saved_voice:
                     cfg[role] = {"saved_voice": saved_voice}
+                    speaker = self._saved_voice_comfyui_speaker(saved_voice)
+                    if speaker:
+                        cfg[role]["speaker"] = speaker
                     if include_speech_rate:
                         cfg[role]["speech_rate"] = (
                             self._saved_voice_rate(saved_voice)
@@ -2242,9 +2277,6 @@ class SynthesisPage(
 
 
     # ── Signal handlers ───────────────────────────────────────────────────────
-
-
-
 
 
 

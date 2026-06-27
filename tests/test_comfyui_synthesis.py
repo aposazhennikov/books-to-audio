@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 
 from book_normalizer.comfyui.client import ComfyUIError
-from book_normalizer.comfyui.synthesis import load_manifest, synthesize_manifest
+from book_normalizer.comfyui.synthesis import (
+    load_manifest,
+    load_speaker_overrides,
+    synthesize_manifest,
+)
 
 
 class _Builder:
@@ -175,6 +179,25 @@ def test_synthesize_manifest_passes_character_voice_override(tmp_path: Path) -> 
     )
 
     assert builder.calls[0]["speaker_override"] == "margarita_sad"
+
+
+def test_load_speaker_overrides_prefers_real_speaker_over_saved_voice(tmp_path: Path) -> None:
+    config_path = tmp_path / "clone.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "speaker:Margarita": {
+                    "saved_voice": "margarita_sad",
+                    "speaker": "Margarita Sad Speaker",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_speaker_overrides(config_path) == {
+        "speaker:Margarita": "Margarita Sad Speaker",
+    }
 
 
 def test_synthesize_manifest_passes_generation_options_and_director(tmp_path: Path) -> None:

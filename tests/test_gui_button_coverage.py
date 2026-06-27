@@ -1032,3 +1032,14 @@ def test_synthesis_run_buttons_use_worker_wiring_without_real_tts(
     assert page._btn_stop.isEnabled()
     qtbot.mouseClick(page._btn_stop, QtCore.Qt.MouseButton.LeftButton)
     assert worker.cancelled is True
+
+
+def test_synthesis_advanced_tab_shows_truthful_audio_outputs(qapp, qtbot) -> None:
+    page = SynthesisPage()
+    qtbot.addWidget(page)
+    page._mode_tabs.setCurrentIndex(2)
+
+    assert page._output_format_combo.isHidden()
+    assert page._batch_size.isHidden()
+    assert "WAV" in page._audio_output_status.text()
+    assert "MP3" in page._audio_output_status.text()

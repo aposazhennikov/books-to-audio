@@ -108,6 +108,7 @@ def test_comfyui_saved_voice_metadata_is_listed_without_prompt_file(tmp_path) ->
     assert saved.voice_id == "margarita_sad"
     assert len(voices) == 1
     assert voices[0].source == "comfyui"
+    assert voices[0].comfyui_speaker == "Margarita Sad"
     assert voices[0].preview_audio == str(ref_audio)
     assert voices[0].ref_text == "Exact reference transcript."
     assert voices[0].speech_rate == 0.92

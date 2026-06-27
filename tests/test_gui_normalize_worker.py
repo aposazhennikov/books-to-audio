@@ -20,6 +20,13 @@ from book_normalizer.llm.model_router import FALLBACK_QWEN3_MODEL, PRIMARY_QWEN3
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 
 
+def _readable_english_text() -> str:
+    return (
+        "This native PDF text is already readable and complete enough for the "
+        "normalization worker to use without invoking expensive full page OCR. "
+    ) * 4
+
+
 def test_gui_pdf_auto_falls_back_without_tesseract() -> None:
     mode = _effective_pdf_extraction_mode(
         OcrMode.AUTO,
@@ -277,3 +284,39 @@ def test_gui_ocr_progress_uses_native_tesseract_runtime(tmp_path, monkeypatch) -
             "pytesseract_module": None,
         }
     ]
+
+
+def test_gui_pdf_auto_uses_readable_native_without_full_ocr(tmp_path, monkeypatch) -> None:
+    from book_normalizer.loaders import pdf_loader
+
+    pdf_file = tmp_path / "native.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+    monkeypatch.setattr(pdf_loader, "_tesseract_available", lambda: True)
+    monkeypatch.setattr(
+        pdf_loader.PdfLoader,
+        "_extract_text",
+        staticmethod(lambda _path: _readable_english_text()),
+    )
+
+    worker = NormalizeWorker(
+        input_path=pdf_file,
+        ocr_mode="auto",
+        book_language="en",
+        skip_stress=True,
+    )
+
+    def fail_ocr(*_args, **_kwargs):  # noqa: ANN002
+        raise AssertionError("AUTO should not run full-page OCR for readable native text")
+
+    monkeypatch.setattr(worker, "_ocr_with_progress", fail_ocr)
+    results: list[Book] = []
+    errors: list[str] = []
+    worker.finished.connect(results.append)
+    worker.error.connect(errors.append)
+
+    worker.run()
+
+    assert errors == []
+    assert results
+    assert results[0].metadata.extra["pdf_text_variant"] == "native"

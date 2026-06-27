@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -55,6 +55,10 @@ from book_normalizer.tts.voice_mapping import (
 set_voice_library_dir_provider(lambda: default_voice_library_dir())
 
 
+_TABLE_POPULATE_BATCH_THRESHOLD = 250
+_TABLE_POPULATE_BATCH_SIZE = 75
+
+
 class VoiceTableWidget(VoiceTableDataMixin, QWidget):
     """Table for assigning voices and intonation to text segments."""
 
@@ -74,6 +78,8 @@ class VoiceTableWidget(VoiceTableDataMixin, QWidget):
         self._language_dirty_rows: set[int] = set()
         self._pending_delete_segment_index: int | None = None
         self._populating = False
+        self._populate_generation = 0
+        self._full_text_sync_pending = False
         self._loading_editor = False
         self._player = QSoundEffect(self) if QSoundEffect is not None else None
         self._setup_ui()
@@ -1165,6 +1171,8 @@ class VoiceTableWidget(VoiceTableDataMixin, QWidget):
 
     def _populate_table(self) -> None:
         selected_segment_index = self._current_row()
+        self._populate_generation += 1
+        generation = self._populate_generation
         self._populating = True
         segment_rows = list(enumerate(self._segments))
         self._row_to_segment_index = [index for index, _segment in segment_rows]
@@ -1172,51 +1180,101 @@ class VoiceTableWidget(VoiceTableDataMixin, QWidget):
         self._table.setRowCount(len(segment_rows))
         self._cached_role_options = self._role_options()
 
+        if len(segment_rows) >= _TABLE_POPULATE_BATCH_THRESHOLD:
+            self._populate_table_batch(
+                segment_rows,
+                0,
+                selected_segment_index,
+                generation,
+            )
+            return
+
         for row, (segment_index, seg) in enumerate(segment_rows):
-            is_dlg = seg.get("is_dialogue", False)
-            role = seg.get("role", "narrator")
-            is_speech = is_dlg or role in ("male", "female")
-            is_deleted = bool(seg.get("deleted"))
-
-            # Column 0: row number.
-            idx_item = QTableWidgetItem(str(segment_index + 1))
-            idx_item.setFlags(
-                idx_item.flags() & ~Qt.ItemFlag.ItemIsEditable,
-            )
-            idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 0, idx_item)
-
-            # Column 1: segment type.
-            self._refresh_row_type_item(row, seg)
-
-            # Column 2: chapter number.
-            ch_item = QTableWidgetItem(
-                str(seg.get("chapter_index", 0) + 1),
-            )
-            ch_item.setFlags(
-                ch_item.flags() & ~Qt.ItemFlag.ItemIsEditable,
-            )
-            ch_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 2, ch_item)
-
-            # Column 3: text preview.
-            text = str(seg.get("text", ""))
-            text_item = QTableWidgetItem(text)
-            text_item.setToolTip(text)
-            if is_deleted:
-                text_item.setBackground(QColor(248, 113, 113, 24))
-                text_item.setForeground(QBrush(QColor(100, 116, 139, 190)))
-            elif is_speech:
-                text_item.setBackground(_DIALOGUE_BG)
-            self._table.setItem(row, 3, text_item)
-
-            self._refresh_row_display_items(row, seg)
+            self._populate_table_row(row, segment_index, seg)
 
         self._populating = False
         self._language_dirty_rows.clear()
         self._apply_table_layout()
-        self._sync_full_text_from_segments()
+        self._request_full_text_sync()
         self._apply_chapter_filter(selected_segment_index)
+
+    def _populate_table_batch(
+        self,
+        segment_rows: list[tuple[int, dict[str, Any]]],
+        start: int,
+        selected_segment_index: int,
+        generation: int,
+    ) -> None:
+        """Populate large manifests in chunks so the event loop can breathe."""
+        if generation != self._populate_generation:
+            return
+        end = min(start + _TABLE_POPULATE_BATCH_SIZE, len(segment_rows))
+        self._table.setUpdatesEnabled(False)
+        try:
+            for row in range(start, end):
+                segment_index, seg = segment_rows[row]
+                self._populate_table_row(row, segment_index, seg)
+        finally:
+            self._table.setUpdatesEnabled(True)
+
+        if end < len(segment_rows):
+            QTimer.singleShot(
+                0,
+                lambda: self._populate_table_batch(
+                    segment_rows,
+                    end,
+                    selected_segment_index,
+                    generation,
+                ),
+            )
+            return
+
+        self._populating = False
+        self._language_dirty_rows.clear()
+        self._apply_table_layout()
+        self._request_full_text_sync()
+        self._apply_chapter_filter(selected_segment_index)
+
+    def _populate_table_row(
+        self,
+        row: int,
+        segment_index: int,
+        seg: dict[str, Any],
+    ) -> None:
+        is_dlg = seg.get("is_dialogue", False)
+        role = seg.get("role", "narrator")
+        is_speech = is_dlg or role in ("male", "female")
+        is_deleted = bool(seg.get("deleted"))
+
+        idx_item = QTableWidgetItem(str(segment_index + 1))
+        idx_item.setFlags(
+            idx_item.flags() & ~Qt.ItemFlag.ItemIsEditable,
+        )
+        idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._table.setItem(row, 0, idx_item)
+
+        self._refresh_row_type_item(row, seg)
+
+        ch_item = QTableWidgetItem(
+            str(seg.get("chapter_index", 0) + 1),
+        )
+        ch_item.setFlags(
+            ch_item.flags() & ~Qt.ItemFlag.ItemIsEditable,
+        )
+        ch_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._table.setItem(row, 2, ch_item)
+
+        text = str(seg.get("text", ""))
+        text_item = QTableWidgetItem(text)
+        text_item.setToolTip(text)
+        if is_deleted:
+            text_item.setBackground(QColor(248, 113, 113, 24))
+            text_item.setForeground(QBrush(QColor(100, 116, 139, 190)))
+        elif is_speech:
+            text_item.setBackground(_DIALOGUE_BG)
+        self._table.setItem(row, 3, text_item)
+
+        self._refresh_row_display_items(row, seg)
 
     # ── Data change handlers ──
 
@@ -1229,7 +1287,7 @@ class VoiceTableWidget(VoiceTableDataMixin, QWidget):
             self._segments[row]["text"] = text
             item.setToolTip(text)
             self._load_selected_segment()
-            self._sync_full_text_from_segments()
+            self._request_full_text_sync()
             self.data_changed.emit()
 
     def _on_table_selection_changed(self) -> None:
@@ -1310,7 +1368,7 @@ class VoiceTableWidget(VoiceTableDataMixin, QWidget):
             item.setToolTip(text)
             self._table.blockSignals(False)
         self._update_segment_char_count()
-        self._sync_full_text_from_segments()
+        self._request_full_text_sync()
         self.data_changed.emit()
 
     def _role_options(self) -> list[tuple[str, str]]:
@@ -1552,4 +1610,3 @@ class VoiceTableWidget(VoiceTableDataMixin, QWidget):
         self._populate_table()
         self._select_segment_index(row)
         self.data_changed.emit()
-

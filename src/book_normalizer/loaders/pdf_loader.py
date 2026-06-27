@@ -1137,6 +1137,7 @@ def _repair_pdf_drop_caps(text: str) -> str:
         current = paragraph
         if after_heading:
             current = _repair_drop_cap_paragraph(current)
+        current = _repair_drop_caps_after_embedded_heading(current)
         repaired.append(current)
         after_heading = _is_chapter_heading_line(current)
     return "\n\n".join(repaired)
@@ -1159,6 +1160,30 @@ def _repair_drop_cap_paragraph(paragraph: str) -> str:
     if repaired_tail == tail:
         return paragraph
     return prefix + head + repaired_tail
+
+
+def _repair_drop_caps_after_embedded_heading(paragraph: str) -> str:
+    """Repair lost drop caps when a heading and body share one PDF block."""
+    lines = paragraph.splitlines()
+    if len(lines) < 2:
+        return paragraph
+
+    for index, line in enumerate(lines[:-1]):
+        if not _is_chapter_heading_line(line):
+            continue
+        for repair_index in range(index + 1, min(len(lines), index + 7)):
+            repaired = _repair_drop_cap_line(lines[repair_index])
+            if repaired != lines[repair_index]:
+                lines[repair_index] = repaired
+                return "\n".join(lines)
+    return paragraph
+
+
+def _repair_drop_cap_line(line: str) -> str:
+    stripped = line.lstrip()
+    prefix = line[: len(line) - len(stripped)]
+    repaired = _repair_drop_cap_at_start(stripped)
+    return prefix + repaired if repaired != stripped else line
 
 
 def _repair_drop_cap_at_start(text: str) -> str:

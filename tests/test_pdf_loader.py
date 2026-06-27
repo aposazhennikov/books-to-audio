@@ -195,6 +195,26 @@ class TestPdfLoader:
         assert detected.chapters[3].title == "Книга первая - Эпилог"
 
     @patch("book_normalizer.loaders.pdf_loader.PdfLoader._extract_text")
+    def test_load_repairs_drop_cap_after_embedded_chapter_heading(
+        self,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_extract.return_value = (
+            "Глава первая,\n"
+            "повествующая в общем-то ни о чем\n"
+            "глубокое исследование этого предмета\n"
+            "ергей сидел за столом и пил чай."
+        )
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+        book = PdfLoader().load(pdf_file)
+
+        assert "Сергей сидел за столом" in book.raw_text
+        assert "\nергей сидел за столом" not in book.raw_text
+
+    @patch("book_normalizer.loaders.pdf_loader.PdfLoader._extract_text")
     def test_audit_trail(self, mock_extract: MagicMock, tmp_path: Path) -> None:
         mock_extract.return_value = "Текст."
         pdf_file = tmp_path / "test.pdf"

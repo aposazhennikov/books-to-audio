@@ -4,6 +4,25 @@ from __future__ import annotations
 
 import re
 
+_CYRILLIC_SIMPLE_ORDINAL_WORD = (
+    r"(?:перв(?:ая|ый|ое)|втор(?:ая|ой|ое)|треть(?:я|ий|е)|четверт(?:ая|ый|ое)|"
+    r"пят(?:ая|ый|ое)|шест(?:ая|ой|ое)|седьм(?:ая|ой|ое)|восьм(?:ая|ой|ое)|"
+    r"девят(?:ая|ый|ое)|десят(?:ая|ый|ое)|одиннадцат(?:ая|ый|ое)|"
+    r"двенадцат(?:ая|ый|ое)|тринадцат(?:ая|ый|ое)|четырнадцат(?:ая|ый|ое)|"
+    r"пятнадцат(?:ая|ый|ое)|шестнадцат(?:ая|ый|ое)|семнадцат(?:ая|ый|ое)|"
+    r"восемнадцат(?:ая|ый|ое)|девятнадцат(?:ая|ый|ое)|двадцат(?:ая|ый|ое)|"
+    r"тридцат(?:ая|ый|ое)|сороков(?:ая|ый|ое))"
+)
+_CYRILLIC_COMPOUND_ORDINAL_WORD = (
+    r"(?:(?:двадцать|тридцать|сорок)\s+"
+    r"(?:перв(?:ая|ый|ое)|втор(?:ая|ой|ое)|треть(?:я|ий|е)|четверт(?:ая|ый|ое)|"
+    r"пят(?:ая|ый|ое)|шест(?:ая|ой|ое)|седьм(?:ая|ой|ое)|восьм(?:ая|ой|ое)|"
+    r"девят(?:ая|ый|ое)))"
+)
+_CYRILLIC_CHAPTER_ORDINAL_WORD = (
+    rf"(?:{_CYRILLIC_SIMPLE_ORDINAL_WORD}|{_CYRILLIC_COMPOUND_ORDINAL_WORD})"
+)
+
 # Compiled chapter-heading patterns ordered from most specific to most generic.
 # Each pattern is a tuple of (compiled_regex, human_label).
 CHAPTER_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -13,8 +32,8 @@ CHAPTER_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(
             r"^\s*[Гг][Лл][Аа][Вв][Аа]\s+"
-            r"[А-Яа-яЁё]+",
-            re.MULTILINE,
+            rf"{_CYRILLIC_CHAPTER_ORDINAL_WORD}(?:\b|[,:.])",
+            re.IGNORECASE | re.MULTILINE,
         ),
         "chapter_word",
     ),

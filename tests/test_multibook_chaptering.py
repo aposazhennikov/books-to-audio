@@ -89,6 +89,28 @@ def test_multibook_can_be_inferred_from_restarted_first_chapters() -> None:
     assert result.metadata.extra["structure"]["work_count"] == 2
 
 
+def test_multibook_infers_short_numbered_work_title_before_reset() -> None:
+    book = _book([
+        "3. темный обелиск",
+        "Глава первая,",
+        "Текст третьей книги.",
+        "Глава вторая,",
+        "Продолжение третьей книги.",
+        "4. троя",
+        "Глава первая,",
+        "Текст четвертой книги.",
+    ])
+
+    result = ChapterDetector().detect_and_split(book)
+
+    assert result.metadata.extra["structure"]["work_titles"] == [
+        "3. темный обелиск",
+        "4. троя",
+    ]
+    assert result.chapters[-1].work_title == "4. троя"
+    assert result.chapters[-1].title == "4. троя - Глава первая,"
+
+
 def test_supported_language_heading_patterns() -> None:
     assert match_chapter_heading("Chapter One") is not None
     assert match_chapter_heading("Chapter IV") is not None

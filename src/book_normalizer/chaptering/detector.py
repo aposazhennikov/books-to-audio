@@ -196,7 +196,7 @@ class ChapterDetector:
         r"^\s*[Гг][Лл][Аа][Вв][Аа]\s+(?:1|I|i|[Пп]ервая)\b"
     )
     _RE_NUMBERED_WORK_TITLE = re.compile(
-        r"^\s*\d{1,2}\.\s+[А-Яа-яЁё][А-Яа-яЁё\s-]{4,80}$"
+        r"^\s*\d{1,2}\.\s+[А-Яа-яЁё][А-Яа-яЁё\s-]{2,80}$"
     )
 
     @staticmethod

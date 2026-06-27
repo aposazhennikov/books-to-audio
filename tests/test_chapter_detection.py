@@ -19,6 +19,8 @@ class TestChapterPatterns:
             ("глава 5", "chapter_numeric"),
             ("Глава первая", "chapter_word"),
             ("Глава двадцатая", "chapter_word"),
+            ("Глава двадцать первая", "chapter_word"),
+            ("Глава тридцать пятая,", "chapter_word"),
             ("Глава V", "chapter_roman"),
             ("Глава XIV", "chapter_roman"),
             ("Глава III", "chapter_roman"),
@@ -49,6 +51,7 @@ class TestChapterPatterns:
             "   ",
             "Глава I Сержант гвардии 7",
             "Глава XIV Суд 124",
+            "глава Красного союза великий царь Микен Агамемнон.",
         ],
     )
     def test_non_headings_do_not_match(self, line: str) -> None:

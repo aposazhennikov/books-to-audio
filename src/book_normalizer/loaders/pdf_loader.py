@@ -9,6 +9,7 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.chaptering.patterns import match_chapter_heading
 from book_normalizer.config import OcrMode
 from book_normalizer.languages import (
     readable_word_ratio,
@@ -17,6 +18,7 @@ from book_normalizer.languages import (
     text_unreadable,
 )
 from book_normalizer.loaders.base import BaseLoader
+from book_normalizer.loaders.pdf_layout import _repair_isolated_layout_word_blocks
 from book_normalizer.loaders.pdf_ocr_engine import (
     ocr_image_via_tesseract_cli as _ocr_image_via_tesseract_cli,
 )
@@ -68,6 +70,7 @@ class PdfLoader(BaseLoader):
 
         # Remove repeated headers/footers before splitting into paragraphs.
         text = remove_repeated_headers(text, min_occurrences=3)
+        text = _repair_pdf_drop_caps(text)
 
         paragraphs = self._split_paragraphs(text)
 
@@ -150,130 +153,6 @@ class PdfOcrCompareResult:
     ocr: PdfTextVariant | None
     native_structure: PdfStructuredExtraction | None = None
     ocr_structure: PdfStructuredExtraction | None = None
-
-
-def _repair_isolated_layout_word_blocks(blocks: list[str]) -> list[str]:
-    """Remove or reflow words that PDF extraction split out of one visual line."""
-
-    result: list[str] = []
-    index = 0
-    while index < len(blocks):
-        block = blocks[index]
-        stripped = block.strip()
-        if not _is_isolated_layout_word_block(stripped):
-            result.append(block)
-            index += 1
-            continue
-
-        words: list[str] = []
-        run_start = index
-        while index < len(blocks) and _is_isolated_layout_word_block(blocks[index].strip()):
-            words.append(blocks[index].strip())
-            index += 1
-
-        if result and _try_reflow_isolated_words_into_previous(result, words):
-            continue
-
-        next_block = blocks[index].strip() if index < len(blocks) else ""
-        if result and next_block and _try_reflow_isolated_words_between_blocks(result, words, blocks, index):
-            continue
-
-        previous = result[-1].strip() if result else ""
-        if _should_drop_isolated_layout_word_run(words, previous=previous, next_block=next_block):
-            continue
-
-        result.extend(blocks[run_start:index])
-    return result
-
-
-def _is_isolated_layout_word_block(text: str) -> bool:
-    if not text or "\n" in text:
-        return False
-    return bool(re.fullmatch(r"\(?[А-ЯЁа-яё]{1,14}", text.strip()))
-
-
-def _try_reflow_isolated_words_into_previous(previous_blocks: list[str], words: list[str]) -> bool:
-    previous = previous_blocks[-1]
-    joined = " ".join(words)
-    final_parenthetical_matches = list(
-        re.finditer(
-            r"\((?P<head>[А-ЯЁа-яё]{1,20})\s+"
-            r"(?P<tail>[А-ЯЁа-яё]{1,20})(?P<close>\)[.!?…]?)",
-            previous,
-        )
-    )
-    final_parenthetical = final_parenthetical_matches[-1] if final_parenthetical_matches else None
-    if final_parenthetical and all(not word.startswith("(") for word in words):
-        replacement = (
-            f"({final_parenthetical.group('head')} {joined} "
-            f"{final_parenthetical.group('tail')}{final_parenthetical.group('close')}"
-        )
-        previous_blocks[-1] = (
-            previous[: final_parenthetical.start()]
-            + replacement
-            + previous[final_parenthetical.end():]
-        )
-        return True
-
-    if any(word.startswith("(") for word in words):
-        phrase = " ".join(word.strip() for word in words)
-        gap = re.search(
-            r"\b(?P<anchor>[А-ЯЁа-яё]{2,20})\s+(?P<trailer>[А-ЯЁа-яё]{2,20}\)\))",
-            previous,
-        )
-        if gap:
-            replacement = f"{gap.group('anchor')} {phrase} {gap.group('trailer')}"
-            previous_blocks[-1] = previous[: gap.start()] + replacement + previous[gap.end():]
-            return True
-    return False
-
-
-def _try_reflow_isolated_words_between_blocks(
-    previous_blocks: list[str],
-    words: list[str],
-    blocks: list[str],
-    next_index: int,
-) -> bool:
-    previous = previous_blocks[-1]
-    next_block = blocks[next_index]
-    if any(word.startswith("(") for word in words):
-        return False
-
-    previous_match = re.search(r"\((?P<head>[А-ЯЁа-яё]{1,20})\s*$", previous)
-    next_match = re.match(
-        r"\s*(?P<tail>[А-ЯЁа-яё]{1,20})(?P<close>\)[.!?…]?)(?P<rest>.*)$",
-        next_block,
-        re.DOTALL,
-    )
-    if not previous_match or not next_match:
-        return False
-
-    joined = " ".join(words)
-    rest = next_match.group("rest").lstrip()
-    previous_blocks[-1] = (
-        previous[: previous_match.start()]
-        + f"({previous_match.group('head')} {joined} "
-        + f"{next_match.group('tail')}{next_match.group('close')}"
-        + (f" {rest}" if rest else "")
-    )
-    blocks[next_index] = ""
-    return True
-
-
-def _should_drop_isolated_layout_word_run(
-    words: list[str],
-    *,
-    previous: str,
-    next_block: str,
-) -> bool:
-    if len(words) < 2:
-        return False
-    if not previous or not next_block:
-        return False
-    if len(words) >= 3:
-        return True
-    return bool(re.search(r"[.!?…]\s*$", previous) and next_block[:1].isupper())
-
 
 @dataclass
 class PdfPageExtraction:
@@ -922,6 +801,12 @@ _OCR_DASH_SPACED_DOT_WORDS_RE = re.compile(
     r"(?:[\u0400-\u04ff]{1,8}\s+){0,2}"
     r"(?=[А-ЯЁ])"
 )
+_DROPCAP_PREFIX_REPAIRS = {
+    "ергей": "Сергей",
+    "ыганка": "Цыганка",
+    "так": "Итак",
+}
+_UPPERCASE_CHAPTER_SUBTITLE_RE = re.compile(r"^[А-ЯЁ0-9 ,;:!?—–-]{12,260}\s+")
 
 
 def _cyrillic_char_count(text: str) -> int:
@@ -946,7 +831,9 @@ def _is_ocr_noise_line(line: str) -> bool:
 
 def _is_chapter_heading_line(line: str) -> bool:
     """Return true for short OCR lines that look like a chapter boundary."""
-    return bool(_OCR_GLAVA_HEADING_RE.match(line.strip()))
+    stripped = line.strip()
+    first_line = stripped.splitlines()[0] if stripped else ""
+    return bool(_OCR_GLAVA_HEADING_RE.match(stripped) or match_chapter_heading(first_line))
 
 
 def _strip_trailing_page_marker(line: str) -> str:
@@ -1139,6 +1026,52 @@ def _repair_ocr_cross_segment_breaks(text: str) -> str:
     return _OCR_CROSS_SEGMENT_PARTICIPLE_RE.sub(r"\1\2", text)
 
 
+def _repair_pdf_drop_caps(text: str) -> str:
+    """Recover common decorative drop caps lost by PDF/OCR extraction."""
+    paragraphs = [part.strip() for part in text.split("\n\n")]
+    repaired: list[str] = []
+    after_heading = False
+    for paragraph in paragraphs:
+        if not paragraph:
+            repaired.append(paragraph)
+            continue
+        current = paragraph
+        if after_heading:
+            current = _repair_drop_cap_paragraph(current)
+        repaired.append(current)
+        after_heading = _is_chapter_heading_line(current)
+    return "\n\n".join(repaired)
+
+
+def _repair_drop_cap_paragraph(paragraph: str) -> str:
+    """Repair a paragraph that immediately follows a chapter heading."""
+    stripped = paragraph.lstrip()
+    prefix = paragraph[: len(paragraph) - len(stripped)]
+    repaired = _repair_drop_cap_at_start(stripped)
+    if repaired != stripped:
+        return prefix + repaired
+
+    match = _UPPERCASE_CHAPTER_SUBTITLE_RE.match(stripped)
+    if not match:
+        return paragraph
+    head = match.group(0)
+    tail = stripped[match.end():]
+    repaired_tail = _repair_drop_cap_at_start(tail)
+    if repaired_tail == tail:
+        return paragraph
+    return prefix + head + repaired_tail
+
+
+def _repair_drop_cap_at_start(text: str) -> str:
+    match = re.match(r"(?P<word>[а-яё]{3,20})(?P<rest>\b.*)$", text, re.DOTALL)
+    if not match:
+        return text
+    replacement = _DROPCAP_PREFIX_REPAIRS.get(match.group("word").casefold())
+    if not replacement:
+        return text
+    return replacement + match.group("rest")
+
+
 def _postprocess_ocr_text(text: str, language_code: str = "ru") -> str:
     """Clean OCR text from a single page image before downstream normalization."""
     language_code = (language_code or "ru").strip().lower()
@@ -1175,7 +1108,7 @@ def _postprocess_ocr_text(text: str, language_code: str = "ru") -> str:
                 paragraphs.append(" ".join(current).strip())
                 current = []
             continue
-        if _is_chapter_heading_line(line):
+        if russian_rules and _is_chapter_heading_line(line):
             if current:
                 paragraphs.append(" ".join(current).strip())
                 current = []
@@ -1208,7 +1141,7 @@ def _postprocess_ocr_text(text: str, language_code: str = "ru") -> str:
                 if not is_noise:
                     cleaned_paragraphs.append(part)
 
-    return "\n\n".join(cleaned_paragraphs)
+    return _repair_pdf_drop_caps("\n\n".join(cleaned_paragraphs))
 
 
 def _is_multilingual_ocr_noise_line(line: str, language_code: str) -> bool:
@@ -1412,6 +1345,7 @@ def extract_pdf_with_ocr_mode(
         native_text = loader._extract_text(resolved)
 
     native_text = remove_repeated_headers(native_text, min_occurrences=3)
+    native_text = _repair_pdf_drop_caps(native_text)
     native_variant = PdfTextVariant(
         kind="native",
         text=native_text,
@@ -1481,6 +1415,7 @@ def extract_pdf_with_ocr_mode(
                 ocr_structure = None
 
         ocr_text = remove_repeated_headers(ocr_text, min_occurrences=3)
+        ocr_text = _repair_pdf_drop_caps(ocr_text)
         ocr_variant = PdfTextVariant(
             kind="ocr",
             text=ocr_text,

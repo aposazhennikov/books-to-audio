@@ -39,6 +39,91 @@ PATH_KEYS = {
 }
 PRIVATE_DIR_NAMES = {"books", "output", "data"}
 DEFAULT_SUPPORT_BUNDLE_NAME = "support_bundle_redacted.zip"
+REDACTED_SECRET = "<REDACTED_SECRET>"
+
+ALLOWED_ROOT_FILE_NAMES = {
+    "anomaly_report.txt",
+    "artifact_qa_report.json",
+    "asr_qa_report.json",
+    "audio_qa_report.json",
+    "audiobook_package_report.json",
+    "audit_report.json",
+    "casting_plan.json",
+    "chapter_sanity_report.txt",
+    "chunks_manifest_v2.json",
+    "debug.log",
+    "director_score.json",
+    "final_readiness_report.json",
+    "llm_voice_review_report.json",
+    "live_tts_smoke_report.json",
+    "mastering_report.json",
+    "missing_headings.txt",
+    "package_qa_report.json",
+    "production_qa_report.json",
+    "production_run_report.json",
+    "quality_report.json",
+    "random_sample_review.txt",
+    "report.json",
+    "roles_manifest.json",
+    "run.log",
+    "run_contract.json",
+    "segments_manifest.json",
+    "stats_before_after.json",
+    "suspicious_changes.json",
+    "synthesis_manifest.json",
+    "test_manifest.json",
+    "voice_overrides.json",
+}
+ALLOWED_DIR_FILE_NAMES = {
+    "audiobook_package": {
+        "audiobook_package_report.json",
+        "package_qa_report.json",
+        "checksums.sha256",
+        "chapters.concat.txt",
+        "chapters.ffmetadata",
+    },
+    "logs": {"*.jsonl"},
+    "reports": {"*_report.json"},
+}
+SECRET_EXACT_KEYS = {
+    "authorization",
+    "api_key",
+    "api-key",
+    "apikey",
+    "password",
+    "passwd",
+    "pwd",
+    "secret",
+    "token",
+}
+SECRET_TOKEN_KEYS = {
+    "access_token",
+    "auth_token",
+    "bearer_token",
+    "client_token",
+    "id_token",
+    "refresh_token",
+    "session_token",
+}
+NON_SECRET_TOKEN_KEYS = {
+    "completion_tokens",
+    "generated_tokens",
+    "input_tokens",
+    "max_new_tokens",
+    "max_tokens",
+    "min_new_tokens",
+    "output_tokens",
+    "prompt_tokens",
+    "token_count",
+    "tokens_per_second",
+    "total_tokens",
+}
+SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(authorization|api[_-]?key|access[_-]?token|auth[_-]?token|bearer[_-]?token|client[_-]?secret|"
+    r"client[_-]?token|id[_-]?token|refresh[_-]?token|session[_-]?token|password|passwd|pwd|secret|token)\b"
+    r"(\s*[:=]\s*)(?:Bearer\s+)?[^\s\"',;]+"
+)
+BEARER_TOKEN_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
 
 
 @dataclass(frozen=True)
@@ -88,7 +173,9 @@ def redact_payload(value: Any, *, root: Path | None = None) -> Any:
         redacted: dict[str, Any] = {}
         for key, item in value.items():
             normalized_key = str(key).lower()
-            if _is_book_text_key(normalized_key):
+            if _is_secret_key(normalized_key):
+                redacted[key] = REDACTED_SECRET
+            elif _is_book_text_key(normalized_key):
                 redacted[key] = "<REDACTED_BOOK_TEXT>"
             elif normalized_key in PATH_KEYS:
                 redacted[key] = redact_text(str(item), root=root)
@@ -106,9 +193,22 @@ def _is_book_text_key(normalized_key: str) -> bool:
     return normalized_key in TEXT_KEYS or normalized_key.endswith(TEXT_KEY_SUFFIXES)
 
 
+def _is_secret_key(normalized_key: str) -> bool:
+    key = normalized_key.strip()
+    compact = re.sub(r"[^a-z0-9]+", "_", key).strip("_")
+    collapsed = compact.replace("_", "")
+    if key in SECRET_EXACT_KEYS or compact in SECRET_EXACT_KEYS or collapsed in SECRET_EXACT_KEYS:
+        return True
+    if compact in NON_SECRET_TOKEN_KEYS:
+        return False
+    if compact in SECRET_TOKEN_KEYS:
+        return True
+    return "secret" in compact or "password" in compact or compact.endswith("_token")
+
+
 def redact_text(value: str, *, root: Path | None = None) -> str:
-    """Redact absolute and project-private paths from plain text."""
-    redacted = value
+    """Redact secrets, absolute paths, and project-private paths from plain text."""
+    redacted = _redact_secret_text(value)
     candidates = [Path.home()]
     if root is not None:
         candidates.append(root)
@@ -133,24 +233,63 @@ def redact_text(value: str, *, root: Path | None = None) -> str:
     return redacted
 
 
+def _redact_secret_text(value: str) -> str:
+    redacted = SECRET_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}{match.group(2)}{REDACTED_SECRET}", value)
+    return BEARER_TOKEN_RE.sub(f"Bearer {REDACTED_SECRET}", redacted)
+
+
 def _candidate_files(source_dir: Path, *, include_logs: bool, include_json: bool) -> list[Path]:
-    patterns: list[str] = []
-    if include_json:
-        patterns.extend(
-            [
-                "*.json",
-                "*report*.json",
-                "*manifest*.json",
-            ]
-        )
-    if include_logs:
-        patterns.append("*.log")
     found: dict[Path, None] = {}
-    for pattern in patterns:
-        for path in source_dir.rglob(pattern):
-            if path.is_file() and DEFAULT_SUPPORT_BUNDLE_NAME not in path.name:
-                found[path] = None
+    for path in _safe_walk(source_dir):
+        if (
+            path.is_file()
+            and DEFAULT_SUPPORT_BUNDLE_NAME not in path.name
+            and _is_allowed_candidate(path, source_dir, include_logs=include_logs, include_json=include_json)
+        ):
+            found[path] = None
     return sorted(found)
+
+
+def _safe_walk(root: Path) -> list[Path]:
+    pending = [root]
+    found: list[Path] = []
+    while pending:
+        directory = pending.pop()
+        try:
+            children = sorted(directory.iterdir())
+        except OSError:
+            continue
+        for child in children:
+            if child.is_symlink():
+                continue
+            if child.is_dir():
+                if child.name.lower() not in PRIVATE_DIR_NAMES:
+                    pending.append(child)
+                continue
+            found.append(child)
+    return found
+
+
+def _is_allowed_candidate(path: Path, root: Path, *, include_logs: bool, include_json: bool) -> bool:
+    if not _suffix_enabled(path, include_logs=include_logs, include_json=include_json):
+        return False
+    rel = path.relative_to(root)
+    if len(rel.parts) == 1:
+        return path.name in ALLOWED_ROOT_FILE_NAMES
+    parent = rel.parts[0]
+    allowed_names = ALLOWED_DIR_FILE_NAMES.get(parent)
+    if allowed_names is None:
+        return False
+    return any(path.match(pattern) for pattern in allowed_names)
+
+
+def _suffix_enabled(path: Path, *, include_logs: bool, include_json: bool) -> bool:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        return include_json
+    if suffix in {".log", ".txt", ".jsonl", ".sha256", ".ffmetadata"}:
+        return include_logs
+    return False
 
 
 def _redacted_file_bytes(path: Path, root: Path) -> bytes:

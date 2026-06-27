@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shlex
 import shutil
@@ -21,11 +22,15 @@ from book_normalizer.comfyui.synthesis import (
     count_done_chunks,
     save_manifest,
 )
+from book_normalizer.runtime_paths import configured_ffmpeg_bin
+from book_normalizer.tts.compatible_audio import export_compatible_mp3
 from book_normalizer.tts.engines import get_tts_engine
 from book_normalizer.tts.model_download import tts_model_install_path
 from book_normalizer.tts.voice_mapping import primary_voice_mapping_key
 
 ProgressCallback = Callable[[str], None]
+
+logger = logging.getLogger(__name__)
 
 
 class TTSEngineSynthesisError(RuntimeError):
@@ -195,6 +200,7 @@ def synthesize_engine_manifest(
         chunk["failed"] = False
         chunk["error"] = ""
         chunk["audio_file"] = _manifest_audio_file(output_path, manifest_path)
+        _write_compatible_chunk_audio(chunk, output_path, manifest_path)
         chunk["tts_engine"] = engine_id
         done += 1
         synthesized += 1
@@ -429,6 +435,21 @@ def _manifest_audio_file(output_path: Path, manifest_path: Path) -> str:
         return output_path.resolve().relative_to(manifest_path.parent.resolve()).as_posix()
     except ValueError:
         return str(output_path)
+
+
+def _write_compatible_chunk_audio(chunk: dict[str, Any], output_path: Path, manifest_path: Path) -> None:
+    """Best-effort compatible MP3 sidecar for local-engine chunk audio."""
+    try:
+        compatible_path = export_compatible_mp3(
+            output_path,
+            ffmpeg=str(configured_ffmpeg_bin() or "ffmpeg"),
+        )
+    except Exception as exc:  # pragma: no cover - depends on local ffmpeg/runtime media
+        logger.warning("Compatible chunk MP3 export failed for %s: %s", output_path, exc)
+        chunk["compatible_audio_error"] = str(exc)
+        return
+    chunk["compatible_audio_file"] = _manifest_audio_file(compatible_path, manifest_path)
+    chunk.pop("compatible_audio_error", None)
 
 
 def _emit(progress: ProgressCallback | None, line: str) -> None:

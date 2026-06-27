@@ -47,6 +47,14 @@ def test_local_engine_synthesis_runs_command_and_updates_manifest(
 
     monkeypatch.setattr("book_normalizer.tts.engine_synthesis.subprocess.run", fake_run)
 
+    def fake_export(source: Path, output=None, **_kwargs):  # noqa: ANN001, ANN202
+        target = output or source.with_suffix(".MP3")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"mp3")
+        return target
+
+    monkeypatch.setattr("book_normalizer.tts.engine_synthesis.export_compatible_mp3", fake_export)
+
     summary = synthesize_engine_manifest(
         manifest=manifest,
         manifest_path=manifest_path,
@@ -62,4 +70,5 @@ def test_local_engine_synthesis_runs_command_and_updates_manifest(
     assert chunk["synthesized"] is True
     assert chunk["tts_engine"] == "f5-tts"
     assert (tmp_path / chunk["audio_file"]).exists()
-
+    assert chunk["compatible_audio_file"].endswith(".MP3")
+    assert (tmp_path / chunk["compatible_audio_file"]).exists()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import wave
 from dataclasses import dataclass, field
@@ -10,6 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from book_normalizer.chunking.manifest_v2 import chunk_is_excluded, ensure_v2_manifest
+from book_normalizer.runtime_paths import configured_ffmpeg_bin
+from book_normalizer.tts.compatible_audio import export_compatible_mp3
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -19,6 +24,7 @@ class ChapterAssemblyResult:
     chapter_number: int
     output_path: Path | None
     chunks: int
+    compatible_output_path: Path | None = None
     missing: int = 0
     skipped: bool = False
     messages: list[str] = field(default_factory=list)
@@ -122,17 +128,32 @@ def assemble_from_manifest(
             voice_labels=voice_labels,
             pause_after_ms=pause_after_ms,
         )
+        compatible_path = _export_compatible_chapter(out_path, messages)
         results.append(
             ChapterAssemblyResult(
                 chapter_number=chapter_number,
                 output_path=out_path,
                 chunks=assembled_chunks,
+                compatible_output_path=compatible_path,
                 missing=missing,
                 messages=messages,
             )
         )
 
     return results
+
+
+def _export_compatible_chapter(out_path: Path, messages: list[str]) -> Path | None:
+    """Best-effort compatible MP3 sidecar for an assembled chapter."""
+    try:
+        return export_compatible_mp3(
+            out_path,
+            ffmpeg=str(configured_ffmpeg_bin() or "ffmpeg"),
+        )
+    except Exception as exc:  # pragma: no cover - depends on local ffmpeg/runtime media
+        logger.warning("Compatible chapter MP3 export failed for %s: %s", out_path, exc)
+        messages.append(f"WARNING: compatible MP3 export failed for {out_path}: {exc}")
+        return None
 
 
 def _manifest_path_from_record(manifest: dict[str, Any]) -> Path | None:

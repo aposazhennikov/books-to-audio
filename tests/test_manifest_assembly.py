@@ -150,3 +150,34 @@ def test_assemble_from_manifest_skips_excluded_chunks_even_with_stale_audio(
     assert results[0].chunks == 1
     with wave.open(str(tmp_path / "chapter_001.wav"), "rb") as wav:
         assert wav.getnframes() == 100
+
+
+def test_assemble_from_manifest_writes_compatible_chapter_sidecar(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    wav_path = tmp_path / "audio_chunks" / "chapter_001" / "chunk_001_narrator.wav"
+    _write_wav(wav_path, frames=100)
+    manifest = {
+        "version": 2,
+        "chapters": [
+            {
+                "chapter_index": 0,
+                "chunks": [
+                    {"chunk_index": 0, "voice": "narrator", "synthesized": True, "audio_file": str(wav_path)},
+                ],
+            }
+        ],
+    }
+
+    def fake_export(source: Path, output=None, **_kwargs):  # noqa: ANN001, ANN202
+        target = output or source.with_suffix(".MP3")
+        target.write_bytes(b"mp3")
+        return target
+
+    monkeypatch.setattr("book_normalizer.tts.manifest_assembly.export_compatible_mp3", fake_export)
+
+    results = assemble_from_manifest(manifest, tmp_path, pause_same_voice_ms=0)
+
+    assert results[0].compatible_output_path == tmp_path / "chapter_001.MP3"
+    assert (tmp_path / "chapter_001.MP3").read_bytes() == b"mp3"

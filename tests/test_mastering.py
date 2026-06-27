@@ -69,6 +69,10 @@ def test_master_manifest_runs_ffmpeg_and_writes_report(tmp_path: Path, monkeypat
         Path(command[-1]).write_bytes(b"mastered")
 
     monkeypatch.setattr("book_normalizer.tts.mastering.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "book_normalizer.tts.manifest_assembly.export_compatible_mp3",
+        lambda source, output=None, **_kwargs: source.with_suffix(".MP3"),
+    )
 
     result = master_manifest(
         manifest_path,
@@ -79,7 +83,15 @@ def test_master_manifest_runs_ffmpeg_and_writes_report(tmp_path: Path, monkeypat
 
     assert len(result.files) == 2
     assert commands[0][0] == "ffmpeg-test"
+    assert result.files[1].output_path.name == "chapter_001_mastered.MP3"
     assert "-af" in commands[0]
     assert "loudnorm=I=-18:TP=-1.5:LRA=11" in commands[0][commands[0].index("-af") + 1]
+    mp3_command = commands[1]
+    assert "-map_metadata" in mp3_command
+    assert mp3_command[mp3_command.index("-b:a") + 1] == "80k"
+    assert mp3_command[mp3_command.index("-ar") + 1] == "24000"
+    assert mp3_command[mp3_command.index("-ac") + 1] == "1"
+    assert mp3_command[mp3_command.index("-id3v2_version") + 1] == "3"
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
     assert len(report["files"]) == 2
+    assert report["compatible_profile"]["mp3_bitrate"] == "80k"

@@ -85,12 +85,22 @@ def test_audiobook_package_writes_metadata_concat_and_commands(tmp_path: Path) -
     assert report["author"] == "Ada Author"
     assert len(report["chapters"]) == 2
     assert len(report["commands"]) == 3
+    assert report["bitrate"] == "80k"
+    assert report["compatible_profile"]["sample_rate_hz"] == 24000
     assert report["loudness_target"] == -18.0
     assert report["package_qa"]["status"] == "passed"
     assert (tmp_path / "package" / "package_qa_report.json").exists()
     checksums = (tmp_path / "package" / "checksums.sha256").read_text(encoding="utf-8")
     assert "audiobook_package_report.json" in checksums
     assert any("loudnorm=I=-18" in " ".join(command) for command in report["commands"])
+    chapter_mp3_commands = [command for command in report["commands"] if command[-1].endswith(".MP3")]
+    assert len(chapter_mp3_commands) == 2
+    for command in chapter_mp3_commands:
+        assert command[command.index("-b:a") + 1] == "80k"
+        assert command[command.index("-ar") + 1] == "24000"
+        assert command[command.index("-ac") + 1] == "1"
+        assert command[command.index("-id3v2_version") + 1] == "3"
+        assert "-metadata" not in command
     assert "[CHAPTER]" in ffmetadata
     assert "genre=Audiobook" in ffmetadata
     assert "title=Arrival" in ffmetadata

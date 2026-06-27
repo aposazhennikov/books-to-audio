@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import wave
 from collections.abc import Callable
@@ -21,11 +22,15 @@ from book_normalizer.comfyui.generation_options import (
     generation_options_from_mapping,
 )
 from book_normalizer.comfyui.workflow_builder import WorkflowBuilder
+from book_normalizer.runtime_paths import configured_ffmpeg_bin
 from book_normalizer.tts.audio_smoothing import smooth_wav_silence
+from book_normalizer.tts.compatible_audio import export_compatible_mp3
 from book_normalizer.tts.voice_mapping import voice_mapping_candidates
 
 ProgressCallback = Callable[[str], None]
 RecoveryCallback = Callable[[ComfyUIError, int], ComfyUIClient | None]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -581,6 +586,7 @@ def synthesize_manifest(
         chunk["failed"] = False
         chunk["error"] = ""
         chunk["audio_file"] = _manifest_audio_file(output_path, manifest_path)
+        _write_compatible_chunk_audio(chunk, output_path, manifest_path)
         chunk["last_generation_options"] = effective_options
         if smoothing is not None:
             chunk["audio_postprocess"] = {"silence_smoothing": smoothing.to_dict()}
@@ -605,3 +611,18 @@ def synthesize_manifest(
         skipped=skipped,
         failed=failed,
     )
+
+
+def _write_compatible_chunk_audio(chunk: dict[str, Any], output_path: Path, manifest_path: Path) -> None:
+    """Best-effort compatible MP3 sidecar for synthesized chunk audio."""
+    try:
+        compatible_path = export_compatible_mp3(
+            output_path,
+            ffmpeg=str(configured_ffmpeg_bin() or "ffmpeg"),
+        )
+    except Exception as exc:  # pragma: no cover - depends on local ffmpeg/runtime media
+        logger.warning("Compatible chunk MP3 export failed for %s: %s", output_path, exc)
+        chunk["compatible_audio_error"] = str(exc)
+        return
+    chunk["compatible_audio_file"] = _manifest_audio_file(compatible_path, manifest_path)
+    chunk.pop("compatible_audio_error", None)

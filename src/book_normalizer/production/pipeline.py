@@ -43,6 +43,7 @@ from book_normalizer.production.quality import (
     write_production_qa_report,
 )
 from book_normalizer.production.run_contract import build_run_contract, write_run_contract
+from book_normalizer.tts.compatible_audio import COMPATIBLE_MP3_BITRATE
 
 DEFAULT_PRODUCTION_RUN_REPORT_NAME = "production_run_report.json"
 
@@ -89,7 +90,7 @@ def run_production_preflight(
     title: str = "",
     author: str = "",
     cover_path: Path | None = None,
-    bitrate: str = "192k",
+    bitrate: str = COMPATIBLE_MP3_BITRATE,
     loudness_target: float = -18.0,
     dry_run_package: bool = True,
     allow_review_package: bool = False,

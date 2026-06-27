@@ -10,6 +10,12 @@ from typing import Any
 
 from book_normalizer.chunking.manifest_v2 import chunk_is_excluded
 from book_normalizer.runtime_paths import configured_ffmpeg_bin
+from book_normalizer.tts.compatible_audio import (
+    COMPATIBLE_CHANNELS,
+    COMPATIBLE_MP3_BITRATE,
+    COMPATIBLE_SAMPLE_RATE,
+    ffmpeg_compatible_mp3_command,
+)
 from book_normalizer.tts.manifest_assembly import assemble_from_manifest, load_manifest_v2
 from book_normalizer.tts.quality_gate import chunk_quality_status
 
@@ -55,6 +61,12 @@ class MasteringResult:
             "output_dir": str(self.output_dir),
             "report_path": str(self.report_path),
             "filter": MASTERING_FILTER,
+            "compatible_profile": {
+                "mp3_bitrate": COMPATIBLE_MP3_BITRATE,
+                "sample_rate_hz": COMPATIBLE_SAMPLE_RATE,
+                "channels": COMPATIBLE_CHANNELS,
+                "id3v2_version": 3,
+            },
             "files": [item.to_dict() for item in self.files],
         }
 
@@ -95,7 +107,8 @@ def master_manifest(
         if not chapter.output_path:
             continue
         for fmt in formats:
-            out_path = mastered_dir / f"chapter_{chapter.chapter_number:03d}_mastered.{fmt}"
+            suffix = "MP3" if fmt == "mp3" else fmt
+            out_path = mastered_dir / f"chapter_{chapter.chapter_number:03d}_mastered.{suffix}"
             command = _ffmpeg_command(ffmpeg, chapter.output_path, out_path, fmt)
             subprocess.run(command, check=True, capture_output=True, text=True)
             result.files.append(
@@ -141,17 +154,26 @@ def _formats(output_format: str) -> list[str]:
 
 
 def _ffmpeg_command(ffmpeg: str, source: Path, output: Path, fmt: str) -> list[str]:
+    if fmt == "mp3":
+        return ffmpeg_compatible_mp3_command(ffmpeg, source, output, audio_filter=MASTERING_FILTER)
     command = [
         ffmpeg,
+        "-nostdin",
         "-y",
+        "-hide_banner",
         "-i",
         str(source),
+        "-vn",
+        "-map_metadata",
+        "-1",
         "-af",
         MASTERING_FILTER,
+        "-codec:a",
+        "pcm_s16le",
+        "-ar",
+        str(COMPATIBLE_SAMPLE_RATE),
+        "-ac",
+        str(COMPATIBLE_CHANNELS),
     ]
-    if fmt == "mp3":
-        command += ["-codec:a", "libmp3lame", "-b:a", "192k"]
-    else:
-        command += ["-codec:a", "pcm_s16le"]
     command.append(str(output))
     return command

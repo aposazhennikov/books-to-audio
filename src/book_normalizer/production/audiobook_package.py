@@ -13,6 +13,12 @@ from typing import Any
 
 from book_normalizer.chunking.manifest_v2 import chunk_is_excluded
 from book_normalizer.runtime_paths import configured_ffmpeg_bin
+from book_normalizer.tts.compatible_audio import (
+    COMPATIBLE_CHANNELS,
+    COMPATIBLE_MP3_BITRATE,
+    COMPATIBLE_SAMPLE_RATE,
+    ffmpeg_compatible_mp3_command,
+)
 from book_normalizer.tts.manifest_assembly import load_manifest_v2
 
 PACKAGE_REPORT_VERSION = 1
@@ -53,7 +59,7 @@ class AudiobookPackageResult:
     report_path: Path
     title: str
     author: str = ""
-    bitrate: str = "192k"
+    bitrate: str = COMPATIBLE_MP3_BITRATE
     loudness_target: float = DEFAULT_LOUDNESS_TARGET
     dry_run: bool = False
     chapters: list[PackageChapter] = field(default_factory=list)
@@ -76,6 +82,13 @@ class AudiobookPackageResult:
             "author": self.author,
             "bitrate": self.bitrate,
             "loudness_target": self.loudness_target,
+            "compatible_profile": {
+                "mp3_bitrate": self.bitrate,
+                "sample_rate_hz": COMPATIBLE_SAMPLE_RATE,
+                "channels": COMPATIBLE_CHANNELS,
+                "id3v2_version": 3,
+                "metadata": "stripped",
+            },
             "dry_run": self.dry_run,
             "m4b_path": str(self.m4b_path) if self.m4b_path else "",
             "concat_path": str(self.concat_path) if self.concat_path else "",
@@ -99,7 +112,7 @@ def build_audiobook_package(
     title: str = "",
     author: str = "",
     cover_path: Path | None = None,
-    bitrate: str = "192k",
+    bitrate: str = COMPATIBLE_MP3_BITRATE,
     loudness_target: float = DEFAULT_LOUDNESS_TARGET,
     make_m4b: bool = True,
     make_mp3: bool = True,
@@ -298,7 +311,7 @@ def _collect_chapters(
         source = _find_chapter_audio(chapter_audio_dir, chapter_number)
         if source is None:
             continue
-        mp3_path = package_dir / f"{chapter_number:02d} - {_safe_filename(title)}.mp3"
+        mp3_path = package_dir / f"{chapter_number:02d} - {_safe_filename(title)}.MP3"
         chapters.append(
             PackageChapter(
                 chapter_number=chapter_number,
@@ -322,31 +335,13 @@ def _prepare_mp3_exports(
         if chapter.mp3_path is None:
             updated.append(chapter)
             continue
-        command = [
+        command = ffmpeg_compatible_mp3_command(
             ffmpeg,
-            "-y",
-            "-i",
-            str(chapter.source_path),
-        ]
-        if cover_path:
-            command += ["-i", str(cover_path), "-map", "0:a", "-map", "1:v?", "-disposition:v:0", "attached_pic"]
-        command += [
-            "-metadata",
-            f"title={chapter.title}",
-            "-metadata",
-            f"album={result.title}",
-        ]
-        if result.author:
-            command += ["-metadata", f"artist={result.author}"]
-        command += [
-            "-af",
-            _loudnorm_filter(result.loudness_target),
-            "-codec:a",
-            "libmp3lame",
-            "-b:a",
-            result.bitrate,
-            str(chapter.mp3_path),
-        ]
+            chapter.source_path,
+            chapter.mp3_path,
+            audio_filter=_loudnorm_filter(result.loudness_target),
+            bitrate=result.bitrate,
+        )
         result.commands.append(command)
         if not result.dry_run:
             subprocess.run(command, check=True, capture_output=True, text=True)
@@ -394,7 +389,19 @@ def _prepare_m4b(
         command += ["-metadata", f"artist={result.author}"]
     if cover_path:
         command += ["-map", "2:v?", "-disposition:v:0", "attached_pic"]
-    command += ["-af", _loudnorm_filter(result.loudness_target), "-c:a", "aac", "-b:a", result.bitrate, str(m4b_path)]
+    command += [
+        "-af",
+        _loudnorm_filter(result.loudness_target),
+        "-c:a",
+        "aac",
+        "-b:a",
+        result.bitrate,
+        "-ar",
+        str(COMPATIBLE_SAMPLE_RATE),
+        "-ac",
+        str(COMPATIBLE_CHANNELS),
+        str(m4b_path),
+    ]
     result.concat_path = concat_path
     result.ffmetadata_path = ffmetadata_path
     result.m4b_path = m4b_path
@@ -437,8 +444,10 @@ def _default_chapter_audio_dir(manifest_path: Path) -> Path:
 
 def _find_chapter_audio(chapter_audio_dir: Path, chapter_number: int) -> Path | None:
     patterns = [
+        f"chapter_{chapter_number:03d}_mastered.MP3",
         f"chapter_{chapter_number:03d}_mastered.mp3",
         f"chapter_{chapter_number:03d}_mastered.wav",
+        f"chapter_{chapter_number:03d}.MP3",
         f"chapter_{chapter_number:03d}.mp3",
         f"chapter_{chapter_number:03d}.wav",
     ]

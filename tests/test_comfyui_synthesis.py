@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from book_normalizer.comfyui.client import ComfyUIError
 from book_normalizer.comfyui.synthesis import load_manifest, synthesize_manifest
 
@@ -62,6 +64,17 @@ def _manifest() -> dict:
     }
 
 
+@pytest.fixture(autouse=True)
+def _fake_compatible_export(monkeypatch) -> None:  # noqa: ANN001
+    def fake_export(source: Path, output=None, **_kwargs):  # noqa: ANN001, ANN202
+        target = output or source.with_suffix(".MP3")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"mp3")
+        return target
+
+    monkeypatch.setattr("book_normalizer.comfyui.synthesis.export_compatible_mp3", fake_export)
+
+
 def test_synthesize_manifest_updates_successful_chunk(tmp_path: Path) -> None:
     manifest = _manifest()
     manifest["chapters"][0]["chunks"][0]["voice_id"] = "narrator_calm"
@@ -85,6 +98,8 @@ def test_synthesize_manifest_updates_successful_chunk(tmp_path: Path) -> None:
     assert chunk["synthesized"] is True
     assert not Path(chunk["audio_file"]).is_absolute()
     assert (manifest_path.parent / chunk["audio_file"]).exists()
+    assert chunk["compatible_audio_file"].endswith(".MP3")
+    assert (manifest_path.parent / chunk["compatible_audio_file"]).exists()
     assert any("[narrator/Narrator - Calm/calm]" in line for line in lines)
     assert "PROGRESS 1/1" in lines
 

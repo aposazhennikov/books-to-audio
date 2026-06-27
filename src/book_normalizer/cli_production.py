@@ -7,6 +7,8 @@ from pathlib import Path
 
 import click
 
+from book_normalizer.tts.compatible_audio import COMPATIBLE_MP3_BITRATE
+
 
 @click.command(name="audio-qa")
 @click.argument("manifest_path", type=click.Path(exists=True, path_type=Path))
@@ -575,7 +577,12 @@ def production_qa_command(
 @click.option("--title", default="", help="Audiobook title metadata.")
 @click.option("--author", default="", help="Audiobook author/artist metadata.")
 @click.option("--cover", "cover_path", type=click.Path(exists=True, path_type=Path), default=None, help="Cover image.")
-@click.option("--bitrate", default="192k", show_default=True, help="Audio bitrate for MP3/M4B exports.")
+@click.option(
+    "--bitrate",
+    default=COMPATIBLE_MP3_BITRATE,
+    show_default=True,
+    help="Audio bitrate for MP3/M4B exports.",
+)
 @click.option(
     "--loudness-target",
     type=float,
@@ -654,7 +661,7 @@ def package_audiobook_command(
 @click.option("--title", default="", help="Audiobook title override.")
 @click.option("--author", default="", help="Audiobook author/artist metadata.")
 @click.option("--cover", "cover_path", type=click.Path(exists=True, path_type=Path), default=None)
-@click.option("--bitrate", default="192k", show_default=True)
+@click.option("--bitrate", default=COMPATIBLE_MP3_BITRATE, show_default=True)
 @click.option("--loudness-target", type=float, default=-18.0, show_default=True)
 @click.option("--dry-run-package/--run-ffmpeg-package", default=True, show_default=True)
 @click.option("--allow-review-package", is_flag=True, default=False)
@@ -704,4 +711,3 @@ def production_preflight_command(
     click.echo(f"Production QA: {result.production_qa_report_path}")
     if result.package_report_path:
         click.echo(f"Package report: {result.package_report_path}")
-

@@ -8,6 +8,9 @@ import wave
 from pathlib import Path
 from typing import Any
 
+from book_normalizer.runtime_paths import configured_ffmpeg_bin
+from book_normalizer.tts.compatible_audio import export_compatible_mp3
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_PAUSE_PHRASE_MS = 300
@@ -208,17 +211,12 @@ class AudioAssembler:
         return b"\x00" * sampwidth * n_frames * n_channels
 
     def _convert_to_mp3(self, wav_path: Path) -> Path | None:
-        """Convert WAV to MP3 using pydub (requires ffmpeg)."""
+        """Convert WAV to a receiver-compatible MP3 using ffmpeg."""
         try:
-            from pydub import AudioSegment
-        except ImportError:
-            logger.warning("pydub not installed, skipping MP3 conversion.")
-            return None
-
-        mp3_path = wav_path.with_suffix(".mp3")
-        try:
-            audio = AudioSegment.from_wav(str(wav_path))
-            audio.export(str(mp3_path), format="mp3", bitrate="192k")
+            mp3_path = export_compatible_mp3(
+                wav_path,
+                ffmpeg=str(configured_ffmpeg_bin() or "ffmpeg"),
+            )
             logger.info("MP3 exported: %s", mp3_path)
             return mp3_path
         except Exception as exc:

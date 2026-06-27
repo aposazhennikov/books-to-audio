@@ -295,7 +295,7 @@ def test_assembly_page_exposes_production_preflight_controls(qapp, qtbot, tmp_pa
     page.set_manifest(manifest_path, tmp_path)
 
     assert page._btn_production_preflight.isEnabled()
-    assert page._btn_production_package.isEnabled()
+    assert not page._btn_production_package.isEnabled()
     qtbot.mouseClick(page._btn_production_preflight, QtCore.Qt.MouseButton.LeftButton)
 
     assert captured["manifest_path"] == manifest_path
@@ -381,6 +381,13 @@ def test_assembly_page_package_button_runs_release_package(qapp, qtbot, tmp_path
     qtbot.addWidget(page)
     page.set_manifest(manifest_path, tmp_path)
 
+    assert not page._btn_production_package.isEnabled()
+    assert "listen to the assembled chapters" in page._production_gate_status.text()
+    page._run_production_package()
+    assert captured == {}
+
+    page._manual_review_check.setChecked(True)
+    assert page._btn_production_package.isEnabled()
     qtbot.mouseClick(page._btn_production_package, QtCore.Qt.MouseButton.LeftButton)
 
     assert captured["manifest_path"] == manifest_path

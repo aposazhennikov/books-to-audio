@@ -529,7 +529,6 @@ def test_dropdowns_use_content_width_instead_of_full_rows() -> None:
             window._normalize_page._book_language,
             window._normalize_page._ocr_mode,
             window._voices_page._speaker_mode,
-            window._synthesis_page._output_format_combo,
             window._synthesis_page._chapter_combo,
             window._synthesis_page._asr_model_combo,
             window._synthesis_page._asr_device_combo,
@@ -545,7 +544,6 @@ def test_dropdowns_use_content_width_instead_of_full_rows() -> None:
             assert combo.minimumWidth() == combo.maximumWidth()
             assert combo.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Fixed
 
-        assert window._synthesis_page._output_format_combo.maximumWidth() < 140
         assert window._synthesis_page._asr_device_combo.maximumWidth() < 140
         assert window._synthesis_page._asr_model_combo.maximumWidth() < 170
         assert window._normalize_page._book_language.maximumWidth() < 220

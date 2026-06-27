@@ -965,13 +965,17 @@ class SynthesisPage(
         )
 
         self._output_format_combo = QComboBox()
-        self._output_format_combo.addItem("FLAC", "flac")
+        self._output_format_combo.addItem("WAV + MP3", "both")
         self._output_format_combo.addItem("WAV", "wav")
-        _make_combo_compact(self._output_format_combo, min_chars=8)
-        self._output_format_label = QLabel()
+        self._output_format_combo.setCurrentIndex(0)
+        self._output_format_combo.setVisible(False)
+        self._audio_output_status = QLabel()
+        self._audio_output_status.setWordWrap(True)
+        self._audio_output_status.setStyleSheet("color: rgba(51,65,85,0.72);")
+        self._audio_output_label = QLabel()
         form.addRow(
-            self._label_with_help(self._output_format_label, "synth.output_format_help"),
-            self._output_format_combo,
+            self._label_with_help(self._audio_output_label, "synth.audio_output_help"),
+            self._audio_output_status,
         )
 
         self._merge_chapters_check = QCheckBox()
@@ -1005,11 +1009,17 @@ class SynthesisPage(
         self._batch_size.setValue(1)
         _center_spinbox_text(self._batch_size)
         self._batch_size.setMaximumWidth(140)
+        self._batch_size.setVisible(False)
         self._batch_label = QLabel()
+        self._batch_label_widget = self._label_with_help(
+            self._batch_label,
+            "synth.batch_unavailable_help",
+        )
         form.addRow(
-            self._label_with_help(self._batch_label, "synth.batch_help"),
+            self._batch_label_widget,
             self._batch_size,
         )
+        form.setRowVisible(self._batch_size, False)
 
         self._chunk_timeout = QSpinBox()
         self._chunk_timeout.setRange(30, 1800)
@@ -1504,10 +1514,14 @@ class SynthesisPage(
         self._voice_library_dir_edit.setToolTip(t("synth.voice_library_dir_help"))
         self._btn_voice_library_dir.setText(t("synth.choose_dir"))
         self._batch_label.setText(t("synth.batch_size"))
-        self._batch_size.setToolTip(t("synth.batch_help"))
+        self._batch_size.setToolTip(t("synth.batch_unavailable_help"))
         self._chunk_timeout_label.setText(t("synth.chunk_timeout"))
         self._chunk_timeout.setToolTip(t("synth.chunk_timeout_help"))
-        self._output_format_label.setText(t("synth.output_format"))
+        self._audio_output_label.setText(t("synth.audio_output"))
+        self._audio_output_status.setText(t("synth.audio_output_status"))
+        self._audio_output_status.setToolTip(t("synth.audio_output_help"))
+        self._output_format_combo.setItemText(0, t("synth.audio_output_internal_both"))
+        self._output_format_combo.setItemText(1, t("synth.audio_output_internal_wav"))
         self._merge_chapters_label.setText(t("synth.merge_chapters"))
         self._merge_chapters_check.setText(t("synth.merge_chapters_check"))
         self._chapter_label.setText(t("synth.chapter"))
@@ -2263,9 +2277,6 @@ class SynthesisPage(
 
 
     # ── Signal handlers ───────────────────────────────────────────────────────
-
-
-
 
 
 

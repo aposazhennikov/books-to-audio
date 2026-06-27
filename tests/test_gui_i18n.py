@@ -688,6 +688,34 @@ def test_synthesis_sample_panel_labels_are_localized(qtbot) -> None:
     set_language("ru")
 
 
+def test_synthesis_audio_output_status_is_localized(qtbot) -> None:
+    app = qapp()
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    flush_events(app)
+
+    combo = window._lang_combo
+    window._tabs.setCurrentIndex(3)
+    page = window._synthesis_page
+    english_status = ""
+    for code in ("ru", "en", "zh", "kk", "uz"):
+        index = combo.findData(code)
+        assert index >= 0
+        combo.setCurrentIndex(index)
+        flush_events(app)
+        status = page._audio_output_status.text()
+        assert "WAV" in status
+        assert "MP3" in status
+        assert "FLAC" not in status
+        if code == "en":
+            english_status = status
+        else:
+            assert status != english_status
+
+    set_language("ru")
+
+
 def test_theme_has_multilingual_font_fallbacks() -> None:
     theme = _resolve_theme()
 

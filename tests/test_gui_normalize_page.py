@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -32,6 +33,8 @@ def qapp():
 @pytest.fixture(autouse=True)
 def isolate_normalization_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(normalization_cache, "CACHE_ROOT", tmp_path / "normalization_cache")
+    monkeypatch.delenv("BOOKS_TO_AUDIO_WEB_UPLOAD_MARKER", raising=False)
+    monkeypatch.delenv("BOOKS_TO_AUDIO_WEB_UPLOAD_DIR", raising=False)
 
 
 def test_book_preview_default_is_not_truncated() -> None:
@@ -81,6 +84,69 @@ def test_normalize_page_hides_ocr_help_until_pdf_selected(qapp) -> None:
     page.deleteLater()
 
 
+def test_normalize_page_web_upload_marker_selects_uploaded_pdf(
+    qapp,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(normalize_page, "tesseract_available", lambda: True)
+    monkeypatch.setattr(normalize_page, "tesseract_language_available", lambda _lang: True)
+    set_language("en")
+    book_path = tmp_path / "uploaded.pdf"
+    book_path.write_text("PDF placeholder.", encoding="utf-8")
+    marker_path = tmp_path / "latest_upload.json"
+    marker_path.write_text(json.dumps({"path": str(book_path)}), encoding="utf-8")
+    monkeypatch.setenv("BOOKS_TO_AUDIO_WEB_UPLOAD_MARKER", str(marker_path))
+    page = NormalizePage()
+    page._cache_restored_chapters = 7
+    page._progress.set_status(t("norm.cache_restored", n=7))
+
+    page._poll_web_upload_marker()
+
+    assert page._selected_path == str(book_path)
+    assert page._path_label.text() == str(book_path)
+    assert page._btn_run.isEnabled()
+    assert page._cache_restored_chapters is None
+    assert not page._ocr_mode_label_wrap.isHidden()
+    assert not page._ocr_dpi_label_wrap.isHidden()
+    assert not page._ocr_psm_label_wrap.isHidden()
+    assert not page._ocr_psm_field.isHidden()
+    assert page._ocr_not_applicable_label.isHidden()
+    assert page._progress._status.text() == t("norm.web_upload_selected", name=book_path.name)
+    page.deleteLater()
+    set_language("ru")
+
+
+@pytest.mark.parametrize(
+    "marker_payload",
+    [
+        None,
+        "{not json",
+        json.dumps({}),
+        json.dumps({"path": "missing.txt"}),
+    ],
+)
+def test_normalize_page_web_upload_marker_ignores_unusable_marker(
+    qapp,
+    tmp_path,
+    monkeypatch,
+    marker_payload: str | None,
+) -> None:
+    marker_path = tmp_path / "latest_upload.json"
+    if marker_payload is not None:
+        marker_path.write_text(marker_payload, encoding="utf-8")
+    monkeypatch.setenv("BOOKS_TO_AUDIO_WEB_UPLOAD_MARKER", str(marker_path))
+    page = NormalizePage()
+
+    page._poll_web_upload_marker()
+
+    assert page._selected_path == ""
+    assert page._path_label.text() == ""
+    assert not page._btn_run.isEnabled()
+    assert page._web_upload_marker_seen == ""
+    page.deleteLater()
+
+
 def test_normalize_page_prompts_native_ocr_install_when_tesseract_missing(
     qapp,
     monkeypatch,
@@ -113,6 +179,54 @@ def test_normalize_page_hides_native_ocr_install_when_tesseract_available(
     page._update_ocr_visibility()
 
     assert page._ocr_install_panel.isHidden()
+    page.deleteLater()
+
+
+def test_normalize_page_selects_latest_web_upload_marker(
+    qapp,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(normalize_page, "tesseract_available", lambda: True)
+    monkeypatch.setattr(normalize_page, "tesseract_language_available", lambda _lang: True)
+    marker = tmp_path / ".latest_book_upload.json"
+    book_path = tmp_path / "uploaded.pdf"
+    book_path.write_text("%PDF-1.4", encoding="utf-8")
+    marker.write_text(json.dumps({"path": str(book_path)}), encoding="utf-8")
+    monkeypatch.setenv("BOOKS_TO_AUDIO_WEB_UPLOAD_MARKER", str(marker))
+    page = NormalizePage()
+    page._cache_restored_chapters = 3
+
+    page._poll_web_upload_marker()
+
+    assert page._selected_path == str(book_path)
+    assert page._path_label.text() == str(book_path)
+    assert page._btn_run.isEnabled()
+    assert page._cache_restored_chapters is None
+    assert page._ocr_not_applicable_label.isHidden()
+    assert not page._ocr_mode.isHidden()
+    assert page._progress._status.text() == t(
+        "norm.web_upload_selected",
+        name=book_path.name,
+    )
+    page.deleteLater()
+
+
+def test_normalize_page_ignores_invalid_web_upload_marker(
+    qapp,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    marker = tmp_path / ".latest_book_upload.json"
+    marker.write_text("{not json", encoding="utf-8")
+    monkeypatch.setenv("BOOKS_TO_AUDIO_WEB_UPLOAD_MARKER", str(marker))
+    page = NormalizePage()
+
+    page._poll_web_upload_marker()
+
+    assert page._selected_path == ""
+    assert page._path_label.text() == t("norm.no_file")
+    assert not page._btn_run.isEnabled()
     page.deleteLater()
 
 

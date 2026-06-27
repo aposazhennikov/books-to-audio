@@ -44,9 +44,17 @@ def test_posix_gui_wrapper_supports_web_browser_mode() -> None:
     shell_text = (ROOT / "run_gui.sh").read_text(encoding="utf-8")
 
     assert "--web" in shell_text
+    assert "--upload-host" in shell_text
+    assert "--upload-port" in shell_text
+    assert "--upload-dir" in shell_text
     assert "Xvfb" in shell_text
     assert "x11vnc" in shell_text
     assert "websockify" in shell_text
+    assert "book_normalizer.gui.web_upload_server" in shell_text
+    assert "BOOKS_TO_AUDIO_WEB_UPLOAD_MARKER" in shell_text
+    assert "BOOKS_TO_AUDIO_WEB_UPLOAD_DIR" in shell_text
+    assert "UPLOAD_PID" in shell_text
+    assert "Upload URL: http://127.0.0.1:$UPLOAD_PORT/upload" in shell_text
     assert "WAYLAND_DISPLAY" in shell_text
     assert "vnc.html?autoconnect=1&resize=scale" in shell_text
     assert "ssh -L" in shell_text

@@ -13,6 +13,10 @@ WEB_PORT="${BOOKS_TO_AUDIO_WEB_PORT:-6080}"
 VNC_PORT="${BOOKS_TO_AUDIO_VNC_PORT:-5901}"
 WEB_DISPLAY="${BOOKS_TO_AUDIO_WEB_DISPLAY:-:99}"
 WEB_GEOMETRY="${BOOKS_TO_AUDIO_WEB_GEOMETRY:-1440x900}"
+UPLOAD_HOST="${BOOKS_TO_AUDIO_WEB_UPLOAD_HOST:-$WEB_HOST}"
+UPLOAD_PORT="${BOOKS_TO_AUDIO_WEB_UPLOAD_PORT:-6090}"
+UPLOAD_DIR="${BOOKS_TO_AUDIO_WEB_UPLOAD_DIR:-$SCRIPT_DIR/web_uploads}"
+UPLOAD_MARKER="${BOOKS_TO_AUDIO_WEB_UPLOAD_MARKER:-$UPLOAD_DIR/.latest_book_upload.json}"
 
 usage() {
     cat <<'EOF'
@@ -20,12 +24,14 @@ Usage:
   ./run_gui.sh [--check]
   ./run_gui.sh [GUI args...]
   ./run_gui.sh --web [--web-host HOST] [--web-port PORT] [--vnc-port PORT]
+               [--upload-host HOST] [--upload-port PORT] [--upload-dir DIR]
                [--display :N] [--geometry WIDTHxHEIGHT] [GUI args...]
 
 Remote Linux server example:
   ./run_gui.sh --web
-  ssh -L 6080:127.0.0.1:6080 user@server
+  ssh -L 6080:127.0.0.1:6080 -L 6090:127.0.0.1:6090 user@server
   open http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale
+  open http://127.0.0.1:6090/upload to upload a local book
 
 Use --web-host 0.0.0.0 only when the server firewall and provider networking
 are configured safely. SSH tunneling with the default 127.0.0.1 is preferred.
@@ -52,6 +58,19 @@ while [ "$#" -gt 0 ]; do
             ;;
         --vnc-port)
             VNC_PORT="${2:?Missing value for --vnc-port}"
+            shift 2
+            ;;
+        --upload-host)
+            UPLOAD_HOST="${2:?Missing value for --upload-host}"
+            shift 2
+            ;;
+        --upload-port)
+            UPLOAD_PORT="${2:?Missing value for --upload-port}"
+            shift 2
+            ;;
+        --upload-dir)
+            UPLOAD_DIR="${2:?Missing value for --upload-dir}"
+            UPLOAD_MARKER="${BOOKS_TO_AUDIO_WEB_UPLOAD_MARKER:-$UPLOAD_DIR/.latest_book_upload.json}"
             shift 2
             ;;
         --display)
@@ -127,6 +146,7 @@ if [ "$WEB_MODE" = "1" ]; then
 
     cleanup_web_gui() {
         if [ -n "${APP_PID:-}" ]; then kill "$APP_PID" >/dev/null 2>&1 || true; fi
+        if [ -n "${UPLOAD_PID:-}" ]; then kill "$UPLOAD_PID" >/dev/null 2>&1 || true; fi
         if [ -n "${WEBSOCKIFY_PID:-}" ]; then kill "$WEBSOCKIFY_PID" >/dev/null 2>&1 || true; fi
         if [ -n "${X11VNC_PID:-}" ]; then kill "$X11VNC_PID" >/dev/null 2>&1 || true; fi
         if [ -n "${XVFB_PID:-}" ]; then kill "$XVFB_PID" >/dev/null 2>&1 || true; fi
@@ -158,17 +178,36 @@ if [ "$WEB_MODE" = "1" ]; then
     sleep 1
     require_running "$WEBSOCKIFY_PID" "websockify"
 
+    BOOKS_TO_AUDIO_WEB_UPLOAD_DIR="$UPLOAD_DIR" \
+    BOOKS_TO_AUDIO_WEB_UPLOAD_MARKER="$UPLOAD_MARKER" \
+        .venv/bin/python -m book_normalizer.gui.web_upload_server \
+            --host "$UPLOAD_HOST" \
+            --port "$UPLOAD_PORT" \
+            --upload-dir "$UPLOAD_DIR" \
+            --marker "$UPLOAD_MARKER" &
+    UPLOAD_PID=$!
+    sleep 1
+    require_running "$UPLOAD_PID" "upload server"
+
     printf '%s\n' "Books-to-Audio web GUI is starting."
     printf '%s\n' "Browser URL: http://127.0.0.1:$WEB_PORT/vnc.html?autoconnect=1&resize=scale"
+    printf '%s\n' "Upload URL: http://127.0.0.1:$UPLOAD_PORT/upload"
+    printf '%s\n' "Uploaded books are saved on the server in: $UPLOAD_DIR"
     printf '%s\n' "Remote server access:"
-    printf '%s\n' "  ssh -L $WEB_PORT:127.0.0.1:$WEB_PORT user@server"
-    printf '%s\n' "  then open the Browser URL on your laptop."
+    printf '%s\n' "  ssh -L $WEB_PORT:127.0.0.1:$WEB_PORT -L $UPLOAD_PORT:127.0.0.1:$UPLOAD_PORT user@server"
+    printf '%s\n' "  then open the Browser URL and Upload URL on your laptop."
     if [ "$WEB_HOST" != "127.0.0.1" ] && [ "$WEB_HOST" != "localhost" ]; then
         printf '%s\n' "Listening on $WEB_HOST:$WEB_PORT. Protect this port with firewall/provider rules."
     fi
+    if [ "$UPLOAD_HOST" != "127.0.0.1" ] && [ "$UPLOAD_HOST" != "localhost" ]; then
+        printf '%s\n' "Upload server listening on $UPLOAD_HOST:$UPLOAD_PORT. Protect this port with firewall/provider rules."
+    fi
 
     env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-        DISPLAY="$WEB_DISPLAY" QT_QPA_PLATFORM=xcb .venv/bin/python -m book_normalizer.gui.app "$@" &
+        DISPLAY="$WEB_DISPLAY" QT_QPA_PLATFORM=xcb \
+        BOOKS_TO_AUDIO_WEB_UPLOAD_DIR="$UPLOAD_DIR" \
+        BOOKS_TO_AUDIO_WEB_UPLOAD_MARKER="$UPLOAD_MARKER" \
+        .venv/bin/python -m book_normalizer.gui.app "$@" &
     APP_PID=$!
     wait "$APP_PID"
     exit $?

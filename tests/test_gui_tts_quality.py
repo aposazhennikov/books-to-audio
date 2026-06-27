@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest
-from book_normalizer.gui.workers.tts_worker import ExportSegmentsWorker
+from book_normalizer.gui.i18n import set_language
+from book_normalizer.gui.workers.tts_worker import ExportSegmentsWorker, TTSSynthesisWorker
 from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph, Segment
+from book_normalizer.tts.synthesis_controller import SynthesisRunResult
 
 
 def test_export_segments_renders_stress_hints_for_tts_manifest(
@@ -211,3 +213,45 @@ def test_chunks_to_v2_manifest_persists_language_for_synthesis() -> None:
 
     assert manifest["language"] == "zh"
     assert manifest["tts_language"] == "Chinese"
+
+
+def test_tts_worker_reports_partial_synthesis_as_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    set_language("en")
+
+    class _FakeController:
+        def __init__(self, request, **_callbacks):  # noqa: ANN001
+            self.request = request
+
+        def run(self) -> SynthesisRunResult:
+            return SynthesisRunResult(
+                audio_dir=tmp_path / "audio_chunks",
+                synthesized=2,
+                skipped=1,
+                failed=1,
+                total=4,
+                status="review_required",
+            )
+
+    monkeypatch.setattr(
+        "book_normalizer.gui.workers.tts_worker.SynthesisController",
+        _FakeController,
+    )
+    worker = TTSSynthesisWorker(
+        manifest_path=tmp_path / "chunks_manifest_v2.json",
+        output_dir=tmp_path,
+        workflow_path=str(tmp_path / "workflow.json"),
+    )
+    finished: list[tuple[str, int, int]] = []
+    errors: list[str] = []
+    worker.finished.connect(lambda *args: finished.append(args))
+    worker.error.connect(errors.append)
+
+    worker.run()
+
+    assert finished == []
+    assert errors
+    assert "needs review" in errors[0].lower()
+    assert "failed 1/4" in errors[0].lower()

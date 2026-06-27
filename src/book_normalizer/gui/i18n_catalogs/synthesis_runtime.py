@@ -220,6 +220,16 @@ SYNTHESIS_RUNTIME_TRANSLATIONS: dict[str, dict[str, str]] = {'synth.chapter': {'
  'synth.err_exit_code': {'en': 'TTS process exited with code {code}.',
                          'ru': 'TTS-процесс завершился с кодом {code}.'},
  'synth.complete': {'en': 'Synthesis complete!', 'ru': 'Синтез завершён!'},
+ 'synth.review_required': {'en': 'Synthesis needs review: failed {failed}/{total} chunks. '
+                                 'Synthesized: {synthesized}, skipped: {skipped}. '
+                                 'Fix or retry failed chunks before assembly. Output: {path}',
+                           'ru': 'Синтез требует проверки: не удалось {failed}/{total} чанков. '
+                                 'Синтезировано: {synthesized}, пропущено: {skipped}. '
+                                 'Исправьте или повторите упавшие чанки перед сборкой. Папка: {path}'},
+ 'synth.incomplete_status': {'en': 'Synthesis stopped with status {status}: '
+                                   'failed {failed}/{total} chunks.',
+                             'ru': 'Синтез остановлен со статусом {status}: '
+                                   'не удалось {failed}/{total} чанков.'},
  'synth.test_done': {'en': 'Test fragment is ready. Output: {path}',
                      'ru': 'Тестовый фрагмент готов. Файл: {path}'},
  'synth.test_done_no_file': {'en': 'Test run finished, but no audio file was found in {path}. '

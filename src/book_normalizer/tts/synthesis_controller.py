@@ -37,7 +37,10 @@ from book_normalizer.tts.asr_qa import (
     write_asr_diff,
     write_asr_report,
 )
-from book_normalizer.tts.engine_synthesis import synthesize_engine_manifest
+from book_normalizer.tts.engine_synthesis import (
+    preflight_engine_command,
+    synthesize_engine_manifest,
+)
 from book_normalizer.tts.engines import get_tts_engine, unsupported_tts_engine_message
 from book_normalizer.tts.perceptual_qa import (
     DEFAULT_PERCEPTUAL_BACKENDS,
@@ -269,6 +272,27 @@ class SynthesisController:
         audio_dir = request.output_dir / "audio_chunks"
         engine = get_tts_engine(request.tts_engine)
         if engine is not None and engine.backend != "comfyui":
+            preflight = preflight_engine_command(engine.engine_id, request.models_dir or None)
+            self._emit_log(f"TTS engine: {preflight.display_name} ({preflight.engine_id})")
+            self._emit_log(f"Command template: {preflight.command_template}")
+            self._emit_log(f"Command preview: {preflight.preview_command}")
+            if not preflight.ok:
+                message = (
+                    f"{preflight.display_name} CLI is not available: "
+                    f"`{preflight.executable}` was not found on PATH.\n"
+                    f"What to install: {preflight.install_hint}\n"
+                    f"Command that would be invoked: {preflight.preview_command}"
+                )
+                observer.log(
+                    "local_command_preflight_failed",
+                    engine=preflight.engine_id,
+                    executable=preflight.executable,
+                    env_name=preflight.env_name,
+                    command_preview=preflight.preview_command,
+                )
+                observer.finish("failed", error=message)
+                raise FileNotFoundError(message)
+            self._emit_log(f"Executable: {preflight.executable_path}")
             self._emit_status("__loading__")
             done_start = count_done_chunks(
                 manifest,

@@ -186,6 +186,10 @@ def test_synthesis_controller_routes_local_tts_engine_without_comfyui_workflow(
         return SynthesisSummary(total=1, synthesized=1, skipped=0, failed=0)
 
     monkeypatch.setattr(
+        "book_normalizer.tts.engine_synthesis.shutil.which",
+        lambda command: f"/usr/bin/{command}",
+    )
+    monkeypatch.setattr(
         synthesis_controller,
         "synthesize_engine_manifest",
         fake_synthesize_engine_manifest,
@@ -207,6 +211,49 @@ def test_synthesis_controller_routes_local_tts_engine_without_comfyui_workflow(
     contract = json.loads((tmp_path / "out" / "run_contract.json").read_text(encoding="utf-8"))
     assert contract["parameters"]["models_dir"] == str(tmp_path / "models")
     assert contract["parameters"]["resume_mode"] == "manifest_state"
+
+
+def test_synthesis_controller_preflights_local_tts_cli_before_synthesis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = _write_manifest(tmp_path / "chunks_manifest_v2.json")
+    calls: list[dict] = []
+    logs: list[str] = []
+
+    def fake_synthesize_engine_manifest(**kwargs):  # noqa: ANN003
+        calls.append(kwargs)
+        return SynthesisSummary(total=1, synthesized=1, skipped=0, failed=0)
+
+    monkeypatch.setattr(
+        "book_normalizer.tts.engine_synthesis.shutil.which",
+        lambda _command: None,
+    )
+    monkeypatch.setattr(
+        synthesis_controller,
+        "synthesize_engine_manifest",
+        fake_synthesize_engine_manifest,
+    )
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        SynthesisController(
+            SynthesisRequest(
+                manifest_path=manifest_path,
+                output_dir=tmp_path / "out",
+                workflow_path=tmp_path / "missing-workflow.json",
+                tts_engine="f5-tts",
+                models_dir=str(tmp_path / "models"),
+            ),
+            log=logs.append,
+        ).run()
+
+    message = str(exc_info.value)
+    assert calls == []
+    assert "f5-tts_infer-cli" in message
+    assert "What to install:" in message
+    assert "Command that would be invoked:" in message
+    assert "BOOKS_TO_AUDIO_TTS_F5_TTS_COMMAND" in message
+    assert any(line.startswith("Command preview:") for line in logs)
 
 
 def test_synthesis_controller_runs_perceptual_qa_gate(

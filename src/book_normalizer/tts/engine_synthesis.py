@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import tempfile
 import time
@@ -41,6 +42,25 @@ class TTSEngineCommand:
     model_path: Path
 
 
+@dataclass(frozen=True)
+class TTSEnginePreflight:
+    """Resolved local-command readiness details for GUI/CLI preflight."""
+
+    engine_id: str
+    display_name: str
+    command_template: str
+    preview_command: str
+    executable: str
+    executable_path: str | None
+    env_name: str
+    install_hint: str
+
+    @property
+    def ok(self) -> bool:
+        """Return true when the command executable is discoverable."""
+        return self.executable_path is not None
+
+
 DEFAULT_COMMAND_TEMPLATES: dict[str, str] = {
     "fish-speech-1.5": (
         "fish-speech-cli text-to-speech --text-file {text_file} --output {output_file} "
@@ -57,6 +77,25 @@ DEFAULT_COMMAND_TEMPLATES: dict[str, str] = {
     "cosyvoice-3": (
         "cosyvoice-cli --model-dir {model_path} --text-file {text_file} --output {output_file} "
         "--prompt-audio {ref_audio} --prompt-text-file {ref_text_file}"
+    ),
+}
+
+INSTALL_HINTS: dict[str, str] = {
+    "fish-speech-1.5": (
+        "Install Fish Speech CLI and make `fish-speech-cli` available on PATH, "
+        "or set {env_name} to your adapter command template."
+    ),
+    "f5-tts": (
+        "Install F5-TTS CLI and make `f5-tts_infer-cli` available on PATH, "
+        "or set {env_name} to your adapter command template."
+    ),
+    "xtts-v2": (
+        "Install Coqui TTS and make `tts` available on PATH, "
+        "or set {env_name} to your adapter command template."
+    ),
+    "cosyvoice-3": (
+        "Install CosyVoice CLI and make `cosyvoice-cli` available on PATH, "
+        "or set {env_name} to your adapter command template."
     ),
 }
 
@@ -188,6 +227,36 @@ def resolve_engine_command(
     return TTSEngineCommand(engine.engine_id, template, model_id, model_path)
 
 
+def preflight_engine_command(
+    engine_id_or_model_id: str,
+    models_dir: str | Path | None = None,
+) -> TTSEnginePreflight:
+    """Check whether a local-command TTS engine can be launched."""
+    command = resolve_engine_command(engine_id_or_model_id, models_dir)
+    engine = get_tts_engine(command.engine_id)
+    display_name = engine.display_name if engine else command.engine_id
+    preview_values = _preflight_values(command)
+    argv = _render_command(command.command_template, preview_values)
+    executable = argv[0]
+    executable_path = shutil.which(executable)
+    env_name = _engine_env_name(command.engine_id)
+    hint_template = INSTALL_HINTS.get(
+        command.engine_id,
+        "Install the engine CLI and make `{executable}` available on PATH, "
+        "or set {env_name} to a working command template.",
+    )
+    return TTSEnginePreflight(
+        engine_id=command.engine_id,
+        display_name=display_name,
+        command_template=command.command_template,
+        preview_command=shlex.join(argv),
+        executable=executable,
+        executable_path=executable_path,
+        env_name=env_name,
+        install_hint=hint_template.format(env_name=env_name, executable=executable),
+    )
+
+
 def run_engine_command(
     command: TTSEngineCommand,
     *,
@@ -235,10 +304,16 @@ def run_engine_command(
                 timeout=max(1.0, float(timeout)),
             )
         except FileNotFoundError as exc:
+            env_name = _engine_env_name(command.engine_id)
+            hint_template = INSTALL_HINTS.get(
+                command.engine_id,
+                "Install the engine CLI or set {env_name} to a working command template.",
+            )
+            install_hint = hint_template.format(env_name=env_name, executable=argv[0])
             raise TTSEngineSynthesisError(
                 f"TTS engine command was not found: {argv[0]}. "
-                f"Install the engine CLI or set {_engine_env_name(command.engine_id)} "
-                "to a working command template."
+                f"{install_hint} "
+                f"Command template: {command.command_template}"
             ) from exc
         except subprocess.TimeoutExpired as exc:
             raise TTSEngineSynthesisError(
@@ -291,6 +366,25 @@ def _render_command(template: str, values: dict[str, str]) -> list[str]:
     if not rendered:
         raise TTSEngineSynthesisError("TTS engine command template rendered to an empty command.")
     return rendered
+
+
+def _preflight_values(command: TTSEngineCommand) -> dict[str, str]:
+    output_path = Path("<output_dir>") / "chapter_001_chunk_001_narrator.wav"
+    return {
+        "text": "<chunk_text>",
+        "text_file": "<temp_text_file>",
+        "output_file": str(output_path),
+        "output_dir": "<output_dir>",
+        "output_name": output_path.name,
+        "model_id": command.model_id,
+        "model_path": str(command.model_path),
+        "language": "<language>",
+        "voice_id": "<voice_id>",
+        "voice_label": "<voice_label>",
+        "ref_audio": "<reference_audio>",
+        "ref_text": "<reference_text>",
+        "ref_text_file": "<temp_reference_text_file>",
+    }
 
 
 def _load_clone_config(path: Path | None) -> dict[str, dict[str, object]]:

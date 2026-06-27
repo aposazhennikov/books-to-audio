@@ -18,6 +18,8 @@ def _isolate_runtime_config(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("BOOKS_TO_AUDIO_TESSERACT_CMD", raising=False)
     monkeypatch.delenv("BOOKS_TO_AUDIO_TESSDATA_DIR", raising=False)
     monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
+    monkeypatch.delenv("ProgramFiles", raising=False)
+    monkeypatch.delenv("ProgramFiles(x86)", raising=False)
     monkeypatch.setattr(pdf_ocr_engine, "project_root", lambda: tmp_path / "project")
     reset_runtime_path_cache()
 
@@ -195,6 +197,44 @@ def test_tesseract_available_finds_project_local_windows_binary(
 
     assert tesseract_available() is True
     assert calls == [[str(native), "--version"]]
+    reset_runtime_path_cache()
+
+
+def test_tesseract_available_prefers_project_local_windows_binary(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _isolate_runtime_config(monkeypatch, tmp_path)
+    project = tmp_path / "project"
+    project_native = project / "tools" / "Tesseract-OCR" / "tesseract.exe"
+    project_native.parent.mkdir(parents=True)
+    project_native.write_text("", encoding="utf-8")
+    program_files = tmp_path / "Program Files"
+    system_native = program_files / "Tesseract-OCR" / "tesseract.exe"
+    system_native.parent.mkdir(parents=True)
+    system_native.write_text("", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_import(name, *args, **kwargs):  # noqa: ANN001
+        if name == "pytesseract":
+            raise ImportError("missing")
+        return real_import(name, *args, **kwargs)
+
+    def fake_run(args, *_args, **_kwargs):  # noqa: ANN001
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0)
+
+    real_import = __import__
+    monkeypatch.setattr(pdf_ocr_engine.platform, "system", lambda: "Windows")
+    monkeypatch.setenv("ProgramFiles", str(program_files))
+    monkeypatch.delenv("ProgramFiles(x86)", raising=False)
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    monkeypatch.setattr(pdf_ocr_engine.shutil, "which", lambda name: None)
+    monkeypatch.setattr(pdf_ocr_engine, "project_root", lambda: project)
+    monkeypatch.setattr(pdf_ocr_engine.subprocess, "run", fake_run)
+
+    assert tesseract_available() is True
+    assert calls == [[str(project_native), "--version"]]
     reset_runtime_path_cache()
 
 

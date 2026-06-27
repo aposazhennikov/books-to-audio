@@ -97,10 +97,10 @@ def _tesseract_command() -> Path | str | None:
     discovered = shutil.which("tesseract")
     if discovered:
         return discovered
-    for candidate in _common_windows_tesseract_paths():
+    for candidate in _project_local_windows_tesseract_paths():
         if candidate.exists():
             return candidate
-    for candidate in _project_local_windows_tesseract_paths():
+    for candidate in _common_windows_tesseract_paths():
         if candidate.exists():
             return candidate
     return None
@@ -119,12 +119,10 @@ def _common_windows_tesseract_paths() -> tuple[Path, ...]:
     if platform.system() != "Windows":
         return ()
 
-    roots = [
+    roots = (
         os.environ.get("ProgramFiles"),
         os.environ.get("ProgramFiles(x86)"),
-        "C:/Program Files",
-        "C:/Program Files (x86)",
-    ]
+    )
     paths: list[Path] = []
     seen: set[str] = set()
     for root in roots:

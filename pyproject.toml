@@ -36,19 +36,19 @@ ocr = [
     "Pillow>=10.0,<12",
 ]
 tts = [
-    "qwen-tts",
-    "torch",
+    "qwen-tts==0.1.1",
+    "torch==2.7.1",
     "soundfile>=0.12,<1",
     "pydub>=0.25,<1",
     "numpy>=1.24",
 ]
 tts-sage = [
-    "qwen-tts",
-    "torch",
+    "qwen-tts==0.1.1",
+    "torch==2.7.1",
     "soundfile>=0.12,<1",
     "pydub>=0.25,<1",
     "numpy>=1.24",
-    "sageattention @ git+https://github.com/thu-ml/SageAttention.git",
+    "sageattention==1.0.6",
 ]
 llm = [
     "httpx>=0.27,<1",
@@ -103,9 +103,6 @@ books-to-audio = "book_normalizer.gui.app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/book_normalizer"]
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

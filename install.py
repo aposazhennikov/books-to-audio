@@ -1384,12 +1384,6 @@ def _print_system_dependency_notes(extras: set[str], paths: InstallPaths) -> Non
             f"FFmpeg не найден по пути '{paths.ffmpeg_bin}'. "
             "WAV будет работать, но экспорт MP3 через pydub требует FFmpeg.",
         ))
-    if "tts-sage" in extras and shutil.which("git") is None:
-        notes.append(_bilingual_line(
-            "Git is not on PATH. Direct Git dependencies such as SageAttention need Git.",
-            "Git не найден в PATH. Прямые Git-зависимости вроде SageAttention требуют Git.",
-        ))
-
     command = _system_package_hint(extras)
     if notes:
         print("System dependency notes / Системные зависимости:")

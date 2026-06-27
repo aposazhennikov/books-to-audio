@@ -801,6 +801,20 @@ _OCR_DASH_SPACED_DOT_WORDS_RE = re.compile(
     r"(?:[\u0400-\u04ff]{1,8}\s+){0,2}"
     r"(?=[А-ЯЁ])"
 )
+_OCR_LEADING_SHORT_DEBRIS_RE = re.compile(
+    r"^(?P<prefix>(?:[\d_.,:;|\\/`'\"-]+\s*)+"
+    r"(?:[\u0400-\u04ff]{1,2}\s*[\d_.,:;|\\/`'\"-]+\s*){0,4})"
+    r"(?P<body>[А-ЯЁ].+)$"
+)
+_OCR_INLINE_SYMBOL_DEBRIS_BEFORE_UPPER_RE = re.compile(
+    r"\s+[_|\\/`'\"„“”][._,:;|\\/`'\"„“”\s-]+(?=[А-ЯЁ])"
+)
+_OCR_EPIGRAPH_SOURCE_PREFIX_DEBRIS_RE = re.compile(
+    r"\s+[а-яё]\.\s*(?:\d{1,3}\s*)?(?=Из\s)"
+)
+_OCR_GLAVA_TRAILING_NOISE_RE = re.compile(
+    r"^(?P<head>ГЛАВА\s+[А-ЯЁ]{3,})(?:\s+(?:[А-ЯЁа-яё]{1,3}|[._,:;|\\/`'\"-]+)){1,4}\s*$"
+)
 _DROPCAP_PREFIX_REPAIRS = {
     "ергей": "Сергей",
     "ыганка": "Цыганка",
@@ -905,6 +919,7 @@ def _trim_trailing_ocr_garbage(paragraph: str) -> str:
 
 def _trim_leading_ocr_garbage(paragraph: str) -> str:
     """Drop noisy leading token runs before the first readable sentence."""
+    paragraph = _strip_leading_short_debris(paragraph)
     plus = paragraph.find("+ ")
     if plus < 0 or plus > 90 or plus + 2 >= len(paragraph):
         return paragraph
@@ -923,9 +938,28 @@ def _trim_leading_ocr_garbage(paragraph: str) -> str:
     return paragraph
 
 
+def _strip_leading_short_debris(paragraph: str) -> str:
+    """Remove scan speckles misread as a short prefix before real text."""
+    match = _OCR_LEADING_SHORT_DEBRIS_RE.match(paragraph.strip())
+    if not match:
+        return paragraph
+
+    prefix = match.group("prefix")
+    has_digit = any(ch.isdigit() for ch in prefix)
+    punctuation = sum(ch in "._,:;|\\/`'\"-" for ch in prefix)
+    words = _cyrillic_words(prefix)
+    only_short_words = all(len(word) <= 2 for word in words)
+    if (has_digit or punctuation >= 2) and only_short_words:
+        return match.group("body").strip()
+    return paragraph
+
+
 def _normalize_common_ocr_glitches(paragraph: str) -> str:
     """Fix high-confidence OCR glitches seen in Russian scanned book pages."""
+    paragraph = _trim_noisy_chapter_heading(paragraph)
     paragraph = _INLINE_PAGE_MARK_RE.sub(" ", paragraph)
+    paragraph = _OCR_INLINE_SYMBOL_DEBRIS_BEFORE_UPPER_RE.sub(" ", paragraph)
+    paragraph = _OCR_EPIGRAPH_SOURCE_PREFIX_DEBRIS_RE.sub(" ", paragraph)
     paragraph = _OCR_SYMBOL_WORD_NOISE_RE.sub(" ", paragraph)
     paragraph = _OCR_SYMBOL_CLUSTER_RE.sub(" ", paragraph)
     paragraph = _OCR_SHORT_TOKEN_RUN_RE.sub(" ", paragraph)
@@ -953,6 +987,12 @@ def _normalize_common_ocr_glitches(paragraph: str) -> str:
     paragraph = _normalize_ocr_punctuation(paragraph)
     paragraph = re.sub(r"\s{2,}", " ", paragraph)
     return paragraph.strip()
+
+
+def _trim_noisy_chapter_heading(paragraph: str) -> str:
+    """Trim short OCR crumbs after a standalone chapter heading."""
+    match = _OCR_GLAVA_TRAILING_NOISE_RE.match(paragraph.strip())
+    return match.group("head") if match else paragraph
 
 
 def _normalize_ocr_punctuation(text: str) -> str:
@@ -1023,7 +1063,9 @@ def _is_ocr_noise_paragraph(paragraph: str) -> bool:
 def _repair_ocr_cross_segment_breaks(text: str) -> str:
     """Repair words split across OCR page/segment boundaries."""
     text = _OCR_CROSS_SEGMENT_HYPHEN_RE.sub(r"\1\2", text)
-    return _OCR_CROSS_SEGMENT_PARTICIPLE_RE.sub(r"\1\2", text)
+    text = _OCR_CROSS_SEGMENT_PARTICIPLE_RE.sub(r"\1\2", text)
+    text = _OCR_INLINE_SYMBOL_DEBRIS_BEFORE_UPPER_RE.sub(" ", text)
+    return _OCR_EPIGRAPH_SOURCE_PREFIX_DEBRIS_RE.sub(" ", text)
 
 
 def _repair_pdf_drop_caps(text: str) -> str:
@@ -1378,19 +1420,11 @@ def extract_pdf_with_ocr_mode(
             "Running structured PDF extraction with OCR on '%s' (dpi=%d, psm=%d, preprocess=%s)...",
             resolved.name, dpi, psm, preprocess,
         )
-        try:
-            ocr_structure = _extract_pdf_structured(
-                resolved,
-                run_ocr=True,
-                lang=lang,
-                language_code=language_code,
-                dpi=dpi,
-                psm=psm,
-                preprocess=preprocess,
+        if _target_text_unreadable(native_text, language_code):
+            logger.info(
+                "Native PDF text is unreadable for language '%s'; using full-page OCR.",
+                language_code,
             )
-            ocr_text = _repair_ocr_cross_segment_breaks(ocr_structure.to_text())
-        except ImportError as exc:
-            logger.debug("Structured OCR dependencies unavailable, using full-page OCR: %s", exc)
             ocr_text = _ocr_pdf_with_tesseract(
                 resolved,
                 lang=lang,
@@ -1399,6 +1433,28 @@ def extract_pdf_with_ocr_mode(
                 psm=psm,
                 preprocess=preprocess,
             )
+        else:
+            try:
+                ocr_structure = _extract_pdf_structured(
+                    resolved,
+                    run_ocr=True,
+                    lang=lang,
+                    language_code=language_code,
+                    dpi=dpi,
+                    psm=psm,
+                    preprocess=preprocess,
+                )
+                ocr_text = _repair_ocr_cross_segment_breaks(ocr_structure.to_text())
+            except ImportError as exc:
+                logger.debug("Structured OCR dependencies unavailable, using full-page OCR: %s", exc)
+                ocr_text = _ocr_pdf_with_tesseract(
+                    resolved,
+                    lang=lang,
+                    language_code=language_code,
+                    dpi=dpi,
+                    psm=psm,
+                    preprocess=preprocess,
+                )
 
         if _target_text_unreadable(native_text, language_code) and _target_text_unreadable(ocr_text, language_code):
             fallback_text = _ocr_pdf_with_tesseract(

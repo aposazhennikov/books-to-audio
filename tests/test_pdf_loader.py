@@ -296,6 +296,37 @@ class TestOcrModeSelection:
         assert compare.ocr.text == _good_ocr_text()
         assert compare.ocr.document_type == "ocr_full_page"
 
+    def test_extract_pdf_with_ocr_mode_uses_full_page_ocr_for_unreadable_native_layer(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        pdf_file = tmp_path / "bad_text_layer_scan.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+        native_structure = PdfStructuredExtraction(
+            pages={
+                1: PdfPageExtraction(
+                    page_number=1,
+                    pdf_type="programmatic",
+                    page_content=["Co,11;ep'l\\:aHne rJIABA llEPBMI CepreM"],
+                ),
+            },
+            document_type="programmatic",
+        )
+
+        with (
+            patch("book_normalizer.loaders.pdf_loader._tesseract_available", return_value=True),
+            patch("book_normalizer.loaders.pdf_loader._extract_pdf_structured") as structured,
+            patch("book_normalizer.loaders.pdf_loader._ocr_pdf_with_tesseract", return_value=_good_ocr_text()),
+        ):
+            structured.return_value = native_structure
+            compare = extract_pdf_with_ocr_mode(pdf_file, OcrMode.COMPARE)
+
+        assert structured.call_count == 1
+        assert compare.native.text.startswith("Co,11")
+        assert compare.ocr is not None
+        assert compare.ocr.text == _good_ocr_text()
+        assert compare.ocr.document_type == "ocr_full_page"
+
     def test_missing_tesseract_warning_points_to_native_install_scripts(
         self,
         tmp_path: Path,
@@ -701,6 +732,43 @@ class TestOcrImagePreparation:
         assert "крикнул он. Воспоминание" in cleaned
         assert "Он спросил. — Да. Она ответила." in cleaned
 
+    def test_postprocess_ocr_text_removes_leading_scan_debris(self) -> None:
+        raw = ". . - у . Краткость - родная сестра таланта.\n\n2: Я закопал клад здесь."
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert ". . - у ." not in cleaned
+        assert cleaned.startswith("Краткость - родная сестра таланта.")
+        assert "\n\nЯ закопал клад здесь." in cleaned
+
+    def test_postprocess_ocr_text_keeps_dialogue_dash_after_leading_cleanup(self) -> None:
+        raw = "— Белые гиббоны обитали в Лимурии.\n— Вранье."
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert cleaned.startswith("— Белые гиббоны")
+        assert "— Вранье." in cleaned
+
+    def test_postprocess_ocr_text_trims_noisy_chapter_heading(self) -> None:
+        raw = "ГЛАВА ТРЕТЬЯ ..\n\nГЛАВА СЕДЬМАЯ о и"
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert cleaned.split("\n\n") == ["ГЛАВА ТРЕТЬЯ", "ГЛАВА СЕДЬМАЯ"]
+
+    def test_postprocess_ocr_text_removes_epigraph_source_prefix_noise(self) -> None:
+        raw = (
+            "Я закопал клад здесь. Не помню, _.. „ПЬЯН был. "
+            "В общем, где-то же я его закопал? о. 7 Из показаний капитана Флинта"
+        )
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "_.." not in cleaned
+        assert "о. 7 Из" not in cleaned
+        assert "ПЬЯН был" in cleaned
+        assert "закопал? Из показаний капитана Флинта" in cleaned
+
     def test_postprocess_ocr_text_fixes_common_digit_hyphen_glitch(self) -> None:
         raw = "Ночь влекла вперед к новым 32-\nботам."
 
@@ -719,6 +787,13 @@ class TestOcrImagePreparation:
         assert "скопивш\n\nееся" not in cleaned
         assert "при-\n\nкрытие" not in cleaned
 
+    def test_repair_ocr_cross_segment_breaks_removes_joined_epigraph_noise(self) -> None:
+        raw = "Он закопал клад? о. 7 Из показаний капитана Флинта"
+
+        cleaned = _repair_ocr_cross_segment_breaks(raw)
+
+        assert cleaned == "Он закопал клад? Из показаний капитана Флинта"
+
     def test_postprocess_ocr_text_keeps_chapter_heading_separate(self) -> None:
         raw = (
             "_ Веревка есть вервие простое\n"
@@ -732,7 +807,7 @@ class TestOcrImagePreparation:
 
         assert cleaned.split("\n\n") == [
             "Веревка есть вервие простое Из учебного наставления для палачей",
-            "ГЛАВА ПЕРВАЯ О",
+            "ГЛАВА ПЕРВАЯ",
             "ПОВЕСТВУЮЩАЯ, В ОБЩЕМ-ТО, НИ О ЧЕМ Сергей сидел за столом.",
         ]
 

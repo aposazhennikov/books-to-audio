@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from book_normalizer.chunking.annotations import classify_chapter_paragraphs
 from book_normalizer.chunking.splitter import (
     DEFAULT_CHAPTER_PAUSE_MS,
     DEFAULT_PARAGRAPH_PAUSE_MS,
@@ -18,6 +19,7 @@ from book_normalizer.dialogue.models import (
     DialogueLine,
     SpeakerRole,
 )
+from book_normalizer.models.book import Paragraph
 
 
 def _line(text: str, role: SpeakerRole, is_dialogue: bool) -> DialogueLine:
@@ -244,6 +246,18 @@ class TestVoiceAnnotatedChunking:
         assert segments[0].section_kind == "epigraph"
         assert segments[0].voice_id == "narrator_wise"
         assert segments[1].section_kind == ""
+
+    def test_classify_epigraph_accepts_paragraph_objects_and_ocr_noise(self) -> None:
+        paragraphs = [
+            Paragraph(
+                raw_text=". . - у . Краткость - родная сестра таланта "
+                "и сводная сестра безработицы. Из библии для чиновников"
+            ),
+            Paragraph(raw_text="ГЛАВА ТРЕТЬЯ"),
+            Paragraph(raw_text="СОБЫТИЯ В КОТОРОЙ РАЗВИВАЮТСЯ ВО СНЕ"),
+        ]
+
+        assert classify_chapter_paragraphs(paragraphs)[:2] == ["epigraph", ""]
 
 
 class TestChunkAnnotatedBook:

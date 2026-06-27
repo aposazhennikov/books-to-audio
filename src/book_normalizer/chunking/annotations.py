@@ -22,14 +22,14 @@ _CHAPTER_PREFIX_RE = re.compile(
 )
 
 
-def classify_chapter_paragraphs(paragraphs: list[str]) -> list[str]:
+def classify_chapter_paragraphs(paragraphs: list[object]) -> list[str]:
     """Return a section kind for each paragraph, or an empty string."""
     kinds = [""] * len(paragraphs)
     if not paragraphs:
         return kinds
 
     for index, text in enumerate(paragraphs):
-        stripped = _clean_text(text)
+        stripped = _clean_text(_paragraph_text(text))
         if not stripped:
             continue
         if _looks_like_epigraph(stripped, index=index, paragraphs=paragraphs):
@@ -38,7 +38,7 @@ def classify_chapter_paragraphs(paragraphs: list[str]) -> list[str]:
         if _ANNOTATION_MARK_RE.fullmatch(stripped):
             kinds[index] = "annotation"
             for follow in range(index + 1, min(len(paragraphs), index + 4)):
-                candidate = _clean_text(paragraphs[follow])
+                candidate = _clean_text(_paragraph_text(paragraphs[follow]))
                 if not candidate or _looks_like_chapter_heading(candidate):
                     break
                 if _looks_like_annotation_body(candidate):
@@ -99,17 +99,17 @@ def mark_segment_as_special_section(segment: dict[str, Any], kind: str) -> None:
     segment.setdefault("intonation", "wise" if kind == "epigraph" else "calm")
 
 
-def _looks_like_epigraph(text: str, *, index: int, paragraphs: list[str]) -> bool:
+def _looks_like_epigraph(text: str, *, index: int, paragraphs: list[object]) -> bool:
     if index > 2:
         return False
     if not _looks_like_short_front_matter(text):
         return False
     if _looks_like_chapter_heading(text) or _ANNOTATION_MARK_RE.fullmatch(text):
         return False
-    next_text = _clean_text(paragraphs[index + 1]) if index + 1 < len(paragraphs) else ""
+    next_text = _clean_text(_paragraph_text(paragraphs[index + 1])) if index + 1 < len(paragraphs) else ""
     if not _looks_like_chapter_heading(next_text):
         return False
-    return bool(_EPIGRAPH_SOURCE_RE.search(text)) or "\n" in paragraphs[index]
+    return bool(_EPIGRAPH_SOURCE_RE.search(text)) or "\n" in _paragraph_text(paragraphs[index])
 
 
 def _looks_like_short_front_matter(text: str) -> bool:
@@ -131,6 +131,16 @@ def _looks_like_chapter_heading(text: str) -> bool:
 
 def _clean_text(text: str) -> str:
     return re.sub(r"[ \t]+", " ", str(text or "").strip())
+
+
+def _paragraph_text(paragraph: object) -> str:
+    """Return text from either a raw string or a Paragraph-like object."""
+    if isinstance(paragraph, str):
+        return paragraph
+    normalized = str(getattr(paragraph, "normalized_text", "") or "").strip()
+    if normalized:
+        return normalized
+    return str(getattr(paragraph, "raw_text", "") or paragraph or "")
 
 
 def _normalize_match_text(text: str) -> str:

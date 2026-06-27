@@ -300,6 +300,58 @@ def test_voice_table_cell_widgets_clear_underlying_fallback_text(qapp) -> None:
     set_language("ru")
 
 
+def test_voice_table_quick_applies_intonation_by_scope(qapp) -> None:
+    page = VoicesPage()
+    table = page._voice_table
+    table.set_segments(
+        [
+            {
+                "segment_index": 0,
+                "chapter_index": 0,
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "intonation": "calm",
+                "text": "Narrator line.",
+                "is_dialogue": False,
+            },
+            {
+                "segment_index": 1,
+                "chapter_index": 0,
+                "role": "male",
+                "voice_id": "male_young",
+                "intonation": "calm",
+                "text": "Dialogue line.",
+                "is_dialogue": True,
+            },
+        ]
+    )
+    render_widget(page, 1600, 760, scale=1.0)
+    table._ensure_row_widgets(0)
+    table._ensure_row_widgets(1)
+
+    table._quick_intonation_combo.setCurrentIndex(
+        table._quick_intonation_combo.findData("sad"),
+    )
+    table._apply_intonation_dialogue()
+
+    segments = table.get_segments()
+    assert segments[0]["intonation"] == "calm"
+    assert segments[1]["intonation"] == "sad"
+    assert segments[1]["voice_tone"] == "sad"
+
+    table._quick_intonation_combo.setCurrentIndex(
+        table._quick_intonation_combo.findData("joyful"),
+    )
+    table._apply_intonation_narrator()
+
+    segments = table.get_segments()
+    assert segments[0]["intonation"] == "joyful"
+    assert segments[0]["voice_tone"] == "joyful"
+    assert segments[1]["intonation"] == "sad"
+
+    page.deleteLater()
+
+
 def test_voice_table_exposes_editable_character_roles(qapp, qtbot) -> None:
     page = VoicesPage()
     qtbot.addWidget(page)

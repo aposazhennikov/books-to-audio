@@ -137,7 +137,14 @@ def configured_tessdata_dir() -> Path | None:
     value = os.environ.get(TESSDATA_DIR_ENV) or os.environ.get(TESSDATA_PREFIX_ENV)
     if value:
         return _native_configured_path(value)
-    return configured_path("tessdata_dir")
+    configured = configured_path("tessdata_dir")
+    if configured:
+        return configured
+
+    local_tessdata = project_root() / "data" / "tessdata"
+    if local_tessdata.is_dir() and any(local_tessdata.glob("*.traineddata")):
+        return local_tessdata
+    return None
 
 
 def configured_ffmpeg_bin() -> Path | None:

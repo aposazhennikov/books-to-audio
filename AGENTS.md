@@ -4,6 +4,10 @@ Guidance for coding agents and maintainers working in this repository.
 
 Repository rules are split into focused markdown files under `rules/` so they are easier to edit and extend.
 
+These rules are mandatory project instructions, not optional references. At the start of work, read the relevant files under `rules/` before editing. If a task changes files, read [Before editing](rules/before-editing.md), [Git workflow](rules/git-workflow.md), and [Validation](rules/validation.md) as the default minimum. If you cannot read a referenced rule file, say so before proceeding.
+
+After completing any requested file change, commit the coherent completed change by default unless the user explicitly says not to commit. Keep the commit scoped to the files for that completed change, and never include unrelated user changes.
+
 Project-specific skills live under `project-skills/`. Use them as optional workflow guidance when the task matches a skill description.
 
 ## Rules

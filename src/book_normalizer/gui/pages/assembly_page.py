@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from book_normalizer.chunking.manifest_v2 import chunk_is_excluded
 from book_normalizer.gui.i18n import t
 from book_normalizer.gui.widgets.help_button import label_with_help, set_help_text
 from book_normalizer.gui.widgets.progress_widget import ProgressWidget
@@ -28,6 +29,14 @@ from book_normalizer.tts.manifest_assembly import (
     assemble_from_manifest,
     load_manifest_v2,
 )
+
+
+@dataclass(frozen=True)
+class ProductionPackageReadiness:
+    """Current GUI gate state for release package generation."""
+
+    ready: bool
+    message_key: str
 
 
 @dataclass(frozen=True)
@@ -244,6 +253,11 @@ class AssemblyPage(QWidget):
         self._production_desc.setStyleSheet("color: rgba(51,65,85,0.72); font-size: 12px;")
         layout.addWidget(self._production_desc)
 
+        self._production_gate_status = QLabel()
+        self._production_gate_status.setWordWrap(True)
+        self._production_gate_status.setStyleSheet("color: rgba(51,65,85,0.74); font-size: 12px;")
+        layout.addWidget(self._production_gate_status)
+
         production_row = QHBoxLayout()
         production_row.setSpacing(8)
         self._btn_production_preflight = QPushButton()
@@ -287,6 +301,7 @@ class AssemblyPage(QWidget):
         self._production_desc.setText(t("asm.production_desc"))
         self._btn_production_preflight.setText(t("asm.production_preflight"))
         self._btn_production_package.setText(t("asm.production_package"))
+        self._update_production_buttons()
 
     def _label_with_help(self, label: QLabel, help_key: str) -> QWidget:
         """Create a form label with a reusable help button."""
@@ -327,6 +342,10 @@ class AssemblyPage(QWidget):
             self._btn_run.setEnabled(True)
             self._update_production_buttons()
 
+    def run_assembly(self) -> None:
+        """Assemble synthesized chunks into chapter audio."""
+        self._run_assembly()
+
     def _run_assembly(self) -> None:
         if not self._audio_dir or not self._output_dir:
             return
@@ -357,6 +376,7 @@ class AssemblyPage(QWidget):
         translated = self._translate_output(output)
         self._progress.set_status(t("asm.complete") if has_audio else t("asm.no_wav_found"))
         self._output_label.setText(translated)
+        self._update_production_buttons()
         self.assembly_finished.emit(output)
 
     def _on_error(self, msg: str) -> None:
@@ -365,10 +385,36 @@ class AssemblyPage(QWidget):
 
         self.assembly_failed.emit(msg)
 
+    def _production_package_readiness(self) -> ProductionPackageReadiness:
+        if not self._manifest_path or not self._output_dir:
+            return ProductionPackageReadiness(False, "asm.production_gate_no_manifest")
+        try:
+            manifest = load_manifest_v2(self._manifest_path)
+        except Exception:
+            return ProductionPackageReadiness(False, "asm.production_gate_manifest_error")
+
+        chunks = list(_package_gate_chunks(manifest))
+        if not chunks:
+            return ProductionPackageReadiness(False, "asm.production_gate_no_chunks")
+        if not all(bool(chunk.get("synthesized")) for chunk in chunks):
+            return ProductionPackageReadiness(False, "asm.production_gate_audio_not_synthesized")
+        if not all(_chunk_audio_exists(chunk, self._manifest_path) for chunk in chunks):
+            return ProductionPackageReadiness(False, "asm.production_gate_audio_missing")
+        if not all(_chunk_asr_passed(chunk) for chunk in chunks):
+            return ProductionPackageReadiness(False, "asm.production_gate_asr")
+        if not all(_chunk_production_qa_passed(chunk) for chunk in chunks):
+            return ProductionPackageReadiness(False, "asm.production_gate_qa")
+        if not _assembled_chapters_ready(manifest, self._output_dir):
+            return ProductionPackageReadiness(False, "asm.production_gate_not_assembled")
+        return ProductionPackageReadiness(True, "asm.production_gate_ready")
+
     def _update_production_buttons(self) -> None:
-        enabled = bool(self._manifest_path and self._output_dir)
-        self._btn_production_preflight.setEnabled(enabled)
-        self._btn_production_package.setEnabled(enabled)
+        can_run_preflight = bool(self._manifest_path and self._output_dir)
+        readiness = self._production_package_readiness()
+        self._btn_production_preflight.setEnabled(can_run_preflight)
+        self._btn_production_package.setEnabled(readiness.ready)
+        self._production_gate_status.setText(t(readiness.message_key))
+        self._btn_production_package.setToolTip(t(readiness.message_key))
 
     def _run_production_preflight(self) -> None:
         self._start_production_preflight(
@@ -377,7 +423,17 @@ class AssemblyPage(QWidget):
             allow_review_package=False,
         )
 
-    def _run_production_package(self) -> None:
+    def run_production_package(self, *, require_ready: bool = True) -> None:
+        """Run production preflight and package outputs."""
+        self._run_production_package(require_ready=require_ready)
+
+    def _run_production_package(self, *, require_ready: bool = True) -> None:
+        if require_ready:
+            readiness = self._production_package_readiness()
+            if not readiness.ready:
+                self._update_production_buttons()
+                self._progress.set_status(t(readiness.message_key))
+                return
         self._start_production_preflight(
             package_outputs=True,
             dry_run_package=False,
@@ -485,6 +541,76 @@ def _legacy_run_result(result: dict[str, Path], *, audio_dir: Path) -> AssemblyR
     return AssemblyRunResult(
         output=_format_legacy_results(result, audio_dir=audio_dir),
         assembled_files=len(result),
+    )
+
+
+def _package_gate_chunks(manifest: dict) -> list[dict]:
+    """Return non-excluded chunks that must pass the release package gate."""
+    chunks: list[dict] = []
+    for chapter in manifest.get("chapters", []):
+        if not isinstance(chapter, dict):
+            continue
+        for chunk in chapter.get("chunks", []):
+            if isinstance(chunk, dict) and not chunk_is_excluded(chunk):
+                chunks.append(chunk)
+    return chunks
+
+
+def _chunk_audio_exists(chunk: dict, manifest_path: Path) -> bool:
+    audio_file = str(chunk.get("audio_file") or "").strip()
+    if not audio_file:
+        return False
+    audio_path = Path(audio_file)
+    if not audio_path.is_absolute():
+        audio_path = manifest_path.parent / audio_path
+    return audio_path.exists()
+
+
+def _chunk_asr_passed(chunk: dict) -> bool:
+    asr = chunk.get("asr_qa")
+    return isinstance(asr, dict) and str(asr.get("status") or "").strip().lower() == "passed"
+
+
+def _chunk_production_qa_passed(chunk: dict) -> bool:
+    if bool(chunk.get("failed")):
+        return False
+    status = str(chunk.get("qa_status") or "").strip().lower()
+    perceptual = chunk.get("perceptual_qa")
+    perceptual_status = (
+        str(perceptual.get("status") or "").strip().lower()
+        if isinstance(perceptual, dict)
+        else ""
+    )
+    return status == "passed" and (not perceptual_status or perceptual_status == "passed")
+
+
+def _assembled_chapters_ready(manifest: dict, output_dir: Path) -> bool:
+    chapter_numbers: list[int] = []
+    for chapter in manifest.get("chapters", []):
+        if not isinstance(chapter, dict):
+            continue
+        chunks = [
+            chunk
+            for chunk in chapter.get("chunks", [])
+            if isinstance(chunk, dict) and not chunk_is_excluded(chunk)
+        ]
+        if chunks:
+            chapter_numbers.append(int(chapter.get("chapter_index") or 0) + 1)
+    return bool(chapter_numbers) and all(
+        _assembled_chapter_exists(output_dir, chapter_number)
+        for chapter_number in chapter_numbers
+    )
+
+
+def _assembled_chapter_exists(output_dir: Path, chapter_number: int) -> bool:
+    return any(
+        (output_dir / pattern).exists()
+        for pattern in (
+            f"chapter_{chapter_number:03d}_mastered.mp3",
+            f"chapter_{chapter_number:03d}_mastered.wav",
+            f"chapter_{chapter_number:03d}.mp3",
+            f"chapter_{chapter_number:03d}.wav",
+        )
     )
 
 

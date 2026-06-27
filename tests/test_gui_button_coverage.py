@@ -306,6 +306,18 @@ def test_main_window_auto_pipeline_runs_all_steps_with_quality_settings(
         def start(self) -> None:
             audio_dir = captured_tts["output_dir"] / "audio_chunks"
             audio_dir.mkdir(parents=True, exist_ok=True)
+            audio_path = audio_dir / "chapter_001" / "chunk_001_narrator.wav"
+            audio_path.parent.mkdir(parents=True, exist_ok=True)
+            audio_path.write_bytes(b"RIFF$\x00\x00\x00WAVEfmt ")
+            manifest_path = captured_tts["manifest_path"]
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            chunk = manifest["chapters"][0]["chunks"][0]
+            chunk["synthesized"] = True
+            chunk["audio_file"] = str(audio_path)
+            chunk["asr_qa"] = {"status": "passed"}
+            chunk["qa_status"] = "passed"
+            chunk["perceptual_qa"] = {"status": "passed"}
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
             self.finished.emit(str(audio_dir), 1, 0)
 
         def cancel(self) -> None:
@@ -336,6 +348,7 @@ def test_main_window_auto_pipeline_runs_all_steps_with_quality_settings(
             self.error = _Signal()
 
         def start(self) -> None:
+            (captured_assembly["output_dir"] / "chapter_001.wav").write_bytes(b"RIFF$\x00\x00\x00WAVEfmt ")
             self.finished.emit("Chapter 001: 1 chunks -> 1.0s")
 
     class _FakeProductionWorker:
@@ -386,9 +399,8 @@ def test_main_window_auto_pipeline_runs_all_steps_with_quality_settings(
     assert chunks_manifest["chapters"][0]["chunks"][0]["text"] == "Alice said hello."
 
     assert captured_tts["manifest_path"] == output_dir / "chunks_manifest_v2.json"
-    assert captured_tts["model"] == "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+    assert captured_tts["model"] == "qwen3-customvoice-1.7b"
     assert captured_tts["batch_size"] == 1
-    assert captured_tts["resume"] is True
     assert captured_tts["chunk_timeout"] == 900
     assert captured_tts["merge_chapters"] is True
     assert captured_tts["output_format"] == "wav"
@@ -497,6 +509,7 @@ def test_main_window_auto_pipeline_reuses_cached_chunks_manifest(
             self.error = _Signal()
 
         def start(self) -> None:
+            (captured_assembly["output_dir"] / "chapter_001.wav").write_bytes(b"RIFF$\x00\x00\x00WAVEfmt ")
             self.finished.emit("Chapter 001: 1 chunks -> 1.0s")
 
     class _FakeProductionWorker:
@@ -536,6 +549,12 @@ def test_main_window_auto_pipeline_reuses_cached_chunks_manifest(
 
     def fake_start_asr_qa_worker(pending_finish=None):  # noqa: ANN001
         captured_quality["pending_finish"] = pending_finish
+        manifest = json.loads(chunks_path.read_text(encoding="utf-8"))
+        chunk = manifest["chapters"][0]["chunks"][0]
+        chunk["asr_qa"] = {"status": "passed"}
+        chunk["qa_status"] = "passed"
+        chunk["perceptual_qa"] = {"status": "passed"}
+        chunks_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         if pending_finish is not None:
             window._synthesis_page.synthesis_finished.emit(*pending_finish)
 

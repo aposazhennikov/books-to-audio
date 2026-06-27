@@ -31,6 +31,7 @@ from book_normalizer.comfyui.generation_options import (
     DEFAULT_TOP_K,
     DEFAULT_TOP_P,
 )
+from book_normalizer.gui.auto_pipeline import AutoPipelineOrchestrator
 from book_normalizer.gui.dialog_styles import apply_readable_message_box_style
 from book_normalizer.gui.i18n import SUPPORTED_LANGUAGES, set_language, t
 from book_normalizer.gui.pages.assembly_page import AssemblyPage
@@ -58,6 +59,7 @@ class MainWindow(QMainWindow):
         self._output_dir: Path | None = None
         self._auto_pipeline_active = False
         self._auto_pipeline_cache_choice: str | None = None
+        self._auto_pipeline = AutoPipelineOrchestrator(self)
         self._setup_ui()
         self._connect_signals()
         self._retranslate()
@@ -377,10 +379,7 @@ class MainWindow(QMainWindow):
         synthesis._mode_tabs.setCurrentIndex(1)
         synthesis._model_combo.setCurrentIndex(0)
         synthesis._batch_size.setValue(1)
-        synthesis._resume_check.setChecked(True)
         synthesis._chunk_timeout.setValue(900)
-        synthesis._compile_check.setChecked(False)
-        synthesis._sage_check.setChecked(False)
         synthesis._merge_chapters_check.setChecked(True)
         synthesis._asr_enable_check.setChecked(True)
         format_idx = synthesis._output_format_combo.findData("wav")
@@ -434,8 +433,7 @@ class MainWindow(QMainWindow):
             if cached_chunks is not None:
                 self._on_chunks_built(str(cached_chunks))
                 return
-            self._statusbar.showMessage(t("auto.chunks"))
-            self._voices_page._build_tts_chunks()
+            self._auto_pipeline.continue_after_segments(cached_chunks=cached_chunks)
 
     def _on_chunks_built(self, chunks_path: str) -> None:
         """Called when TTS chunks are built from segments."""
@@ -445,21 +443,7 @@ class MainWindow(QMainWindow):
         self._set_assembly_target(mp, out_dir)
         self._statusbar.showMessage(t("status.voices_done"))
         if self._auto_pipeline_active:
-            if self._chunks_manifest_audio_complete(mp):
-                self._tabs.setCurrentIndex(3)
-                self._apply_auto_quality_settings()
-                self._statusbar.showMessage(t("auto.quality"))
-                QTimer.singleShot(
-                    0,
-                    lambda: self._synthesis_page._start_asr_qa_worker(
-                        (str(out_dir / "audio_chunks"), 0, 0),
-                    ),
-                )
-                return
-            self._tabs.setCurrentIndex(3)
-            self._apply_auto_quality_settings()
-            self._statusbar.showMessage(t("auto.synthesis"))
-            QTimer.singleShot(0, self._synthesis_page._start_synthesis)
+            self._auto_pipeline.continue_after_chunks(mp, out_dir)
 
     def _on_synthesis_done(
         self,
@@ -470,17 +454,13 @@ class MainWindow(QMainWindow):
         """Continue an active auto pipeline after TTS synthesis."""
         if not self._auto_pipeline_active:
             return
-        self._tabs.setCurrentIndex(4)
-        self._statusbar.showMessage(t("auto.assembly"))
-        QTimer.singleShot(0, self._assembly_page._run_assembly)
+        self._auto_pipeline.continue_after_synthesis()
 
     def _on_assembly_done(self, _output: str) -> None:
         """Finish an active auto pipeline after assembly."""
         if not self._auto_pipeline_active:
             return
-        self._tabs.setCurrentIndex(4)
-        self._statusbar.showMessage(t("auto.production"))
-        QTimer.singleShot(0, self._assembly_page._run_production_package)
+        self._auto_pipeline.continue_after_assembly()
 
     def _on_production_done(self, _output: str) -> None:
         """Finish an active auto pipeline after production preflight."""
@@ -526,6 +506,45 @@ class MainWindow(QMainWindow):
             self._assembly_page.set_manifest(mp, out_dir)
         else:
             self._assembly_page.set_audio_dir(audio_dir, out_dir)
+
+    def build_tts_chunks(self) -> None:
+        """Start chunk generation from the voices page."""
+        self._voices_page.build_tts_chunks()
+
+    def run_synthesis(self) -> None:
+        """Start TTS synthesis from the synthesis page."""
+        self._synthesis_page.run_synthesis()
+
+    def run_asr_qa(
+        self,
+        pending_finish: tuple[str, int, int] | None = None,
+    ) -> None:
+        """Start ASR QA from the synthesis page."""
+        self._synthesis_page.run_asr_qa(pending_finish)
+
+    def run_assembly(self) -> None:
+        """Start assembly from the assembly page."""
+        self._assembly_page.run_assembly()
+
+    def run_production_package(self) -> None:
+        """Start production packaging from the assembly page."""
+        self._assembly_page.run_production_package(require_ready=False)
+
+    def has_complete_audio(self, manifest_path: Path) -> bool:
+        """Return whether an existing manifest can skip synthesis."""
+        return self._chunks_manifest_audio_complete(manifest_path)
+
+    def apply_quality_settings(self) -> None:
+        """Apply unattended quality settings across workflow pages."""
+        self._apply_auto_quality_settings()
+
+    def status(self, message: str) -> None:
+        """Show an auto-pipeline status key in the status bar."""
+        self._statusbar.showMessage(t(message))
+
+    def show_tab(self, index: int) -> None:
+        """Switch the active workflow tab."""
+        self._tabs.setCurrentIndex(index)
 
     def _cached_chunks_manifest(self) -> Path | None:
         """Return an existing valid chunks manifest for the current book output."""

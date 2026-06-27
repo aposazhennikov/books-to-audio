@@ -905,6 +905,10 @@ class VoicesPage(QWidget):
 
     # ── Build TTS chunks from segments ──
 
+    def build_tts_chunks(self) -> None:
+        """Group user-assigned segments into TTS-ready chunks."""
+        self._build_tts_chunks()
+
     def _build_tts_chunks(self) -> None:
         """Group user-assigned segments into TTS-ready chunks."""
         segments = self._voice_table.get_active_segments()

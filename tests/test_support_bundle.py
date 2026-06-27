@@ -15,6 +15,12 @@ def test_support_bundle_redacts_book_text_and_private_paths(tmp_path: Path) -> N
     run_dir.mkdir(parents=True)
     manifest = {
         "book_title": "Secret Book",
+        "source_preview": "Source preview sentence must stay private.",
+        "output_preview": "Output preview sentence must stay private.",
+        "before_text": "Before sample must stay private.",
+        "after_text": "After sample must stay private.",
+        "first_paragraph": "First paragraph must stay private.",
+        "last_paragraph": "Last paragraph must stay private.",
         "chapters": [
             {
                 "chunks": [
@@ -28,6 +34,10 @@ def test_support_bundle_redacts_book_text_and_private_paths(tmp_path: Path) -> N
     }
     (run_dir / "chunks_manifest_v2.json").write_text(json.dumps(manifest), encoding="utf-8")
     (run_dir / "run.log").write_text(f"failed file {run_dir / 'books' / 'private.pdf'}", encoding="utf-8")
+    (run_dir / "native_extract_preview.txt").write_text(
+        "Plain text previews must not be bundled.",
+        encoding="utf-8",
+    )
 
     result = create_support_bundle(run_dir)
 
@@ -35,6 +45,14 @@ def test_support_bundle_redacts_book_text_and_private_paths(tmp_path: Path) -> N
         combined = "\n".join(archive.read(name).decode("utf-8") for name in archive.namelist())
 
     assert "This exact book sentence" not in combined
+    assert "Source preview sentence" not in combined
+    assert "Output preview sentence" not in combined
+    assert "Before sample" not in combined
+    assert "After sample" not in combined
+    assert "First paragraph" not in combined
+    assert "Last paragraph" not in combined
+    assert "Plain text previews" not in combined
+    assert "native_extract_preview.txt" not in result.files
     assert str(run_dir) not in combined
     assert "<REDACTED_BOOK_TEXT>" in combined
     assert "<PRIVATE_PATH>" in combined

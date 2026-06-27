@@ -16,10 +16,17 @@ TEXT_KEYS = {
     "normalized_text",
     "original_text",
     "ref_text",
+    "source_preview",
+    "output_preview",
+    "before_text",
+    "after_text",
+    "first_paragraph",
+    "last_paragraph",
     "prompt",
     "paragraphs",
     "content",
 }
+TEXT_KEY_SUFFIXES = ("_text", "_preview")
 PATH_KEYS = {
     "path",
     "source_path",
@@ -81,7 +88,7 @@ def redact_payload(value: Any, *, root: Path | None = None) -> Any:
         redacted: dict[str, Any] = {}
         for key, item in value.items():
             normalized_key = str(key).lower()
-            if normalized_key in TEXT_KEYS:
+            if _is_book_text_key(normalized_key):
                 redacted[key] = "<REDACTED_BOOK_TEXT>"
             elif normalized_key in PATH_KEYS:
                 redacted[key] = redact_text(str(item), root=root)
@@ -93,6 +100,10 @@ def redact_payload(value: Any, *, root: Path | None = None) -> Any:
     if isinstance(value, str):
         return redact_text(value, root=root)
     return value
+
+
+def _is_book_text_key(normalized_key: str) -> bool:
+    return normalized_key in TEXT_KEYS or normalized_key.endswith(TEXT_KEY_SUFFIXES)
 
 
 def redact_text(value: str, *, root: Path | None = None) -> str:
@@ -133,7 +144,7 @@ def _candidate_files(source_dir: Path, *, include_logs: bool, include_json: bool
             ]
         )
     if include_logs:
-        patterns.extend(["*.log", "*.txt"])
+        patterns.append("*.log")
     found: dict[Path, None] = {}
     for pattern in patterns:
         for path in source_dir.rglob(pattern):
@@ -157,6 +168,7 @@ def _bundle_readme() -> str:
     return (
         "Redacted Books to Audio support bundle.\n\n"
         "This archive is intended for diagnostics only. Book text fields and private local paths "
-        "were replaced before packaging. Do not add original books, audio output, data folders, "
-        "model caches, or .env files to support requests.\n"
+        "were replaced before packaging. Plain .txt files are not included because they can contain "
+        "book extracts. Do not add original books, audio output, data folders, model caches, or .env "
+        "files to support requests.\n"
     )

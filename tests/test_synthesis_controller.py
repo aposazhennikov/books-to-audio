@@ -204,6 +204,9 @@ def test_synthesis_controller_routes_local_tts_engine_without_comfyui_workflow(
     assert result.synthesized == 1
     assert calls[0]["engine_id"] == "f5-tts"
     assert calls[0]["models_dir"] == str(tmp_path / "models")
+    contract = json.loads((tmp_path / "out" / "run_contract.json").read_text(encoding="utf-8"))
+    assert contract["parameters"]["models_dir"] == str(tmp_path / "models")
+    assert contract["parameters"]["resume_mode"] == "manifest_state"
 
 
 def test_synthesis_controller_runs_perceptual_qa_gate(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import pickle
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -14,6 +15,10 @@ from typing import Any
 VOICE_FILE_SUFFIX = ".voice.pt"
 META_FILE_SUFFIX = ".voice.json"
 VOICE_LIBRARY_VERSION = 1
+
+
+class UnsafeVoicePromptError(RuntimeError):
+    """Raised when a saved voice prompt cannot be loaded safely."""
 
 
 @dataclass(frozen=True)
@@ -83,6 +88,32 @@ def _hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _metadata_path_for_prompt(prompt_path: Path) -> Path:
+    if prompt_path.name.endswith(VOICE_FILE_SUFFIX):
+        stem = prompt_path.name.removesuffix(VOICE_FILE_SUFFIX)
+        return prompt_path.with_name(f"{stem}{META_FILE_SUFFIX}")
+    return prompt_path.with_suffix(META_FILE_SUFFIX)
+
+
+def _verify_prompt_sidecar_hash(prompt_path: Path) -> None:
+    metadata_path = _metadata_path_for_prompt(prompt_path)
+    if not metadata_path.exists():
+        return
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+    if not isinstance(metadata, dict):
+        return
+
+    expected_sha256 = str(metadata.get("prompt_sha256") or "").strip().lower()
+    if expected_sha256 and _hash_file(prompt_path) != expected_sha256:
+        raise UnsafeVoicePromptError(
+            f"Saved voice prompt hash mismatch for {prompt_path}. "
+            "The .voice.pt file does not match its .voice.json sidecar."
+        )
+
+
 def build_voice_metadata(
     *,
     name: str,
@@ -104,6 +135,9 @@ def build_voice_metadata(
         "model": model,
         "prompt_file": prompt_path.name,
         "metadata_file": metadata_path.name,
+        "prompt_sha256": (
+            _hash_file(prompt_path) if prompt_path.exists() else ""
+        ),
         "ref_audio": ref_audio,
         "ref_audio_sha256": (
             _hash_file(ref_audio_path) if ref_audio_path.exists() else ""
@@ -223,14 +257,25 @@ def load_voice_prompt(prompt_path: Path, map_location: str | None = None) -> Any
     """Load a saved Qwen voice clone prompt from disk."""
     import torch
 
+    _verify_prompt_sidecar_hash(prompt_path)
     try:
         return torch.load(
             prompt_path,
             map_location=map_location,
-            weights_only=False,
+            weights_only=True,
         )
-    except TypeError:
-        return torch.load(prompt_path, map_location=map_location)
+    except TypeError as exc:
+        raise UnsafeVoicePromptError(
+            "This PyTorch build does not support torch.load(weights_only=True). "
+            "Refusing to load .voice.pt with unrestricted pickle semantics; "
+            "upgrade PyTorch or regenerate the voice prompt in this environment."
+        ) from exc
+    except pickle.UnpicklingError as exc:
+        raise UnsafeVoicePromptError(
+            f"Saved voice prompt {prompt_path} cannot be loaded safely. "
+            "Use only prompts created by this app, or regenerate the voice prompt "
+            "from trusted reference audio."
+        ) from exc
 
 
 def list_saved_voices(library_dir: Path) -> list[SavedVoice]:

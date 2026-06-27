@@ -865,6 +865,17 @@ def _write_chapter_sanity_report(book: object, output_dir: Path) -> None:
     total_chapters = len(book.chapters)
     total_paragraphs = sum(len(ch.paragraphs) for ch in book.chapters)
 
+    work_groups: dict[str, list[object]] = {}
+    for chapter in book.chapters:
+        work_title = getattr(chapter, "work_title", "") or ""
+        if getattr(chapter, "work_index", 0) < 0 or work_title == "Preamble":
+            work_title = ""
+        key = work_title or "__single_work__"
+        work_groups.setdefault(key, []).append(chapter)
+
+    content_groups = [chapters for chapters in work_groups.values() if chapters]
+    work_count = max(1, len(content_groups))
+
     tiny_threshold = 3
     tiny_counts = [len(ch.paragraphs) for ch in book.chapters if len(ch.paragraphs) <= tiny_threshold]
     tiny_ratio = (len(tiny_counts) / total_chapters) if total_chapters else 0.0
@@ -875,18 +886,38 @@ def _write_chapter_sanity_report(book: object, output_dir: Path) -> None:
     suspicious = False
     reasons: list[str] = []
 
-    if total_chapters > 50:
+    too_many_in_work = any(len(chapters) > 50 for chapters in content_groups)
+    if total_chapters > 50 and work_count <= 1 or too_many_in_work:
         suspicious = True
         reasons.append("too_many_chapters")
-    if tiny_ratio > 0.7 and total_chapters > 5:
+    tiny_work = any(
+        len(chapters) > 5
+        and (
+            sum(1 for ch in chapters if len(ch.paragraphs) <= tiny_threshold)
+            / len(chapters)
+        ) > 0.7
+        for chapters in content_groups
+    )
+    if tiny_work:
         suspicious = True
         reasons.append("too_many_tiny_chapters")
-    if avg_paras > 0 and max_paras > 5 * avg_paras and total_chapters > 3:
+    uneven_work = False
+    for chapters in content_groups:
+        if len(chapters) <= 3:
+            continue
+        work_total = sum(len(ch.paragraphs) for ch in chapters)
+        work_avg = work_total / len(chapters)
+        work_max = max(len(ch.paragraphs) for ch in chapters)
+        if work_avg > 0 and work_max > 5 * work_avg:
+            uneven_work = True
+            break
+    if uneven_work:
         suspicious = True
         reasons.append("very_uneven_distribution")
 
     lines: list[str] = []
     lines.append(f"total_chapters={total_chapters}")
+    lines.append(f"work_count={work_count}")
     lines.append(f"total_paragraphs={total_paragraphs}")
     lines.append(f"avg_paragraphs_per_chapter={avg_paras:.2f}")
     lines.append(f"max_paragraphs_in_chapter={max_paras}")

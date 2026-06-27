@@ -83,6 +83,7 @@ class ChapterDetector:
             hits,
             toc_work_titles=toc_work_titles,
         )
+        work_hits = self._augment_work_headings_from_late_numeric_sections(work_hits, hits)
 
         # Second try: if no headings or very few (<= 2), try parsing TOC.
         if len(hits) <= 2 and not work_hits:
@@ -256,6 +257,55 @@ class ChapterDetector:
             if ChapterDetector._RE_NUMBERED_WORK_TITLE.match(text):
                 return idx, text
         return None, None
+
+    @staticmethod
+    def _augment_work_headings_from_late_numeric_sections(
+        work_hits: list[_HeadingHit],
+        chapter_hits: list[_HeadingHit],
+    ) -> list[_HeadingHit]:
+        """
+        Promote late numbered headings in omnibus files to work boundaries.
+
+        Some collected PDFs switch from regular "Глава первая" books to
+        standalone numbered works near the end.  Only activate after multiple
+        work boundaries are already known, so ordinary numbered chapters in a
+        single book are left alone.
+        """
+        if len(work_hits) < 2:
+            return work_hits
+
+        combined = list(work_hits)
+        last_work_index = max(hit.paragraph_index for hit in combined)
+        chapters_since_work = sum(
+            1 for hit in chapter_hits
+            if hit.paragraph_index > last_work_index and hit.pattern_label != "numeric_heading"
+        )
+        late_numeric_mode = False
+
+        for hit in chapter_hits:
+            if hit.paragraph_index <= last_work_index:
+                continue
+            if hit.pattern_label != "numeric_heading":
+                if not late_numeric_mode:
+                    chapters_since_work += 1
+                continue
+            if len(hit.heading_text) > 90:
+                continue
+            if chapters_since_work < 8 and not late_numeric_mode:
+                continue
+            combined.append(
+                _HeadingHit(
+                    paragraph_index=hit.paragraph_index,
+                    heading_text=hit.heading_text,
+                    pattern_label="work_inferred_late_numeric",
+                )
+            )
+            last_work_index = hit.paragraph_index
+            chapters_since_work = 0
+            late_numeric_mode = True
+
+        combined.sort(key=lambda item: item.paragraph_index)
+        return combined
 
     @staticmethod
     def _extract_toc_work_titles(full_text: str) -> dict[int, str]:

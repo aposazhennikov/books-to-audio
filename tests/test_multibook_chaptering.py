@@ -111,6 +111,48 @@ def test_multibook_infers_short_numbered_work_title_before_reset() -> None:
     assert result.chapters[-1].title == "4. троя - Глава первая,"
 
 
+def test_multibook_promotes_late_numbered_sections_after_known_works() -> None:
+    book = _book([
+        "1. вход в спираль",
+        "Глава первая,",
+        "Текст первой книги.",
+        "Глава вторая,",
+        "Продолжение первой книги.",
+        "2. наследники сета",
+        "Глава первая,",
+        "Текст второй книги.",
+        "Глава вторая,",
+        "Продолжение второй книги.",
+        "Глава третья,",
+        "Еще текст второй книги.",
+        "Глава четвертая,",
+        "Еще текст второй книги.",
+        "Глава пятая,",
+        "Еще текст второй книги.",
+        "Глава шестая,",
+        "Еще текст второй книги.",
+        "Глава седьмая,",
+        "Еще текст второй книги.",
+        "Глава восьмая,",
+        "Еще текст второй книги.",
+        "2. Спасательная экспедиция",
+        "Самостоятельная поздняя повесть.",
+        "7. В поисках силы",
+        "Еще одна поздняя повесть.",
+    ])
+
+    result = ChapterDetector().detect_and_split(book)
+
+    assert result.metadata.extra["structure"]["work_titles"] == [
+        "1. вход в спираль",
+        "2. наследники сета",
+        "2. Спасательная экспедиция",
+        "7. В поисках силы",
+    ]
+    assert result.chapters[-2].work_title == "2. Спасательная экспедиция"
+    assert result.chapters[-1].work_title == "7. В поисках силы"
+
+
 def test_supported_language_heading_patterns() -> None:
     assert match_chapter_heading("Chapter One") is not None
     assert match_chapter_heading("Chapter IV") is not None

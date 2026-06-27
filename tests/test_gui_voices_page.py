@@ -132,6 +132,11 @@ def test_voices_page_detect_save_and_build_buttons_use_real_manifest_flow(
 
     page._voice_table._segment_editor.setPlainText("Edited line.")
     qtbot.mouseClick(page._btn_save, QtCore.Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(
+        lambda: json.loads((tmp_path / "segments_manifest.json").read_text(encoding="utf-8"))[0]["text"]
+        == "Edited line.",
+        timeout=3000,
+    )
     saved = json.loads((tmp_path / "segments_manifest.json").read_text(encoding="utf-8"))
     assert saved[0]["text"] == "Edited line."
 
@@ -140,6 +145,7 @@ def test_voices_page_detect_save_and_build_buttons_use_real_manifest_flow(
     page._build_tts_chunks()
 
     chunks_path = tmp_path / "chunks_manifest_v2.json"
+    qtbot.waitUntil(lambda: built_paths == [str(chunks_path)], timeout=3000)
     assert built_paths == [str(chunks_path)]
     manifest = json.loads(chunks_path.read_text(encoding="utf-8"))
     assert manifest["language"] == "en"
@@ -237,7 +243,7 @@ def test_voice_table_hides_empty_editor_and_compacts_columns(qapp) -> None:
     )
     render_widget(page, 760, 520, scale=1.45)
 
-    assert not table._editor_tabs.isHidden()
+    assert table._editor_tabs.isHidden()
     assert not table._chapter_nav_panel.isHidden()
     assert not table._preset_toolbar_panel.isHidden()
     assert not table._quick_apply_panel.isHidden()
@@ -663,6 +669,7 @@ def test_voices_page_builds_chunks_without_deleted_segments(qapp, qtbot, tmp_pat
 
     page._build_tts_chunks()
 
+    qtbot.waitUntil(lambda: (tmp_path / "chunks_manifest_v2.json").exists(), timeout=3000)
     manifest = json.loads((tmp_path / "chunks_manifest_v2.json").read_text(encoding="utf-8"))
     chunk = manifest["chapters"][0]["chunks"][0]
     chunk_text = chunk["text"]

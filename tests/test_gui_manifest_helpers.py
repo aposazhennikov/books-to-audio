@@ -104,11 +104,9 @@ def test_tts_worker_passes_clone_config_as_active_v2_input(tmp_path: Path) -> No
         manifest_path=tmp_path / "manifest.json",
         output_dir=tmp_path,
         clone_config=str(clone_config),
-        models_dir=r"D:\ComfyUI-external\models",
     )
 
     assert worker._clone_config_path == clone_config
-    assert "clone_config" not in worker._unused_runner_options
 
 
 def test_build_test_manifest_uses_selected_chapter_and_trims_text() -> None:

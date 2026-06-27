@@ -1766,7 +1766,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         ),
     },
     "synth.models_dir": {
-        "en": "Models dir:",
+        "en": "Model install dir:",
         "ru": "Папка моделей:",
     },
     "synth.voice_library_dir": {
@@ -2056,7 +2056,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Модель Qwen CustomVoice для синтеза голосов, назначенных на шаге 3. 1.7B качественнее; 0.6B быстрее и легче.",
     },
     "synth.models_dir_help": {
-        "en": "Folder with downloaded models used by the v2 ComfyUI synthesis workflow.",
+        "en": "Folder used by this app to check and install TTS model files. If ComfyUI is already running, its own model paths must point here too.",
         "ru": "Папка с уже скачанными моделями для v2 ComfyUI synthesis workflow.",
     },
     "synth.voice_library_dir_help": {
@@ -2088,7 +2088,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "Рендерить всю книгу или только выбранную главу.",
     },
     "synth.resume_help": {
-        "en": "Skip chunks that already have audio files. Useful after stopping or a crash.",
+        "en": "v2 synthesis always resumes from manifest state by skipping chunks that already have an existing audio_file.",
         "ru": "Пропускать чанки, для которых уже есть аудио. Полезно после остановки или сбоя.",
     },
     "synth.compile_help": {
@@ -2433,8 +2433,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "\u041f\u0430\u043f\u043a\u0430 \u0442\u0435\u0441\u0442\u043e\u0432\u043e\u0433\u043e \u043f\u0440\u0435\u0432\u044c\u044e: {path}",
     },
     "synth.resume": {
-        "en": "Resume:",
+        "en": "Resume mode:",
         "ru": "Продолжить:",
+    },
+    "synth.resume_note": {
+        "en": "Automatic: chunks with synthesized=true and an existing audio_file are skipped. Use Resynthesize failed/warning for QA retries.",
+        "ru": "Automatic: chunks with synthesized=true and an existing audio_file are skipped. Use Resynthesize failed/warning for QA retries.",
     },
     "synth.resume_check": {
         "en": "Skip already synthesized chunks",

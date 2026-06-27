@@ -10,6 +10,14 @@ After completing any requested file change, commit the coherent completed change
 
 Project-specific skills live under `project-skills/`. Use them as optional workflow guidance when the task matches a skill description.
 
+## Rule Compliance
+
+At the start of every task, report which `rules/*.md` files and `project-skills/*/SKILL.md` files you read, and briefly state when you will use each one. If no project skill applies, say that explicitly.
+
+While working, provide short progress updates that explain what you are doing, why you are doing it, and what remains. For longer tasks, include a rough time estimate or remaining-step estimate when practical.
+
+Before finishing, report the verification performed, the commit hash if a commit was created, and any rules or skills that could not be applied.
+
 ## Rules
 
 - [Repository hygiene](rules/repository-hygiene.md)

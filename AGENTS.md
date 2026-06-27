@@ -8,7 +8,7 @@ These rules are mandatory project instructions, not optional references. At the 
 
 After completing any requested file change, commit the coherent completed change by default unless the user explicitly says not to commit. Keep the commit scoped to the files for that completed change, and never include unrelated user changes.
 
-If working in a Codex-created git worktree, finish by merging the completed work back into the main repository branch and pushing that unified branch, unless the user explicitly says not to merge or push. Do this only after verification passes and conflicts are resolved. Prefer WSL `git` on Windows, but if WSL cannot operate on a Codex worktree because `.git` points to Windows paths, use the Codex bundled git or another available git and report the fallback.
+If working in a Codex-created git worktree, finish by merging the completed work back into the main repository branch and pushing that unified branch, unless the user explicitly says not to merge or push. Do this only after verification passes and conflicts are resolved. Prefer WSL `git` on Windows. If ordinary WSL `git` cannot read a Codex worktree because `.git` points to Windows paths, use WSL `git` with explicit `--git-dir` and `--work-tree` paths first; use the Codex bundled git or another available git only if that still fails, and report the fallback.
 
 Project-specific skills live under `project-skills/`. Use them as optional workflow guidance when the task matches a skill description.
 

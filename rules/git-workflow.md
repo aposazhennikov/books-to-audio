@@ -1,7 +1,8 @@
 # Git Workflow
 
 - On Windows, prefer WSL `git` when git commands are needed.
-- If WSL `git` cannot operate on a Codex-created worktree because `.git` points to Windows paths, use the Codex bundled git or another available git and report the fallback reason.
+- If ordinary WSL `git` cannot operate on a Codex-created worktree because `.git` points to Windows paths, first use WSL `git` with explicit `--git-dir` and `--work-tree` paths.
+- Use the Codex bundled git or another available git only if the explicit WSL `--git-dir` / `--work-tree` fallback still fails, and report the fallback reason.
 - After completing any requested file change, commit the coherent completed change by default unless the user explicitly says not to commit.
 - Commit intermediate results after each coherent, working chunk of changes.
 - If working in a Codex-created git worktree, merge the completed work back into the main repository branch before finishing, then push the unified branch unless the user explicitly says not to merge or push.

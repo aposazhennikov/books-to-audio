@@ -130,6 +130,109 @@ ssh -L 6080:127.0.0.1:6080 user@server
 Then open [http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale](http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale).
 The default web GUI binds to `127.0.0.1` on the server so it is intended for SSH tunneling. If you intentionally expose a provider port, use `./run_gui.sh --web --web-host 0.0.0.0 --web-port 6080` and protect it with firewall/provider rules.
 
+### Vast.ai GPU Server Quickstart
+
+Use Vast.ai when you want a temporary Linux CUDA machine for ComfyUI/Qwen3-TTS,
+Ollama, ASR QA, and end-to-end smoke tests without buying a local GPU.
+
+Recommended instance search settings:
+
+| Setting | Recommended value |
+| --- | --- |
+| Rental type | `On-Demand` |
+| GPU count | `1X` |
+| Template | `PyTorch CUDA` with `SSH`/`Jupyter`, or a clean `NVIDIA CUDA` template |
+| Avoid templates | `Hashcat`, `TensorFlow only`, `ROCm`, `Windows`, `ARM`, model-specific templates unless you know why |
+| GPU | RTX 4090, RTX 5090, RTX 3090, or better |
+| VRAM | 24 GB minimum; 32 GB preferred |
+| Host reliability | 98-99% or higher |
+| Machine status | `verified`; do not include unverified or incompatible machines |
+| CPU | 8+ cores; 16+ preferred |
+| CPU RAM | 32 GB minimum; 64 GB preferred |
+| Disk | 100+ GB, preferably NVMe; 200+ GB if downloading all models |
+| Price target | RTX 4090 around `$0.25-$0.45/hr`; RTX 5090 around `$0.40-$0.70/hr` |
+| Ports | SSH plus at least one web port; 4+ open ports is comfortable |
+
+Pick the cheapest reliable machine that satisfies the VRAM and disk
+requirements. For short 2-6 hour tests, a single RTX 4090/5090 is usually a
+better value than multi-GPU or datacenter GPUs such as B200.
+
+After renting, open the instance terminal or connect over SSH. Vast.ai shows
+port mappings in this form:
+
+```text
+PUBLIC_IP:PUBLIC_PORT -> 22/tcp
+PUBLIC_IP:PUBLIC_WEB_PORT -> 8080/tcp
+```
+
+For example, if Vast.ai shows `137.175.76.24:29587 -> 22/tcp`, connect with:
+
+```bash
+ssh -p 29587 root@137.175.76.24
+```
+
+Verify the GPU before installing:
+
+```bash
+nvidia-smi
+```
+
+Clone and install:
+
+```bash
+cd /workspace
+git clone https://github.com/aposazhennikov/books-to-audio.git
+cd books-to-audio
+python3 install.py --install-system-tools --install-ollama --install-comfyui --with-tts --with-asr --yes
+```
+
+Download the recommended local models when the machine has enough disk space:
+
+```bash
+python3 install.py --download-tts-models --download-ollama-models --yes
+```
+
+Run diagnostics:
+
+```bash
+normalize-book doctor --skip-network
+normalize-book doctor
+```
+
+Preferred web GUI access is through an SSH tunnel. On the server:
+
+```bash
+chmod +x run_gui.sh
+./run_gui.sh --web --web-host 127.0.0.1 --web-port 6080
+```
+
+On your laptop:
+
+```bash
+ssh -p <PUBLIC_SSH_PORT> -L 6080:127.0.0.1:6080 root@<PUBLIC_IP>
+```
+
+Then open [http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale](http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale).
+
+If you intentionally want to use a Vast.ai forwarded web port instead of an SSH
+tunnel, bind the web GUI to all interfaces:
+
+```bash
+./run_gui.sh --web --web-host 0.0.0.0 --web-port 8080
+```
+
+Then open the matching forwarded URL, for example:
+
+```text
+http://137.175.76.24:29586/vnc.html?autoconnect=1&resize=scale
+```
+
+Only use direct public access for short tests, and stop it when finished.
+
+When work is done, delete the instance from Vast.ai with `Destroy` rather than
+only `Stop` if you do not need to keep the disk. This prevents idle GPU or
+storage billing from continuing.
+
 Cross-platform installer:
 
 ```bash
@@ -350,7 +453,6 @@ python scripts/assemble_chapter.py \
   --all
 ```
 
-
 Prepare production metadata, QA, mastering, and the final audiobook package:
 
 ```bash
@@ -376,6 +478,7 @@ Create a redacted support bundle instead:
 ```bash
 normalize-book support-bundle output/mybook_pdf
 ```
+
 ### Output Structure
 
 ```text
@@ -608,7 +711,6 @@ normalize-book pipeline books/mybook.pdf \
   --llm-normalize \
   --synthesize \
   --workflow comfyui_workflows/qwen3_tts_template.json \
-  --quality-loop \
   --assemble
 ```
 

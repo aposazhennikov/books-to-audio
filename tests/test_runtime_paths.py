@@ -116,6 +116,21 @@ def test_runtime_paths_translate_wsl_mounts_for_windows(monkeypatch) -> None:
     reset_runtime_path_cache()
 
 
+def test_runtime_paths_use_local_tessdata_fallback(tmp_path: Path, monkeypatch) -> None:
+    local_tessdata = tmp_path / "data" / "tessdata"
+    local_tessdata.mkdir(parents=True)
+    (local_tessdata / "rus.traineddata").write_bytes(b"dummy")
+    monkeypatch.setattr(runtime_paths, "project_root", lambda: tmp_path)
+    monkeypatch.delenv("BOOKS_TO_AUDIO_RUNTIME_CONFIG", raising=False)
+    monkeypatch.delenv("BOOKS_TO_AUDIO_TESSDATA_DIR", raising=False)
+    monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
+    reset_runtime_path_cache()
+
+    assert configured_tessdata_dir() == local_tessdata
+
+    reset_runtime_path_cache()
+
+
 def test_runtime_paths_ignore_non_mount_posix_paths_for_windows(monkeypatch) -> None:
     monkeypatch.setattr(runtime_paths.platform, "system", lambda: "Windows")
     monkeypatch.setenv("BOOKS_TO_AUDIO_TESSERACT_CMD", "/usr/bin/tesseract")

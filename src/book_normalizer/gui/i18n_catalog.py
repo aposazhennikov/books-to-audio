@@ -2753,6 +2753,42 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "kk": "Пакетті дайындау",
         "uz": "Paketni tayyorlash",
     },
+    "asm.production_gate_no_manifest": {
+        "en": "Package locked: select a v2 manifest first.",
+        "ru": "Package locked: select a v2 manifest first.",
+    },
+    "asm.production_gate_manifest_error": {
+        "en": "Package locked: manifest cannot be read.",
+        "ru": "Package locked: manifest cannot be read.",
+    },
+    "asm.production_gate_no_chunks": {
+        "en": "Package locked: manifest has no production chunks.",
+        "ru": "Package locked: manifest has no production chunks.",
+    },
+    "asm.production_gate_audio_not_synthesized": {
+        "en": "Package locked: synthesize all included chunks first.",
+        "ru": "Package locked: synthesize all included chunks first.",
+    },
+    "asm.production_gate_audio_missing": {
+        "en": "Package locked: synthesized chunk audio is missing on disk.",
+        "ru": "Package locked: synthesized chunk audio is missing on disk.",
+    },
+    "asm.production_gate_asr": {
+        "en": "Package locked: ASR QA must pass for every included chunk.",
+        "ru": "Package locked: ASR QA must pass for every included chunk.",
+    },
+    "asm.production_gate_qa": {
+        "en": "Package locked: run production preflight and resolve review/resynthesis items.",
+        "ru": "Package locked: run production preflight and resolve review/resynthesis items.",
+    },
+    "asm.production_gate_not_assembled": {
+        "en": "Package locked: assemble chapter audio before packaging.",
+        "ru": "Package locked: assemble chapter audio before packaging.",
+    },
+    "asm.production_gate_ready": {
+        "en": "Package ready: ASR passed, production QA passed, review is clear, and chapter audio is assembled.",
+        "ru": "Package ready: ASR passed, production QA passed, review is clear, and chapter audio is assembled.",
+    },
     "asm.production_running": {
         "en": "Running production preflight...",
         "ru": "Выполняется production preflight...",

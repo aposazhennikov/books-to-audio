@@ -9,6 +9,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
+    QCheckBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -28,6 +29,15 @@ from book_normalizer.tts.manifest_assembly import (
     ChapterAssemblyResult,
     assemble_from_manifest,
     load_manifest_v2,
+)
+
+_MANUAL_REVIEW_GATE_KEY = "asm.production_gate_manual_review"
+_MANUAL_REVIEW_GATE_MESSAGE = (
+    "Package locked: listen to the assembled chapters and explicitly accept the "
+    "release package."
+)
+_MANUAL_REVIEW_CHECK_TEXT = (
+    "I listened to the assembled chapters and accept this package for production."
 )
 
 
@@ -258,6 +268,10 @@ class AssemblyPage(QWidget):
         self._production_gate_status.setStyleSheet("color: rgba(51,65,85,0.74); font-size: 12px;")
         layout.addWidget(self._production_gate_status)
 
+        self._manual_review_check = QCheckBox()
+        self._manual_review_check.toggled.connect(self._update_production_buttons)
+        layout.addWidget(self._manual_review_check)
+
         production_row = QHBoxLayout()
         production_row.setSpacing(8)
         self._btn_production_preflight = QPushButton()
@@ -299,6 +313,7 @@ class AssemblyPage(QWidget):
         self._btn_run.setText(t("asm.run"))
         self._production_title.setText(t("asm.production_title"))
         self._production_desc.setText(t("asm.production_desc"))
+        self._manual_review_check.setText(_MANUAL_REVIEW_CHECK_TEXT)
         self._btn_production_preflight.setText(t("asm.production_preflight"))
         self._btn_production_package.setText(t("asm.production_package"))
         self._update_production_buttons()
@@ -319,6 +334,7 @@ class AssemblyPage(QWidget):
         self._audio_dir = audio_dir
         self._manifest_path = None
         self._output_dir = output_dir
+        self._manual_review_check.setChecked(False)
         self._dir_label.setText(str(audio_dir))
         self._btn_run.setEnabled(True)
         self._update_production_buttons()
@@ -328,6 +344,7 @@ class AssemblyPage(QWidget):
         self._manifest_path = manifest_path
         self._audio_dir = output_dir / "audio_chunks"
         self._output_dir = output_dir
+        self._manual_review_check.setChecked(False)
         self._dir_label.setText(str(manifest_path))
         self._btn_run.setEnabled(True)
         self._update_production_buttons()
@@ -338,6 +355,7 @@ class AssemblyPage(QWidget):
             self._audio_dir = Path(d)
             self._manifest_path = None
             self._output_dir = Path(d).parent
+            self._manual_review_check.setChecked(False)
             self._dir_label.setText(d)
             self._btn_run.setEnabled(True)
             self._update_production_buttons()
@@ -406,6 +424,8 @@ class AssemblyPage(QWidget):
             return ProductionPackageReadiness(False, "asm.production_gate_qa")
         if not _assembled_chapters_ready(manifest, self._output_dir):
             return ProductionPackageReadiness(False, "asm.production_gate_not_assembled")
+        if not self._manual_review_check.isChecked():
+            return ProductionPackageReadiness(False, _MANUAL_REVIEW_GATE_KEY)
         return ProductionPackageReadiness(True, "asm.production_gate_ready")
 
     def _update_production_buttons(self) -> None:
@@ -413,8 +433,9 @@ class AssemblyPage(QWidget):
         readiness = self._production_package_readiness()
         self._btn_production_preflight.setEnabled(can_run_preflight)
         self._btn_production_package.setEnabled(readiness.ready)
-        self._production_gate_status.setText(t(readiness.message_key))
-        self._btn_production_package.setToolTip(t(readiness.message_key))
+        message = _production_gate_message(readiness.message_key)
+        self._production_gate_status.setText(message)
+        self._btn_production_package.setToolTip(message)
 
     def _run_production_preflight(self) -> None:
         self._start_production_preflight(
@@ -432,7 +453,7 @@ class AssemblyPage(QWidget):
             readiness = self._production_package_readiness()
             if not readiness.ready:
                 self._update_production_buttons()
-                self._progress.set_status(t(readiness.message_key))
+                self._progress.set_status(_production_gate_message(readiness.message_key))
                 return
         self._start_production_preflight(
             package_outputs=True,
@@ -554,6 +575,13 @@ def _package_gate_chunks(manifest: dict) -> list[dict]:
             if isinstance(chunk, dict) and not chunk_is_excluded(chunk):
                 chunks.append(chunk)
     return chunks
+
+
+def _production_gate_message(message_key: str) -> str:
+    """Return user-facing package gate text, including local manual-review copy."""
+    if message_key == _MANUAL_REVIEW_GATE_KEY:
+        return _MANUAL_REVIEW_GATE_MESSAGE
+    return t(message_key)
 
 
 def _chunk_audio_exists(chunk: dict, manifest_path: Path) -> bool:

@@ -411,15 +411,12 @@ def test_main_window_auto_pipeline_runs_all_steps_with_quality_settings(
     assert captured_assembly["output_dir"] == output_dir
     assert captured_assembly["pause_same"] == 300
     assert captured_assembly["pause_change"] == 600
-    assert captured_production["manifest_path"] == output_dir / "chunks_manifest_v2.json"
-    assert captured_production["output_dir"] == output_dir
-    assert captured_production["package_outputs"] is True
-    assert captured_production["chapter_audio_dir"] == output_dir
-    assert captured_production["dry_run_package"] is False
-    assert captured_production["allow_review_package"] is False
+    assert captured_production == {}
     assert window._tabs.currentIndex() == 4
     assert window._btn_auto_pipeline.isEnabled()
-    assert window.statusBar().currentMessage() == t("auto.complete")
+    assert window.statusBar().currentMessage() == (
+        "Automatic build paused for manual audio review before packaging."
+    )
 
 
 def test_main_window_auto_pipeline_reuses_cached_chunks_manifest(
@@ -570,12 +567,10 @@ def test_main_window_auto_pipeline_reuses_cached_chunks_manifest(
     assert captured_quality["pending_finish"] == (str(output_dir / "audio_chunks"), 0, 0)
     assert captured_assembly["manifest_path"] == chunks_path
     assert captured_assembly["output_dir"] == output_dir
-    assert captured_production["manifest_path"] == chunks_path
-    assert captured_production["output_dir"] == output_dir
-    assert captured_production["package_outputs"] is True
-    assert captured_production["dry_run_package"] is False
-    assert captured_production["allow_review_package"] is False
-    assert window.statusBar().currentMessage() == t("auto.complete")
+    assert captured_production == {}
+    assert window.statusBar().currentMessage() == (
+        "Automatic build paused for manual audio review before packaging."
+    )
     cached_manifest = json.loads(chunks_path.read_text(encoding="utf-8"))
     assert cached_manifest["chapters"][0]["chunks"][0]["audio_file"] == str(audio_path)
 

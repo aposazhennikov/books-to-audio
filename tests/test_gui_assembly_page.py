@@ -35,6 +35,41 @@ def _write_wav(path: Path, *, frames: int = 240, sample_rate: int = 24000) -> No
         wav.writeframes(b"\x01\x00" * frames)
 
 
+def _write_package_ready_manifest(output_dir: Path) -> Path:
+    audio_path = output_dir / "audio_chunks" / "chapter_001" / "chunk_001_narrator.wav"
+    _write_wav(audio_path)
+    _write_wav(output_dir / "chapter_001.wav")
+    manifest_path = output_dir / "chunks_manifest_v2.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "language": "en",
+                "chapters": [
+                    {
+                        "chapter_index": 0,
+                        "chunks": [
+                            {
+                                "chunk_index": 0,
+                                "voice": "narrator",
+                                "voice_id": "narrator_calm",
+                                "text": "Hello.",
+                                "synthesized": True,
+                                "audio_file": str(audio_path),
+                                "qa_status": "passed",
+                                "asr_qa": {"status": "passed"},
+                                "perceptual_qa": {"status": "passed"},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return manifest_path
+
+
 def _run_worker(worker: object) -> tuple[list[str], list[object], list[str]]:
     progress: list[str] = []
     finished: list[object] = []
@@ -239,8 +274,7 @@ def test_production_preflight_worker_runs_pipeline(monkeypatch, tmp_path: Path) 
 
 
 def test_assembly_page_exposes_production_preflight_controls(qapp, qtbot, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
-    manifest_path = tmp_path / "chunks_manifest_v2.json"
-    manifest_path.write_text("{}", encoding="utf-8")
+    manifest_path = _write_package_ready_manifest(tmp_path)
     captured: dict = {}
 
     class _FakeProductionWorker:
@@ -273,9 +307,61 @@ def test_assembly_page_exposes_production_preflight_controls(qapp, qtbot, tmp_pa
     assert "Production report" in page._output_label.text()
 
 
-def test_assembly_page_package_button_runs_release_package(qapp, qtbot, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+def test_assembly_page_blocks_package_until_manifest_is_ready(qapp, qtbot, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
     manifest_path = tmp_path / "chunks_manifest_v2.json"
-    manifest_path.write_text("{}", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "language": "en",
+                "chapters": [
+                    {
+                        "chapter_index": 0,
+                        "chunks": [
+                            {
+                                "chunk_index": 0,
+                                "voice": "narrator",
+                                "voice_id": "narrator_calm",
+                                "text": "Hello.",
+                                "synthesized": True,
+                                "audio_file": "audio_chunks/chapter_001/chunk_001_narrator.wav",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    started = False
+
+    class _FakeProductionWorker:
+        def __init__(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            self.progress = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+
+        def start(self) -> None:
+            nonlocal started
+            started = True
+
+    monkeypatch.setattr(assembly_page, "ProductionPreflightWorker", _FakeProductionWorker)
+    page = AssemblyPage()
+    qtbot.addWidget(page)
+    page.set_manifest(manifest_path, tmp_path)
+
+    assert page._btn_production_preflight.isEnabled()
+    assert not page._btn_production_package.isEnabled()
+    assert "Package locked" in page._production_gate_status.text()
+    page._run_production_package()
+
+    assert not started
+    assert "Package locked" in page._progress._status.text()
+
+
+def test_assembly_page_package_button_runs_release_package(qapp, qtbot, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    manifest_path = _write_package_ready_manifest(tmp_path)
     captured: dict = {}
 
     class _FakeProductionWorker:

@@ -22,9 +22,6 @@ class _Controller:
     def run_assembly(self) -> None:
         self.calls.append(("run_assembly",))
 
-    def run_production_package(self) -> None:
-        self.calls.append(("run_production_package",))
-
     def has_complete_audio(self, manifest_path: Path) -> bool:
         self.calls.append(("has_complete_audio", manifest_path))
         return self.complete_audio
@@ -37,6 +34,9 @@ class _Controller:
 
     def apply_quality_settings(self) -> None:
         self.calls.append(("apply_quality_settings",))
+
+    def finish_for_manual_review(self) -> None:
+        self.calls.append(("finish_for_manual_review",))
 
 
 def _immediate(_delay: int, callback) -> None:  # noqa: ANN001
@@ -106,7 +106,7 @@ def test_auto_pipeline_orchestrator_runs_synthesis_when_audio_is_missing(
     ]
 
 
-def test_auto_pipeline_orchestrator_continues_terminal_stages() -> None:
+def test_auto_pipeline_orchestrator_stops_after_assembly_for_manual_review() -> None:
     controller = _Controller()
     orchestrator = AutoPipelineOrchestrator(controller, schedule=_immediate)
 
@@ -118,6 +118,5 @@ def test_auto_pipeline_orchestrator_continues_terminal_stages() -> None:
         ("status", "auto.assembly"),
         ("run_assembly",),
         ("show_tab", 4),
-        ("status", "auto.production"),
-        ("run_production_package",),
+        ("finish_for_manual_review",),
     ]

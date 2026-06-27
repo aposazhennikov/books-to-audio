@@ -20,8 +20,6 @@ class AutoPipelineController(Protocol):
 
     def run_assembly(self) -> None: ...
 
-    def run_production_package(self) -> None: ...
-
     def has_complete_audio(self, manifest_path: Path) -> bool: ...
 
     def status(self, message: str) -> None: ...
@@ -29,6 +27,8 @@ class AutoPipelineController(Protocol):
     def show_tab(self, index: int) -> None: ...
 
     def apply_quality_settings(self) -> None: ...
+
+    def finish_for_manual_review(self) -> None: ...
 
 
 class AutoPipelineOrchestrator:
@@ -76,7 +76,6 @@ class AutoPipelineOrchestrator:
         self._schedule(0, self._controller.run_assembly)
 
     def continue_after_assembly(self) -> None:
-        """Start production packaging after assembly has finished."""
+        """Stop before packaging so a human can review the assembled audio."""
         self._controller.show_tab(4)
-        self._controller.status("auto.production")
-        self._schedule(0, self._controller.run_production_package)
+        self._controller.finish_for_manual_review()

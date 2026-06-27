@@ -538,6 +538,15 @@ class MainWindow(QMainWindow):
         """Apply unattended quality settings across workflow pages."""
         self._apply_auto_quality_settings()
 
+    def finish_for_manual_review(self) -> None:
+        """Pause auto mode before packaging so the assembled audio gets reviewed."""
+        self._auto_pipeline_active = False
+        self._auto_pipeline_cache_choice = None
+        self._btn_auto_pipeline.setEnabled(True)
+        self._statusbar.showMessage(
+            "Automatic build paused for manual audio review before packaging.",
+        )
+
     def status(self, message: str) -> None:
         """Show an auto-pipeline status key in the status bar."""
         self._statusbar.showMessage(t(message))

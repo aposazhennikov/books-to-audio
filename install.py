@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import TextIO
 
 MIN_PYTHON = (3, 10)
-DEFAULT_EXTRAS = {"audio", "gui", "llm", "ocr"}
+DEFAULT_EXTRAS = {"audio", "gui", "llm", "ocr", "perceptual"}
 DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434"
 DEFAULT_COMFYUI_URL = "http://localhost:8188"
 DEFAULT_COMFYUI_REPO = "https://github.com/comfy-org/ComfyUI.git"
@@ -95,6 +95,7 @@ VERIFY_MODULES = {
     "gui": ["PyQt6"],
     "llm": ["httpx"],
     "ocr": ["PIL", "pytesseract"],
+    "perceptual": ["librosa", "requests", "torch", "torchmetrics"],
     "stress": ["silero_stress"],
     "tts": ["numpy", "qwen_tts", "soundfile", "torch"],
     "tts-sage": ["numpy", "qwen_tts", "sageattention", "soundfile", "torch"],
@@ -236,6 +237,9 @@ def main() -> int:
             _selected_tts_model_ids(args.tts_model),
         )
 
+    if args.download_perceptual_models:
+        _install_perceptual_models(venv_python, paths)
+
     if args.install_comfyui:
         _install_comfyui(paths, args.comfyui_repo, args.verify_hashes)
 
@@ -317,6 +321,11 @@ def _parse_args() -> argparse.Namespace:
         help="Download selected TTS models into --models-dir.",
     )
     parser.add_argument(
+        "--download-perceptual-models",
+        action="store_true",
+        help="Pre-download/prewarm NISQA v2 perceptual QA weights after installing dependencies.",
+    )
+    parser.add_argument(
         "--tts-model",
         action="append",
         choices=tuple(TTS_MODEL_SELECTIONS),
@@ -337,6 +346,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--without-llm", action="store_true", help="Skip httpx/Ollama-compatible LLM dependencies.")
     parser.add_argument("--without-ocr", action="store_true", help="Skip pytesseract/Pillow OCR dependencies.")
     parser.add_argument("--without-audio", action="store_true", help="Skip pydub/soundfile audio helper dependencies.")
+    parser.add_argument("--without-perceptual", action="store_true", help="Skip NISQA v2 perceptual QA dependencies.")
     parser.add_argument("--with-dev", action="store_true", help="Install pytest and ruff.")
     parser.add_argument("--with-asr", action="store_true", help="Install faster-whisper ASR QA dependencies.")
     parser.add_argument("--with-stress", action="store_true", help="Install optional silero-stress model support.")
@@ -620,6 +630,11 @@ def _resolve_optional_downloads(args: argparse.Namespace) -> None:
         "Скачать стандартную Qwen3-TTS модель сейчас?",
         default=False,
     )
+    args.download_perceptual_models = args.download_perceptual_models or _prompt_yes_no(
+        "Pre-download NISQA v2 perceptual QA weights now?",
+        "Pre-download NISQA v2 perceptual QA weights now?",
+        default=False,
+    )
     args.install_comfyui = getattr(args, "install_comfyui", False) or _prompt_yes_no(
         "Install or prepare local ComfyUI plus Qwen3-TTS custom nodes?",
         "Установить или подготовить локальный ComfyUI плюс Qwen3-TTS custom nodes?",
@@ -696,6 +711,8 @@ def _resolve_extras(args: argparse.Namespace) -> set[str]:
         extras.discard("ocr")
     if args.without_audio:
         extras.discard("audio")
+    if args.without_perceptual:
+        extras.discard("perceptual")
 
     return extras
 
@@ -1217,6 +1234,33 @@ def _install_tts_models(
     _run([str(venv_python), "-c", code], paths)
     if verify_hashes:
         _verify_or_write_hash(TTS_HASH_LABEL, paths.models_dir, metadata=hash_metadata)
+
+
+def _install_perceptual_models(venv_python: Path, paths: InstallPaths) -> None:
+    """Prewarm NISQA v2 so model weights are ready before first QA run."""
+    code = (
+        "import math, tempfile, wave\n"
+        "from pathlib import Path\n"
+        "from book_normalizer.tts.perceptual_qa import NisqaV2Backend\n"
+        "with tempfile.TemporaryDirectory(prefix='books-to-audio-nisqa-') as td:\n"
+        "    wav_path = Path(td) / 'prewarm.wav'\n"
+        "    sample_rate = 16000\n"
+        "    samples = [int(math.sin(i / 16.0) * 1200) for i in range(sample_rate * 2)]\n"
+        "    with wave.open(str(wav_path), 'wb') as wav:\n"
+        "        wav.setnchannels(1)\n"
+        "        wav.setsampwidth(2)\n"
+        "        wav.setframerate(sample_rate)\n"
+        "        frames = b''.join(int(s).to_bytes(2, 'little', signed=True) for s in samples)\n"
+        "        wav.writeframes(frames)\n"
+        "    result = NisqaV2Backend().predict(wav_path)\n"
+        "    print('NISQA v2 ready:', result.scores)\n"
+    )
+    _say(
+        "Prewarming NISQA v2 perceptual QA weights...",
+        "Prewarming NISQA v2 perceptual QA weights...",
+        "info",
+    )
+    _run([str(venv_python), "-c", code], paths)
 
 
 def _verified_hash_matches(

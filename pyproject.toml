@@ -63,6 +63,12 @@ audio = [
     "soundfile>=0.12,<1",
     "pydub>=0.25,<1",
 ]
+perceptual = [
+    "torch>=2.1",
+    "torchmetrics[audio]>=1.4,<2",
+    "librosa>=0.10,<1",
+    "requests>=2.31,<3",
+]
 asr = [
     "faster-whisper",
     "jiwer",
@@ -75,6 +81,10 @@ desktop = [
     "PyQt6>=6.6,<7",
     "soundfile>=0.12,<1",
     "pydub>=0.25,<1",
+    "torch>=2.1",
+    "torchmetrics[audio]>=1.4,<2",
+    "librosa>=0.10,<1",
+    "requests>=2.31,<3",
 ]
 desktop-build = [
     "PyInstaller>=6.0,<7",

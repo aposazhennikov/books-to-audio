@@ -192,6 +192,16 @@ def main() -> None:
     help="Run report-first ASR QA after synthesis and before assembly.",
 )
 @click.option("--artifact-qa", is_flag=True, default=False, help="Run artifact QA after synthesis.")
+@click.option("--perceptual-qa", is_flag=True, default=False, help="Run NISQA/MOSNet perceptual QA after synthesis.")
+@click.option(
+    "--perceptual-backend",
+    "perceptual_backends",
+    multiple=True,
+    default=(),
+    help="Perceptual QA backend to run. Can be repeated. Defaults to nisqa-v2 and mosnet.",
+)
+@click.option("--perceptual-min-mos", type=float, default=2.70, show_default=True, help="Fail below this MOS.")
+@click.option("--perceptual-warn-mos", type=float, default=3.30, show_default=True, help="Warn below this MOS.")
 @click.option("--asr-model", default="small", show_default=True, help="faster-whisper model for ASR QA.")
 @click.option(
     "--max-resynth-attempts",
@@ -225,6 +235,10 @@ def pipeline_command(
     quality_loop: bool,
     asr_qa_after_synthesis: bool,
     artifact_qa: bool,
+    perceptual_qa: bool,
+    perceptual_backends: tuple[str, ...],
+    perceptual_min_mos: float,
+    perceptual_warn_mos: float,
     asr_model: str,
     max_resynth_attempts: int,
     workflow: Path | None,
@@ -263,6 +277,14 @@ def pipeline_command(
         argv.extend(["--quality-loop", "--max-resynth-attempts", str(max_resynth_attempts)])
     if artifact_qa:
         argv.append("--artifact-qa")
+    if perceptual_qa:
+        argv.append("--perceptual-qa")
+    for backend in perceptual_backends:
+        argv.extend(["--perceptual-backend", backend])
+    if perceptual_min_mos != 2.70:
+        argv.extend(["--perceptual-min-mos", str(perceptual_min_mos)])
+    if perceptual_warn_mos != 3.30:
+        argv.extend(["--perceptual-warn-mos", str(perceptual_warn_mos)])
     if asr_qa_after_synthesis:
         argv.extend(["--asr-qa-after-synthesis", "--asr-model", asr_model])
     if assemble:
@@ -354,7 +376,6 @@ def doctor_command(
         click.echo(f"[{check.status.upper():4}] {check.name}: {check.detail}")
 
 
-
 @main.command(name="support-bundle")
 @click.argument("source_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option(
@@ -383,6 +404,8 @@ def support_bundle_command(
     )
     click.echo(f"Support bundle: {result.bundle_path}")
     click.echo(f"Redacted files: {len(result.files)}")
+
+
 @main.command(name="install-tts-models")
 @click.option(
     "--models-dir",
@@ -483,6 +506,22 @@ def install_tts_models_command(
     default=False,
     help="Run artifact QA for clipping, silence, dropouts, and repeated audio.",
 )
+@click.option(
+    "--perceptual",
+    "enable_perceptual",
+    is_flag=True,
+    default=False,
+    help="Run NISQA/MOSNet perceptual speech-quality QA.",
+)
+@click.option(
+    "--perceptual-backend",
+    "perceptual_backends",
+    multiple=True,
+    default=(),
+    help="Perceptual QA backend to run. Can be repeated. Defaults to nisqa-v2 and mosnet.",
+)
+@click.option("--perceptual-min-mos", type=float, default=2.70, show_default=True, help="Fail below this MOS.")
+@click.option("--perceptual-warn-mos", type=float, default=3.30, show_default=True, help="Warn below this MOS.")
 @click.option("--asr-model", default="small", show_default=True, help="faster-whisper model name or local path.")
 @click.option("--max-wer", type=float, default=0.30, show_default=True, help="Fail chunks above this word error rate.")
 @click.option(
@@ -536,6 +575,10 @@ def audio_qa_command(
     report: Path | None,
     enable_asr: bool,
     enable_artifact: bool,
+    enable_perceptual: bool,
+    perceptual_backends: tuple[str, ...],
+    perceptual_min_mos: float,
+    perceptual_warn_mos: float,
     asr_model: str,
     max_wer: float,
     max_cer: float,
@@ -601,6 +644,61 @@ def audio_qa_command(
             "artifact_qa": artifact_result.to_dict(),
         }
 
+    if enable_perceptual:
+        from book_normalizer.chunking.manifest_v2 import save_manifest
+        from book_normalizer.tts.perceptual_qa import (
+            DEFAULT_PERCEPTUAL_BACKENDS,
+            DEFAULT_PERCEPTUAL_REPORT_NAME,
+            PerceptualQaConfig,
+            annotate_manifest_with_perceptual,
+            run_perceptual_qa,
+            write_perceptual_report,
+        )
+
+        selected_backends = tuple(perceptual_backends or DEFAULT_PERCEPTUAL_BACKENDS)
+        perceptual_report = manifest_path.with_name(DEFAULT_PERCEPTUAL_REPORT_NAME)
+        click.echo(
+            "Perceptual QA: "
+            f"backends={','.join(selected_backends)} min_mos={perceptual_min_mos:.2f}"
+        )
+        perceptual_result = run_perceptual_qa(
+            manifest,
+            config=PerceptualQaConfig(
+                backends=selected_backends,
+                min_mos=perceptual_min_mos,
+                warn_mos=perceptual_warn_mos,
+            ),
+            manifest_path=manifest_path,
+        )
+        write_perceptual_report(perceptual_report, perceptual_result)
+        annotate_manifest_with_perceptual(
+            manifest,
+            perceptual_result,
+            report_path=perceptual_report.resolve(),
+            reset_bad_chunks=reset_bad_chunks,
+            max_resynthesis_attempts=max_resynth_attempts,
+        )
+        save_manifest(manifest_path, manifest)
+        summary = perceptual_result.summary
+        click.echo(
+            "Perceptual QA: "
+            f"status={perceptual_result.status}, failed={summary['failed']}, "
+            f"warnings={summary['warning']}, errors={summary['error']}."
+        )
+        for chunk in perceptual_result.chunks:
+            if chunk.status == "passed":
+                continue
+            location = f" ch{chunk.chapter_index + 1:03d}/chunk{chunk.chunk_index + 1:03d}"
+            issue_text = ", ".join(issue.kind for issue in chunk.issues) or chunk.status
+            click.echo(f"[{chunk.status.upper()}] perceptual{location}: {issue_text}")
+        existing_payload = report_payload or {
+            "schema_version": 1,
+            "manifest_path": str(manifest_path),
+            "audio_qa": result.to_dict(),
+        }
+        existing_payload["perceptual_qa"] = perceptual_result.to_dict()
+        report_payload = existing_payload
+
     if enable_asr:
         from book_normalizer.chunking.manifest_v2 import save_manifest
         from book_normalizer.tts.asr_qa import (
@@ -652,6 +750,7 @@ def audio_qa_command(
             save_manifest(manifest_path, manifest)
             click.echo(f"Manifest ASR annotations updated: {manifest_path}")
         artifact_payload = report_payload.get("artifact_qa") if report_payload else None
+        perceptual_payload = report_payload.get("perceptual_qa") if report_payload else None
         report_payload = {
             "schema_version": 1,
             "manifest_path": str(manifest_path),
@@ -660,6 +759,8 @@ def audio_qa_command(
         }
         if artifact_payload is not None:
             report_payload["artifact_qa"] = artifact_payload
+        if perceptual_payload is not None:
+            report_payload["perceptual_qa"] = perceptual_payload
 
     if report:
         payload = report_payload if report_payload is not None else result.to_dict()

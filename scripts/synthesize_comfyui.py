@@ -73,6 +73,14 @@ from book_normalizer.tts.asr_qa import (
     write_asr_diff,
     write_asr_report,
 )
+from book_normalizer.tts.perceptual_qa import (
+    DEFAULT_PERCEPTUAL_BACKENDS,
+    DEFAULT_PERCEPTUAL_REPORT_NAME,
+    PerceptualQaConfig,
+    annotate_manifest_with_perceptual,
+    run_perceptual_qa,
+    write_perceptual_report,
+)
 from book_normalizer.tts.quality_gate import split_problem_chunks_for_retry
 
 # ── Manifest helpers ──────────────────────────────────────────────────────────
@@ -272,6 +280,15 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--quality-loop", action="store_true", help="QA and resynthesize bad chunks.")
     parser.add_argument("--artifact-qa", action="store_true", help="Run artifact QA after synthesis.")
+    parser.add_argument("--perceptual-qa", action="store_true", help="Run NISQA/MOSNet perceptual QA after synthesis.")
+    parser.add_argument(
+        "--perceptual-backend",
+        action="append",
+        default=[],
+        help="Perceptual QA backend to run. Can be repeated. Defaults to nisqa-v2 and mosnet.",
+    )
+    parser.add_argument("--perceptual-min-mos", type=float, default=2.70, help="Fail below this MOS.")
+    parser.add_argument("--perceptual-warn-mos", type=float, default=3.30, help="Warn below this MOS.")
     parser.add_argument("--asr-qa-after-synthesis", action="store_true", help="Run ASR QA after synthesis.")
     parser.add_argument("--asr-model", default="small", help="faster-whisper ASR model (default: small).")
     parser.add_argument(
@@ -353,7 +370,7 @@ def main(argv: list[str] | None = None) -> None:
             progress=print,
             log_language=args.log_language,
         )
-        if not (args.quality_loop or args.artifact_qa or args.asr_qa_after_synthesis):
+        if not (args.quality_loop or args.artifact_qa or args.perceptual_qa or args.asr_qa_after_synthesis):
             break
 
         if args.quality_loop or args.artifact_qa:
@@ -372,6 +389,34 @@ def main(argv: list[str] | None = None) -> None:
             print(
                 "Artifact QA: "
                 f"status={artifact_result.status}, failed={summary['failed']}, "
+                f"warnings={summary['warning']}, errors={summary['error']}."
+            )
+
+        if args.quality_loop or args.perceptual_qa:
+            selected_backends = tuple(args.perceptual_backend or DEFAULT_PERCEPTUAL_BACKENDS)
+            perceptual_report = manifest_path.with_name(DEFAULT_PERCEPTUAL_REPORT_NAME)
+            perceptual_result = run_perceptual_qa(
+                manifest,
+                config=PerceptualQaConfig(
+                    backends=selected_backends,
+                    min_mos=args.perceptual_min_mos,
+                    warn_mos=args.perceptual_warn_mos,
+                ),
+                manifest_path=manifest_path,
+            )
+            write_perceptual_report(perceptual_report, perceptual_result)
+            annotate_manifest_with_perceptual(
+                manifest,
+                perceptual_result,
+                report_path=perceptual_report.resolve(),
+                reset_bad_chunks=args.quality_loop,
+                max_resynthesis_attempts=args.max_resynth_attempts,
+            )
+            save_manifest(manifest_path, manifest)
+            summary = perceptual_result.summary
+            print(
+                "Perceptual QA: "
+                f"status={perceptual_result.status}, failed={summary['failed']}, "
                 f"warnings={summary['warning']}, errors={summary['error']}."
             )
 

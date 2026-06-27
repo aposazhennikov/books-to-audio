@@ -171,3 +171,70 @@ def test_synthesis_controller_estimates_eta_from_progress_lines(
 
     assert progress[0] == (3, 5, "1m 00s", 0, 0, 0.0, 2, 0, 0)
     assert progress[-1] == (5, 5, "0s", 0, 0, 0.0, 0, 0, 0)
+
+
+def test_synthesis_controller_runs_perceptual_qa_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest_path = _write_manifest_chunks(
+        tmp_path / "chunks_manifest_v2.json",
+        total=1,
+        synthesized=1,
+    )
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text("{}", encoding="utf-8")
+
+    class _Client:
+        def __init__(self, base_url: str) -> None:
+            self.base_url = base_url
+
+        def is_reachable(self) -> bool:
+            return True
+
+    class _Builder:
+        def __init__(self, path: Path) -> None:
+            self.path = path
+
+    from book_normalizer.tts.perceptual_qa import PerceptualChunkResult, PerceptualQaResult
+
+    def fake_synthesize_manifest(**_kwargs) -> SynthesisSummary:  # noqa: ANN003
+        return SynthesisSummary(total=1, synthesized=0, skipped=1, failed=0)
+
+    def fake_run_perceptual_qa(*_args, **_kwargs):  # noqa: ANN002
+        return PerceptualQaResult(
+            backends=["nisqa-v2"],
+            created_at="2026-01-01T00:00:00+00:00",
+            chunks=[
+                PerceptualChunkResult(
+                    chapter_index=0,
+                    chunk_index=0,
+                    audio_file=str(tmp_path / "chunk_001.wav"),
+                    status="passed",
+                    scores={"nisqa-v2": {"mos": 4.0}},
+                )
+            ],
+        )
+
+    monkeypatch.setattr(synthesis_controller, "ComfyUIClient", _Client)
+    monkeypatch.setattr(synthesis_controller, "WorkflowBuilder", _Builder)
+    monkeypatch.setattr(synthesis_controller, "synthesize_manifest", fake_synthesize_manifest)
+    monkeypatch.setattr(synthesis_controller, "run_perceptual_qa", fake_run_perceptual_qa)
+
+    logs: list[str] = []
+    SynthesisController(
+        SynthesisRequest(
+            manifest_path=manifest_path,
+            output_dir=tmp_path / "out",
+            workflow_path=workflow_path,
+            comfyui_url="http://localhost:8188",
+            perceptual_qa=True,
+            perceptual_backends=("nisqa-v2",),
+        ),
+        log=logs.append,
+    ).run()
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["chapters"][0]["chunks"][0]["perceptual_qa"]["status"] == "passed"
+    assert (tmp_path / "perceptual_qa_report.json").exists()
+    assert any("Perceptual QA:" in line for line in logs)

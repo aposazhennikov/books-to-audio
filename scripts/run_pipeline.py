@@ -408,6 +408,10 @@ def run_stage4_synthesize(
     *,
     quality_loop: bool = False,
     artifact_qa: bool = False,
+    perceptual_qa: bool = False,
+    perceptual_backends: tuple[str, ...] = (),
+    perceptual_min_mos: float = 2.70,
+    perceptual_warn_mos: float = 3.30,
     asr_qa_after_synthesis: bool = False,
     asr_model: str = "small",
     max_resynth_attempts: int = 2,
@@ -425,6 +429,14 @@ def run_stage4_synthesize(
         args += ["--quality-loop", "--max-resynth-attempts", str(max_resynth_attempts)]
     if artifact_qa:
         args.append("--artifact-qa")
+    if perceptual_qa:
+        args.append("--perceptual-qa")
+    for backend in perceptual_backends:
+        args += ["--perceptual-backend", backend]
+    if perceptual_min_mos != 2.70:
+        args += ["--perceptual-min-mos", str(perceptual_min_mos)]
+    if perceptual_warn_mos != 3.30:
+        args += ["--perceptual-warn-mos", str(perceptual_warn_mos)]
     if asr_qa_after_synthesis:
         args += ["--asr-qa-after-synthesis", "--asr-model", asr_model]
 
@@ -619,6 +631,29 @@ def main(argv: list[str] | None = None) -> None:
         help="Run artifact QA for clipping, silence, dropouts, and repeated audio.",
     )
     parser.add_argument(
+        "--perceptual-qa",
+        action="store_true",
+        help="Run NISQA/MOSNet perceptual speech-quality QA after synthesis.",
+    )
+    parser.add_argument(
+        "--perceptual-backend",
+        action="append",
+        default=[],
+        help="Perceptual QA backend to run. Can be repeated. Defaults to nisqa-v2 and mosnet.",
+    )
+    parser.add_argument(
+        "--perceptual-min-mos",
+        type=float,
+        default=2.70,
+        help="Perceptual QA fail threshold for MOS (default: 2.70).",
+    )
+    parser.add_argument(
+        "--perceptual-warn-mos",
+        type=float,
+        default=3.30,
+        help="Perceptual QA warning threshold for MOS (default: 3.30).",
+    )
+    parser.add_argument(
         "--asr-qa-after-synthesis",
         action="store_true",
         help="Run report-first local faster-whisper ASR QA after synthesis and before assembly.",
@@ -766,6 +801,10 @@ def main(argv: list[str] | None = None) -> None:
             args.chapter,
             quality_loop=args.quality_loop,
             artifact_qa=args.artifact_qa or args.quality_loop,
+            perceptual_qa=args.perceptual_qa or args.quality_loop,
+            perceptual_backends=tuple(args.perceptual_backend),
+            perceptual_min_mos=args.perceptual_min_mos,
+            perceptual_warn_mos=args.perceptual_warn_mos,
             asr_qa_after_synthesis=args.asr_qa_after_synthesis,
             asr_model=args.asr_model,
             max_resynth_attempts=args.max_resynth_attempts,

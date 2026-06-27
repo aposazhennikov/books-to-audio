@@ -69,7 +69,7 @@ def reset_chunk_for_resynthesis(
 def chunk_quality_status(chunk: dict[str, Any]) -> str:
     """Return the worst compact status from artifact and ASR QA blocks."""
     statuses: list[str] = []
-    for key in ("artifact_qa", "asr_qa"):
+    for key in ("artifact_qa", "asr_qa", "perceptual_qa"):
         block = chunk.get(key)
         if isinstance(block, dict):
             statuses.append(str(block.get("status") or "").lower())

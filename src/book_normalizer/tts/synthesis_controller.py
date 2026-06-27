@@ -36,6 +36,14 @@ from book_normalizer.tts.asr_qa import (
     write_asr_report,
 )
 from book_normalizer.tts.engines import unsupported_tts_engine_message
+from book_normalizer.tts.perceptual_qa import (
+    DEFAULT_PERCEPTUAL_BACKENDS,
+    DEFAULT_PERCEPTUAL_REPORT_NAME,
+    PerceptualQaConfig,
+    annotate_manifest_with_perceptual,
+    run_perceptual_qa,
+    write_perceptual_report,
+)
 from book_normalizer.tts.quality_gate import split_problem_chunks_for_retry
 
 ProgressCallback = Callable[[int, int, str, int, int, float, int, int, int], None]
@@ -170,6 +178,10 @@ class SynthesisRequest:
     generation_options: GenerationOptions | dict[str, Any] | None = None
     quality_loop: bool = False
     artifact_qa: bool = False
+    perceptual_qa: bool = False
+    perceptual_backends: tuple[str, ...] = DEFAULT_PERCEPTUAL_BACKENDS
+    perceptual_min_mos: float = 2.70
+    perceptual_warn_mos: float = 3.30
     asr_qa_after_synthesis: bool = False
     asr_model: str = "small"
     asr_device: str = "auto"
@@ -328,7 +340,12 @@ class SynthesisController:
             synthesized_total += summary.synthesized
             skipped = summary.skipped
 
-            if not (request.quality_loop or request.artifact_qa or request.asr_qa_after_synthesis):
+            if not (
+                request.quality_loop
+                or request.artifact_qa
+                or request.perceptual_qa
+                or request.asr_qa_after_synthesis
+            ):
                 break
 
             self._run_quality_gates(manifest, request)
@@ -448,6 +465,38 @@ class SynthesisController:
             self._emit_log(
                 "ASR QA: "
                 f"status={asr_result.status.value}, failed={summary['failed']}, "
+                f"warnings={summary['warning']}, errors={summary['error']}."
+            )
+            save_manifest(request.manifest_path, manifest)
+
+        if request.perceptual_qa or request.quality_loop:
+            report_path = request.manifest_path.with_name(DEFAULT_PERCEPTUAL_REPORT_NAME)
+            self._emit_log(
+                "Perceptual QA: "
+                f"backends={','.join(request.perceptual_backends)} "
+                f"min_mos={request.perceptual_min_mos:.2f}"
+            )
+            perceptual_result = run_perceptual_qa(
+                manifest,
+                config=PerceptualQaConfig(
+                    backends=request.perceptual_backends,
+                    min_mos=request.perceptual_min_mos,
+                    warn_mos=request.perceptual_warn_mos,
+                ),
+                manifest_path=request.manifest_path,
+            )
+            write_perceptual_report(report_path, perceptual_result)
+            annotate_manifest_with_perceptual(
+                manifest,
+                perceptual_result,
+                report_path=report_path.resolve(),
+                reset_bad_chunks=request.quality_loop,
+                max_resynthesis_attempts=request.max_resynthesis_attempts,
+            )
+            summary = perceptual_result.summary
+            self._emit_log(
+                "Perceptual QA: "
+                f"status={perceptual_result.status}, failed={summary['failed']}, "
                 f"warnings={summary['warning']}, errors={summary['error']}."
             )
             save_manifest(request.manifest_path, manifest)

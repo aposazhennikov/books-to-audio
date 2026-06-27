@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from install import (
+    DEFAULT_EXTRAS,
     DEFAULT_OLLAMA_MODELS,
     DEFAULT_TESSDATA_LANGS,
     DEFAULT_TTS_HASH_MODEL_IDS,
@@ -57,6 +58,28 @@ def test_installer_exposes_asr_extra_flag(monkeypatch) -> None:
     from install import _resolve_extras
 
     assert _resolve_extras(args) == {"asr"}
+
+
+def test_installer_default_profile_includes_perceptual_qa() -> None:
+    assert "perceptual" in DEFAULT_EXTRAS
+
+
+def test_installer_can_skip_perceptual_extra(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["install.py", "--without-perceptual"])
+    args = _parse_args()
+    from install import _resolve_extras
+
+    extras = _resolve_extras(args)
+
+    assert "perceptual" not in extras
+    assert {"audio", "gui", "llm", "ocr"}.issubset(extras)
+
+
+def test_installer_exposes_perceptual_model_download_flag(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["install.py", "--download-perceptual-models"])
+    args = _parse_args()
+
+    assert args.download_perceptual_models is True
 
 
 def test_installer_tts_model_selection_defaults_to_recommended_qwen() -> None:
@@ -454,6 +477,7 @@ def test_interactive_dry_run_prompts_paths_and_writes_runtime_config(tmp_path: P
             str(tmp_path / "tools" / "tesseract.exe"),
             str(tmp_path / "tools" / "tessdata"),
             str(tmp_path / "tools" / "ffmpeg.exe"),
+            "n",
             "n",
             "n",
             "n",

@@ -9,7 +9,11 @@ from book_normalizer.tts.artifact_qa import (
     run_artifact_qa,
 )
 from book_normalizer.tts.audio_smoothing import smooth_wav_silence
-from book_normalizer.tts.quality_gate import split_problem_chunks_for_retry
+from book_normalizer.tts.quality_gate import (
+    chunk_quality_status,
+    has_blocking_quality_issue,
+    split_problem_chunks_for_retry,
+)
 
 
 def _write_wav(path: Path, samples: list[int], *, sample_rate: int = 8000) -> None:
@@ -159,3 +163,14 @@ def test_split_problem_chunks_for_retry_splits_repeated_long_chunk() -> None:
     assert chunks[1]["text"]
     assert chunks[0]["resynthesis_split_count"] == 1
     assert chunks[1]["resynthesis_split_count"] == 1
+
+
+def test_quality_status_includes_perceptual_qa() -> None:
+    chunk = {
+        "artifact_qa": {"status": "passed"},
+        "asr_qa": {"status": "passed"},
+        "perceptual_qa": {"status": "failed"},
+    }
+
+    assert chunk_quality_status(chunk) == "failed"
+    assert has_blocking_quality_issue(chunk)

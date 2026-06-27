@@ -35,11 +35,110 @@ from book_normalizer.tts.asr_qa import (
     write_asr_diff,
     write_asr_report,
 )
+from book_normalizer.tts.engines import unsupported_tts_engine_message
 from book_normalizer.tts.quality_gate import split_problem_chunks_for_retry
 
 ProgressCallback = Callable[[int, int, str, int, int, float, int, int, int], None]
 StatusCallback = Callable[[str], None]
 LogCallback = Callable[[str], None]
+
+_LOG_LANGS = {"en", "ru", "zh", "kk", "uz"}
+_LOG_MESSAGES: dict[str, dict[str, str]] = {
+    "connected": {
+        "en": "ComfyUI: connected to {url}",
+        "ru": "ComfyUI: подключено к {url}",
+        "zh": "ComfyUI：已连接到 {url}",
+        "kk": "ComfyUI: {url} мекенжайына қосылды",
+        "uz": "ComfyUI: {url} ga ulandi",
+    },
+    "workflow": {
+        "en": "Workflow template: {path}",
+        "ru": "Шаблон workflow: {path}",
+        "zh": "工作流模板：{path}",
+        "kk": "Workflow үлгісі: {path}",
+        "uz": "Workflow shabloni: {path}",
+    },
+    "custom_voice": {
+        "en": "CustomVoice overrides: {count} role mapping(s)",
+        "ru": "CustomVoice: переопределений ролей {count}",
+        "zh": "CustomVoice 覆盖：{count} 个角色映射",
+        "kk": "CustomVoice: {count} рөл сәйкестігі",
+        "uz": "CustomVoice: {count} rol moslamasi",
+    },
+    "recovery_check": {
+        "en": "ComfyUI recovery attempt {attempt}: checking local server...",
+        "ru": "Восстановление ComfyUI, попытка {attempt}: проверяем локальный сервер...",
+        "zh": "ComfyUI 恢复尝试 {attempt}：检查本地服务器...",
+        "kk": "ComfyUI қалпына келтіру, {attempt}-әрекет: жергілікті сервер тексерілуде...",
+        "uz": "ComfyUI tiklash urinishi {attempt}: lokal server tekshirilmoqda...",
+    },
+    "recovery_ready": {
+        "en": "ComfyUI recovery: server is reachable; retrying current chunk.",
+        "ru": "Восстановление ComfyUI: сервер доступен, повторяем текущий чанк.",
+        "zh": "ComfyUI 恢复：服务器可用，重试当前分块。",
+        "kk": "ComfyUI қалпына келді: сервер қолжетімді, ағымдағы чанк қайталанады.",
+        "uz": "ComfyUI tiklandi: server mavjud, joriy bo'lak qayta uriniladi.",
+    },
+    "start_server": {
+        "en": "ComfyUI: {url} is not reachable; {action} local portable server...",
+        "ru": "ComfyUI: {url} недоступен; {action} локальный portable-сервер...",
+        "zh": "ComfyUI：{url} 不可访问；{action} 本地 portable 服务器...",
+        "kk": "ComfyUI: {url} қолжетімсіз; жергілікті portable сервер {action}...",
+        "uz": "ComfyUI: {url} mavjud emas; lokal portable server {action}...",
+    },
+    "start_action_start": {
+        "en": "trying to start",
+        "ru": "запускаем",
+        "zh": "正在启动",
+        "kk": "іске қосылуда",
+        "uz": "ishga tushirilmoqda",
+    },
+    "start_action_restart": {
+        "en": "restarting",
+        "ru": "перезапускаем",
+        "zh": "正在重启",
+        "kk": "қайта іске қосылуда",
+        "uz": "qayta ishga tushirilmoqda",
+    },
+    "quality_retry": {
+        "en": "Quality retry pass {index}/{total}",
+        "ru": "Повтор качества {index}/{total}",
+        "zh": "质量重试轮次 {index}/{total}",
+        "kk": "Сапа қайталау кезеңі {index}/{total}",
+        "uz": "Sifat qayta urinish bosqichi {index}/{total}",
+    },
+    "quality_split": {
+        "en": "Quality loop split {count} repeated/overlong chunk(s) for retry.",
+        "ru": "Цикл качества разделил {count} повторяющихся/слишком длинных чанков для повтора.",
+        "zh": "质量循环拆分了 {count} 个重复/过长分块以便重试。",
+        "kk": "Сапа циклі қайталау үшін {count} қайталанған/тым ұзын чанк бөлді.",
+        "uz": "Sifat sikli qayta urinish uchun {count} takroriy/juda uzun bo'lakni ajratdi.",
+    },
+    "quality_stopped": {
+        "en": "Quality loop stopped: {count} chunk(s) still need attention.",
+        "ru": "Цикл качества остановлен: {count} чанков всё ещё требуют внимания.",
+        "zh": "质量循环已停止：仍有 {count} 个分块需要处理。",
+        "kk": "Сапа циклі тоқтады: {count} чанк әлі назар қажет етеді.",
+        "uz": "Sifat sikli to'xtadi: {count} bo'lak hali e'tibor talab qiladi.",
+    },
+    "quality_reset": {
+        "en": "Quality loop reset {count} bad chunk(s) for resynthesis.",
+        "ru": "Цикл качества сбросил {count} проблемных чанков на пересинтез.",
+        "zh": "质量循环已将 {count} 个问题分块重置为重新合成。",
+        "kk": "Сапа циклі {count} нашар чанкты қайта синтезге жіберді.",
+        "uz": "Sifat sikli {count} yomon bo'lakni qayta sintezga qaytardi.",
+    },
+}
+
+
+def _log_language(language: str) -> str:
+    normalized = (language or "").strip().lower()
+    return normalized if normalized in _LOG_LANGS else "en"
+
+
+def _log_text(language: str, key: str, **kwargs: Any) -> str:
+    entry = _LOG_MESSAGES[key]
+    return entry.get(_log_language(language), entry["en"]).format(**kwargs)
 
 
 def _format_eta(seconds: float) -> str:
@@ -61,6 +160,7 @@ class SynthesisRequest:
     manifest_path: Path
     output_dir: Path
     workflow_path: Path
+    tts_engine: str = "qwen3-customvoice-1.7b"
     comfyui_url: str = "http://localhost:8188"
     chapter: int | None = None
     chunk_timeout: float = 300.0
@@ -78,6 +178,7 @@ class SynthesisRequest:
     auto_start_comfyui: bool = True
     comfyui_start_wait_seconds: float = 300.0
     comfyui_recovery_retries: int = 2
+    log_language: str = "en"
 
 
 @dataclass(frozen=True)
@@ -108,6 +209,10 @@ class SynthesisController:
     def run(self) -> SynthesisRunResult:
         """Run ComfyUI synthesis for the request."""
         request = self._request
+        unsupported = unsupported_tts_engine_message(request.tts_engine)
+        if unsupported:
+            raise NotImplementedError(unsupported)
+
         manifest_model = load_manifest(request.manifest_path)
         manifest = manifest_model.to_record()
         total = len(flatten_manifest(manifest_model, request.chapter))
@@ -125,13 +230,19 @@ class SynthesisController:
             self._try_start_comfyui()
         if not client.is_reachable():
             raise ConnectionError(f"ComfyUI server not reachable at {request.comfyui_url}")
-        self._emit_log(f"ComfyUI: connected to {request.comfyui_url}")
+        self._emit_log(_log_text(request.log_language, "connected", url=request.comfyui_url))
 
         builder = WorkflowBuilder(workflow_path)
-        self._emit_log(f"Workflow template: {workflow_path}")
+        self._emit_log(_log_text(request.log_language, "workflow", path=workflow_path))
         speaker_overrides = load_speaker_overrides(request.clone_config_path)
         if speaker_overrides:
-            self._emit_log(f"CustomVoice overrides: {len(speaker_overrides)} role mapping(s)")
+            self._emit_log(
+                _log_text(
+                    request.log_language,
+                    "custom_voice",
+                    count=len(speaker_overrides),
+                )
+            )
         self._emit_status("__model_ready__")
 
         done_start = count_done_chunks(manifest, request.chapter)
@@ -173,7 +284,7 @@ class SynthesisController:
             )
 
         def recover_comfyui(_exc: Exception, attempt: int) -> ComfyUIClient | None:
-            self._emit_log(f"ComfyUI recovery attempt {attempt}: checking local server...")
+            self._emit_log(_log_text(request.log_language, "recovery_check", attempt=attempt))
             self._try_start_comfyui(restart=True)
             recovered = ComfyUIClient(request.comfyui_url)
             if not recovered.is_reachable():
@@ -181,7 +292,7 @@ class SynthesisController:
                     f"ComfyUI server not reachable after recovery attempt {attempt} "
                     f"at {request.comfyui_url}"
                 )
-            self._emit_log("ComfyUI recovery: server is reachable; retrying current chunk.")
+            self._emit_log(_log_text(request.log_language, "recovery_ready"))
             return recovered
 
         synthesized_total = 0
@@ -190,7 +301,14 @@ class SynthesisController:
         for pass_index in range(max_passes):
             retry_pass = pass_index > 0
             if retry_pass:
-                self._emit_log(f"Quality retry pass {pass_index}/{max_passes - 1}")
+                self._emit_log(
+                    _log_text(
+                        request.log_language,
+                        "quality_retry",
+                        index=pass_index,
+                        total=max_passes - 1,
+                    )
+                )
             summary = synthesize_manifest(
                 manifest=manifest,
                 manifest_path=request.manifest_path,
@@ -205,6 +323,7 @@ class SynthesisController:
                 progress=on_line,
                 recovery=recover_comfyui if request.auto_start_comfyui else None,
                 max_recovery_retries=request.comfyui_recovery_retries,
+                log_language=request.log_language,
             )
             synthesized_total += summary.synthesized
             skipped = summary.skipped
@@ -219,7 +338,9 @@ class SynthesisController:
             splits = split_problem_chunks_for_retry(manifest)
             if splits:
                 save_manifest(request.manifest_path, manifest)
-                self._emit_log(f"Quality loop split {splits} repeated/overlong chunk(s) for retry.")
+                self._emit_log(
+                    _log_text(request.log_language, "quality_split", count=splits)
+                )
 
             retry_pending = collect_pending_chunks(
                 manifest,
@@ -230,11 +351,19 @@ class SynthesisController:
                 break
             if pass_index == max_passes - 1:
                 self._emit_log(
-                    f"Quality loop stopped: {len(retry_pending)} chunk(s) still need attention."
+                    _log_text(
+                        request.log_language,
+                        "quality_stopped",
+                        count=len(retry_pending),
+                    )
                 )
                 break
             self._emit_log(
-                f"Quality loop reset {len(retry_pending)} bad chunk(s) for resynthesis."
+                _log_text(
+                    request.log_language,
+                    "quality_reset",
+                    count=len(retry_pending),
+                )
             )
 
         self._emit_progress(total, total, "0s", 0, 0, 0.0, 0, 0, 0)
@@ -250,8 +379,15 @@ class SynthesisController:
         if not request.auto_start_comfyui:
             return
 
-        action = "restarting" if restart else "trying to start"
-        self._emit_log(f"ComfyUI: {request.comfyui_url} is not reachable; {action} local portable server...")
+        action_key = "start_action_restart" if restart else "start_action_start"
+        self._emit_log(
+            _log_text(
+                request.log_language,
+                "start_server",
+                url=request.comfyui_url,
+                action=_log_text(request.log_language, action_key),
+            )
+        )
         try:
             result = ensure_local_comfyui(
                 request.comfyui_url,

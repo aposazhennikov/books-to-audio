@@ -1,4 +1,4 @@
-"""Download and verify local Qwen3-TTS model folders."""
+"""Download and verify local TTS model folders."""
 
 from __future__ import annotations
 
@@ -6,18 +6,25 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from book_normalizer.tts.engines import (
+    COSYVOICE_3,
+    F5_TTS,
+    FISH_SPEECH_15,
+    QWEN3_TTS_BASE_06B,
+    QWEN3_TTS_BASE_17B,
+    QWEN3_TTS_CUSTOM_VOICE_06B,
+    QWEN3_TTS_CUSTOM_VOICE_17B,
+    QWEN3_TTS_TOKENIZER,
+    QWEN3_TTS_VOICE_DESIGN_17B,
+    TTS_ENGINES,
+    XTTS_V2,
+    tts_model_ids_for_engine,
+)
 from book_normalizer.tts.model_paths import (
     default_comfyui_models_dir,
     looks_like_model_dir,
     model_basename,
 )
-
-QWEN3_TTS_CUSTOM_VOICE_17B = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
-QWEN3_TTS_CUSTOM_VOICE_06B = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
-QWEN3_TTS_BASE_17B = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
-QWEN3_TTS_BASE_06B = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
-QWEN3_TTS_VOICE_DESIGN_17B = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
-QWEN3_TTS_TOKENIZER = "Qwen/Qwen3-TTS-Tokenizer-12Hz"
 
 DEFAULT_TTS_MODEL_ID = QWEN3_TTS_CUSTOM_VOICE_17B
 VOICE_CLONE_MODEL_ID = QWEN3_TTS_BASE_17B
@@ -30,6 +37,10 @@ KNOWN_TTS_MODEL_IDS = (
     QWEN3_TTS_BASE_06B,
     QWEN3_TTS_VOICE_DESIGN_17B,
     QWEN3_TTS_TOKENIZER,
+    FISH_SPEECH_15,
+    F5_TTS,
+    XTTS_V2,
+    COSYVOICE_3,
 )
 
 MODEL_DOWNLOAD_WARNING = (
@@ -69,6 +80,48 @@ def expand_tts_model_ids(
     include_tokenizer: bool = True,
 ) -> list[str]:
     """Return a deduplicated model list, optionally adding the Qwen tokenizer."""
+    expanded: list[str] = []
+    for model_or_engine_id in model_ids:
+        engine_models = tts_model_ids_for_engine(model_or_engine_id)
+        candidates = engine_models or (str(model_or_engine_id or "").strip(),)
+        for model_id in candidates:
+            normalized = str(model_id or "").strip()
+            if not normalized:
+                continue
+            if normalized not in expanded:
+                expanded.append(normalized)
+
+    needs_qwen_tokenizer = any(
+        model_id.startswith("Qwen/Qwen3-TTS-12Hz-") for model_id in expanded
+    )
+    if include_tokenizer and needs_qwen_tokenizer and QWEN3_TTS_TOKENIZER not in expanded:
+        expanded.append(QWEN3_TTS_TOKENIZER)
+
+    return expanded
+
+
+def default_tts_model_ids() -> list[str]:
+    """Return model ids downloaded by the default installer scenario."""
+    defaults = [engine.engine_id for engine in TTS_ENGINES if engine.default]
+    return expand_tts_model_ids(defaults)
+
+
+def all_supported_tts_model_ids() -> list[str]:
+    """Return model ids for every selectable TTS engine."""
+    supported: list[str] = []
+    for engine in TTS_ENGINES:
+        for model_id in engine.model_ids:
+            if model_id not in supported:
+                supported.append(model_id)
+    return supported
+
+
+def _expand_legacy_tts_model_ids(
+    model_ids: list[str] | tuple[str, ...],
+    *,
+    include_tokenizer: bool = True,
+) -> list[str]:
+    """Compatibility helper kept for older tests/imports during refactors."""
     expanded: list[str] = []
     for model_id in model_ids:
         normalized = str(model_id or "").strip()

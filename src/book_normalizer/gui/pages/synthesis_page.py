@@ -66,6 +66,11 @@ from book_normalizer.gui.workers.tts_worker import (
     TTSSynthesisWorker,
     VoicePromptSaveWorker,
 )
+from book_normalizer.tts.engines import (
+    DEFAULT_TTS_ENGINE_ID,
+    get_tts_engine,
+    tts_engine_choices,
+)
 from book_normalizer.tts.model_download import (
     DEFAULT_TTS_MODEL_ID,
     MODEL_DOWNLOAD_WARNING,
@@ -82,12 +87,7 @@ from book_normalizer.tts.voice_library import (
 )
 from book_normalizer.tts.voice_mapping import primary_voice_mapping_key
 
-MODELS = [
-    "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
-    "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
-    "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-    "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
-]
+MODELS = [engine_id for _label, engine_id in tts_engine_choices()]
 
 # All available voice preset IDs used by v2 manifests and ComfyUI workflows.
 VOICE_IDS = [
@@ -1138,7 +1138,8 @@ class SynthesisPage(QWidget):
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self._model_combo = QComboBox()
-        self._model_combo.addItems(MODELS[:2])
+        for label, engine_id in tts_engine_choices():
+            self._model_combo.addItem(label, engine_id)
         _make_combo_compact(self._model_combo, min_chars=24)
         self._model_label = QLabel()
         form.addRow(
@@ -2304,7 +2305,7 @@ class SynthesisPage(QWidget):
         return path
 
     def _required_tts_model_ids(self) -> list[str]:
-        selected_model = self._model_combo.currentText().strip() or DEFAULT_TTS_MODEL_ID
+        selected_model = self._selected_tts_engine_id_or_model()
         if not self._is_custom_voice_mode():
             return expand_tts_model_ids([selected_model])
 
@@ -2312,6 +2313,16 @@ class SynthesisPage(QWidget):
         if strategy in {"sample_all", "saved_all"}:
             return expand_tts_model_ids([VOICE_CLONE_MODEL_ID])
         return expand_tts_model_ids([VOICE_CLONE_MODEL_ID, selected_model])
+
+    def _selected_tts_engine_id_or_model(self) -> str:
+        value = self._model_combo.currentData()
+        if value:
+            return str(value)
+        text = self._model_combo.currentText().strip()
+        engine = get_tts_engine(text)
+        if engine:
+            return engine.engine_id
+        return text or DEFAULT_TTS_ENGINE_ID or DEFAULT_TTS_MODEL_ID
 
     def _install_tts_models(self) -> None:
         models_dir = self._selected_models_dir()
@@ -2941,7 +2952,7 @@ class SynthesisPage(QWidget):
         self._worker = TTSSynthesisWorker(
             manifest_path=self._manifest_path,
             output_dir=output_dir,
-            model=self._model_combo.currentText(),
+            model=self._selected_tts_engine_id_or_model(),
             chapter=chapter,
             batch_size=self._batch_size.value(),
             resume=self._resume_check.isChecked(),
@@ -3025,7 +3036,7 @@ class SynthesisPage(QWidget):
         self._worker = TTSSynthesisWorker(
             manifest_path=test_manifest,
             output_dir=self._preview_output_dir,
-            model=self._model_combo.currentText(),
+            model=self._selected_tts_engine_id_or_model(),
             chapter=None,
             batch_size=1,
             resume=False,
@@ -3175,7 +3186,7 @@ class SynthesisPage(QWidget):
         self._worker = TTSSynthesisWorker(
             manifest_path=self._manifest_path,
             output_dir=output_dir,
-            model=self._model_combo.currentText(),
+            model=self._selected_tts_engine_id_or_model(),
             chapter=self._selected_chapter(),
             batch_size=self._batch_size.value(),
             resume=True,

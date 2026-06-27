@@ -15,7 +15,7 @@ from book_normalizer.comfyui.generation_options import (
     DEFAULT_TOP_P,
     GenerationOptions,
 )
-from book_normalizer.gui.i18n import t
+from book_normalizer.gui.i18n import get_language, t
 from book_normalizer.languages import normalize_book_language
 from book_normalizer.runtime_paths import configured_ollama_endpoint
 from book_normalizer.tts.model_download import MODEL_DOWNLOAD_WARNING, install_tts_models
@@ -187,6 +187,7 @@ class TTSSynthesisWorker(QThread):
         super().__init__(parent)
         self._manifest_path = manifest_path
         self._output_dir = output_dir
+        self._model = model
         self._chapter = chapter
         self._chunk_timeout = chunk_timeout
         self._comfyui_url = comfyui_url
@@ -242,6 +243,7 @@ class TTSSynthesisWorker(QThread):
                 manifest_path=self._manifest_path,
                 output_dir=self._output_dir,
                 workflow_path=workflow,
+                tts_engine=self._model,
                 comfyui_url=self._comfyui_url or "http://localhost:8188",
                 chapter=self._chapter,
                 chunk_timeout=float(self._chunk_timeout),
@@ -255,6 +257,7 @@ class TTSSynthesisWorker(QThread):
                 asr_model=self._asr_model,
                 asr_device=self._asr_device,
                 max_resynthesis_attempts=self._max_resynthesis_attempts,
+                log_language=get_language(),
             )
             controller = SynthesisController(
                 request,

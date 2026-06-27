@@ -37,6 +37,7 @@ from install import (
     _pull_ollama_models,
     _resolve_install_paths,
     _resolve_log_path,
+    _selected_tts_model_ids,
     _system_package_commands,
     _system_package_hint,
     _verified_hash_matches,
@@ -56,6 +57,19 @@ def test_installer_exposes_asr_extra_flag(monkeypatch) -> None:
     from install import _resolve_extras
 
     assert _resolve_extras(args) == {"asr"}
+
+
+def test_installer_tts_model_selection_defaults_to_recommended_qwen() -> None:
+    assert _selected_tts_model_ids([]) == list(DEFAULT_TTS_HASH_MODEL_IDS)
+
+
+def test_installer_tts_model_selection_supports_requested_alternatives() -> None:
+    assert _selected_tts_model_ids(["fish-speech-1.5", "f5-tts", "xtts-v2", "cosyvoice-3"]) == [
+        "fish-speech-1.5",
+        "f5-tts",
+        "xtts-v2",
+        "cosyvoice-3",
+    ]
 
 
 def test_installer_entrypoints_do_not_contain_mojibake() -> None:

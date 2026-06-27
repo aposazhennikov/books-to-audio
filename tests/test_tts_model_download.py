@@ -7,8 +7,12 @@ from types import SimpleNamespace
 import pytest
 
 from book_normalizer.tts.model_download import (
+    COSYVOICE_3,
     DEFAULT_TTS_MODEL_ID,
+    F5_TTS,
+    FISH_SPEECH_15,
     QWEN3_TTS_TOKENIZER,
+    XTTS_V2,
     TTSModelDownloadError,
     expand_tts_model_ids,
     install_tts_models,
@@ -27,6 +31,17 @@ def test_expand_tts_model_ids_adds_tokenizer_once() -> None:
     assert expand_tts_model_ids([DEFAULT_TTS_MODEL_ID, QWEN3_TTS_TOKENIZER]) == [
         DEFAULT_TTS_MODEL_ID,
         QWEN3_TTS_TOKENIZER,
+    ]
+
+
+def test_expand_tts_model_ids_resolves_new_engine_aliases_without_qwen_tokenizer() -> None:
+    assert expand_tts_model_ids(
+        ["fish-speech-1.5", "f5-tts", "xtts-v2", "cosyvoice-3"]
+    ) == [
+        FISH_SPEECH_15,
+        F5_TTS,
+        XTTS_V2,
+        COSYVOICE_3,
     ]
 
 

@@ -625,6 +625,7 @@ def test_voice_table_large_manifest_lazily_builds_visible_controls(qapp, qtbot) 
     ]
 
     page._voice_table.set_segments(segments)
+    qtbot.waitUntil(lambda: not page._voice_table._populating, timeout=3000)
 
     live_voice_controls = sum(
         1
@@ -635,6 +636,44 @@ def test_voice_table_large_manifest_lazily_builds_visible_controls(qapp, qtbot) 
     assert 0 < live_voice_controls < len(segments) // 2
 
     page.deleteLater()
+
+
+def test_voice_table_large_manifest_batches_rows_and_defers_full_text(
+    qapp,
+    qtbot,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(voice_table, "_TABLE_POPULATE_BATCH_THRESHOLD", 3)
+    monkeypatch.setattr(voice_table, "_TABLE_POPULATE_BATCH_SIZE", 2)
+    table = voice_table.VoiceTableWidget()
+    qtbot.addWidget(table)
+    segments = [
+        {
+            "segment_index": index,
+            "chapter_index": 0,
+            "role": "narrator",
+            "voice_id": "narrator_calm",
+            "intonation": "calm",
+            "text": f"Segment {index}.",
+        }
+        for index in range(5)
+    ]
+
+    table.set_segments(segments)
+
+    assert table._table.rowCount() == len(segments)
+    assert table._populating
+    assert table._full_text_editor.toPlainText() == ""
+    assert table._full_text_sync_pending is False
+
+    qtbot.waitUntil(lambda: not table._populating, timeout=3000)
+    qtbot.waitUntil(
+        lambda: table._full_text_editor.toPlainText().endswith("Segment 4."),
+        timeout=3000,
+    )
+    assert table._full_text_sync_pending is False
+
+    table.deleteLater()
 
 
 def test_voices_page_builds_chunks_without_deleted_segments(qapp, qtbot, tmp_path) -> None:

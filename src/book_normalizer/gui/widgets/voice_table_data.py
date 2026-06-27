@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QComboBox
 
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest
@@ -20,6 +21,19 @@ from book_normalizer.tts.voice_mapping import (
 
 class VoiceTableDataMixin:
     """Mixin with data transforms and bulk edit actions."""
+
+    def _request_full_text_sync(self) -> None:
+        """Queue the expensive full-text editor rebuild for the next UI turn."""
+        if getattr(self, "_full_text_sync_pending", False):
+            return
+        self._full_text_sync_pending = True
+        QTimer.singleShot(0, self._flush_pending_full_text_sync)
+
+    def _flush_pending_full_text_sync(self) -> None:
+        if not getattr(self, "_full_text_sync_pending", False):
+            return
+        self._full_text_sync_pending = False
+        self._sync_full_text_from_segments()
 
     def _sync_full_text_from_segments(self) -> None:
         text = "\n\n".join(str(seg.get("text") or "") for seg in self._segments)

@@ -51,18 +51,22 @@ class AudioQaResult:
 def load_manifest(path: Path) -> dict[str, Any]:
     """Load a v2 manifest for QA."""
     data = json.loads(path.read_text(encoding="utf-8"))
-    return ensure_v2_manifest(data).to_record()
+    manifest = ensure_v2_manifest(data).to_record()
+    manifest["_manifest_path"] = str(path)
+    return manifest
 
 
 def run_audio_qa(
     manifest: dict[str, Any],
     *,
+    manifest_path: Path | None = None,
     min_seconds_per_100_chars: float = 2.0,
     max_seconds_per_100_chars: float = 18.0,
     silence_rms_threshold: float = 1e-4,
     clipping_ratio_threshold: float = 0.01,
 ) -> AudioQaResult:
     """Check manifest/audio consistency and basic WAV health."""
+    manifest_path = manifest_path or _manifest_path_from_record(manifest)
     manifest = ensure_v2_manifest(manifest).to_record()
     result = AudioQaResult()
     for chapter in manifest.get("chapters", []):
@@ -102,7 +106,7 @@ def run_audio_qa(
                 )
                 continue
 
-            audio_path = Path(audio_file)
+            audio_path = _resolve_audio_path(audio_file, manifest_path)
             if not audio_path.exists():
                 result.issues.append(
                     AudioIssue(
@@ -206,6 +210,18 @@ def run_audio_qa(
                     )
                 )
     return result
+
+
+def _manifest_path_from_record(manifest: dict[str, Any]) -> Path | None:
+    raw_path = str(manifest.get("_manifest_path") or "")
+    return Path(raw_path) if raw_path else None
+
+
+def _resolve_audio_path(audio_file: str, manifest_path: Path | None) -> Path:
+    path = Path(audio_file)
+    if not path.is_absolute() and manifest_path is not None:
+        path = manifest_path.parent / path
+    return path
 
 
 def inspect_wav(path: Path) -> dict[str, float]:

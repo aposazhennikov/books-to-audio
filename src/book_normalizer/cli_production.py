@@ -112,7 +112,7 @@ def audio_qa_command(
     from book_normalizer.tts.audio_qa import load_manifest, run_audio_qa
 
     manifest = load_manifest(manifest_path)
-    result = run_audio_qa(manifest)
+    result = run_audio_qa(manifest, manifest_path=manifest_path)
     click.echo(
         f"Audio QA: checked {result.checked_files}/{result.synthesized_chunks} synthesized "
         f"chunks, {len(result.issues)} issue(s)."

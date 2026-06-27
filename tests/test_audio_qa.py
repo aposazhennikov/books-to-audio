@@ -91,6 +91,33 @@ def test_audio_qa_passes_basic_non_silent_file(tmp_path: Path) -> None:
     assert not any(issue.severity == "error" for issue in result.issues)
 
 
+def test_audio_qa_resolves_relative_audio_from_manifest_dir(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "book" / "chunks_manifest_v2.json"
+    wav_path = manifest_path.parent / "audio_chunks" / "chapter_001" / "chunk_001_narrator.wav"
+    _write_wav(wav_path, b"\x10\x00" * 24000)
+    manifest = {
+        "version": 2,
+        "chapters": [
+            {
+                "chapter_index": 0,
+                "chunks": [
+                    {
+                        "chunk_index": 0,
+                        "synthesized": True,
+                        "audio_file": "audio_chunks/chapter_001/chunk_001_narrator.wav",
+                        "text": "Short text.",
+                    }
+                ],
+            }
+        ],
+    }
+
+    result = run_audio_qa(manifest, manifest_path=manifest_path, min_seconds_per_100_chars=0.1)
+
+    assert result.checked_files == 1
+    assert not any(issue.kind == "missing_audio_file" for issue in result.issues)
+
+
 def test_audio_qa_ignores_deleted_chunks(tmp_path: Path) -> None:
     wav_path = tmp_path / "ok.wav"
     _write_wav(wav_path, b"\x10\x00" * 24000)

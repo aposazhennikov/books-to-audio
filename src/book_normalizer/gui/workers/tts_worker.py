@@ -332,7 +332,7 @@ class AsrQaWorker(QThread):
             manifest = json.loads(self._manifest_path.read_text(encoding="utf-8"))
             report_path = self._manifest_path.with_name("asr_qa_report.json")
 
-            audio_result = run_audio_qa(manifest)
+            audio_result = run_audio_qa(manifest, manifest_path=self._manifest_path)
             self.log_line.emit(
                 f"Audio QA: {audio_result.checked_files}/{audio_result.synthesized_chunks} checked, "
                 f"{len(audio_result.issues)} issue(s)."

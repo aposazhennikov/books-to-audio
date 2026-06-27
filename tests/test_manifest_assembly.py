@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import wave
 from pathlib import Path
 
-from book_normalizer.tts.manifest_assembly import assemble_from_manifest
+from book_normalizer.tts.manifest_assembly import assemble_from_manifest, load_manifest_v2
 
 
 def _write_wav(path: Path, frames: int = 1200, sample_rate: int = 24000) -> None:
@@ -48,6 +49,44 @@ def test_assemble_from_manifest_preserves_manifest_order(tmp_path: Path) -> None
     with wave.open(str(out), "rb") as wav:
         # 100 + 100 frames plus 100ms pause at 24kHz.
         assert wav.getnframes() == 2600
+
+
+def test_assemble_from_loaded_manifest_resolves_relative_audio_from_manifest_dir(
+    tmp_path: Path,
+) -> None:
+    project_dir = tmp_path / "book"
+    wav_path = project_dir / "audio_chunks" / "chapter_001" / "chunk_001_narrator.wav"
+    _write_wav(wav_path, frames=100)
+    manifest_path = project_dir / "chunks_manifest_v2.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "chapters": [
+                    {
+                        "chapter_index": 0,
+                        "chunks": [
+                            {
+                                "chunk_index": 0,
+                                "voice": "narrator",
+                                "synthesized": True,
+                                "audio_file": "audio_chunks/chapter_001/chunk_001_narrator.wav",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manifest = load_manifest_v2(manifest_path)
+    results = assemble_from_manifest(manifest, tmp_path / "assembled", pause_same_voice_ms=0)
+
+    assert results[0].chunks == 1
+    assert results[0].missing == 0
+    assert (tmp_path / "assembled" / "chapter_001.wav").exists()
 
 
 def test_assemble_from_manifest_skips_missing_files_when_not_strict(tmp_path: Path) -> None:

@@ -29,7 +29,9 @@ def load_manifest_v2(manifest_path: Path) -> dict[str, Any]:
     if not manifest_path.exists():
         raise FileNotFoundError(f"Manifest not found: {manifest_path}")
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    return ensure_v2_manifest(data).to_record()
+    manifest = ensure_v2_manifest(data).to_record()
+    manifest["_manifest_path"] = str(manifest_path)
+    return manifest
 
 
 def assemble_from_manifest(
@@ -40,8 +42,10 @@ def assemble_from_manifest(
     pause_voice_change_ms: int = 600,
     chapter_filter: int | None = None,
     strict_missing: bool = False,
+    manifest_path: Path | None = None,
 ) -> list[ChapterAssemblyResult]:
     """Assemble synthesized chunks in manifest order."""
+    manifest_path = manifest_path or _manifest_path_from_record(manifest)
     manifest = ensure_v2_manifest(manifest).to_record()
     out_dir.mkdir(parents=True, exist_ok=True)
     chapters = manifest.get("chapters", [])
@@ -84,7 +88,7 @@ def assemble_from_manifest(
         messages: list[str] = []
         missing = 0
         for chunk in chunks:
-            audio_path = Path(str(chunk["audio_file"]))
+            audio_path = _resolve_audio_path(str(chunk["audio_file"]), manifest_path)
             if not audio_path.exists():
                 missing += 1
                 message = f"Missing audio file {audio_path}"
@@ -129,6 +133,18 @@ def assemble_from_manifest(
         )
 
     return results
+
+
+def _manifest_path_from_record(manifest: dict[str, Any]) -> Path | None:
+    raw_path = str(manifest.get("_manifest_path") or "")
+    return Path(raw_path) if raw_path else None
+
+
+def _resolve_audio_path(audio_file: str, manifest_path: Path | None) -> Path:
+    path = Path(audio_file)
+    if not path.is_absolute() and manifest_path is not None:
+        path = manifest_path.parent / path
+    return path
 
 
 def assemble_wav_files(

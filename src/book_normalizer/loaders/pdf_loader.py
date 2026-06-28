@@ -1141,7 +1141,7 @@ def _repair_pdf_drop_caps(text: str) -> str:
             current = _repair_drop_cap_paragraph(current)
         current = _repair_drop_caps_after_embedded_heading(current)
         repaired.append(current)
-        if _is_chapter_heading_line(current):
+        if _is_chapter_heading_line(current) or _ocr_text_is_short_title(current):
             after_heading_context = 6
         elif after_heading_context > 0:
             after_heading_context -= 1

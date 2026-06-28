@@ -894,6 +894,17 @@ class TestOcrImagePreparation:
 
         assert cleaned == raw
 
+    def test_postprocess_ocr_text_repairs_drop_cap_after_short_title(self) -> None:
+        raw = (
+            "\u0412\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u044f\n\n"
+            "\u0435\u0440\u0433\u0435\u0439 \u0432\u044b\u0445\u043e\u0434\u0438\u043b "
+            "\u0438\u0437 \u0441\u043d\u0430 \u0442\u044f\u0436\u0435\u043b\u043e."
+        )
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "\u0421\u0435\u0440\u0433\u0435\u0439 \u0432\u044b\u0445\u043e\u0434\u0438\u043b" in cleaned
+
     def test_short_title_gate_accepts_numbered_russian_titlecase_lead(self) -> None:
         title = "7. \u0412 \u043f\u043e\u0438\u0441\u043a\u0430\u0445 \u0441\u0438\u043b\u044b"
 

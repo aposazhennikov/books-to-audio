@@ -35,7 +35,8 @@ def test_multilingual_llm_normalizer_prompts_are_readable() -> None:
         for language in ("ru", "en", "zh", "kk", "uz")
     }
 
-    assert "Ты" in prompts["ru"]
+    assert "Russian literary prose" in prompts["ru"]
+    assert "именуемое" in prompts["ru"]
     assert "你是" in prompts["zh"]
     assert "қазақ" in prompts["kk"].lower()
     for prompt in prompts.values():
@@ -132,6 +133,20 @@ class TestTextPreservationValidator:
         result = self.validator.validate(original, corrected)
         assert result.is_valid, f"Should accept split-word repair: {result.issues}"
         assert result.accepted_text == corrected
+
+    def test_accepts_parenthesis_pdf_split_word_repairs(self) -> None:
+        """Joining PDF ``(`` word breaks should not look like hallucination."""
+        original = "Оставшимся самим расхлё( бывать эту историю. Потом был абор( дажном бой."
+        corrected = "Оставшимся самим расхлёбывать эту историю. Потом был абордажном бой."
+        result = self.validator.validate(original, corrected)
+        assert result.is_valid, f"Should accept parenthesis split repair: {result.issues}"
+
+    def test_layout_line_joins_do_not_remove_sentences(self) -> None:
+        """Removing PDF line-wrap newlines should not change sentence count."""
+        original = "Он вошёл в комнату\nи сел за стол. Затем он сказал:\n— Пора."
+        corrected = "Он вошёл в комнату и сел за стол. Затем он сказал:\n— Пора."
+        result = self.validator.validate(original, corrected)
+        assert result.is_valid, f"Should accept layout line join: {result.issues}"
 
     def test_rejects_empty_output(self) -> None:
         """Empty LLM output must always be rejected."""

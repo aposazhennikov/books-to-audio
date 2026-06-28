@@ -208,7 +208,8 @@ class TextPreservationValidator:
 
 
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
-_SENTENCE_END_RE = re.compile(r"[.!?…]+\s+|\n")
+_SENTENCE_END_RE = re.compile(r"[.!?…]+(?:\s+|$)")
+_PDF_PARENTHESIS_SPLIT_RE = re.compile(r"([А-ЯЁа-яё])\([ \t\r\n]+([А-ЯЁа-яё])")
 _OBVIOUS_PUNCTUATION_ARTIFACT_RE = re.compile(r",,{1,}|[;:]{2,}|[!?]{4,}|\.{4,}")
 _DIALOGUE_DASH_RE = re.compile(r"(^|[\n\r\s])[—–-]\s*(?=\S)")
 _QUOTE_CHARS = "\"'«»“”„"
@@ -227,6 +228,9 @@ def _char_similarity(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
 
+    a = _canonical_text_for_validation(a)
+    b = _canonical_text_for_validation(b)
+
     # Remove common punctuation that we allow the LLM to adjust freely.
     punctuation = r"""[.,;:!?\"'«»“”„–—\-()\[\]{}]"""
     a_stripped = re.sub(punctuation, "", a).lower()
@@ -243,12 +247,12 @@ def _char_similarity(a: str, b: str) -> float:
 
 def _word_count(text: str) -> int:
     """Count words using Unicode word boundary pattern."""
-    return len(_WORD_RE.findall(repair_pdf_split_russian_words(text)))
+    return len(_WORD_RE.findall(_canonical_text_for_validation(text)))
 
 
 def _words(text: str) -> list[str]:
     """Tokenise text into words (case-insensitive) using the same pattern as _word_count."""
-    return [w.lower() for w in _WORD_RE.findall(repair_pdf_split_russian_words(text))]
+    return [w.lower() for w in _WORD_RE.findall(_canonical_text_for_validation(text))]
 
 
 _LATIN_RE = re.compile(r"^[A-Za-z]+$")
@@ -265,8 +269,19 @@ def _word_ratio(original: str, corrected: str) -> float:
 
 def _sentence_count(text: str) -> int:
     """Estimate sentence count by splitting on sentence-ending punctuation."""
+    text = _canonical_text_for_validation(text)
     parts = [p.strip() for p in _SENTENCE_END_RE.split(text) if p.strip()]
     return max(1, len(parts))
+
+
+def _canonical_text_for_validation(text: str) -> str:
+    """Normalize layout-only OCR artifacts before preservation metrics."""
+
+    text = _PDF_PARENTHESIS_SPLIT_RE.sub(r"\1 \2", text or "")
+    text = repair_pdf_split_russian_words(text)
+    text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    return text.strip()
 
 
 def _sentence_ratio(original: str, corrected: str) -> float:

@@ -77,6 +77,18 @@ def test_audit_allows_quoted_inner_thought_as_narration() -> None:
     assert issues == []
 
 
+def test_audit_allows_short_quoted_reaction_as_narration() -> None:
+    issues = audit_dialogue_chunk_boundaries([
+        {
+            "role": "narrator",
+            "section_kind": "narration",
+            "text": "«Маги?»",
+        },
+    ])
+
+    assert issues == []
+
+
 def test_audit_still_flags_quoted_speech_without_thought_marker() -> None:
     issues = audit_dialogue_chunk_boundaries([
         {

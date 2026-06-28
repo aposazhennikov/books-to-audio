@@ -79,6 +79,7 @@ def audit_dialogue_chunk_boundaries(
             _is_narration_chunk(role, section_kind)
             and _starts_with_direct_speech_marker(text, code)
             and not _is_quoted_inner_thought_narration(text, code)
+            and not _is_short_quoted_reaction_narration(text, code)
         ):
             issues.append(DialogueChunkIssue(
                 kind="narration_starts_with_direct_speech",
@@ -271,6 +272,20 @@ def _is_quoted_inner_thought_narration(text: str, language: str) -> bool:
     speech, tail = _take_quoted_speech(stripped)
     probe = f"{speech} {tail[:200]}".casefold()
     return bool(_RU_INNER_THOUGHT_RE.search(probe))
+
+
+def _is_short_quoted_reaction_narration(text: str, language: str) -> bool:
+    if language != "ru":
+        return False
+    stripped = text.lstrip()
+    if not stripped or stripped[0] not in "\"“„«‹「『《〈":
+        return False
+    speech, tail = _take_quoted_speech(stripped)
+    if tail:
+        return False
+    core = speech.strip().strip("\"“„«»‹›「」『』《》〈〉").strip(" ,.;:!?…")
+    words = re.findall(r"[\wА-Яа-яЁё-]+", core, flags=re.UNICODE)
+    return 1 <= len(words) <= 3
 
 
 def _speaker_issue(

@@ -9,7 +9,7 @@ Return exactly one annotation for each source_segments[].segment_id:
 - speaker: proven character name only
 - character_description: short speaker description when clear
 - emotion: expected mood of the fragment
-- section_kind: narration, dialogue, annotation, preface, epilogue, or chapter_title
+- section_kind: narration, dialogue, inner_thought, annotation, preface, epilogue, or chapter_title
 - intonation: short English label such as calm, tense, angry, whisper, sad, cheerful, fearful, urgent
 - boundary_after: semantic, paragraph, chapter, or empty string
 - pause_after_ms: recommended pause after the fragment
@@ -20,7 +20,8 @@ Rules:
 - Direct speech should be dialogue when it is really a spoken line.
 - Quoted inner thoughts followed by cues like "he reminded himself", "he thought",
   "she thought", "подумал", "напомнил себе", or similar are not spoken dialogue;
-  mark them as narrator unless the text clearly says they were spoken aloud.
+  mark the thought itself as inner_thought and the cue/tag as narrator unless the
+  text clearly says they were spoken aloud.
 - Keep short spoken fragments and their following speech tags flowing naturally:
   after a short dialogue fragment that is immediately followed by a narrator speech
   tag, use boundary_after "" and pause_after_ms 0 unless the text shows a real beat.

@@ -9,7 +9,7 @@
 - speaker: имя персонажа, только если оно доказано контекстом
 - character_description: короткое описание говорящего, если понятно
 - emotion: ожидаемое настроение фрагмента
-- section_kind: narration, dialogue, annotation, preface, epilogue или chapter_title
+- section_kind: narration, dialogue, inner_thought, annotation, preface, epilogue или chapter_title
 - intonation: короткая английская метка, например calm, tense, angry, whisper, sad, cheerful, fearful, urgent
 - boundary_after: semantic, paragraph, chapter или пустая строка
 - pause_after_ms: рекомендуемая пауза после фрагмента
@@ -20,7 +20,8 @@
 - Прямая речь должна быть dialogue, если это действительно реплика.
 - Цитированные внутренние мысли с ремарками вроде "подумал", "напомнил себе",
   "сказал себе", "решил он" и похожими не являются произнесенной вслух репликой;
-  помечай их как narrator, если текст явно не говорит, что они произнесены вслух.
+  саму мысль помечай как inner_thought, а авторскую ремарку как narrator, если
+  текст явно не говорит, что они произнесены вслух.
 - Короткая реплика и следующая сразу за ней авторская ремарка должны звучать слитно:
   после короткой реплики перед ремаркой ставь boundary_after "" и pause_after_ms 0,
   если в тексте нет настоящей смысловой паузы.

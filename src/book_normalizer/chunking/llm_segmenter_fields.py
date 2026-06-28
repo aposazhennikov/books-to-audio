@@ -36,6 +36,7 @@ def _clean_section_kind(value: Any, role: str) -> str:
     allowed = {
         "narration",
         "dialogue",
+        "inner_thought",
         "annotation",
         "preface",
         "epilogue",
@@ -53,7 +54,9 @@ def _is_dialogue_segment(
     text: str,
 ) -> bool:
     """Detect direct speech even when the LLM cannot prove speaker gender."""
-    if role == "narrator" and section_kind == "narration" and not speaker:
+    if role == "narrator" and section_kind in {"narration", "inner_thought"} and not speaker:
+        return False
+    if section_kind == "inner_thought":
         return False
     if role in {"male", "female", "unknown"} or section_kind == "dialogue" or speaker:
         return True

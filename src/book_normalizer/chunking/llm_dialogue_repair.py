@@ -124,8 +124,11 @@ def repair_segment_dialogue_boundaries(
             language=language,
             recent_dialogue_speakers=recent_dialogue_speakers,
             force_narration=bool(row.get("_narration_repaired")),
-            force_dialogue=bool(row.get("_direct_speech_repaired"))
-            or applied_continuation_speaker,
+            force_dialogue=(
+                bool(row.get("_direct_speech_repaired"))
+                or applied_continuation_speaker
+                or (bool(speaker) and role in {"male", "female", "unknown"})
+            ),
         )
         is_dialogue = _is_dialogue_segment(
             role=role,

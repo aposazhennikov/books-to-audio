@@ -311,6 +311,8 @@ def _speaker_issue(
 
 
 def _is_dialogue_chunk(role: str, section_kind: str) -> bool:
+    if section_kind == "inner_thought":
+        return False
     return section_kind == "dialogue" or role in {"male", "female", "unknown"}
 
 

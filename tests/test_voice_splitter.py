@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from book_normalizer.chunking.annotations import classify_chapter_paragraphs
+from book_normalizer.chunking.dialogue_invariants import audit_dialogue_chunk_boundaries
 from book_normalizer.chunking.splitter import (
     DEFAULT_CHAPTER_PAUSE_MS,
     DEFAULT_PARAGRAPH_PAUSE_MS,
@@ -527,3 +528,51 @@ class TestBuildChunksFromSegments:
             "male_confident",
             "male_young",
         ]
+
+    def test_build_chunks_splits_quoted_inner_thought_from_author_tag(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "language": "ru",
+                "voice_id": "male_young",
+                "role": "male",
+                "section_kind": "inner_thought",
+                "intonation": "tense",
+                "text": "«Действительно, — подумал Сергей».",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments, max_chunk_chars=600)
+
+        assert audit_dialogue_chunk_boundaries(chunks, language="ru") == []
+        assert [chunk["role"] for chunk in chunks] == ["male", "narrator"]
+        assert chunks[0]["section_kind"] == "inner_thought"
+        assert chunks[1]["section_kind"] == "narration"
+        assert chunks[0]["text"] == "«Действительно,"
+        assert chunks[1]["text"] == "— подумал Сергей»."
+
+    def test_build_chunks_splits_inner_thought_continuation_after_author_tag(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "language": "ru",
+                "voice_id": "male_young",
+                "role": "male",
+                "section_kind": "inner_thought",
+                "intonation": "tense",
+                "text": "«Действительно, — подумал Сергей, — все идет наперекосяк».",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments, max_chunk_chars=600)
+
+        assert audit_dialogue_chunk_boundaries(chunks, language="ru") == []
+        assert [chunk["role"] for chunk in chunks] == ["male", "narrator", "male"]
+        assert [chunk["section_kind"] for chunk in chunks] == [
+            "inner_thought",
+            "narration",
+            "inner_thought",
+        ]
+        assert chunks[0]["text"] == "«Действительно,"
+        assert chunks[1]["text"] == "— подумал Сергей,"
+        assert chunks[2]["text"] == "— все идет наперекосяк»."

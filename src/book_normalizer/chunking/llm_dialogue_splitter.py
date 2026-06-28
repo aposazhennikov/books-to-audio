@@ -25,6 +25,7 @@ from book_normalizer.chunking.llm_dialogue_markers import (
     _trailing_dialogue_opener,
 )
 from book_normalizer.chunking.llm_segmenter_config import (
+    _CLOSING_QUOTE_BY_OPENING,
     _DASH_CHARS,
     _OPENING_QUOTE_CHARS,
     _QUOTE_CHARS,
@@ -113,6 +114,25 @@ def _split_mixed_dialogue_segments(
                 row["intonation"] = "calm"
                 row["_narration_repaired"] = True
                 row.pop("_direct_speech_repaired", None)
+            elif kind == "inner_thought":
+                inferred_speaker, inferred_role = _infer_dialogue_speaker(
+                    _speaker_context_for_part(parts, part_index),
+                    language,
+                )
+                if inferred_speaker and not _clean_optional(row.get("speaker")):
+                    row["speaker"] = inferred_speaker
+                if inferred_role in {"male", "female"}:
+                    row["role"] = inferred_role
+                elif _normalize_role(row.get("role")) == "narrator":
+                    row["role"] = "unknown"
+                if row.get("speaker") and not row.get("character_description"):
+                    row["character_description"] = (
+                        "Inner-thought character inferred from local attribution."
+                    )
+                row["section_kind"] = "inner_thought"
+                row["_inner_thought_repaired"] = True
+                row.pop("_direct_speech_repaired", None)
+                row.pop("_narration_repaired", None)
             else:
                 inferred_speaker, inferred_role = _infer_dialogue_speaker(
                     _speaker_context_for_part(parts, part_index),
@@ -162,6 +182,21 @@ def _split_dialogue_and_narration_text(
                     parts.append(("narrator", prefix))
                     remaining = remaining_after_prefix
                     continue
+
+        quoted_inner_thought = _split_quoted_inner_thought_at_start(remaining, language)
+        if quoted_inner_thought is not None:
+            split_parts, remaining = quoted_inner_thought
+            parts.extend(split_parts)
+            continue
+
+        quoted_thought_with_tail = _split_quoted_thought_with_external_tag(
+            remaining,
+            language,
+        )
+        if quoted_thought_with_tail is not None:
+            split_parts, remaining = quoted_thought_with_tail
+            parts.extend(split_parts)
+            continue
 
         if _starts_with_opening_quote(remaining) and (
             role_is_dialogue
@@ -261,6 +296,84 @@ def _split_dialogue_and_narration_text(
         break
 
     return _coalesce_dialogue_parts(parts)
+
+def _split_quoted_inner_thought_at_start(
+    text: str,
+    language: str,
+) -> tuple[list[tuple[str, str]], str] | None:
+    if normalize_book_language(language) != "ru":
+        return None
+
+    stripped = text.lstrip()
+    if not stripped or stripped[0] not in _OPENING_QUOTE_CHARS:
+        return None
+
+    quote = stripped[0]
+    close_quote = _CLOSING_QUOTE_BY_OPENING.get(quote, quote)
+    close_index = stripped.find(close_quote, 1)
+    if close_index < 0:
+        return None
+
+    body = stripped[1:close_index]
+    split = _split_inner_thought_body(body)
+    if split is None:
+        return None
+
+    first, narrator, rest = split
+    after_quote = close_index + 1
+    while after_quote < len(stripped) and stripped[after_quote] in ",.;:!?…":
+        after_quote += 1
+    quote_suffix = stripped[close_index:after_quote]
+    remaining = stripped[after_quote:].strip()
+
+    parts: list[tuple[str, str]] = [("inner_thought", f"{quote}{first}".strip())]
+    if rest:
+        parts.append(("narrator", narrator.strip()))
+        parts.append(("inner_thought", f"{rest.strip()}{quote_suffix}".strip()))
+    else:
+        parts.append(("narrator", f"{narrator.strip()}{quote_suffix}".strip()))
+    return parts, remaining
+
+def _split_inner_thought_body(body: str) -> tuple[str, str, str] | None:
+    for match in re.finditer(r"\s+[—–-]\s+", body):
+        dash_index = match.start() + 1
+        first = body[:dash_index].rstrip()
+        tail = body[dash_index:].strip()
+        if not first or not _dash_starts_narrator_tag(tail, "ru"):
+            continue
+        narrator, rest = _take_narrator_tail(tail)
+        if not narrator or not _contains_ru_attribution_word(narrator):
+            continue
+        return first, narrator, rest
+    return None
+
+def _split_quoted_thought_with_external_tag(
+    text: str,
+    language: str,
+) -> tuple[list[tuple[str, str]], str] | None:
+    if normalize_book_language(language) != "ru":
+        return None
+    if not _starts_with_opening_quote(text):
+        return None
+
+    speech, tail = _take_quoted_speech(text)
+    if not speech or not tail or not _dash_starts_narrator_tag(tail, language):
+        return None
+    narrator, remaining = _take_narrator_tail(tail)
+    if not narrator or not _contains_ru_inner_thought_attribution(narrator):
+        return None
+    return [("inner_thought", speech), ("narrator", narrator)], remaining
+
+def _contains_ru_inner_thought_attribution(text: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:подумал|подумала|думал|думала|решил|решила|"
+            r"вспомнил|вспомнила|сообразил|сообразила|понял|поняла|"
+            r"догадался|догадалась|напомнил|напомнила)\b",
+            text or "",
+            re.IGNORECASE,
+        )
+    )
 
 def _contains_embedded_direct_speech(text: str, language: str) -> bool:
     if _starts_with_direct_speech_marker(text, language):

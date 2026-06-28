@@ -576,3 +576,53 @@ class TestBuildChunksFromSegments:
         assert chunks[0]["text"] == "«Действительно,"
         assert chunks[1]["text"] == "— подумал Сергей,"
         assert chunks[2]["text"] == "— все идет наперекосяк»."
+
+    def test_build_chunks_treats_mental_said_tag_as_inner_thought(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "language": "ru",
+                "voice_id": "narrator_calm",
+                "role": "narrator",
+                "section_kind": "narration",
+                "intonation": "calm",
+                "text": (
+                    "«Сгинь, сатано», — вслед развратнице мысленно сказал Сергей. "
+                    "Князь поперхнулся."
+                ),
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments, max_chunk_chars=600)
+
+        assert audit_dialogue_chunk_boundaries(chunks, language="ru") == []
+        assert [chunk["section_kind"] for chunk in chunks] == [
+            "inner_thought",
+            "narration",
+        ]
+        assert chunks[0]["text"] == "«Сгинь, сатано»,"
+        assert chunks[1]["text"].startswith("— вслед развратнице мысленно сказал Сергей.")
+
+    def test_build_chunks_splits_spoken_dash_author_tag(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "language": "ru",
+                "voice_id": "male_young",
+                "role": "male",
+                "section_kind": "dialogue",
+                "intonation": "cheerful",
+                "text": (
+                    "— Оказывается, наша Кло — это не просто шикарная задница "
+                    "с нашивками ефрейтора, но и острый ум, решающий все вопросы, "
+                    "— сказал Бен."
+                ),
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments, max_chunk_chars=600)
+
+        assert audit_dialogue_chunk_boundaries(chunks, language="ru") == []
+        assert [chunk["section_kind"] for chunk in chunks] == ["dialogue", "narration"]
+        assert chunks[0]["text"].endswith("решающий все вопросы,")
+        assert chunks[1]["text"] == "— сказал Бен."

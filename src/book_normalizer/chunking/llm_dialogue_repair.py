@@ -199,9 +199,51 @@ def repair_segment_dialogue_boundaries(
     if source_text and not _segments_preserve_source(source_text, rows):
         logger.warning(
             "Dialogue boundary repair changed segment text order/content; "
-            "keeping original segments."
+            "falling back to per-segment repairs."
         )
-        return [dict(segment) for segment in segments]
+        return _repair_each_segment_preserving_text(
+            segments,
+            language=language,
+            voice_id_for_segment=auto_builtin_voice_id_for_segment,
+        )
+    return rows
+
+
+def _repair_each_segment_preserving_text(
+    segments: list[dict[str, Any]],
+    *,
+    language: str,
+    voice_id_for_segment: Any,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for segment in segments:
+        source_text = str(segment.get("text") or "")
+        repaired = _split_mixed_dialogue_segments(
+            _repair_dialogue_segment_boundaries([dict(segment)]),
+            language=language,
+        )
+        if not repaired or not _segments_preserve_source(source_text, repaired):
+            rows.append(dict(segment))
+            continue
+        for row in repaired:
+            row = dict(row)
+            role = _normalize_role(row.get("role"))
+            section_kind = _clean_section_kind(row.get("section_kind"), role)
+            speaker = _clean_speaker(row.get("speaker"), language)
+            row["role"] = role
+            row["speaker"] = speaker
+            row["section_kind"] = section_kind
+            row["is_dialogue"] = _is_dialogue_segment(
+                role=role,
+                section_kind=section_kind,
+                speaker=speaker,
+                text=str(row.get("text") or ""),
+            )
+            row["voice_id"] = voice_id_for_segment(row)
+            row.pop("_direct_speech_repaired", None)
+            row.pop("_narration_repaired", None)
+            row.pop("_inner_thought_repaired", None)
+            rows.append(row)
     return rows
 
 

@@ -365,12 +365,19 @@ def _split_quoted_thought_with_external_tag(
     return [("inner_thought", speech), ("narrator", narrator)], remaining
 
 def _contains_ru_inner_thought_attribution(text: str) -> bool:
+    text = text or ""
+    if re.search(
+        rf"\bмысленно\b(?:\s+[\wА-Яа-яЁё-]+){{0,4}}\s+\b(?:{_ru_attribution_pattern()})\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return True
     return bool(
         re.search(
             r"\b(?:подумал|подумала|думал|думала|решил|решила|"
             r"вспомнил|вспомнила|сообразил|сообразила|понял|поняла|"
             r"догадался|догадалась|напомнил|напомнила)\b",
-            text or "",
+            text,
             re.IGNORECASE,
         )
     )

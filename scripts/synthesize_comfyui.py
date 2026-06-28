@@ -342,9 +342,6 @@ def main(argv: list[str] | None = None) -> None:
         help="Language for synthesis log lines.",
     )
     args = parser.parse_args(argv)
-    if args.llm_audio_qa and not args.llm_audio_qa_endpoint:
-        parser.error("--llm-audio-qa requires --llm-audio-qa-endpoint for the local Omni service.")
-
     manifest_path = Path(args.chunks_json)
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)

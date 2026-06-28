@@ -29,6 +29,16 @@ def _load_export_chunks() -> ModuleType:
     return module
 
 
+def _load_synthesize_comfyui() -> ModuleType:
+    script = Path("scripts/synthesize_comfyui.py").resolve()
+    spec = importlib.util.spec_from_file_location("test_synthesize_comfyui_module", script)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_run_pipeline_stages_do_not_spawn_child_python() -> None:
     source = Path("scripts/run_pipeline.py").read_text(encoding="utf-8")
 
@@ -403,6 +413,131 @@ def test_synthesis_and_assembly_stages_invoke_script_mains_in_process(
             ],
         ),
     ]
+
+
+def test_pipeline_accepts_direct_omni_audio_qa_without_endpoint(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pipeline = _load_run_pipeline()
+    book_path = tmp_path / "book.txt"
+    book_path.write_text("Hello.", encoding="utf-8")
+    output_root = tmp_path / "out"
+    book_dir = output_root / "book_txt"
+    manifest_path = book_dir / "chunks_manifest_v2.json"
+    captured: dict[str, object] = {}
+
+    def fake_stage1(_book_path: Path, _output_root: Path, _ocr_mode: str) -> Path:
+        book_dir.mkdir(parents=True)
+        manifest_path.write_text('{"version": 2, "chapters": []}', encoding="utf-8")
+        return book_dir
+
+    def fake_stage3(
+        _book_dir: Path,
+        _endpoint: str,
+        _model: str,
+        _language: str,
+        _chapter_filter: int | None,
+        _llm_max_retries: int,
+        _max_chunk_chars: int,
+    ) -> Path:
+        return manifest_path
+
+    def fake_stage4(
+        _manifest_path: Path,
+        _audio_dir: Path,
+        _comfyui_url: str,
+        _workflow_path: str,
+        _chapter_filter: int | None,
+        **kwargs: object,
+    ) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(pipeline, "run_stage1_normalize", fake_stage1)
+    monkeypatch.setattr(pipeline, "run_stage3_llm_chunking", fake_stage3)
+    monkeypatch.setattr(pipeline, "run_stage4_synthesize", fake_stage4)
+
+    pipeline.main(
+        [
+            "--book",
+            str(book_path),
+            "--out",
+            str(output_root),
+            "--synthesize",
+            "--workflow",
+            "workflow.json",
+            "--quality-loop",
+            "--llm-audio-qa",
+            "--llm-audio-qa-model",
+            "models/audio_qa/Qwen3-Omni-30B-A3B-Instruct",
+        ]
+    )
+
+    assert captured["llm_audio_qa"] is True
+    assert captured["llm_audio_qa_model"] == "models/audio_qa/Qwen3-Omni-30B-A3B-Instruct"
+    assert captured["llm_audio_qa_endpoint"] == ""
+
+
+def test_synthesize_accepts_direct_omni_audio_qa_without_endpoint(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    synth = _load_synthesize_comfyui()
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    workflow_path = tmp_path / "workflow.json"
+    manifest_path.write_text('{"version": 2, "chapters": []}', encoding="utf-8")
+    workflow_path.write_text("{}", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class _Client:
+        def __init__(self, url: str) -> None:
+            self.url = url
+
+        def is_reachable(self) -> bool:
+            return True
+
+    class _Builder:
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+    def fake_run_llm_audio_qa(_manifest: dict, *, config, manifest_path: Path):  # noqa: ANN001
+        captured["model"] = config.model
+        captured["endpoint"] = config.endpoint
+        captured["manifest_path"] = manifest_path
+        return type(
+            "_Result",
+            (),
+            {
+                "status": "passed",
+                "summary": {"failed": 0, "warning": 0, "error": 0},
+            },
+        )()
+
+    monkeypatch.setattr(synth, "ComfyUIClient", _Client)
+    monkeypatch.setattr(synth, "WorkflowBuilder", _Builder)
+    monkeypatch.setattr(synth, "synthesize_manifest", lambda **_kwargs: None)
+    monkeypatch.setattr(synth, "run_llm_audio_qa", fake_run_llm_audio_qa)
+    monkeypatch.setattr(synth, "write_llm_audio_qa_report", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(synth, "annotate_manifest_with_llm_audio_qa", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(synth, "save_manifest", lambda *_args, **_kwargs: None)
+
+    synth.main(
+        [
+            "--chunks-json",
+            str(manifest_path),
+            "--out",
+            str(tmp_path / "audio"),
+            "--workflow",
+            str(workflow_path),
+            "--llm-audio-qa",
+            "--llm-audio-qa-model",
+            "models/audio_qa/Qwen3-Omni-30B-A3B-Instruct",
+        ]
+    )
+
+    assert captured["model"] == "models/audio_qa/Qwen3-Omni-30B-A3B-Instruct"
+    assert captured["endpoint"] == ""
+    assert captured["manifest_path"] == manifest_path
 
 
 def test_stage5_asr_qa_writes_report_and_manifest_annotations(

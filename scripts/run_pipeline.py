@@ -761,8 +761,6 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if args.max_chunk_chars < 30:
         parser.error("--max-chunk-chars must be at least 30.")
-    if args.llm_audio_qa and not args.llm_audio_qa_endpoint:
-        parser.error("--llm-audio-qa requires --llm-audio-qa-endpoint for the local Omni service.")
     args.language = normalize_book_language(args.language)
 
     book_path = Path(args.book)

@@ -75,6 +75,7 @@ _BRACKET_INITIAL_T = re.compile(r"(?<![\w\u0400-\u04ff])\](?=[ыо])", re.IGNORE
 _BRACKET_INITIAL_GD = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=д)", re.IGNORECASE)
 _BRACKET_INITIAL_G = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=о)", re.IGNORECASE)
 _BRACKET_INITIAL_P = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=р)", re.IGNORECASE)
+_BRACKET_INITIAL_P_BEFORE_PERE = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=ере[а-яё]{1,})", re.IGNORECASE)
 _BRACKET_BEFORE_RECOGNIZED_CAPITAL = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=[А-ЯЁ])")
 _BRACKET_AFTER_CYRILLIC_WORD = re.compile(r"(?<=[\u0400-\u04ff])\](?=\W|$)")
 _GLUED_SHORT_RU_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -272,6 +273,7 @@ def fix_square_bracket_ocr_artifacts(text: str) -> str:
     text = _BRACKET_INITIAL_GD.sub("Г", text)
     text = _BRACKET_INITIAL_G.sub("Г", text)
     text = _BRACKET_INITIAL_P.sub("П", text)
+    text = _BRACKET_INITIAL_P_BEFORE_PERE.sub("П", text)
     text = _BRACKET_BEFORE_RECOGNIZED_CAPITAL.sub("", text)
     return _BRACKET_AFTER_CYRILLIC_WORD.sub("", text)
 

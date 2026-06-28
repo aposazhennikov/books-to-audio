@@ -84,6 +84,11 @@ def test_ocr_artifacts_restore_dropped_initial_letter_in_priem() -> None:
     assert fix_ocr_artifacts(text) == "Прием шел ни шатко, ни валко."
 
 
+def test_ocr_artifacts_restore_bracket_as_initial_p_before_pere_stem() -> None:
+    text = "— [ередай наставнику, — сказал Сергей."
+    assert fix_ocr_artifacts(text) == "— Передай наставнику, — сказал Сергей."
+
+
 def test_pipeline_restores_dropped_initial_letter_in_priem() -> None:
     text = "рием шел ни шатко, ни валко."
     assert NormalizationPipeline.for_language("ru").normalize_text(text) == (

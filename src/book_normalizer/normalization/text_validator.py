@@ -113,6 +113,8 @@ class TextPreservationValidator:
         similarity = _char_similarity(original, corrected)
         word_ratio = _word_ratio(original, corrected)
         sentence_ratio = _sentence_ratio(original, corrected)
+        punctuation_issues = _punctuation_structure_issues(original, corrected)
+        words_preserved = _word_sequence_preserved(original, corrected)
 
         if similarity < self._min_sim:
             issues.append(
@@ -128,15 +130,15 @@ class TextPreservationValidator:
             issues.append(
                 f"Too many words added: ratio {word_ratio:.3f} > {self._max_wr:.3f}"
             )
-        if sentence_ratio < self._min_sr:
+        if sentence_ratio < self._min_sr and not (words_preserved and not punctuation_issues):
             issues.append(
                 f"Too many sentences removed: ratio {sentence_ratio:.3f} < {self._min_sr:.3f}"
             )
-        if sentence_ratio > self._max_sr:
+        if sentence_ratio > self._max_sr and not (words_preserved and not punctuation_issues):
             issues.append(
                 f"Too many sentences added: ratio {sentence_ratio:.3f} > {self._max_sr:.3f}"
             )
-        issues.extend(_punctuation_structure_issues(original, corrected))
+        issues.extend(punctuation_issues)
         issues.extend(_word_substitution_issues(original, corrected))
         issues.extend(_capitalization_issues(original, corrected))
 
@@ -260,6 +262,12 @@ def _word_count(text: str) -> int:
 def _words(text: str) -> list[str]:
     """Tokenise text into words (case-insensitive) using the same pattern as _word_count."""
     return [w.lower() for w in _WORD_RE.findall(_canonical_text_for_validation(text))]
+
+
+def _word_sequence_preserved(original: str, corrected: str) -> bool:
+    """Return true when only punctuation/layout changed, not lexical content."""
+
+    return _words(original) == _words(corrected)
 
 
 _LATIN_RE = re.compile(r"^[A-Za-z]+$")

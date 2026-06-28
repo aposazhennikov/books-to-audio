@@ -93,6 +93,21 @@ class TestTextPreservationValidator:
         result = self.validator.validate(original, corrected)
         assert result.is_valid, f"Should accept punctuation fix: {result.issues}"
 
+    def test_accepts_sentence_boundary_fix_when_words_are_preserved(self) -> None:
+        """Sentence-count changes are safe when the word sequence is unchanged."""
+        original = "— Ещё подождёт? Ну, буквально тысячу лет Прошло уже семнадцать, — напомнил воин."
+        corrected = "— Ещё подождёт? Ну, буквально тысячу лет. Прошло уже семнадцать, — напомнил воин."
+        result = self.validator.validate(original, corrected)
+        assert result.is_valid, f"Should accept punctuation-only sentence boundary fix: {result.issues}"
+
+    def test_rejects_sentence_boundary_fix_with_dialogue_dash_loss(self) -> None:
+        """Punctuation-only edits still cannot break structural dialogue markers."""
+        original = "— Во-первых, войной грозите именно вы Во-вторых, я занят."
+        corrected = "Во-первых, войной грозите именно вы. Во-вторых, я занят."
+        result = self.validator.validate(original, corrected)
+        assert not result.is_valid
+        assert any("Dialogue dash count changed" in issue for issue in result.issues)
+
     def test_rejects_repeated_comma_introduced_by_llm(self) -> None:
         """LLM must not introduce punctuation artifacts that break TTS phrasing."""
         original = "— Это же Геркулес, — закричали воины."

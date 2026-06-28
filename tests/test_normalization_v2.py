@@ -23,6 +23,16 @@ class TestRepairHyphenatedWords:
         result = repair_hyphenated_words(text)
         assert result == "пример"
 
+    def test_repairs_pdf_open_paren_line_wrap_artifacts(self) -> None:
+        text = "из подпростран(\nства к солнеч(\n\nным ожогам и расхлё(\nбывать это"
+        result = repair_hyphenated_words(text)
+        assert result == "из подпространства к солнечным ожогам и расхлёбывать это"
+
+    def test_preserves_real_parentheses(self) -> None:
+        text = "слово(текст) осталось"
+        result = repair_hyphenated_words(text)
+        assert result == text
+
     def test_preserves_real_hyphens(self) -> None:
         text = "кое-что"
         result = repair_hyphenated_words(text)

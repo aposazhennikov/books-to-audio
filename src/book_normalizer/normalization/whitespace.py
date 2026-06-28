@@ -47,6 +47,11 @@ def repair_hyphenated_words(text: str) -> str:
     Only joins when the next line starts with a lowercase Cyrillic letter.
     """
     text = re.sub(r"(\w)\u00ad\n(\w)", r"\1\2", text)
+    text = re.sub(
+        r"([а-яёА-ЯЁ])\([ \t]*\r?\n(?:[ \t]*\r?\n)*[ \t]*([а-яё])",
+        r"\1\2",
+        text,
+    )
     text = re.sub(r"([а-яёА-ЯЁ])-\n([а-яё])", r"\1\2", text)
     return text
 

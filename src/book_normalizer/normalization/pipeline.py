@@ -244,13 +244,13 @@ class NormalizationPipeline:
 
         return book
 
-    _TRAILING_HYPHEN = re.compile(r"([а-яёА-ЯЁ])-\s*$")
+    _TRAILING_HYPHEN = re.compile(r"([а-яёА-ЯЁ])[-(]\s*$")
     _LEADING_LOWER = re.compile(r"^([а-яё])")
 
     @staticmethod
     def _repair_cross_paragraph_hyphens(book: Book) -> int:
         """
-        Join words split by a hyphen across adjacent paragraphs.
+        Join words split by a hyphen-like marker across adjacent paragraphs.
 
         Returns the number of joins performed.  Modifies normalized_text
         in place on both paragraphs.

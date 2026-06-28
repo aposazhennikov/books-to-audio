@@ -125,6 +125,17 @@ class TestPipelineV2:
             s in changed for s in ("normalize_whitespace", "fix_ocr_artifacts")
         )
 
+    def test_cross_paragraph_pdf_open_paren_word_split(self) -> None:
+        para1 = Paragraph(raw_text="терний и солнеч(", index_in_chapter=0)
+        para2 = Paragraph(raw_text="ных ожогов.", index_in_chapter=1)
+        ch = Chapter(title="Test", index=0, paragraphs=[para1, para2])
+        book = Book(chapters=[ch])
+
+        NormalizationPipeline().normalize_book(book)
+
+        assert para1.normalized_text == "терний и солнечн"
+        assert para2.normalized_text == "ых ожогов."
+
     def test_tracking_empty_for_clean_text(self) -> None:
         pipeline = NormalizationPipeline()
         clean = "Чистый текст."

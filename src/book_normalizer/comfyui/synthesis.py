@@ -501,6 +501,15 @@ def synthesize_manifest(
             chapter_index=chapter_index,
             chunk_index=chunk_index,
         )
+        next_generation_options = chunk.get("next_generation_options")
+        if isinstance(next_generation_options, dict):
+            effective_options.update(
+                {
+                    key: value
+                    for key, value in next_generation_options.items()
+                    if key in effective_options
+                }
+            )
 
         chunk["failed"] = False
         chunk["error"] = ""
@@ -618,6 +627,7 @@ def synthesize_manifest(
         chunk["audio_file"] = _manifest_audio_file(output_path, manifest_path)
         _write_compatible_chunk_audio(chunk, output_path, manifest_path)
         chunk["last_generation_options"] = effective_options
+        chunk.pop("next_generation_options", None)
         if smoothing is not None:
             chunk["audio_postprocess"] = {"silence_smoothing": smoothing.to_dict()}
             if smoothing.changed:

@@ -198,7 +198,7 @@ for _production_command in (
     show_default=True,
     help="Chunking mode: LLM smart markup or offline heuristic chunks.",
 )
-@click.option("--max-chunk-chars", type=int, default=400, show_default=True, help="Soft max chars per LLM chunk.")
+@click.option("--max-chunk-chars", type=int, default=900, show_default=True, help="Soft max chars per LLM chunk.")
 @click.option("--synthesize", is_flag=True, default=False, help="Run ComfyUI synthesis after chunking.")
 @click.option(
     "--quality-loop",
@@ -224,6 +224,25 @@ for _production_command in (
 @click.option("--perceptual-min-mos", type=float, default=2.70, show_default=True, help="Fail below this MOS.")
 @click.option("--perceptual-warn-mos", type=float, default=3.30, show_default=True, help="Warn below this MOS.")
 @click.option("--asr-model", default="small", show_default=True, help="faster-whisper model for ASR QA.")
+@click.option("--llm-audio-qa", is_flag=True, default=False, help="Run local multimodal LLM audio QA after synthesis.")
+@click.option(
+    "--llm-audio-qa-model",
+    default="Qwen/Qwen3-Omni-30B-A3B-Instruct",
+    show_default=True,
+    help="Local multimodal audio QA model id.",
+)
+@click.option(
+    "--llm-audio-qa-endpoint",
+    default="",
+    help="OpenAI-compatible local endpoint, for example http://127.0.0.1:8801/v1.",
+)
+@click.option(
+    "--llm-audio-qa-min-score",
+    type=int,
+    default=82,
+    show_default=True,
+    help="Resynthesize below this score.",
+)
 @click.option(
     "--max-resynth-attempts",
     type=int,
@@ -261,6 +280,10 @@ def pipeline_command(
     perceptual_min_mos: float,
     perceptual_warn_mos: float,
     asr_model: str,
+    llm_audio_qa: bool,
+    llm_audio_qa_model: str,
+    llm_audio_qa_endpoint: str,
+    llm_audio_qa_min_score: int,
     max_resynth_attempts: int,
     workflow: Path | None,
     comfyui_url: str,
@@ -308,6 +331,18 @@ def pipeline_command(
         argv.extend(["--perceptual-warn-mos", str(perceptual_warn_mos)])
     if asr_qa_after_synthesis:
         argv.extend(["--asr-qa-after-synthesis", "--asr-model", asr_model])
+    if llm_audio_qa:
+        argv.extend(
+            [
+                "--llm-audio-qa",
+                "--llm-audio-qa-model",
+                llm_audio_qa_model,
+                "--llm-audio-qa-min-score",
+                str(llm_audio_qa_min_score),
+            ]
+        )
+        if llm_audio_qa_endpoint:
+            argv.extend(["--llm-audio-qa-endpoint", llm_audio_qa_endpoint])
     if assemble:
         argv.append("--assemble")
     if chapter is not None:
@@ -508,6 +543,65 @@ def install_tts_models_command(
     downloaded = sum(1 for result in results if not result.already_present)
     skipped = sum(1 for result in results if result.already_present)
     click.echo(f"TTS models ready: downloaded={downloaded}, already_present={skipped}")
+
+
+@main.command(name="install-audio-qa-models")
+@click.option(
+    "--models-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Folder where local audio QA models will be stored.",
+)
+@click.option(
+    "--model",
+    "models",
+    multiple=True,
+    help="Model set or Hugging Face model id. Sets: omni, production, all. Can be repeated.",
+)
+@click.option("--force", is_flag=True, default=False, help="Ask Hugging Face Hub to refresh the local copy.")
+@click.option("--dry-run", is_flag=True, default=False, help="Print target folders without downloading.")
+@click.option("--token", default=None, envvar="HF_TOKEN", help="Hugging Face token, or set HF_TOKEN.")
+def install_audio_qa_models_command(
+    models_dir: Path | None,
+    models: tuple[str, ...],
+    force: bool,
+    dry_run: bool,
+    token: str | None,
+) -> None:
+    """Download local audio QA model folders from Hugging Face."""
+    from book_normalizer.tts.audio_qa_model_download import (
+        AUDIO_QA_MODEL_DOWNLOAD_WARNING,
+        audio_qa_model_install_path,
+        expand_audio_qa_model_ids,
+        install_audio_qa_models,
+    )
+    from book_normalizer.tts.model_paths import default_comfyui_models_dir
+
+    target_dir = models_dir or default_comfyui_models_dir()
+    selected = expand_audio_qa_model_ids(list(models) or ["production"])
+
+    click.echo(AUDIO_QA_MODEL_DOWNLOAD_WARNING, err=True)
+    click.echo(f"Models dir: {target_dir}")
+    if dry_run:
+        click.echo("Dry run only; no files will be downloaded.")
+        for model_id in selected:
+            click.echo(f"Would install {model_id} -> {audio_qa_model_install_path(model_id, target_dir)}")
+        return
+
+    try:
+        results = install_audio_qa_models(
+            selected,
+            target_dir,
+            token=token,
+            force=force,
+            progress=click.echo,
+        )
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    downloaded = sum(1 for result in results if not result.already_present)
+    skipped = sum(1 for result in results if result.already_present)
+    click.echo(f"Audio QA models ready: downloaded={downloaded}, already_present={skipped}")
 
 
 @main.command(name="master")

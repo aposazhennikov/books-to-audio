@@ -201,6 +201,22 @@ Download the recommended local models when the machine has enough disk space:
 python3 install.py --download-tts-models --download-ollama-models --yes
 ```
 
+Download local audio QA models when you want the quality loop to review chunks
+without sending audio to Gemini:
+
+```bash
+python3 install.py --download-audio-qa-models --audio-qa-model production --yes
+normalize-book install-audio-qa-models --model production --dry-run
+```
+
+The `production` set includes `Qwen/Qwen3-Omni-30B-A3B-Instruct` as the main
+multimodal audio reviewer, plus Qwen3 ASR and Qwen3 ForcedAligner. Use
+`--audio-qa-model omni` for the Omni reviewer only, or `--audio-qa-model all`
+to also include the Russian emotion classifier.
+
+If you serve Omni locally through vLLM/OpenAI-compatible API, point the pipeline
+at that endpoint with `--llm-audio-qa-endpoint`.
+
 Run diagnostics:
 
 ```bash
@@ -458,6 +474,24 @@ normalize-book pipeline books/mybook.pdf \
   --quality-loop \
   --assemble
 ```
+
+Run the synthesis quality loop with local Omni audio review:
+
+```bash
+normalize-book pipeline books/mybook.pdf \
+  --out output \
+  --llm-normalize \
+  --synthesize \
+  --workflow comfyui_workflows/qwen3_tts_template.json \
+  --quality-loop \
+  --llm-audio-qa \
+  --llm-audio-qa-model Qwen/Qwen3-Omni-30B-A3B-Instruct \
+  --llm-audio-qa-endpoint http://127.0.0.1:8801/v1
+```
+
+Bad Omni reviews are written to `llm_audio_qa_report.json`, annotated in
+`chunks_manifest_v2.json`, and sent back through the retry loop with adjusted
+generation options.
 
 Assemble already synthesized chunks:
 

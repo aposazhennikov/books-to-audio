@@ -73,6 +73,14 @@ from book_normalizer.tts.asr_qa import (
     write_asr_diff,
     write_asr_report,
 )
+from book_normalizer.tts.llm_audio_qa import (
+    DEFAULT_LLM_AUDIO_QA_MODEL,
+    DEFAULT_LLM_AUDIO_QA_REPORT_NAME,
+    LlmAudioQaConfig,
+    annotate_manifest_with_llm_audio_qa,
+    run_llm_audio_qa,
+    write_llm_audio_qa_report,
+)
 from book_normalizer.tts.perceptual_qa import (
     DEFAULT_PERCEPTUAL_BACKENDS,
     DEFAULT_PERCEPTUAL_REPORT_NAME,
@@ -292,6 +300,27 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--asr-qa-after-synthesis", action="store_true", help="Run ASR QA after synthesis.")
     parser.add_argument("--asr-model", default="small", help="faster-whisper ASR model (default: small).")
     parser.add_argument(
+        "--llm-audio-qa",
+        action="store_true",
+        help="Run local multimodal LLM audio QA after synthesis.",
+    )
+    parser.add_argument(
+        "--llm-audio-qa-model",
+        default=DEFAULT_LLM_AUDIO_QA_MODEL,
+        help="Local multimodal audio QA model id.",
+    )
+    parser.add_argument(
+        "--llm-audio-qa-endpoint",
+        default="",
+        help="OpenAI-compatible local endpoint, for example http://127.0.0.1:8801/v1.",
+    )
+    parser.add_argument(
+        "--llm-audio-qa-min-score",
+        type=int,
+        default=82,
+        help="Resynthesize below this LLM audio QA score.",
+    )
+    parser.add_argument(
         "--max-resynth-attempts",
         type=int,
         default=2,
@@ -312,6 +341,8 @@ def main(argv: list[str] | None = None) -> None:
         help="Language for synthesis log lines.",
     )
     args = parser.parse_args(argv)
+    if args.llm_audio_qa and not args.llm_audio_qa_endpoint:
+        parser.error("--llm-audio-qa requires --llm-audio-qa-endpoint for the local Omni service.")
 
     manifest_path = Path(args.chunks_json)
     out_dir = Path(args.out)
@@ -370,7 +401,13 @@ def main(argv: list[str] | None = None) -> None:
             progress=print,
             log_language=args.log_language,
         )
-        if not (args.quality_loop or args.artifact_qa or args.perceptual_qa or args.asr_qa_after_synthesis):
+        if not (
+            args.quality_loop
+            or args.artifact_qa
+            or args.perceptual_qa
+            or args.asr_qa_after_synthesis
+            or args.llm_audio_qa
+        ):
             break
 
         if args.quality_loop or args.artifact_qa:
@@ -442,6 +479,33 @@ def main(argv: list[str] | None = None) -> None:
             print(
                 "ASR QA: "
                 f"status={asr_result.status.value}, failed={summary['failed']}, "
+                f"warnings={summary['warning']}, errors={summary['error']}."
+            )
+
+        if args.llm_audio_qa:
+            llm_audio_report = manifest_path.with_name(DEFAULT_LLM_AUDIO_QA_REPORT_NAME)
+            llm_audio_result = run_llm_audio_qa(
+                manifest,
+                config=LlmAudioQaConfig(
+                    model=args.llm_audio_qa_model,
+                    endpoint=args.llm_audio_qa_endpoint,
+                    min_score=args.llm_audio_qa_min_score,
+                ),
+                manifest_path=manifest_path,
+            )
+            write_llm_audio_qa_report(llm_audio_report, llm_audio_result)
+            annotate_manifest_with_llm_audio_qa(
+                manifest,
+                llm_audio_result,
+                report_path=llm_audio_report.resolve(),
+                reset_bad_chunks=args.quality_loop,
+                max_resynthesis_attempts=args.max_resynth_attempts,
+            )
+            save_manifest(manifest_path, manifest)
+            summary = llm_audio_result.summary
+            print(
+                "LLM audio QA: "
+                f"status={llm_audio_result.status}, failed={summary['failed']}, "
                 f"warnings={summary['warning']}, errors={summary['error']}."
             )
 

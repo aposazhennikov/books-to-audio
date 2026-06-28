@@ -42,6 +42,14 @@ from book_normalizer.tts.engine_synthesis import (
     synthesize_engine_manifest,
 )
 from book_normalizer.tts.engines import get_tts_engine, unsupported_tts_engine_message
+from book_normalizer.tts.llm_audio_qa import (
+    DEFAULT_LLM_AUDIO_QA_MODEL,
+    DEFAULT_LLM_AUDIO_QA_REPORT_NAME,
+    LlmAudioQaConfig,
+    annotate_manifest_with_llm_audio_qa,
+    run_llm_audio_qa,
+    write_llm_audio_qa_report,
+)
 from book_normalizer.tts.perceptual_qa import (
     DEFAULT_PERCEPTUAL_BACKENDS,
     DEFAULT_PERCEPTUAL_REPORT_NAME,
@@ -194,6 +202,10 @@ class SynthesisRequest:
     asr_model: str = "small"
     asr_device: str = "auto"
     asr_timeout_seconds: float = 180.0
+    llm_audio_qa: bool = False
+    llm_audio_qa_model: str = DEFAULT_LLM_AUDIO_QA_MODEL
+    llm_audio_qa_endpoint: str = ""
+    llm_audio_qa_min_score: int = 82
     max_resynthesis_attempts: int = 2
     auto_start_comfyui: bool = True
     comfyui_start_wait_seconds: float = 300.0
@@ -263,6 +275,9 @@ class SynthesisController:
                 "perceptual_qa": request.perceptual_qa,
                 "perceptual_backends": list(request.perceptual_backends),
                 "asr_qa_after_synthesis": request.asr_qa_after_synthesis,
+                "llm_audio_qa": request.llm_audio_qa,
+                "llm_audio_qa_model": request.llm_audio_qa_model,
+                "llm_audio_qa_endpoint": request.llm_audio_qa_endpoint,
                 "max_resynthesis_attempts": request.max_resynthesis_attempts,
                 "comfyui_url": request.comfyui_url,
             },
@@ -408,6 +423,7 @@ class SynthesisController:
                 or request.artifact_qa
                 or request.perceptual_qa
                 or request.asr_qa_after_synthesis
+                or request.llm_audio_qa
             ):
                 raise_if_cancelled(synthesized=summary.synthesized, skipped=summary.skipped)
                 self._run_quality_gates(manifest, request)
@@ -576,6 +592,7 @@ class SynthesisController:
                 or request.artifact_qa
                 or request.perceptual_qa
                 or request.asr_qa_after_synthesis
+                or request.llm_audio_qa
             ):
                 break
 
@@ -766,6 +783,34 @@ class SynthesisController:
             self._emit_log(
                 "Perceptual QA: "
                 f"status={perceptual_result.status}, failed={summary['failed']}, "
+                f"warnings={summary['warning']}, errors={summary['error']}."
+            )
+            save_manifest(request.manifest_path, manifest)
+
+        if request.llm_audio_qa:
+            report_path = request.manifest_path.with_name(DEFAULT_LLM_AUDIO_QA_REPORT_NAME)
+            self._emit_log(f"LLM audio QA: model={request.llm_audio_qa_model}")
+            llm_audio_result = run_llm_audio_qa(
+                manifest,
+                config=LlmAudioQaConfig(
+                    model=request.llm_audio_qa_model,
+                    endpoint=request.llm_audio_qa_endpoint,
+                    min_score=request.llm_audio_qa_min_score,
+                ),
+                manifest_path=request.manifest_path,
+            )
+            write_llm_audio_qa_report(report_path, llm_audio_result)
+            annotate_manifest_with_llm_audio_qa(
+                manifest,
+                llm_audio_result,
+                report_path=report_path.resolve(),
+                reset_bad_chunks=request.quality_loop,
+                max_resynthesis_attempts=request.max_resynthesis_attempts,
+            )
+            summary = llm_audio_result.summary
+            self._emit_log(
+                "LLM audio QA: "
+                f"status={llm_audio_result.status}, failed={summary['failed']}, "
                 f"warnings={summary['warning']}, errors={summary['error']}."
             )
             save_manifest(request.manifest_path, manifest)

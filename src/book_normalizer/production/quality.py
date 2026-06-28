@@ -159,6 +159,7 @@ def _score_chunk(
         add("not_synthesized", "resynthesize", "Chunk is not synthesized.", 60)
     _score_artifact_block(chunk, add)
     _score_asr_block(chunk, add)
+    _score_llm_audio_block(chunk, add)
     _score_performance_contract(chunk, next_chunk, config, add)
 
     score = max(0, min(100, score))
@@ -211,6 +212,23 @@ def _score_asr_block(chunk: dict[str, Any], add: Any) -> None:
         add("asr_qa_warning", "review", "ASR comparison raised warnings.", 18)
     elif status and status != "passed":
         add("asr_qa_unchecked", "review", f"ASR QA status is {status}.", 10)
+
+
+def _score_llm_audio_block(chunk: dict[str, Any], add: Any) -> None:
+    block = chunk.get("llm_audio_qa")
+    if not isinstance(block, dict):
+        add("llm_audio_qa_missing", "review", "Local LLM audio QA has not run.", 8)
+        return
+    status = str(block.get("status") or "").strip().lower()
+    score = int(block.get("score") or 0)
+    if status in {"failed", "error"}:
+        add("llm_audio_qa_failed", "resynthesize", "Local LLM audio QA failed.", 35)
+    elif status == "warning":
+        add("llm_audio_qa_warning", "review", "Local LLM audio QA raised warnings.", 18)
+    elif status and status != "passed":
+        add("llm_audio_qa_unchecked", "review", f"LLM audio QA status is {status}.", 10)
+    if status == "passed" and score and score < 90:
+        add("llm_audio_qa_low_score", "review", f"LLM audio QA score is borderline ({score}).", 8)
 
 
 def _score_performance_contract(

@@ -58,7 +58,7 @@ def test_pipeline_command_runs_in_process_without_subprocess(
         "--chunk-mode",
         "llm",
         "--max-chunk-chars",
-        "400",
+        "900",
         "--ocr-mode",
         "force",
         "--llm-normalize",
@@ -75,6 +75,47 @@ def test_pipeline_command_runs_in_process_without_subprocess(
         "2",
         "--skip-stage1",
     ]
+
+
+def test_pipeline_command_forwards_llm_audio_qa_options(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    book_path = tmp_path / "book.txt"
+    book_path.write_text("Hello.", encoding="utf-8")
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_pipeline(argv: list[str]) -> None:
+        captured["argv"] = argv
+
+    monkeypatch.setattr(cli, "_run_pipeline_in_process", fake_run_pipeline)
+
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "pipeline",
+            str(book_path),
+            "--out",
+            str(tmp_path / "out"),
+            "--llm-audio-qa",
+            "--llm-audio-qa-model",
+            "Qwen/Qwen3-Omni-30B-A3B-Instruct",
+            "--llm-audio-qa-endpoint",
+            "http://127.0.0.1:8801/v1",
+            "--llm-audio-qa-min-score",
+            "88",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "--llm-audio-qa" in captured["argv"]
+    assert captured["argv"][captured["argv"].index("--llm-audio-qa-model") + 1] == (
+        "Qwen/Qwen3-Omni-30B-A3B-Instruct"
+    )
+    assert captured["argv"][captured["argv"].index("--llm-audio-qa-endpoint") + 1] == (
+        "http://127.0.0.1:8801/v1"
+    )
+    assert captured["argv"][captured["argv"].index("--llm-audio-qa-min-score") + 1] == "88"
 
 
 def test_pipeline_command_accepts_book_option_alias(

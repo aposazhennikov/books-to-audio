@@ -69,7 +69,7 @@ def reset_chunk_for_resynthesis(
 def chunk_quality_status(chunk: dict[str, Any]) -> str:
     """Return the worst compact status from artifact and ASR QA blocks."""
     statuses: list[str] = []
-    for key in ("artifact_qa", "asr_qa", "perceptual_qa"):
+    for key in ("artifact_qa", "asr_qa", "perceptual_qa", "llm_audio_qa"):
         block = chunk.get(key)
         if isinstance(block, dict):
             statuses.append(str(block.get("status") or "").lower())
@@ -169,6 +169,9 @@ def split_problem_chunks_for_retry(
                 part["resynthesis_split_count"] = split_number
                 part["artifact_qa"] = None
                 part["asr_qa"] = None
+                part["perceptual_qa"] = None
+                part["llm_audio_qa"] = None
+                part["next_generation_options"] = None
             chunks.insert(index + 1, right_chunk)
             _renumber_chapter_chunks(chapter)
             split_count += 1

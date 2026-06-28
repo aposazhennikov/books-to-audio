@@ -414,6 +414,10 @@ def run_stage4_synthesize(
     perceptual_warn_mos: float = 3.30,
     asr_qa_after_synthesis: bool = False,
     asr_model: str = "small",
+    llm_audio_qa: bool = False,
+    llm_audio_qa_model: str = "Qwen/Qwen3-Omni-30B-A3B-Instruct",
+    llm_audio_qa_endpoint: str = "",
+    llm_audio_qa_min_score: int = 82,
     max_resynth_attempts: int = 2,
 ) -> None:
     """Synthesize audio chunks via ComfyUI."""
@@ -439,6 +443,16 @@ def run_stage4_synthesize(
         args += ["--perceptual-warn-mos", str(perceptual_warn_mos)]
     if asr_qa_after_synthesis:
         args += ["--asr-qa-after-synthesis", "--asr-model", asr_model]
+    if llm_audio_qa:
+        args += [
+            "--llm-audio-qa",
+            "--llm-audio-qa-model",
+            llm_audio_qa_model,
+            "--llm-audio-qa-min-score",
+            str(llm_audio_qa_min_score),
+        ]
+        if llm_audio_qa_endpoint:
+            args += ["--llm-audio-qa-endpoint", llm_audio_qa_endpoint]
 
     print(f"Running in-process: synthesize_comfyui.py {' '.join(args)}")
     _run_script_main("synthesize_comfyui.py", args)
@@ -610,7 +624,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--max-chunk-chars",
         type=int,
-        default=400,
+        default=900,
         help=(
             "Soft max chars per LLM chunk (default: 400). The splitter prefers "
             "sentence/clause boundaries and never cuts inside a word."
@@ -662,6 +676,27 @@ def main(argv: list[str] | None = None) -> None:
         "--asr-model",
         default="small",
         help="faster-whisper model for ASR QA (default: small).",
+    )
+    parser.add_argument(
+        "--llm-audio-qa",
+        action="store_true",
+        help="Run local multimodal LLM audio QA after synthesis.",
+    )
+    parser.add_argument(
+        "--llm-audio-qa-model",
+        default="Qwen/Qwen3-Omni-30B-A3B-Instruct",
+        help="Local multimodal audio QA model id.",
+    )
+    parser.add_argument(
+        "--llm-audio-qa-endpoint",
+        default="",
+        help="OpenAI-compatible local endpoint, for example http://127.0.0.1:8801/v1.",
+    )
+    parser.add_argument(
+        "--llm-audio-qa-min-score",
+        type=int,
+        default=82,
+        help="Resynthesize below this LLM audio QA score (default: 82).",
     )
     parser.add_argument(
         "--max-wer",
@@ -726,6 +761,8 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if args.max_chunk_chars < 30:
         parser.error("--max-chunk-chars must be at least 30.")
+    if args.llm_audio_qa and not args.llm_audio_qa_endpoint:
+        parser.error("--llm-audio-qa requires --llm-audio-qa-endpoint for the local Omni service.")
     args.language = normalize_book_language(args.language)
 
     book_path = Path(args.book)
@@ -807,6 +844,10 @@ def main(argv: list[str] | None = None) -> None:
             perceptual_warn_mos=args.perceptual_warn_mos,
             asr_qa_after_synthesis=args.asr_qa_after_synthesis,
             asr_model=args.asr_model,
+            llm_audio_qa=args.llm_audio_qa,
+            llm_audio_qa_model=args.llm_audio_qa_model,
+            llm_audio_qa_endpoint=args.llm_audio_qa_endpoint,
+            llm_audio_qa_min_score=args.llm_audio_qa_min_score,
             max_resynth_attempts=args.max_resynth_attempts,
         )
     else:

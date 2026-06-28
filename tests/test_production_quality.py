@@ -35,6 +35,7 @@ def _good_chunk() -> dict:
         },
         "artifact_qa": {"status": "passed", "issues": [], "scores": {}},
         "asr_qa": {"status": "passed", "issues": []},
+        "llm_audio_qa": {"status": "passed", "score": 96, "issues": []},
     }
 
 
@@ -88,6 +89,20 @@ def test_production_qa_marks_artifact_risk_for_resynthesis() -> None:
     assert result_chunk["synthesized"] is False
     assert result_chunk["audio_file"] is None
     assert result_chunk["resynthesis_attempt"] == 1
+
+
+def test_production_qa_marks_llm_audio_failure_for_resynthesis() -> None:
+    chunk = _good_chunk()
+    chunk["llm_audio_qa"] = {
+        "status": "failed",
+        "score": 44,
+        "issues": ["unnatural_pause"],
+    }
+
+    report = run_production_qa(_manifest(chunk))
+
+    assert report["status"] == "resynthesize"
+    assert "llm_audio_qa_failed" in {issue["kind"] for issue in report["chunks"][0]["issues"]}
 
 
 def test_production_qa_reviews_missing_director_and_casting() -> None:

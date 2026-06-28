@@ -61,6 +61,12 @@ TTS_MODEL_SELECTIONS = {
         "cosyvoice-3",
     ),
 }
+DEFAULT_AUDIO_QA_MODEL_SELECTIONS = ("production",)
+AUDIO_QA_MODEL_SELECTIONS = {
+    "omni": ("omni",),
+    "production": ("production",),
+    "all": ("all",),
+}
 INSTALL_TOOL_PACKAGES = ("pip", "setuptools", "wheel", "build")
 LOG_PATH = Path("install.log")
 LOG_PATH_ENV = "BOOKS_TO_AUDIO_INSTALL_LOG"
@@ -68,6 +74,7 @@ RUNTIME_CONFIG_PATH = Path("data/local_runtime_paths.json")
 HASH_MANIFEST_PATH = Path("data/install_hashes.json")
 TESSDATA_HASH_LABEL = "tessdata"
 TTS_HASH_LABEL = "tts_models"
+AUDIO_QA_HASH_LABEL = "audio_qa_models"
 OLLAMA_HASH_LABEL = "ollama_models"
 OLLAMA_RUNTIME_HASH_LABEL = "ollama_runtime"
 COMFYUI_RUNTIME_HASH_LABEL = "comfyui_runtime"
@@ -240,6 +247,14 @@ def main() -> int:
     if args.download_perceptual_models:
         _install_perceptual_models(venv_python, paths)
 
+    if args.download_audio_qa_models:
+        _install_audio_qa_models(
+            venv_python,
+            paths,
+            args.verify_hashes,
+            _selected_audio_qa_models(args.audio_qa_model),
+        )
+
     if args.install_comfyui:
         _install_comfyui(paths, args.comfyui_repo, args.verify_hashes)
 
@@ -326,6 +341,11 @@ def _parse_args() -> argparse.Namespace:
         help="Pre-download/prewarm NISQA v2 perceptual QA weights after installing dependencies.",
     )
     parser.add_argument(
+        "--download-audio-qa-models",
+        action="store_true",
+        help="Download local Hugging Face audio QA models for LLM/ASR/forced-alignment checks.",
+    )
+    parser.add_argument(
         "--tts-model",
         action="append",
         choices=tuple(TTS_MODEL_SELECTIONS),
@@ -334,6 +354,16 @@ def _parse_args() -> argparse.Namespace:
             "TTS model set to download with --download-tts-models. "
             "Repeatable. Default/recommended: qwen3-customvoice-1.7b. "
             "Also: qwen3-customvoice-0.6b, fish-speech-1.5, f5-tts, xtts-v2, cosyvoice-3, all."
+        ),
+    )
+    parser.add_argument(
+        "--audio-qa-model",
+        action="append",
+        choices=tuple(AUDIO_QA_MODEL_SELECTIONS),
+        default=[],
+        help=(
+            "Audio QA model set to download with --download-audio-qa-models. "
+            "Default: production. Also: omni, all."
         ),
     )
     parser.add_argument(
@@ -633,6 +663,11 @@ def _resolve_optional_downloads(args: argparse.Namespace) -> None:
     args.download_perceptual_models = args.download_perceptual_models or _prompt_yes_no(
         "Pre-download NISQA v2 perceptual QA weights now?",
         "Pre-download NISQA v2 perceptual QA weights now?",
+        default=False,
+    )
+    args.download_audio_qa_models = args.download_audio_qa_models or _prompt_yes_no(
+        "Download local audio QA models now? The Omni reviewer is very large.",
+        "Скачать локальные audio QA модели сейчас? Omni-рецензент очень большой.",
         default=False,
     )
     args.install_comfyui = getattr(args, "install_comfyui", False) or _prompt_yes_no(
@@ -1199,6 +1234,17 @@ def _selected_tts_model_ids(selections: list[str] | tuple[str, ...] | None) -> l
     return expanded
 
 
+def _selected_audio_qa_models(selections: list[str] | tuple[str, ...] | None) -> list[str]:
+    """Expand installer audio QA selections into model-set aliases."""
+    requested = selections or list(DEFAULT_AUDIO_QA_MODEL_SELECTIONS)
+    expanded: list[str] = []
+    for selection in requested:
+        for model_id in AUDIO_QA_MODEL_SELECTIONS.get(selection, (selection,)):
+            if model_id not in expanded:
+                expanded.append(model_id)
+    return expanded
+
+
 def _install_tts_models(
     venv_python: Path,
     paths: InstallPaths,
@@ -1234,6 +1280,43 @@ def _install_tts_models(
     _run([str(venv_python), "-c", code], paths)
     if verify_hashes:
         _verify_or_write_hash(TTS_HASH_LABEL, paths.models_dir, metadata=hash_metadata)
+
+
+def _install_audio_qa_models(
+    venv_python: Path,
+    paths: InstallPaths,
+    verify_hashes: bool,
+    model_sets: list[str] | tuple[str, ...] | None = None,
+) -> None:
+    selected = _selected_audio_qa_models(model_sets)
+    hash_metadata = {"models": selected}
+    if verify_hashes and _verified_hash_matches(
+        AUDIO_QA_HASH_LABEL,
+        paths.models_dir,
+        metadata=hash_metadata,
+    ):
+        _say(
+            "Audio QA models already verified by SHA-256; skipping download.",
+            "Audio QA модели уже проверены по SHA-256; скачивание пропущено.",
+            "ok",
+        )
+        return
+
+    selected_label = ", ".join(selected)
+    _say(
+        f"Installing selected audio QA models: {selected_label}",
+        f"Устанавливаю выбранные audio QA модели: {selected_label}",
+        "info",
+    )
+    code = (
+        "from pathlib import Path\n"
+        "from book_normalizer.tts.audio_qa_model_download import install_audio_qa_models\n"
+        f"models_dir = Path({str(paths.models_dir)!r})\n"
+        f"install_audio_qa_models({json.dumps(selected)}, models_dir, progress=print)\n"
+    )
+    _run([str(venv_python), "-c", code], paths)
+    if verify_hashes:
+        _verify_or_write_hash(AUDIO_QA_HASH_LABEL, paths.models_dir, metadata=hash_metadata)
 
 
 def _install_perceptual_models(venv_python: Path, paths: InstallPaths) -> None:

@@ -480,12 +480,13 @@ def test_interactive_dry_run_prompts_paths_and_writes_runtime_config(tmp_path: P
             "n",
             "n",
             "n",
-            "n",
-            "n",
-            "n",
-            "n",
-        ]
-    ) + "\n"
+                "n",
+                "n",
+                "n",
+                "n",
+                "n",
+            ]
+        ) + "\n"
 
     try:
         result = subprocess.run(

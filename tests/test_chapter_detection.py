@@ -107,6 +107,73 @@ class TestChapterDetector:
         result = detector.detect_and_split(book)
         assert len(result.chapters) == 1
 
+    def test_drops_title_only_chapter_before_real_content(self) -> None:
+        title = (
+            "\u041e\u0420\u0411\u0418\u0422\u0410\u041b\u042c\u041d\u0410\u042f "
+            "\u0441\u0442\u0430\u043d\u0446\u0438\u044f"
+        )
+        title_only = Chapter(
+            title=title,
+            index=0,
+            paragraphs=[
+                Paragraph(
+                    raw_text=title,
+                    index_in_chapter=0,
+                )
+            ],
+        )
+        content = Chapter(
+            title="\u041a\u0430\u043a \u044f \u0441\u0435\u0431\u044f \u043d\u0430\u0448\u0451\u043b",
+            index=1,
+            paragraphs=[
+                Paragraph(
+                    raw_text="\u041a\u0430\u043a \u044f \u0441\u0435\u0431\u044f \u043d\u0430\u0448\u0451\u043b",
+                    index_in_chapter=0,
+                ),
+                Paragraph(
+                    raw_text=(
+                        "\u0421\u043d\u0430\u0447\u0430\u043b\u0430 "
+                        "\u0441\u0442\u043e\u044f\u043b "
+                        "\u0441\u0435\u0440\u044b\u0439 \u0442\u0443\u043c\u0430\u043d."
+                    ),
+                    index_in_chapter=1,
+                ),
+            ],
+        )
+
+        result = ChapterDetector._drop_title_only_chapters([title_only, content])
+
+        assert result == [content]
+        assert result[0].index == 0
+
+    def test_keeps_short_chapter_with_body(self) -> None:
+        chapter = Chapter(
+            title="\u041f\u0440\u043e\u043b\u043e\u0433",
+            index=0,
+            paragraphs=[
+                Paragraph(raw_text="\u041f\u0440\u043e\u043b\u043e\u0433", index_in_chapter=0),
+                Paragraph(
+                    raw_text=(
+                        "\u042d\u0442\u043e \u0442\u0435\u043a\u0441\u0442 "
+                        "\u043f\u0440\u043e\u043b\u043e\u0433\u0430."
+                    ),
+                    index_in_chapter=1,
+                ),
+            ],
+        )
+        following = Chapter(
+            title="\u0413\u043b\u0430\u0432\u0430 1",
+            index=1,
+            paragraphs=[
+                Paragraph(raw_text="\u0413\u043b\u0430\u0432\u0430 1", index_in_chapter=0),
+                Paragraph(raw_text="\u0422\u0435\u043a\u0441\u0442.", index_in_chapter=1),
+            ],
+        )
+
+        result = ChapterDetector._drop_title_only_chapters([chapter, following])
+
+        assert result == [chapter, following]
+
     def test_preamble_before_first_heading(self) -> None:
         book = self._make_book_with_paragraphs([
             "Это предисловие автора.",

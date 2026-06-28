@@ -814,6 +814,7 @@ class ChapterDetector:
                 )
                 chapters = [chapter] if self._has_meaningful_content(chapter) else []
 
+        chapters = self._drop_title_only_chapters(chapters)
         for section_index, chapter in enumerate(chapters):
             chapter.work_index = work_index
             chapter.work_title = work_title
@@ -923,6 +924,37 @@ class ChapterDetector:
         if text.casefold() == title.casefold():
             return chapters[1:]
         return chapters
+
+    @classmethod
+    def _drop_title_only_chapters(cls, chapters: list[Chapter]) -> list[Chapter]:
+        """Remove standalone heading-only chapters before real content."""
+        if len(chapters) < 2:
+            return chapters
+
+        content_after = [False] * len(chapters)
+        has_later_content = False
+        for idx in range(len(chapters) - 1, -1, -1):
+            content_after[idx] = has_later_content
+            if not cls._is_title_only_chapter(chapters[idx]):
+                has_later_content = True
+
+        kept: list[Chapter] = []
+        for idx, chapter in enumerate(chapters):
+            if cls._is_title_only_chapter(chapter) and content_after[idx]:
+                continue
+            kept.append(chapter)
+
+        for idx, chapter in enumerate(kept):
+            chapter.index = idx
+        return kept
+
+    @staticmethod
+    def _is_title_only_chapter(chapter: Chapter) -> bool:
+        if len(chapter.paragraphs) != 1:
+            return False
+        title = re.sub(r"\s+", " ", chapter.title).strip(" .,:;!?").casefold()
+        text = re.sub(r"\s+", " ", chapter.raw_text).strip(" .,:;!?").casefold()
+        return bool(title and text and title == text and len(text) <= 80)
 
     def _split_at_headings(
         self,

@@ -650,6 +650,7 @@ def test_pipeline_accepts_direct_omni_audio_qa_without_endpoint(
         _chapter_filter: int | None,
         _llm_max_retries: int,
         _max_chunk_chars: int,
+        _llm_chunk_workers: int,
     ) -> Path:
         return manifest_path
 

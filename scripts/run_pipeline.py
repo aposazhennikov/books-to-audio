@@ -348,6 +348,8 @@ def run_stage3_llm_chunking(
     llm_max_retries: int | None,
     max_chunk_chars: int,
     llm_chunk_workers: int = 1,
+    start_chapter: int | None = None,
+    end_chapter: int | None = None,
 ) -> Path:
     """Create v2 chunks manifest using speaker-aware LLM segmentation."""
     from book_normalizer.chunking.dialogue_invariants import assert_dialogue_chunk_boundaries
@@ -375,11 +377,15 @@ def run_stage3_llm_chunking(
         print("No chapter files found — cannot chunk.")
         sys.exit(1)
 
-    # Filter chapters according to chapter_filter for consistent progress reporting.
+    # Filter chapters according to chapter/range filters for consistent progress reporting.
+    start_number = max(1, start_chapter or 1)
+    end_number = max(start_number, end_chapter) if end_chapter is not None else None
     targets: list[tuple[int, str]] = [
         (ch_idx, text)
         for ch_idx, text in chapters
         if chapter_filter is None or ch_idx + 1 == chapter_filter
+        if ch_idx + 1 >= start_number
+        if end_number is None or ch_idx + 1 <= end_number
     ]
     if not targets:
         print("No matching chapters for LLM chunking (check --chapter).")
@@ -862,6 +868,18 @@ def main(argv: list[str] | None = None) -> None:
         help="Parallel LLM chunking workers for Stage 3 (default: 1).",
     )
     parser.add_argument(
+        "--llm-chunk-start-chapter",
+        type=int,
+        default=None,
+        help="Start Stage 3 LLM chunking at this 1-based chapter number.",
+    )
+    parser.add_argument(
+        "--llm-chunk-end-chapter",
+        type=int,
+        default=None,
+        help="Stop Stage 3 LLM chunking after this 1-based chapter number.",
+    )
+    parser.add_argument(
         "--max-chunk-chars",
         type=int,
         default=DEFAULT_PIPELINE_MAX_CHUNK_CHARS,
@@ -1070,6 +1088,8 @@ def main(argv: list[str] | None = None) -> None:
             args.llm_max_retries,
             args.max_chunk_chars,
             args.llm_chunk_workers,
+            args.llm_chunk_start_chapter,
+            args.llm_chunk_end_chapter,
         )
     else:
         stage_banner(3, "Heuristic chunking (offline rule-based)")

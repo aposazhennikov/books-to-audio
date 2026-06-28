@@ -225,6 +225,18 @@ for _production_command in (
     help="Parallel LLM chunking workers.",
 )
 @click.option(
+    "--llm-chunk-start-chapter",
+    type=int,
+    default=None,
+    help="Start Stage 3 LLM chunking at this 1-based chapter number.",
+)
+@click.option(
+    "--llm-chunk-end-chapter",
+    type=int,
+    default=None,
+    help="Stop Stage 3 LLM chunking after this 1-based chapter number.",
+)
+@click.option(
     "--llm-max-retries",
     type=int,
     default=None,
@@ -307,6 +319,8 @@ def pipeline_command(
     llm_normalize_end_chapter: int | None,
     chunk_mode: str,
     llm_chunk_workers: int,
+    llm_chunk_start_chapter: int | None,
+    llm_chunk_end_chapter: int | None,
     llm_max_retries: int | None,
     max_chunk_chars: int,
     synthesize: bool,
@@ -359,6 +373,10 @@ def pipeline_command(
             argv.extend(["--llm-normalize-end-chapter", str(llm_normalize_end_chapter)])
     if llm_chunk_workers != 1:
         argv.extend(["--llm-chunk-workers", str(llm_chunk_workers)])
+    if llm_chunk_start_chapter is not None:
+        argv.extend(["--llm-chunk-start-chapter", str(llm_chunk_start_chapter)])
+    if llm_chunk_end_chapter is not None:
+        argv.extend(["--llm-chunk-end-chapter", str(llm_chunk_end_chapter)])
     if llm_max_retries is not None:
         argv.extend(["--llm-max-retries", str(llm_max_retries)])
     if synthesize:

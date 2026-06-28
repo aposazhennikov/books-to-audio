@@ -474,6 +474,7 @@ def test_stage3_parallel_llm_chunking_round_robins_endpoints_and_preserves_order
     book_dir.mkdir()
     (book_dir / "001_chapter_01.txt").write_text("First.", encoding="utf-8")
     (book_dir / "002_chapter_02.txt").write_text("Second.", encoding="utf-8")
+    (book_dir / "003_chapter_03.txt").write_text("Third.", encoding="utf-8")
     endpoints: list[str] = []
 
     class _FakeSegmenter:
@@ -508,6 +509,8 @@ def test_stage3_parallel_llm_chunking_round_robins_endpoints_and_preserves_order
         llm_max_retries=1,
         max_chunk_chars=2400,
         llm_chunk_workers=2,
+        start_chapter=2,
+        end_chapter=3,
     )
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -515,7 +518,7 @@ def test_stage3_parallel_llm_chunking_round_robins_endpoints_and_preserves_order
     assert [
         chapter["chunks"][0]["text"]
         for chapter in manifest["chapters"]
-    ] == ["First.", "Second."]
+    ] == ["Second.", "Third."]
 
 
 def test_stage3_heuristic_invokes_native_exporter_and_filters_chapter(
@@ -724,6 +727,8 @@ def test_pipeline_accepts_direct_omni_audio_qa_without_endpoint(
         _llm_max_retries: int,
         _max_chunk_chars: int,
         _llm_chunk_workers: int,
+        _llm_chunk_start_chapter: int | None,
+        _llm_chunk_end_chapter: int | None,
     ) -> Path:
         return manifest_path
 

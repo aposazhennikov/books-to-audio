@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 DEFAULT_WINDOW_CHARS = 900
-_CACHE_VERSION = "llm-segmenter-v8-semantic-boundaries"
+_CACHE_VERSION = "llm-segmenter-v9-gap-reconciliation"
 
 ROLE_TO_VOICE_ID = {
     "narrator": "narrator_calm",

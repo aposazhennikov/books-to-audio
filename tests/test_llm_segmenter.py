@@ -224,6 +224,31 @@ def test_llm_voice_segmenter_falls_back_when_primary_loses_text() -> None:
     assert PRIMARY_QWEN3_MODEL in fake.unloaded
 
 
+def test_llm_voice_segmenter_preserves_source_gaps_when_llm_drops_words() -> None:
+    text = "Alpha said: keep this aside. \"Come here,\" he said."
+    segmenter = LlmVoiceSegmenter(language="en", max_retries=1)
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {"role": "narrator", "text": "Alpha said:", "intonation": "calm"},
+                {"role": "male", "text": "\"Come here,\" he said.", "intonation": "firm"},
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="en"))
+
+    assert [row["text"] for row in rows[:3]] == [
+        "Alpha said:",
+        "keep this aside.",
+        '"Come here," he said.',
+    ]
+    assert [row["role"] for row in rows[:3]] == ["narrator", "narrator", "male"]
+    assert _joined_segment_text(rows) == _source_text(text)
+    assert fake.calls == [PRIMARY_QWEN3_MODEL]
+
+
 def test_llm_voice_segmenter_retries_primary_before_fallback_on_text_loss() -> None:
     text = "Alpha beta gamma."
     segmenter = LlmVoiceSegmenter(language="en")

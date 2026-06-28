@@ -55,6 +55,82 @@ def _reconcile_segments_to_source(
     return reconciled
 
 
+def _reconcile_segments_to_source_with_gaps(
+    source_text: str,
+    segments: list[dict[str, Any]],
+) -> list[dict[str, Any]] | None:
+    """
+    Restore source text while preserving usable LLM role boundaries.
+
+    LLMs sometimes drop short narrator clauses while still marking nearby dialogue
+    correctly.  Instead of falling back for the entire window, keep matched LLM
+    spans and insert unmatched source gaps as neutral narrator segments.
+    """
+    source_canonical, source_map = _canonical_with_index_map(source_text)
+    if not source_canonical:
+        return None
+
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    previous_end = 0
+    matched_chars = 0
+    for segment in segments:
+        segment_text = str(segment.get("text") or "")
+        segment_canonical, _segment_map = _canonical_with_index_map(segment_text)
+        if not segment_canonical:
+            continue
+
+        match_offset = source_canonical.find(segment_canonical, offset)
+        if match_offset < 0:
+            continue
+
+        start = source_map[match_offset]
+        end = source_map[match_offset + len(segment_canonical) - 1] + 1
+        start = _extend_segment_start(source_text, start, previous_end)
+        end = _extend_segment_end(source_text, end)
+
+        if start > previous_end:
+            gap = source_text[previous_end:start].strip()
+            if gap:
+                rows.append(_source_gap_segment(gap, segment))
+
+        restored = source_text[start:end].strip()
+        if restored:
+            row = dict(segment)
+            row["text"] = restored
+            rows.append(row)
+            matched_chars += len(segment_canonical)
+        offset = match_offset + len(segment_canonical)
+        previous_end = end
+
+    if previous_end < len(source_text):
+        gap = source_text[previous_end:].strip()
+        if gap:
+            rows.append(_source_gap_segment(gap, segments[-1] if segments else {}))
+
+    if not rows or matched_chars == 0:
+        return None
+    if matched_chars < max(12, len(source_canonical) // 10):
+        return None
+    if not _segments_preserve_source(source_text, rows):
+        return None
+    return rows
+
+
+def _source_gap_segment(text: str, nearby_segment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "role": "narrator",
+        "speaker": "",
+        "character_description": "",
+        "emotion": str(nearby_segment.get("emotion") or "neutral"),
+        "section_kind": "narration",
+        "text": text,
+        "intonation": str(nearby_segment.get("intonation") or "calm"),
+        "pause_after_ms": 0,
+        "boundary_after": "",
+    }
+
+
 def _canonical_with_index_map(text: str) -> tuple[str, list[int]]:
     chars: list[str] = []
     indexes: list[int] = []

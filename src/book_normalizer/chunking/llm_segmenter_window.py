@@ -22,6 +22,7 @@ from book_normalizer.chunking.llm_segmenter_text import (
 )
 from book_normalizer.chunking.llm_source_preservation import (
     _reconcile_segments_to_source,
+    _reconcile_segments_to_source_with_gaps,
     _segments_preserve_source,
 )
 
@@ -68,6 +69,8 @@ class LlmSegmenterWindowMixin:
                     if not segments:
                         raise ValueError("empty segments")
                     reconciled = _reconcile_segments_to_source(window_text, segments)
+                    if reconciled is None:
+                        reconciled = _reconcile_segments_to_source_with_gaps(window_text, segments)
                     if reconciled is not None:
                         segments = reconciled
                     segments = _repair_dialogue_segment_boundaries(segments)

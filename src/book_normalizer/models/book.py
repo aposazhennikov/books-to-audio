@@ -80,9 +80,10 @@ class Chapter(BaseModel):
     @property
     def normalized_text(self) -> str:
         """Concatenate normalized text of all paragraphs."""
-        return "\n\n".join(
-            (p.normalized_text or p.raw_text) for p in self.paragraphs if (p.normalized_text or p.raw_text)
-        )
+        has_normalized = any(p.normalized_text for p in self.paragraphs)
+        if has_normalized:
+            return "\n\n".join(p.normalized_text for p in self.paragraphs if p.normalized_text)
+        return "\n\n".join(p.raw_text for p in self.paragraphs if p.raw_text)
 
 
 class Book(BaseModel):

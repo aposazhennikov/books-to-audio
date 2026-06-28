@@ -119,14 +119,20 @@ class QwenExporter:
             return chapter.normalized_text or chapter.raw_text
 
         parts: list[str] = []
+        prefer_normalized = any(para.normalized_text for para in chapter.paragraphs)
         for para in chapter.paragraphs:
-            para_text = self._build_paragraph_text(para)
+            para_text = self._build_paragraph_text(para, prefer_normalized=prefer_normalized)
             if para_text:
                 parts.append(para_text)
         return "\n\n".join(parts)
 
-    def _build_paragraph_text(self, para: Paragraph) -> str:
+    def _build_paragraph_text(self, para: Paragraph, *, prefer_normalized: bool = False) -> str:
         """Build paragraph text, optionally using segments with stress."""
+        if prefer_normalized and not para.normalized_text:
+            return ""
+        if prefer_normalized and self._strategy != StressExportStrategy.KEEP_ACUTE:
+            return para.normalized_text
+
         if not para.segments:
             return para.normalized_text or para.raw_text
 

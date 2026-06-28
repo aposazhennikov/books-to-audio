@@ -78,6 +78,26 @@ class TestQwenExporterStrategies:
         content = (tmp_path / "qwen_full.txt").read_text(encoding="utf-8")
         assert content.strip() == "простой текст"
 
+    def test_skips_consumed_raw_paragraph_when_chapter_is_normalized(self, tmp_path: Path) -> None:
+        para1 = Paragraph(
+            raw_text="терний и солнеч(",
+            normalized_text="терний и солнечных ожогов.",
+            index_in_chapter=0,
+        )
+        para2 = Paragraph(
+            raw_text="ных ожогов.",
+            normalized_text="",
+            index_in_chapter=1,
+        )
+        ch = Chapter(title="Test", index=0, paragraphs=[para1, para2])
+        book = Book(metadata=Metadata(), chapters=[ch])
+
+        QwenExporter().export(book, tmp_path)
+
+        content = (tmp_path / "qwen_chapter_001.txt").read_text(encoding="utf-8")
+        assert content.strip() == "терний и солнечных ожогов."
+        assert content.count("солнечных ожогов") == 1
+
     def test_chapter_files_created(self, tmp_path: Path) -> None:
         book = _make_book_with_stress()
         exporter = QwenExporter()

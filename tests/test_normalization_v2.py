@@ -135,6 +135,7 @@ class TestPipelineV2:
 
         assert para1.normalized_text == "терний и солнечных ожогов."
         assert para2.normalized_text == ""
+        assert ch.normalized_text == "терний и солнечных ожогов."
 
     def test_cross_paragraph_hyphen_moves_full_word_tail(self) -> None:
         para1 = Paragraph(raw_text="это при-", index_in_chapter=0)
@@ -146,6 +147,7 @@ class TestPipelineV2:
 
         assert para1.normalized_text == "это пример переноса."
         assert para2.normalized_text == ""
+        assert ch.normalized_text == "это пример переноса."
 
     def test_tracking_empty_for_clean_text(self) -> None:
         pipeline = NormalizationPipeline()

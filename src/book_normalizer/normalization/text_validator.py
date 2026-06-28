@@ -279,7 +279,7 @@ def _sentence_count(text: str) -> int:
 def _canonical_text_for_validation(text: str) -> str:
     """Normalize layout-only OCR artifacts before preservation metrics."""
 
-    text = _PDF_PARENTHESIS_SPLIT_RE.sub(r"\1 \2", text or "")
+    text = _PDF_PARENTHESIS_SPLIT_RE.sub(r"\1\2", text or "")
     text = repair_pdf_split_russian_words(text)
     text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)
     text = re.sub(r"[ \t]+", " ", text)

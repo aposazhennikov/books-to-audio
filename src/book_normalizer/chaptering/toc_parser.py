@@ -14,6 +14,11 @@ class TocEntry(NamedTuple):
     level: int  # Nesting level (0 = main chapter, 1 = subchapter).
 
 
+_BOOK_TOC_LINE_RE = re.compile(r"^\s*Книга\s+\d{1,2}\s*$", re.IGNORECASE)
+_BOOK_TOC_TITLE_RE = re.compile(r"^\s*[А-Яа-яЁё][А-Яа-яЁё\s-]{2,80}\s*$")
+_PAGE_NUMBER_RE = re.compile(r"^\s*\d{1,4}\s*$")
+
+
 def find_toc_section(text: str) -> tuple[int, int] | None:
     """
     Find the start and end positions of TOC section in text.
@@ -45,6 +50,10 @@ def find_toc_section(text: str) -> tuple[int, int] | None:
     # After TOC, we'll find full paragraphs (> 200 chars).
     search_text = text[start_pos:]
     lines = search_text.split("\n")
+
+    book_toc_end = _find_book_toc_end(lines)
+    if book_toc_end is not None:
+        return (start_pos, start_pos + book_toc_end)
 
     toc_entry_pattern = re.compile(r"^\s*\d+(?:\.\d+)*\.\s+.+$")
 
@@ -101,6 +110,40 @@ def find_toc_section(text: str) -> tuple[int, int] | None:
             break
 
     return (start_pos, min(end_pos, len(text)))
+
+
+def _find_book_toc_end(lines: list[str]) -> int | None:
+    """Return TOC end offset for simple "Книга N / title / page" blocks."""
+    non_empty: list[tuple[int, str, int]] = []
+    offset = 0
+    for line in lines:
+        stripped = line.strip()
+        if stripped:
+            non_empty.append((offset, stripped, len(line)))
+        offset += len(line) + 1
+
+    triples = 0
+    last_page_end: int | None = None
+    idx = 0
+    while idx + 2 < len(non_empty):
+        _, line, _ = non_empty[idx]
+        if not _BOOK_TOC_LINE_RE.match(line):
+            idx += 1
+            continue
+
+        _, title, _ = non_empty[idx + 1]
+        page_offset, page, page_len = non_empty[idx + 2]
+        if not _BOOK_TOC_TITLE_RE.match(title) or not _PAGE_NUMBER_RE.match(page):
+            idx += 1
+            continue
+
+        triples += 1
+        last_page_end = page_offset + page_len + 1
+        idx += 3
+
+    if triples >= 2 and last_page_end is not None:
+        return last_page_end
+    return None
 
 
 _TRAILING_DOTS_RE = re.compile(r"\s*[.…·\-–—]{3,}\s*\d*\s*$")

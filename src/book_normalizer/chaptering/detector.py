@@ -71,6 +71,12 @@ class ChapterDetector:
             )
 
         work_hits = self._find_work_headings(all_paragraphs, skip_indices=toc_para_indices)
+        work_hits = self._augment_work_headings_from_toc_title_pages(
+            all_paragraphs,
+            work_hits,
+            toc_work_titles,
+            skip_indices=toc_para_indices,
+        )
 
         # First try: scan for chapter headings in text.
         hits = self._find_headings(all_paragraphs, skip_indices=toc_para_indices)
@@ -192,6 +198,125 @@ class ChapterDetector:
                 heading_text, label = result
                 hits.append(_HeadingHit(paragraph_index=idx, heading_text=heading_text, pattern_label=label))
         return hits
+
+    @staticmethod
+    def _augment_work_headings_from_toc_title_pages(
+        paragraphs: list[Paragraph],
+        work_hits: list[_HeadingHit],
+        toc_work_titles: dict[int, str],
+        *,
+        skip_indices: set[int] | None = None,
+    ) -> list[_HeadingHit]:
+        """Promote standalone body title pages that match work titles from TOC."""
+        if len(toc_work_titles) < 2:
+            return work_hits
+
+        existing_indices = {hit.paragraph_index for hit in work_hits}
+        combined = list(work_hits)
+        skip = skip_indices or set()
+        last_found = -1
+
+        for number, display_title in sorted(toc_work_titles.items()):
+            title = ChapterDetector._strip_toc_work_number(display_title)
+            match_index = ChapterDetector._find_body_title_page_for_toc_work(
+                paragraphs,
+                title,
+                number,
+                start=max(last_found + 1, 0),
+                skip_indices=skip,
+                existing_indices=existing_indices,
+            )
+            if match_index is None:
+                continue
+            existing_indices.add(match_index)
+            combined.append(
+                _HeadingHit(
+                    paragraph_index=match_index,
+                    heading_text=display_title,
+                    pattern_label="work_inferred_toc_title_page",
+                )
+            )
+            last_found = match_index
+
+        combined.sort(key=lambda item: item.paragraph_index)
+        return combined
+
+    @staticmethod
+    def _strip_toc_work_number(display_title: str) -> str:
+        return re.sub(r"^\s*\d{1,2}\.\s*", "", display_title).strip()
+
+    @staticmethod
+    def _find_body_title_page_for_toc_work(
+        paragraphs: list[Paragraph],
+        title: str,
+        number: int,
+        *,
+        start: int,
+        skip_indices: set[int],
+        existing_indices: set[int],
+    ) -> int | None:
+        for idx in range(start, len(paragraphs)):
+            if idx in existing_indices:
+                continue
+            if idx in skip_indices:
+                continue
+            if ChapterDetector._is_toc_work_title_line(paragraphs, idx, number):
+                continue
+            candidate = ChapterDetector._single_short_title_line(paragraphs[idx].raw_text)
+            if candidate is None:
+                continue
+            if ChapterDetector._toc_title_matches_body_title(title, candidate):
+                return idx
+        return None
+
+    @staticmethod
+    def _is_toc_work_title_line(paragraphs: list[Paragraph], idx: int, number: int) -> bool:
+        if idx <= 0 or idx + 1 >= len(paragraphs):
+            return False
+        previous = re.sub(r"\s+", " ", paragraphs[idx - 1].raw_text).strip()
+        following = re.sub(r"\s+", " ", paragraphs[idx + 1].raw_text).strip()
+        return bool(
+            re.fullmatch(rf"Книга\s+{number}", previous, re.IGNORECASE)
+            and re.fullmatch(r"\d{1,4}", following)
+        )
+
+    @staticmethod
+    def _single_short_title_line(text: str) -> str | None:
+        lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+        if len(lines) != 1:
+            return None
+        candidate = re.sub(r"\s+", " ", lines[0]).strip(" .,:;!?")
+        if not candidate or len(candidate) > 80:
+            return None
+        if any(mark in candidate for mark in (";", ":", "!", "?", "…", "—", "–", "«", "»", "(", ")")):
+            return None
+        if not re.fullmatch(r"[А-Яа-яЁё0-9\s'-]+", candidate):
+            return None
+        return candidate
+
+    @staticmethod
+    def _toc_title_matches_body_title(toc_title: str, body_title: str) -> bool:
+        toc_norm = ChapterDetector._normalize_title_for_match(toc_title)
+        body_norm = ChapterDetector._normalize_title_for_match(body_title)
+        if not toc_norm or not body_norm:
+            return False
+        if toc_norm == body_norm:
+            return True
+        if len(body_norm) >= 8 and (body_norm in toc_norm or toc_norm in body_norm):
+            return True
+
+        toc_words = set(re.findall(r"[а-яё]{2,}", toc_norm))
+        body_words = set(re.findall(r"[а-яё]{2,}", body_norm))
+        if not body_words or len(body_norm) < 8:
+            return False
+        return body_words.issubset(toc_words)
+
+    @staticmethod
+    def _normalize_title_for_match(text: str) -> str:
+        lowered = text.casefold().replace("ё", "е")
+        lowered = re.sub(r"[^а-яе0-9\s-]+", " ", lowered)
+        lowered = re.sub(r"\s+", " ", lowered)
+        return lowered.strip()
 
     _RE_FIRST_GLAVA = re.compile(
         r"^\s*[Гг][Лл][Аа][Вв][Аа]\s+(?:1|I|i|[Пп]ервая)\b"

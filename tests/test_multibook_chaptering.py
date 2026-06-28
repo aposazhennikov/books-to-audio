@@ -285,6 +285,82 @@ def test_multibook_promotes_late_numbered_sections_after_known_works() -> None:
     assert result.chapters[-1].work_title == "7. В поисках силы"
 
 
+def test_toc_work_titles_promote_standalone_title_pages() -> None:
+    toc = "\u0421\u043e\u0434\u0435\u0440\u0436\u0430\u043d\u0438\u0435"
+    book_label = "\u041a\u043d\u0438\u0433\u0430"
+    title_1 = "\u0412\u0445\u043e\u0434 \u0432 \u0441\u043f\u0438\u0440\u0430\u043b\u044c"
+    title_2 = "\u041d\u0430\u0441\u043b\u0435\u0434\u043d\u0438\u043a\u0438 \u0421\u0435\u0442\u0430"
+    title_3 = (
+        "\u0417\u0430\u0442\u0435\u0440\u044f\u043d\u043d\u044b\u0435 "
+        "\u0432 \u043a\u043e\u0441\u043c\u043e\u0441\u0435"
+    )
+    title_3_ocr = "\u0417\u0410\u0422\u0415\u0420\u042f\u041d\u041d\u042b\u0415"
+    chapter_1 = "\u0413\u043b\u0430\u0432\u0430 \u043f\u0435\u0440\u0432\u0430\u044f,"
+    chapter_2 = "\u0413\u043b\u0430\u0432\u0430 \u0432\u0442\u043e\u0440\u0430\u044f,"
+    section_1 = (
+        "\u0413\u0435\u043d\u0435\u0442\u0438\u0447\u0435\u0441\u043a\u0430\u044f "
+        "\u043f\u0430\u043c\u044f\u0442\u044c"
+    )
+    section_2 = (
+        "\u0412\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u043b\u043a\u0430 "
+        "\u0440\u0430\u0437\u0443\u043c\u0430"
+    )
+    book = _book([
+        toc,
+        f"{book_label} 1",
+        title_1,
+        "1",
+        f"{book_label} 2",
+        title_2,
+        "120",
+        f"{book_label} 3",
+        title_3,
+        "240",
+        title_1,
+        chapter_1,
+        "\u0422\u0435\u043a\u0441\u0442 "
+        "\u043f\u0435\u0440\u0432\u043e\u0439 \u043a\u043d\u0438\u0433\u0438.",
+        chapter_2,
+        "\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0435\u043d\u0438\u0435 "
+        "\u043f\u0435\u0440\u0432\u043e\u0439 \u043a\u043d\u0438\u0433\u0438.",
+        title_2,
+        chapter_1,
+        "\u0422\u0435\u043a\u0441\u0442 "
+        "\u0432\u0442\u043e\u0440\u043e\u0439 \u043a\u043d\u0438\u0433\u0438.",
+        chapter_2,
+        "\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0435\u043d\u0438\u0435 "
+        "\u0432\u0442\u043e\u0440\u043e\u0439 \u043a\u043d\u0438\u0433\u0438.",
+        title_3_ocr,
+        section_1,
+        (
+            "\u0411\u043e\u043b\u044c\u0448\u043e\u0439 "
+            "\u0441\u0430\u043c\u043e\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u043d\u044b\u0439 "
+            "\u0440\u0430\u0437\u0434\u0435\u043b "
+            "\u0442\u0440\u0435\u0442\u044c\u0435\u0439 "
+            "\u043a\u043d\u0438\u0433\u0438. "
+        ) * 900,
+        section_2,
+        (
+            "\u0415\u0449\u0435 \u043e\u0434\u0438\u043d "
+            "\u0441\u0430\u043c\u043e\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u043d\u044b\u0439 "
+            "\u0440\u0430\u0437\u0434\u0435\u043b "
+            "\u0442\u0440\u0435\u0442\u044c\u0435\u0439 "
+            "\u043a\u043d\u0438\u0433\u0438. "
+        ) * 900,
+    ])
+
+    result = ChapterDetector().detect_and_split(book)
+
+    assert result.metadata.extra["structure"]["work_titles"] == [
+        f"1. {title_1}",
+        f"2. {title_2}",
+        f"3. {title_3}",
+    ]
+    assert result.chapters[-2].work_title == f"3. {title_3}"
+    assert result.chapters[-2].title == f"3. {title_3} - {section_1}"
+    assert result.chapters[-1].title == f"3. {title_3} - {section_2}"
+
+
 def test_supported_language_heading_patterns() -> None:
     assert match_chapter_heading("Chapter One") is not None
     assert match_chapter_heading("Chapter IV") is not None

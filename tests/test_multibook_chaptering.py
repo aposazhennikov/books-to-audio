@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from book_normalizer.chaptering.detector import ChapterDetector
+from book_normalizer.chaptering.detector import ChapterDetector, _HeadingHit
 from book_normalizer.chaptering.patterns import match_chapter_heading, match_work_heading
 from book_normalizer.models.book import Book, Chapter, Paragraph
 
@@ -156,6 +156,45 @@ def test_internal_section_titles_ignore_dialogue_and_trailing_toc() -> None:
     hits = ChapterDetector._infer_internal_section_headings(paragraphs)
 
     assert [hit.heading_text for hit in hits] == ["Включения", "Восход Солнца", "Кульминация"]
+
+
+def test_dialogue_like_heading_hit_is_ignored_inside_work() -> None:
+    """A false heading inside direct speech must not become a chapter title."""
+    book = _book([
+        "Book One",
+        "Глава 1",
+        "Prelude text.",
+        "Book Two",
+        "Загадочные обстоятельства",
+        "Основной текст.",
+        "— Смотрите, капитан. Это «Замок Ледяных Кукол». Я когда(\nто был там.",
+        "Кульминация",
+        "Финал.",
+    ])
+    result = ChapterDetector().detect_and_split(book)
+
+    assert all("Замок Ледяных Кукол" not in chapter.title for chapter in result.chapters)
+
+
+def test_heading_line_prefers_title_start_over_earlier_mention() -> None:
+    """When a heading title is mentioned in dialogue, split at the real heading line."""
+    paragraphs = [
+        Paragraph(
+            raw_text=(
+                "— Смотрите, капитан. Это «Замок Ледяных Кукол».\n"
+                "Замок Ледяных Кукол\n"
+                "Описание замка."
+            ),
+            index_in_chapter=0,
+        )
+    ]
+    chapters = ChapterDetector()._split_at_headings(
+        paragraphs,
+        [_HeadingHit(0, "Замок Ледяных Кукол", "internal_section_title")],
+    )
+
+    assert chapters[0].title == "Замок Ледяных Кукол"
+    assert chapters[0].paragraphs[0].raw_text.startswith("Замок Ледяных Кукол")
 
 
 def test_multibook_can_be_inferred_from_restarted_first_chapters() -> None:

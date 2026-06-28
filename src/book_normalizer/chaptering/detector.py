@@ -765,7 +765,7 @@ class ChapterDetector:
                 normalized_line = line.strip().rstrip('.,:;!? ')
                 normalized_title = hit.heading_text.strip().rstrip('.,:;!? ')
 
-                if normalized_title in normalized_line or normalized_line.startswith(normalized_title):
+                if normalized_line.startswith(normalized_title):
                     heading_line_idx = line_idx
                     full_title = line.strip()
                     break

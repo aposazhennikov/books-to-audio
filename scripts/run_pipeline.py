@@ -396,8 +396,9 @@ def run_stage3_llm_chunking(
         order_index: int,
         ch_idx: int,
         text: str,
+        endpoint_override: str | None = None,
     ) -> tuple[int, int, list[dict[str, object]], float, int, str]:
-        endpoint = endpoint_pool[order_index % len(endpoint_pool)]
+        endpoint = endpoint_override or endpoint_pool[order_index % len(endpoint_pool)]
         report_path = (
             book_dir / "llm_chunking_review_report.json"
             if workers == 1
@@ -435,30 +436,54 @@ def run_stage3_llm_chunking(
         print(f"  Using {workers} LLM chunk worker(s) across {len(endpoint_pool)} endpoint(s).")
         (book_dir / "llm_chunking_reviews").mkdir(parents=True, exist_ok=True)
         ordered_chunks: dict[int, list[dict[str, object]]] = {}
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {
-                executor.submit(_process_chapter, order_index, ch_idx, text): (
+        lanes: list[list[tuple[int, int, str]]] = [[] for _ in range(workers)]
+        for order_index, (ch_idx, text) in enumerate(targets):
+            lanes[order_index % workers].append((order_index, ch_idx, text))
+
+        def _process_lane(
+            lane_index: int,
+            lane_targets: list[tuple[int, int, str]],
+        ) -> list[tuple[int, int, list[dict[str, object]], float, int, str, int]]:
+            endpoint = endpoint_pool[lane_index % len(endpoint_pool)]
+            results: list[tuple[int, int, list[dict[str, object]], float, int, str, int]] = []
+            for order_index, ch_idx, text in lane_targets:
+                order, chapter, chunks, elapsed, est_windows, used_endpoint = _process_chapter(
                     order_index,
                     ch_idx,
                     text,
+                    endpoint,
                 )
-                for order_index, (ch_idx, text) in enumerate(targets)
+                results.append((
+                    order,
+                    chapter,
+                    chunks,
+                    elapsed,
+                    est_windows,
+                    used_endpoint,
+                    len(text),
+                ))
+            return results
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(_process_lane, lane_index, lane_targets): lane_index
+                for lane_index, lane_targets in enumerate(lanes)
+                if lane_targets
             }
             for future in as_completed(futures):
-                order_index, ch_idx, text = futures[future]
-                _order, _ch_idx, chunks, elapsed, est_windows, endpoint = future.result()
-                ordered_chunks[order_index] = chunks
-                processed_windows += est_windows
-                total_elapsed = time.monotonic() - stage_t0
-                avg_per_window = total_elapsed / processed_windows
-                remaining_windows = max(total_windows - processed_windows, 0)
-                eta = remaining_windows * avg_per_window
-                print(
-                    f"    в†’ chapter {ch_idx + 1} ({len(text)} chars, endpoint {endpoint}) "
-                    f"{len(chunks)} chunks in {elapsed:.1f}s "
-                    f"(elapsed {total_elapsed:.1f}s, eta в‰€ {eta:.1f}s, "
-                    f"{processed_windows}/{total_windows} estimated windows)"
-                )
+                for order_index, ch_idx, chunks, elapsed, est_windows, endpoint, text_len in future.result():
+                    ordered_chunks[order_index] = chunks
+                    processed_windows += est_windows
+                    total_elapsed = time.monotonic() - stage_t0
+                    avg_per_window = total_elapsed / processed_windows
+                    remaining_windows = max(total_windows - processed_windows, 0)
+                    eta = remaining_windows * avg_per_window
+                    print(
+                        f"    в†’ chapter {ch_idx + 1} ({text_len} chars, endpoint {endpoint}) "
+                        f"{len(chunks)} chunks in {elapsed:.1f}s "
+                        f"(elapsed {total_elapsed:.1f}s, eta в‰€ {eta:.1f}s, "
+                        f"{processed_windows}/{total_windows} estimated windows)"
+                    )
         for order_index in range(len(targets)):
             all_chunks.extend(ordered_chunks[order_index])
         targets = []

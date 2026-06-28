@@ -1518,11 +1518,27 @@ def test_repaired_dialogue_discards_unproven_llm_speaker_before_alternating() ->
             "\u043f\u043e \u041c\u043e\u0441\u043a\u0432\u0435?",
             "intonation": "calm",
         },
+        {
+            "role": "male",
+            "speaker": "\u0421\u0435\u0440\u0433\u0435\u0439",
+            "section_kind": "dialogue",
+            "text": "\u2014 \u0412 14.30. \u041f\u043e\u043c\u043e\u0436\u0435\u0442\u0435?",
+            "intonation": "calm",
+        },
+        {
+            "role": "male",
+            "speaker": "\u041a\u043e\u043c\u043c\u0443\u043d\u0438\u043a\u0430\u0442\u043e\u0440",
+            "section_kind": "dialogue",
+            "text": "\u2014 \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u044e,",
+            "intonation": "calm",
+        },
     ]
 
     repaired = repair_segment_dialogue_boundaries(rows, language="ru")
 
     assert repaired[3]["speaker"] == "\u0421\u0435\u0440\u0433\u0435\u0439"
+    assert repaired[4]["speaker"] == "\u041a\u043e\u043c\u043c\u0443\u043d\u0438\u043a\u0430\u0442\u043e\u0440"
+    assert repaired[5]["speaker"] == "\u0421\u0435\u0440\u0433\u0435\u0439"
 
 
 def test_repaired_dialogue_marks_previous_quote_as_whisper_from_author_tag() -> None:

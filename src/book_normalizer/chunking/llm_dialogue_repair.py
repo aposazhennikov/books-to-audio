@@ -63,7 +63,15 @@ def repair_segment_dialogue_boundaries(
             or row.get("role_description")
             or row.get("description")
         )
-        if speaker and _llm_speaker_needs_local_support(speaker, text, language):
+        if speaker and (
+            _llm_speaker_needs_local_support(speaker, text, language)
+            or _llm_speaker_conflicts_with_turn_taking(
+                speaker,
+                text,
+                language,
+                recent_dialogue_speakers,
+            )
+        ):
             speaker = ""
             character_description = ""
         if (
@@ -161,6 +169,26 @@ def _llm_speaker_needs_local_support(speaker: str, text: str, language: str) -> 
     if len(speaker.split()) <= 1:
         return False
     return speaker.casefold() not in text.casefold()
+
+
+def _llm_speaker_conflicts_with_turn_taking(
+    speaker: str,
+    text: str,
+    language: str,
+    recent_dialogue_speakers: list[tuple[str, str]],
+) -> bool:
+    """Return true for unsupported repeated speaker tags in two-person dialogue."""
+
+    if normalize_book_language(language) != "ru":
+        return False
+    if not speaker or speaker.casefold() in str(text or "").casefold():
+        return False
+    if len(recent_dialogue_speakers) < 2:
+        return False
+    previous_speaker = recent_dialogue_speakers[-1][0]
+    if speaker != previous_speaker:
+        return False
+    return any(other and other != previous_speaker for other, _role in recent_dialogue_speakers[:-1])
 
 
 def _apply_delivery_cues(

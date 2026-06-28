@@ -12,6 +12,8 @@ Most important OCR rule:
 - Never change "именуемое" into "имеющееся".
 - Never change "приторно" into "притворно".
 - Never leave artificial in-word hyphens such as "заверше- ния"; audiobook text should be continuous and readable.
+- Forbidden output examples: "руководи- телей", "при- торно", "заверше- ния".
+- If you cannot safely make a continuous word, keep the original source fragment unchanged; do not invent a hyphenated compromise.
 - If the correct join would require inventing a missing letter that is not present in the source, leave the word unchanged.
 
 Strictly forbidden:

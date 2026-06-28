@@ -135,6 +135,7 @@ class TextPreservationValidator:
                 f"Too many sentences added: ratio {sentence_ratio:.3f} > {self._max_sr:.3f}"
             )
         issues.extend(_punctuation_structure_issues(original, corrected))
+        issues.extend(_word_substitution_issues(original, corrected))
 
         # When there are issues, also report word-level statistics and a few
         # concrete mismatches to aid debugging.
@@ -212,6 +213,7 @@ _SENTENCE_END_RE = re.compile(r"[.!?…]+(?:\s+|$)")
 _PDF_PARENTHESIS_SPLIT_RE = re.compile(r"([А-ЯЁа-яё])\([ \t\r\n]+([А-ЯЁа-яё])")
 _OBVIOUS_PUNCTUATION_ARTIFACT_RE = re.compile(r",,{1,}|[;:]{2,}|[!?]{4,}|\.{4,}")
 _DIALOGUE_DASH_RE = re.compile(r"(^|[\n\r\s])[—–-]\s*(?=\S)")
+_IN_WORD_HYPHEN_WRAP_RE = re.compile(r"[А-ЯЁа-яё]-\s+[А-ЯЁа-яё]")
 _QUOTE_CHARS = "\"'«»“”„"
 
 
@@ -305,6 +307,10 @@ def _punctuation_structure_issues(original: str, corrected: str) -> list[str]:
     if artifact:
         issues.append(f"Suspicious punctuation artifact introduced: {artifact.group()!r}")
 
+    hyphen_wrap = _IN_WORD_HYPHEN_WRAP_RE.search(corrected)
+    if hyphen_wrap:
+        issues.append(f"In-word hyphenated line wrap introduced: {hyphen_wrap.group()!r}")
+
     original_dialogue_dashes = len(_DIALOGUE_DASH_RE.findall(original))
     corrected_dialogue_dashes = len(_DIALOGUE_DASH_RE.findall(corrected))
     if original_dialogue_dashes and original_dialogue_dashes != corrected_dialogue_dashes:
@@ -325,3 +331,28 @@ def _punctuation_structure_issues(original: str, corrected: str) -> list[str]:
 
 def _count_quote_markers(text: str) -> int:
     return sum(1 for char in text if char in _QUOTE_CHARS)
+
+
+def _word_substitution_issues(original: str, corrected: str) -> list[str]:
+    """Reject non-mechanical word substitutions after OCR canonicalization."""
+
+    orig_words = _words(original)
+    corr_words = _words(corrected)
+    if len(orig_words) != len(corr_words):
+        return []
+    changed: list[str] = []
+    for index, (original_word, corrected_word) in enumerate(zip(orig_words, corr_words)):
+        if _words_equivalent_for_minimal_correction(original_word, corrected_word):
+            continue
+        changed.append(f"{index}: '{original_word}' -> '{corrected_word}'")
+        if len(changed) >= 5:
+            break
+    if not changed:
+        return []
+    return ["Unexpected word substitution after OCR normalization: " + "; ".join(changed)]
+
+
+def _words_equivalent_for_minimal_correction(original: str, corrected: str) -> bool:
+    if original == corrected:
+        return True
+    return original.replace("ё", "е") == corrected.replace("ё", "е")

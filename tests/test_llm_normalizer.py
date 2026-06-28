@@ -148,6 +148,22 @@ class TestTextPreservationValidator:
         result = self.validator.validate(original, corrected)
         assert result.is_valid, f"Should accept layout line join: {result.issues}"
 
+    def test_rejects_plausible_but_wrong_word_substitution(self) -> None:
+        """A dictionary-looking replacement is not a safe OCR repair."""
+        original = "Болото, име( нуемое временем, стояло на месте."
+        corrected = "Болото, имеющееся временем, стояло на месте."
+        result = self.validator.validate(original, corrected)
+        assert not result.is_valid
+        assert any("Unexpected word substitution" in issue for issue in result.issues)
+
+    def test_rejects_in_word_hyphen_wrap_introduced_by_llm(self) -> None:
+        """LLM must not replace one OCR artifact with a hyphenated line-wrap."""
+        original = "Каждый из восьми руководи( телей проекта докладывал."
+        corrected = "Каждый из восьми руководи- телей проекта докладывал."
+        result = self.validator.validate(original, corrected)
+        assert not result.is_valid
+        assert any("hyphenated line wrap" in issue for issue in result.issues)
+
     def test_rejects_empty_output(self) -> None:
         """Empty LLM output must always be rejected."""
         result = self.validator.validate("Какой-то текст.", "")

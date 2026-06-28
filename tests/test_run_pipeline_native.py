@@ -619,6 +619,26 @@ def test_export_chunks_infers_short_chapter_title_from_text(tmp_path: Path) -> N
     assert book.chapters[0].raw_text.startswith("Помощь близка")
 
 
+def test_export_chunks_manifest_uses_inferred_chapter_title(tmp_path: Path) -> None:
+    export_chunks = _load_export_chunks()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    (book_dir / "001_chapter_01.txt").write_text(
+        "Помощь близка\n\nПервый обычный абзац главы.",
+        encoding="utf-8",
+    )
+
+    export_chunks.main([
+        "--book-dir",
+        str(book_dir),
+        "--mode",
+        "heuristic",
+    ])
+
+    manifest = json.loads((book_dir / "chunks_manifest_v2.json").read_text(encoding="utf-8"))
+    assert manifest["chapters"][0]["chapter_title"] == "Помощь близка"
+
+
 def test_synthesis_and_assembly_stages_invoke_script_mains_in_process(
     tmp_path: Path,
     monkeypatch,

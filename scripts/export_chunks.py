@@ -133,10 +133,12 @@ def export_heuristic(
     print(f"Total chunks: {total_chunks}")
 
     chunks = []
+    chapter_titles = {chapter.index: chapter.title for chapter in book.chapters}
     for ch_idx in sorted(chunked.keys()):
         for chunk in chunked[ch_idx]:
             chunks.append({
                 "chapter_index": chunk.chapter_index,
+                "chapter_title": chapter_titles.get(chunk.chapter_index, ""),
                 "chunk_index": chunk.index,
                 "role": chunk.role.value,
                 "voice_id": chunk.voice_id,

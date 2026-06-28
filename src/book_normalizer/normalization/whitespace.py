@@ -71,7 +71,10 @@ def repair_pdf_split_russian_words(text: str) -> str:
     artifacts and leaves ordinary short function-word sequences untouched.
     """
 
-    return _PDF_SPLIT_RU_WORD_RE.sub(lambda match: match.group("head") + match.group("tail"), text)
+    text = _PDF_SPLIT_RU_WORD_RE.sub(lambda match: match.group("head") + match.group("tail"), text)
+    text = re.sub(r"\b([А-ЯЁа-яё]+)\((то|либо|нибудь)\b", r"\1-\2", text)
+    text = re.sub(r"\bиз\(за\b", "из-за", text, flags=re.IGNORECASE)
+    return text
 
 
 def normalize_spacing_around_punctuation(text: str) -> str:

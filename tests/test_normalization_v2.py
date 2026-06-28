@@ -57,6 +57,11 @@ class TestRepairPdfSplitRussianWords:
 
         assert repair_pdf_split_russian_words(text) == text
 
+    def test_repairs_pdf_parenthesis_in_indefinite_particles(self) -> None:
+        text = "Почему(то он вышел из(за бархана и взял что(либо."
+
+        assert repair_pdf_split_russian_words(text) == "Почему-то он вышел из-за бархана и взял что-либо."
+
 
 class TestSpacingAroundPunctuation:
     def test_removes_space_before_comma(self) -> None:
@@ -148,6 +153,19 @@ class TestPipelineV2:
         assert para1.normalized_text == "это пример переноса."
         assert para2.normalized_text == ""
         assert ch.normalized_text == "это пример переноса."
+
+    def test_cross_paragraph_pdf_open_paren_skips_blank_gap(self) -> None:
+        para1 = Paragraph(raw_text="выдала полуоргани(", index_in_chapter=0)
+        gap = Paragraph(raw_text="", index_in_chapter=1)
+        para2 = Paragraph(raw_text="ческий механизм.", index_in_chapter=2)
+        ch = Chapter(title="Test", index=0, paragraphs=[para1, gap, para2])
+        book = Book(chapters=[ch])
+
+        NormalizationPipeline().normalize_book(book)
+
+        assert ch.normalized_text == "выдала полуорганический механизм."
+        assert gap.raw_text == ""
+        assert para2.normalized_text == ""
 
     def test_tracking_empty_for_clean_text(self) -> None:
         pipeline = NormalizationPipeline()

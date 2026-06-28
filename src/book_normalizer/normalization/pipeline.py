@@ -260,8 +260,16 @@ class NormalizationPipeline:
             paras = chapter.paragraphs
             for i in range(len(paras) - 1):
                 cur = paras[i]
-                nxt = paras[i + 1]
                 cur_text = cur.normalized_text or cur.raw_text
+                next_index = i + 1
+                while next_index < len(paras):
+                    probe = paras[next_index].normalized_text or paras[next_index].raw_text
+                    if probe.strip():
+                        break
+                    next_index += 1
+                if next_index >= len(paras):
+                    continue
+                nxt = paras[next_index]
                 nxt_text = nxt.normalized_text or nxt.raw_text
 
                 m_trail = NormalizationPipeline._TRAILING_HYPHEN.search(cur_text)
@@ -278,6 +286,9 @@ class NormalizationPipeline:
                 if next_remainder:
                     joined_tail += " " + next_remainder
                 cur.normalized_text = cur_text[:m_trail.start()] + m_trail.group(1) + joined_tail
+                for gap in paras[i + 1: next_index]:
+                    gap.normalized_text = ""
+                    gap.raw_text = ""
                 nxt.normalized_text = ""
                 joins += 1
 

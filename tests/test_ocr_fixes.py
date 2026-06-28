@@ -2,7 +2,10 @@
 
 import pytest
 
+from book_normalizer.models.book import Book, Chapter, Paragraph
 from book_normalizer.normalization.ocr_fixes import (
+    collect_contextual_capitalized_words,
+    fix_contextual_proper_name_ocr_variants,
     fix_mixed_script,
     fix_ocr_artifacts,
     fix_russian_particle_hyphens,
@@ -88,6 +91,28 @@ def test_pipeline_restores_dropped_initial_letter_in_priem() -> None:
     )
 
 
+def test_pipeline_uses_book_context_for_proper_name_ocr_variants() -> None:
+    book = Book(
+        chapters=[
+            Chapter(
+                title="Test",
+                index=0,
+                paragraphs=[
+                    Paragraph(raw_text="К нему подошла Полли.", index_in_chapter=0),
+                    Paragraph(raw_text="поли закрыла дверь.", index_in_chapter=1),
+                    Paragraph(raw_text="ергей понимал, что спит.", index_in_chapter=2),
+                    Paragraph(raw_text="С ним говорил Сергей.", index_in_chapter=3),
+                ],
+            )
+        ]
+    )
+
+    NormalizationPipeline.for_language("ru").normalize_book(book)
+
+    assert book.chapters[0].paragraphs[1].normalized_text == "Полли закрыла дверь."
+    assert book.chapters[0].paragraphs[2].normalized_text == "Сергей понимал, что спит."
+
+
 def test_ocr_artifacts_restore_obvious_missing_prepositions() -> None:
     text = (
         "с одной планет Зенов. "
@@ -134,6 +159,16 @@ def test_ocr_artifacts_split_past_plural_verb_from_u_preposition() -> None:
 def test_ocr_artifacts_do_not_split_ordinary_words_ending_with_u_sound() -> None:
     text = "Я не понимаю, почему их не предупредили."
     assert fix_ocr_artifacts(text) == text
+
+
+def test_contextual_proper_name_variants_use_non_sentence_start_names() -> None:
+    text = "К нему подошла Полли. поли закрыла дверь."
+    candidates = collect_contextual_capitalized_words(text)
+
+    assert "Полли" in candidates
+    assert fix_contextual_proper_name_ocr_variants("поли закрыла дверь.", candidates) == (
+        "Полли закрыла дверь."
+    )
 
 
 def test_ocr_artifacts_restores_obvious_chernaya_kniga_direction() -> None:

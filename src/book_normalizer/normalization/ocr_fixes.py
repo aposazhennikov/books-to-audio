@@ -101,6 +101,10 @@ _PAST_PLURAL_VERB_PLUS_U_RE = re.compile(
     re.IGNORECASE,
 )
 _CAPITALIZED_CYRILLIC_WORD_RE = re.compile(r"\b[А-ЯЁ][а-яё]{4,}\b")
+_MID_PHRASE_CAPITALIZED_CYRILLIC_WORD_RE = re.compile(
+    r"(?<![.!?…:\n]\s)(?<!^)\b[А-ЯЁ][а-яё]{4,}\b"
+)
+_DOUBLED_CYRILLIC_CONSONANT_RE = re.compile(r"([бвгджзклмнпрстфхцчшщ])\1", re.IGNORECASE)
 
 # Two or more stray single characters separated by spaces (OCR junk).
 _SCATTERED_CHARS = re.compile(
@@ -282,20 +286,48 @@ def fix_glued_short_russian_words(text: str) -> str:
     return text
 
 
-def fix_dropped_initials_from_context(text: str) -> str:
+def collect_contextual_capitalized_words(text: str) -> set[str]:
+    """Collect likely proper names/entities capitalized away from sentence starts."""
+
+    return set(_MID_PHRASE_CAPITALIZED_CYRILLIC_WORD_RE.findall(text))
+
+
+def fix_dropped_initials_from_context(
+    text: str,
+    candidates: set[str] | None = None,
+) -> str:
     """Restore a dropped first letter when the full capitalized word is nearby."""
 
-    candidates = sorted(
-        set(_CAPITALIZED_CYRILLIC_WORD_RE.findall(text)),
+    candidate_words = sorted(
+        set(_CAPITALIZED_CYRILLIC_WORD_RE.findall(text)).union(candidates or set()),
         key=len,
         reverse=True,
     )
-    for candidate in candidates:
+    for candidate in candidate_words:
         suffix = candidate[1:].casefold()
         if len(suffix) < 4:
             continue
         pattern = re.compile(
             rf"(?<![А-Яа-яЁё-]){re.escape(suffix)}(?![А-Яа-яЁё-])"
+        )
+        text = pattern.sub(candidate, text)
+    return text
+
+
+def fix_contextual_proper_name_ocr_variants(
+    text: str,
+    candidates: set[str],
+) -> str:
+    """Repair OCR variants of known proper names without hardcoding the names."""
+
+    text = fix_dropped_initials_from_context(text, candidates)
+    for candidate in sorted(candidates, key=len, reverse=True):
+        collapsed = _DOUBLED_CYRILLIC_CONSONANT_RE.sub(r"\1", candidate)
+        if collapsed == candidate or len(collapsed) < 4:
+            continue
+        pattern = re.compile(
+            rf"(?<![А-Яа-яЁё-]){re.escape(collapsed)}(?![А-Яа-яЁё-])",
+            re.IGNORECASE,
         )
         text = pattern.sub(candidate, text)
     return text

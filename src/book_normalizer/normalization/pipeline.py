@@ -19,6 +19,8 @@ from book_normalizer.normalization.cleanup import (
 from book_normalizer.normalization.encoding import fix_common_mojibake, normalize_encoding_artifacts
 from book_normalizer.normalization.numbers import expand_numbers
 from book_normalizer.normalization.ocr_fixes import (
+    collect_contextual_capitalized_words,
+    fix_contextual_proper_name_ocr_variants,
     fix_mixed_script,
     fix_ocr_artifacts,
     fix_russian_particle_hyphens,
@@ -206,6 +208,7 @@ class NormalizationPipeline:
 
         total_paragraphs = 0
         stage_hit_counts: dict[str, int] = {}
+        proper_name_candidates = collect_contextual_capitalized_words(book.raw_text)
 
         for chapter in book.chapters:
             for para in chapter.paragraphs:
@@ -215,6 +218,15 @@ class NormalizationPipeline:
                         stage_hit_counts[stage_name] = stage_hit_counts.get(stage_name, 0) + 1
                 else:
                     para.normalized_text = self.normalize_text(para.raw_text)
+                contextual_text = fix_contextual_proper_name_ocr_variants(
+                    para.normalized_text,
+                    proper_name_candidates,
+                )
+                if contextual_text != para.normalized_text:
+                    para.normalized_text = contextual_text
+                    stage_hit_counts["fix_contextual_proper_name_ocr_variants"] = (
+                        stage_hit_counts.get("fix_contextual_proper_name_ocr_variants", 0) + 1
+                    )
                 total_paragraphs += 1
 
         # Cross-paragraph hyphenation: join words split across paragraph boundaries.

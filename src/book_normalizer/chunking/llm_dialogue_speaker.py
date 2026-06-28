@@ -96,7 +96,10 @@ def _repair_dialogue_metadata(
         role in {"male", "female", "unknown"}
         and section_kind == "dialogue"
         and not _looks_like_direct_speech(text, language)
-        and (not speaker or _dialogue_markup_looks_like_narration(text, language))
+        and (
+            not _has_direct_speech_marker(text, language)
+            or _dialogue_markup_looks_like_narration(text, language)
+        )
     ):
         return "narrator", "", "narration", ""
 
@@ -192,6 +195,16 @@ def _infer_ru_dialogue_speaker(text: str) -> tuple[str, str]:
         (_RU_MALE_ATTRIBUTION, "male"),
         (_RU_FEMALE_ATTRIBUTION, "female"),
     ):
+        speaker_after_object = re.compile(
+            rf"\b(?:{'|'.join(verbs)})\b"
+            rf"(?:\s+[а-яё-]{{3,40}}){{1,4}}\s+"
+            rf"(?P<speaker>[А-ЯЁ][А-ЯЁа-яё-]{{1,40}})\b",
+            re.IGNORECASE,
+        )
+        for match in speaker_after_object.finditer(text):
+            speaker = _clean_ru_speaker(match.group("speaker"))
+            if speaker:
+                candidates.append((match.start(), speaker, role))
         speaker_before = re.compile(
             rf"\b(?P<speaker>{_RU_SPEAKER_TOKEN})\b"
             rf"(?:\s+[А-ЯЁа-яё-]{{1,30}}){{0,4}}\s+\b(?:{'|'.join(verbs)})\b",

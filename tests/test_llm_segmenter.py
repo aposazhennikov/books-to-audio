@@ -1541,6 +1541,95 @@ def test_repaired_dialogue_discards_unproven_llm_speaker_before_alternating() ->
     assert repaired[5]["speaker"] == "\u0421\u0435\u0440\u0433\u0435\u0439"
 
 
+def test_repaired_dialogue_uses_following_author_tag_for_previous_speaker() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "role": "male",
+            "speaker": "\u041a\u043e\u043c\u043c\u0443\u043d\u0438\u043a\u0430\u0442\u043e\u0440",
+            "section_kind": "dialogue",
+            "text": "\u2014 \u042d\u0442\u043e \u044f,",
+            "intonation": "calm",
+        },
+        {
+            "role": "male",
+            "speaker": "\u0421\u0435\u0440\u0433\u0435\u0439",
+            "section_kind": "dialogue",
+            "text": "\u2014 \u0423 \u043d\u0430\u0441 \u0441\u0443\u0434,",
+            "intonation": "calm",
+        },
+        {
+            "role": "narrator",
+            "speaker": "",
+            "section_kind": "narration",
+            "text": "\u2014 \u043e\u0442\u0432\u0435\u0442\u0438\u043b "
+            "\u043a\u043e\u043c\u043c\u0443\u043d\u0438\u043a\u0430\u0442\u043e\u0440.",
+            "intonation": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[1]["speaker"] == "\u041a\u043e\u043c\u043c\u0443\u043d\u0438\u043a\u0430\u0442\u043e\u0440"
+
+
+def test_repaired_dialogue_uses_named_subject_over_indirect_object_in_author_tag() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "role": "male",
+            "speaker": "\u041a\u043e\u043c\u043c\u0443\u043d\u0438\u043a\u0430\u0442\u043e\u0440",
+            "section_kind": "dialogue",
+            "text": "\u2014 \u042d\u0442\u043e \u044f,",
+            "intonation": "calm",
+        },
+        {
+            "role": "male",
+            "speaker": "\u041a\u043e\u043c\u043c\u0443\u043d\u0438\u043a\u0430\u0442\u043e\u0440",
+            "section_kind": "dialogue",
+            "text": "\u2014 \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u044e,",
+            "intonation": "calm",
+        },
+        {
+            "role": "narrator",
+            "speaker": "",
+            "section_kind": "narration",
+            "text": "\u2014 \u0441\u043e\u043e\u0431\u0449\u0438\u043b "
+            "\u043a\u043e\u043c\u043c\u0443\u043d\u0438\u043a\u0430\u0442\u043e\u0440\u0443 "
+            "\u0421\u0435\u0440\u0433\u0435\u0439.",
+            "intonation": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[1]["speaker"] == "\u0421\u0435\u0440\u0433\u0435\u0439"
+
+
+def test_repaired_dialogue_converts_prose_with_stale_speaker_to_narration() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "role": "male",
+            "speaker": "\u0421\u0435\u0440\u0433\u0435\u0439",
+            "section_kind": "dialogue",
+            "text": "\u0412\u0430\u043d\u043d\u0430 \u0443\u0436\u0435 "
+            "\u043d\u0430\u043f\u043e\u043b\u043d\u0438\u043b\u0430\u0441\u044c "
+            "\u0432\u043e\u0434\u043e\u0439.",
+            "intonation": "calm",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[0]["role"] == "narrator"
+    assert repaired[0]["speaker"] == ""
+    assert repaired[0]["section_kind"] == "narration"
+
+
 def test_repaired_dialogue_marks_previous_quote_as_whisper_from_author_tag() -> None:
     from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
 

@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
+from book_normalizer.chunking.llm_dialogue_markers import (
+    _contains_ru_attribution_word,
+    _dash_starts_narrator_tag,
+)
 from book_normalizer.chunking.llm_dialogue_speaker import (
     _clean_speaker,
     _has_direct_speech_marker,
+    _infer_dialogue_speaker,
     _narration_continuation_speaker,
     _remember_dialogue_speaker,
     _repair_dialogue_metadata,
@@ -63,6 +69,7 @@ def repair_segment_dialogue_boundaries(
             or row.get("role_description")
             or row.get("description")
         )
+        applied_continuation_speaker = False
         if speaker and (
             _llm_speaker_needs_local_support(speaker, text, language)
             or _llm_speaker_conflicts_with_turn_taking(
@@ -76,12 +83,14 @@ def repair_segment_dialogue_boundaries(
             character_description = ""
         if (
             pending_continuation_speaker is not None
-            and section_kind == "dialogue"
+            and (section_kind == "dialogue" or _has_direct_speech_marker(text, language))
             and not speaker
             and role in {"unknown", "narrator"}
         ):
             pending_speaker, pending_role = pending_continuation_speaker
             speaker = pending_speaker
+            section_kind = "dialogue"
+            applied_continuation_speaker = True
             if pending_role in {"male", "female"}:
                 role = pending_role
             if speaker and not character_description:
@@ -97,7 +106,8 @@ def repair_segment_dialogue_boundaries(
             language=language,
             recent_dialogue_speakers=recent_dialogue_speakers,
             force_narration=bool(row.get("_narration_repaired")),
-            force_dialogue=bool(row.get("_direct_speech_repaired")),
+            force_dialogue=bool(row.get("_direct_speech_repaired"))
+            or applied_continuation_speaker,
         )
         is_dialogue = _is_dialogue_segment(
             role=role,
@@ -149,6 +159,11 @@ def repair_segment_dialogue_boundaries(
         row.pop("_direct_speech_repaired", None)
         row.pop("_narration_repaired", None)
         rows.append(row)
+    rows = _apply_backward_author_tag_speakers(
+        rows,
+        language=language,
+        voice_id_for_segment=auto_builtin_voice_id_for_segment,
+    )
     rows = _apply_delivery_cues(rows, language=language)
     if source_text and not _segments_preserve_source(source_text, rows):
         logger.warning(
@@ -189,6 +204,72 @@ def _llm_speaker_conflicts_with_turn_taking(
     if speaker != previous_speaker:
         return False
     return any(other and other != previous_speaker for other, _role in recent_dialogue_speakers[:-1])
+
+
+def _apply_backward_author_tag_speakers(
+    rows: list[dict[str, Any]],
+    *,
+    language: str,
+    voice_id_for_segment: Any,
+) -> list[dict[str, Any]]:
+    """Use a following Russian author tag to correct the previous dialogue speaker."""
+
+    if normalize_book_language(language) != "ru" or len(rows) < 2:
+        return rows
+
+    speaker_roles: dict[str, str] = {}
+    for row in rows:
+        speaker = str(row.get("speaker") or "").strip()
+        if not speaker:
+            continue
+        role = str(row.get("role") or "").strip()
+        if speaker not in speaker_roles or role in {"male", "female"}:
+            speaker_roles[speaker] = role
+    if not speaker_roles:
+        return rows
+
+    result = [dict(row) for row in rows]
+    for index in range(1, len(result)):
+        tag_row = result[index]
+        tag_text = str(tag_row.get("text") or "")
+        if str(tag_row.get("section_kind") or "") != "narration":
+            continue
+        if not _dash_starts_narrator_tag(tag_text, language):
+            continue
+        if not _contains_ru_attribution_word(tag_text):
+            continue
+
+        previous = result[index - 1]
+        previous_text = str(previous.get("text") or "")
+        if str(previous.get("section_kind") or "") != "dialogue":
+            continue
+        if not _has_direct_speech_marker(previous_text, language):
+            continue
+
+        inferred_speaker, inferred_role = _infer_dialogue_speaker(tag_text, language)
+        speaker = inferred_speaker or _speaker_named_in_author_tag(tag_text, speaker_roles.keys())
+        if not speaker:
+            continue
+        role = speaker_roles.get(speaker) or inferred_role or str(previous.get("role") or "")
+        previous["speaker"] = speaker
+        if role in {"male", "female", "unknown"}:
+            previous["role"] = role
+        previous["character_description"] = (
+            previous.get("character_description")
+            or "Direct-speech character inferred from following author tag."
+        )
+        previous["voice_id"] = voice_id_for_segment(previous)
+
+    return result
+
+
+def _speaker_named_in_author_tag(text: str, candidates: Any) -> str:
+    """Return the known speaker explicitly named in an author tag."""
+
+    for speaker in sorted((str(candidate) for candidate in candidates), key=len, reverse=True):
+        if re.search(rf"(?<![А-Яа-яЁё-]){re.escape(speaker)}(?![А-Яа-яЁё-])", text, re.IGNORECASE):
+            return speaker
+    return ""
 
 
 def _apply_delivery_cues(

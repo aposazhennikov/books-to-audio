@@ -300,20 +300,13 @@ def fix_dropped_initials_from_context(
 ) -> str:
     """Restore a dropped first letter when the full capitalized word is nearby."""
 
-    candidate_words = sorted(
-        set(_CAPITALIZED_CYRILLIC_WORD_RE.findall(text)).union(candidates or set()),
-        key=len,
-        reverse=True,
-    )
-    for candidate in candidate_words:
+    replacements: dict[str, str] = {}
+    for candidate in set(_CAPITALIZED_CYRILLIC_WORD_RE.findall(text)).union(candidates or set()):
         suffix = candidate[1:].casefold()
         if len(suffix) < 4:
             continue
-        pattern = re.compile(
-            rf"(?<![А-Яа-яЁё-]){re.escape(suffix)}(?![А-Яа-яЁё-])"
-        )
-        text = pattern.sub(candidate, text)
-    return text
+        replacements.setdefault(suffix, candidate)
+    return _replace_cyrillic_whole_words(text, replacements)
 
 
 def fix_contextual_proper_name_ocr_variants(
@@ -323,16 +316,29 @@ def fix_contextual_proper_name_ocr_variants(
     """Repair OCR variants of known proper names without hardcoding the names."""
 
     text = fix_dropped_initials_from_context(text, candidates)
-    for candidate in sorted(candidates, key=len, reverse=True):
+    replacements: dict[str, str] = {}
+    for candidate in candidates:
         collapsed = _DOUBLED_CYRILLIC_CONSONANT_RE.sub(r"\1", candidate)
         if collapsed == candidate or len(collapsed) < 4:
             continue
-        pattern = re.compile(
-            rf"(?<![А-Яа-яЁё-]){re.escape(collapsed)}(?![А-Яа-яЁё-])",
-            re.IGNORECASE,
-        )
-        text = pattern.sub(candidate, text)
-    return text
+        replacements.setdefault(collapsed.casefold(), candidate)
+    return _replace_cyrillic_whole_words(text, replacements)
+
+
+def _replace_cyrillic_whole_words(text: str, replacements: dict[str, str]) -> str:
+    """Apply many OCR word replacements in one regex pass."""
+
+    if not replacements:
+        return text
+    alternatives = "|".join(
+        re.escape(word)
+        for word in sorted(replacements, key=len, reverse=True)
+    )
+    pattern = re.compile(
+        rf"(?<![А-Яа-яЁё-])(?:{alternatives})(?![А-Яа-яЁё-])",
+        re.IGNORECASE,
+    )
+    return pattern.sub(lambda match: replacements.get(match.group(0).casefold(), match.group(0)), text)
 
 
 _TRAILING_JUNK = re.compile(

@@ -176,6 +176,20 @@ def test_contextual_proper_name_variants_use_non_sentence_start_names() -> None:
     )
 
 
+def test_contextual_proper_name_variants_handle_many_candidates_in_one_pass() -> None:
+    candidates = {f"Имя{i:04d}" for i in range(500)}
+    candidates.update({"Сергей", "Полли"})
+    text = ("ергей понял. поли закрыла дверь. " * 200).strip()
+
+    result = fix_contextual_proper_name_ocr_variants(text, candidates)
+
+    words = result.lower().split()
+    assert "ергей" not in words
+    assert "поли" not in words
+    assert result.count("Сергей") == 200
+    assert result.count("Полли") == 200
+
+
 def test_ocr_artifacts_restores_obvious_chernaya_kniga_direction() -> None:
     text = "они должны бежать не от «Черной Книги», а ней."
     assert fix_ocr_artifacts(text) == "они должны бежать не от «Черной Книги», а за ней."

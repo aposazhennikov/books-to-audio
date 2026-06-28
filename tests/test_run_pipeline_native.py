@@ -446,6 +446,7 @@ def test_synthesis_and_assembly_stages_invoke_script_mains_in_process(
         "http://127.0.0.1:8188",
         str(workflow_path),
         chapter_filter=2,
+        synthesis_workers=2,
     )
     pipeline.run_stage5_assemble(manifest_path, tmp_path, chapter_filter=None)
 
@@ -462,6 +463,8 @@ def test_synthesis_and_assembly_stages_invoke_script_mains_in_process(
                 "--comfyui-url",
                 "http://127.0.0.1:8188",
                 "--chapter",
+                "2",
+                "--synthesis-workers",
                 "2",
             ],
         ),

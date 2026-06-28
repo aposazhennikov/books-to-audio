@@ -85,6 +85,7 @@ import math
 import sys
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -190,18 +191,13 @@ def run_stage2_llm_normalize(
     llm_model: str,
     language: str,
     chapter_filter: int | None,
+    start_chapter: int | None = None,
+    workers: int = 1,
 ) -> None:
     """Apply LLM grammar/punctuation/yofication correction to each chapter."""
     from book_normalizer.normalization.llm_normalizer import LlmNormalizer
 
     cache_dir = book_dir / "llm_norm_cache"
-    normalizer = LlmNormalizer(
-        endpoint=llm_endpoint,
-        model=llm_model,
-        cache_dir=cache_dir,
-        language=language,
-        review_report_path=book_dir / "llm_normalization_review_report.json",
-    )
 
     chapters = load_chapter_texts(book_dir)
     if not chapters:
@@ -209,10 +205,12 @@ def run_stage2_llm_normalize(
         return
 
     # Filter chapters according to chapter_filter for consistent progress reporting.
+    start_number = max(1, start_chapter or 1)
     targets: list[tuple[int, str]] = [
         (ch_idx, text)
         for ch_idx, text in chapters
-        if chapter_filter is None or ch_idx + 1 == chapter_filter
+        if (chapter_filter is None or ch_idx + 1 == chapter_filter)
+        and ch_idx + 1 >= start_number
     ]
     total = len(targets)
     if total == 0:
@@ -221,28 +219,103 @@ def run_stage2_llm_normalize(
 
     processed = 0
     stage_t0 = time.monotonic()
-    for ch_idx, text in targets:
-        ch_file = book_dir / f"{ch_idx + 1:03d}_chapter_{ch_idx + 1:02d}.txt"
-        print(f"  LLM normalising chapter {ch_idx + 1} ({len(text)} chars)...")
-
-        t0 = time.monotonic()
-        corrected = normalizer.normalize_chapter(text, chapter_index=ch_idx)
-        elapsed = time.monotonic() - t0
-
-        ch_file.write_text(corrected, encoding="utf-8")
-        processed += 1
-
-        total_elapsed = time.monotonic() - stage_t0
-        avg_per_ch = total_elapsed / processed
-        remaining = total - processed
-        eta = remaining * avg_per_ch
-
-        print(
-            f"    Done in {elapsed:.1f}s → saved {ch_file.name} "
-            f"(elapsed {total_elapsed:.1f}s, eta ≈ {eta:.1f}s, {processed}/{total} chapters)"
+    worker_count = max(1, workers)
+    if worker_count > 1 and total > 1:
+        print(f"  LLM normalisation workers: {worker_count}")
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = [
+                executor.submit(
+                    _normalize_stage2_chapter,
+                    book_dir,
+                    ch_idx,
+                    text,
+                    llm_endpoint,
+                    llm_model,
+                    language,
+                    cache_dir,
+                )
+                for ch_idx, text in targets
+            ]
+            for future in as_completed(futures):
+                ch_idx, ch_file, elapsed = future.result()
+                processed += 1
+                _print_stage2_progress(
+                    ch_idx,
+                    ch_file,
+                    elapsed,
+                    processed,
+                    total,
+                    stage_t0,
+                )
+    else:
+        normalizer = LlmNormalizer(
+            endpoint=llm_endpoint,
+            model=llm_model,
+            cache_dir=cache_dir,
+            language=language,
+            review_report_path=book_dir / "llm_normalization_review_report.json",
         )
+        for ch_idx, text in targets:
+            ch_file = book_dir / f"{ch_idx + 1:03d}_chapter_{ch_idx + 1:02d}.txt"
+            print(f"  LLM normalising chapter {ch_idx + 1} ({len(text)} chars)...")
 
+            t0 = time.monotonic()
+            corrected = normalizer.normalize_chapter(text, chapter_index=ch_idx)
+            elapsed = time.monotonic() - t0
+
+            ch_file.write_text(corrected, encoding="utf-8")
+            processed += 1
+            _print_stage2_progress(ch_idx, ch_file, elapsed, processed, total, stage_t0)
+
+    total_elapsed = time.monotonic() - stage_t0
     print(f"LLM normalization complete: {processed} chapter(s) processed in {total_elapsed:.1f}s.")
+
+
+def _normalize_stage2_chapter(
+    book_dir: Path,
+    ch_idx: int,
+    text: str,
+    llm_endpoint: str,
+    llm_model: str,
+    language: str,
+    cache_dir: Path,
+) -> tuple[int, Path, float]:
+    """Normalize one chapter for Stage 2 and write its TXT file."""
+    from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+    ch_file = book_dir / f"{ch_idx + 1:03d}_chapter_{ch_idx + 1:02d}.txt"
+    print(f"  LLM normalising chapter {ch_idx + 1} ({len(text)} chars)...")
+    normalizer = LlmNormalizer(
+        endpoint=llm_endpoint,
+        model=llm_model,
+        cache_dir=cache_dir,
+        language=language,
+        review_report_path=book_dir / "llm_normalization_review_report.json",
+    )
+    t0 = time.monotonic()
+    corrected = normalizer.normalize_chapter(text, chapter_index=ch_idx)
+    elapsed = time.monotonic() - t0
+    ch_file.write_text(corrected, encoding="utf-8")
+    return ch_idx, ch_file, elapsed
+
+
+def _print_stage2_progress(
+    ch_idx: int,
+    ch_file: Path,
+    elapsed: float,
+    processed: int,
+    total: int,
+    stage_t0: float,
+) -> None:
+    """Print Stage 2 progress and ETA."""
+    total_elapsed = time.monotonic() - stage_t0
+    avg_per_ch = total_elapsed / processed
+    remaining = total - processed
+    eta = remaining * avg_per_ch
+    print(
+        f"    Done in {elapsed:.1f}s → saved {ch_file.name} "
+        f"(elapsed {total_elapsed:.1f}s, eta ≈ {eta:.1f}s, {processed}/{total} chapters)"
+    )
 
 
 # ── Stage 3: LLM chunking ─────────────────────────────────────────────────────
@@ -436,6 +509,7 @@ def run_stage4_synthesize(
     llm_audio_qa_endpoint: str = "",
     llm_audio_qa_min_score: int = 82,
     max_resynth_attempts: int = 2,
+    synthesis_workers: int = 1,
 ) -> None:
     """Synthesize audio chunks via ComfyUI."""
     args = [
@@ -446,6 +520,8 @@ def run_stage4_synthesize(
     ]
     if chapter_filter is not None:
         args += ["--chapter", str(chapter_filter)]
+    if synthesis_workers != 1:
+        args += ["--synthesis-workers", str(synthesis_workers)]
     if quality_loop:
         args += ["--quality-loop", "--max-resynth-attempts", str(max_resynth_attempts)]
     if artifact_qa:
@@ -624,6 +700,18 @@ def main(argv: list[str] | None = None) -> None:
         help="Run LLM grammar/punctuation/yofication pass (Stage 2).",
     )
     parser.add_argument(
+        "--llm-normalize-workers",
+        type=int,
+        default=1,
+        help="Parallel LLM normalization workers for Stage 2 (default: 1).",
+    )
+    parser.add_argument(
+        "--llm-normalize-start-chapter",
+        type=int,
+        default=None,
+        help="Start Stage 2 LLM normalization from this 1-based chapter number.",
+    )
+    parser.add_argument(
         "--chunk-mode",
         choices=["llm", "heuristic"],
         default="llm",
@@ -651,6 +739,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--synthesize", action="store_true",
         help="Run ComfyUI synthesis after chunking (Stage 4).",
+    )
+    parser.add_argument(
+        "--synthesis-workers",
+        type=int,
+        default=1,
+        help="Parallel ComfyUI synthesis workers for Stage 4 (default: 1).",
     )
     parser.add_argument(
         "--quality-loop",
@@ -817,7 +911,13 @@ def main(argv: list[str] | None = None) -> None:
     if args.llm_normalize:
         stage_banner(2, "LLM normalization (grammar + punctuation + yofication)")
         run_stage2_llm_normalize(
-            book_dir, args.llm_endpoint, args.llm_model, args.language, args.chapter
+            book_dir,
+            args.llm_endpoint,
+            args.llm_model,
+            args.language,
+            args.chapter,
+            args.llm_normalize_start_chapter,
+            args.llm_normalize_workers,
         )
     else:
         stage_banner(2, "LLM normalization — SKIPPED (use --llm-normalize to enable)")
@@ -865,6 +965,7 @@ def main(argv: list[str] | None = None) -> None:
             llm_audio_qa_endpoint=args.llm_audio_qa_endpoint,
             llm_audio_qa_min_score=args.llm_audio_qa_min_score,
             max_resynth_attempts=args.max_resynth_attempts,
+            synthesis_workers=args.synthesis_workers,
         )
     else:
         stage_banner(4, "ComfyUI synthesis — SKIPPED (use --synthesize to enable)")

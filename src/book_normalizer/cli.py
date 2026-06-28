@@ -192,6 +192,19 @@ for _production_command in (
 )
 @click.option("--llm-normalize", is_flag=True, default=False, help="Run LLM normalization before chunking.")
 @click.option(
+    "--llm-normalize-workers",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Parallel LLM normalization workers.",
+)
+@click.option(
+    "--llm-normalize-start-chapter",
+    type=int,
+    default=None,
+    help="Start LLM normalization from this 1-based chapter number.",
+)
+@click.option(
     "--chunk-mode",
     type=click.Choice(["llm", "heuristic"]),
     default="llm",
@@ -200,6 +213,7 @@ for _production_command in (
 )
 @click.option("--max-chunk-chars", type=int, default=2400, show_default=True, help="Soft max chars per LLM chunk.")
 @click.option("--synthesize", is_flag=True, default=False, help="Run ComfyUI synthesis after chunking.")
+@click.option("--synthesis-workers", type=int, default=1, show_default=True, help="Parallel ComfyUI synthesis workers.")
 @click.option(
     "--quality-loop",
     is_flag=True,
@@ -269,9 +283,12 @@ def pipeline_command(
     llm_model: str,
     llm_endpoint: str,
     llm_normalize: bool,
+    llm_normalize_workers: int,
+    llm_normalize_start_chapter: int | None,
     chunk_mode: str,
     max_chunk_chars: int,
     synthesize: bool,
+    synthesis_workers: int,
     quality_loop: bool,
     asr_qa_after_synthesis: bool,
     artifact_qa: bool,
@@ -312,11 +329,17 @@ def pipeline_command(
     ]
     if llm_normalize:
         argv.append("--llm-normalize")
+        if llm_normalize_workers != 1:
+            argv.extend(["--llm-normalize-workers", str(llm_normalize_workers)])
+        if llm_normalize_start_chapter is not None:
+            argv.extend(["--llm-normalize-start-chapter", str(llm_normalize_start_chapter)])
     if synthesize:
         argv.append("--synthesize")
         if not workflow:
             workflow = Path("comfyui_workflows/qwen3_tts_template.json")
         argv.extend(["--workflow", str(workflow), "--comfyui-url", comfyui_url])
+        if synthesis_workers != 1:
+            argv.extend(["--synthesis-workers", str(synthesis_workers)])
     if quality_loop:
         argv.extend(["--quality-loop", "--max-resynth-attempts", str(max_resynth_attempts)])
     if artifact_qa:

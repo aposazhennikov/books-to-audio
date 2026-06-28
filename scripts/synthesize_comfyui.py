@@ -328,6 +328,7 @@ def main(argv: list[str] | None = None) -> None:
         help="Max automatic resynthesis attempts per bad chunk (default: 2).",
     )
     parser.add_argument("--batch-size", type=int, default=1, help="Generation batch size metadata.")
+    parser.add_argument("--synthesis-workers", type=int, default=1, help="Parallel synthesis workers.")
     parser.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE, help="TTS sampling temperature.")
     parser.add_argument("--top-p", type=float, default=DEFAULT_TOP_P, help="TTS top-p sampling.")
     parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K, help="TTS top-k sampling.")
@@ -386,19 +387,20 @@ def main(argv: list[str] | None = None) -> None:
     for pass_index in range(max_passes):
         if pass_index:
             print(f"Quality retry pass {pass_index}/{max_passes - 1}")
-        synthesize_manifest(
-            manifest=manifest,
-            manifest_path=manifest_path,
-            client=client,
-            builder=builder,
-            out_dir=out_dir,
-            chapter_filter=args.chapter,
-            chunk_timeout=args.chunk_timeout,
-            failed_only=args.failed_only or pass_index > 0,
-            generation_options=generation_options,
-            progress=print,
-            log_language=args.log_language,
-        )
+            synthesize_manifest(
+                manifest=manifest,
+                manifest_path=manifest_path,
+                client=client,
+                builder=builder,
+                out_dir=out_dir,
+                chapter_filter=args.chapter,
+                chunk_timeout=args.chunk_timeout,
+                failed_only=args.failed_only or pass_index > 0,
+                synthesis_workers=args.synthesis_workers,
+                generation_options=generation_options,
+                progress=print,
+                log_language=args.log_language,
+            )
         if not (
             args.quality_loop
             or args.artifact_qa

@@ -446,8 +446,14 @@ def synthesize_manifest(
     max_recovery_retries: int = 0,
     log_language: str = "en",
     cancel_requested: CancelRequested | None = None,
+    synthesis_workers: int = 1,
 ) -> SynthesisSummary:
     """Synthesize all pending chunks and update the manifest after each chunk."""
+    if synthesis_workers > 1:
+        logger.info(
+            "Parallel synthesis requested (%d workers); using sequential mode until worker pool is available.",
+            synthesis_workers,
+        )
     is_cancelled = cancel_requested or (lambda: False)
     out_dir.mkdir(parents=True, exist_ok=True)
     all_pairs = [

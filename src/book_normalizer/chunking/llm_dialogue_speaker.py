@@ -378,8 +378,16 @@ def _narration_continuation_speaker(
     if speaker:
         return speaker, role if role in {"male", "female"} else infer_person_gender(speaker)
     if _dash_starts_narrator_tag(text, "ru"):
+        if _dash_author_tag_has_extra_narration(text):
+            return None
         return recent_dialogue_speakers[-1]
     return None
+
+
+def _dash_author_tag_has_extra_narration(text: str) -> bool:
+    stripped = str(text or "").strip()
+    match = re.search(r"[.!?…]\s+[А-ЯЁ]", stripped)
+    return bool(match)
 
 def _remember_dialogue_speaker(
     recent_dialogue_speakers: list[tuple[str, str]],

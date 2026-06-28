@@ -51,6 +51,7 @@ def repair_segment_dialogue_boundaries(
 
     source_text = " ".join(str(segment.get("text") or "") for segment in segments)
     recent_dialogue_speakers: list[tuple[str, str]] = []
+    recent_narration_texts: list[str] = []
     pending_continuation_speaker: tuple[str, str] | None = None
     repaired_segments = _split_mixed_dialogue_segments(
         _repair_dialogue_segment_boundaries(segments),
@@ -70,13 +71,28 @@ def repair_segment_dialogue_boundaries(
             or row.get("description")
         )
         applied_continuation_speaker = False
+        speaker_matches_pending = _speaker_matches_pending_continuation(
+            speaker,
+            pending_continuation_speaker,
+        )
         if speaker and (
-            _llm_speaker_needs_local_support(speaker, text, language)
-            or _llm_speaker_conflicts_with_turn_taking(
-                speaker,
-                text,
-                language,
-                recent_dialogue_speakers,
+            (
+                _llm_speaker_needs_local_support(
+                    speaker,
+                    text,
+                    language,
+                    recent_narration_texts=recent_narration_texts,
+                )
+                and not speaker_matches_pending
+            )
+            or (
+                _llm_speaker_conflicts_with_turn_taking(
+                    speaker,
+                    text,
+                    language,
+                    recent_dialogue_speakers,
+                )
+                and not speaker_matches_pending
             )
         ):
             speaker = ""
@@ -123,6 +139,8 @@ def repair_segment_dialogue_boundaries(
             )
             pending_continuation_speaker = None
         elif section_kind == "narration":
+            recent_narration_texts.append(text)
+            del recent_narration_texts[:-4]
             pending_continuation_speaker = _narration_continuation_speaker(
                 str(row.get("text") or ""),
                 language=language,
@@ -159,6 +177,11 @@ def repair_segment_dialogue_boundaries(
         row.pop("_direct_speech_repaired", None)
         row.pop("_narration_repaired", None)
         rows.append(row)
+    rows = _apply_inner_thought_author_tags(
+        rows,
+        language=language,
+        voice_id_for_segment=auto_builtin_voice_id_for_segment,
+    )
     rows = _apply_backward_author_tag_speakers(
         rows,
         language=language,
@@ -174,7 +197,13 @@ def repair_segment_dialogue_boundaries(
     return rows
 
 
-def _llm_speaker_needs_local_support(speaker: str, text: str, language: str) -> bool:
+def _llm_speaker_needs_local_support(
+    speaker: str,
+    text: str,
+    language: str,
+    *,
+    recent_narration_texts: list[str] | None = None,
+) -> bool:
     """Return true when an LLM-provided Russian speaker is not locally proven."""
 
     if normalize_book_language(language) != "ru":
@@ -183,7 +212,43 @@ def _llm_speaker_needs_local_support(speaker: str, text: str, language: str) -> 
         return False
     if len(speaker.split()) <= 1:
         return False
+    if _speaker_supported_by_recent_narration(speaker, recent_narration_texts or []):
+        return False
     return speaker.casefold() not in text.casefold()
+
+
+def _speaker_matches_pending_continuation(
+    speaker: str,
+    pending_continuation_speaker: tuple[str, str] | None,
+) -> bool:
+    if not speaker or pending_continuation_speaker is None:
+        return False
+    pending_speaker, _pending_role = pending_continuation_speaker
+    return speaker == pending_speaker
+
+
+def _speaker_supported_by_recent_narration(
+    speaker: str,
+    recent_narration_texts: list[str],
+) -> bool:
+    if not speaker or not recent_narration_texts:
+        return False
+    recent_text = "\n".join(recent_narration_texts[-4:]).casefold()
+    if speaker.casefold() in recent_text:
+        return True
+    parts = [part for part in re.split(r"\s+", speaker.strip()) if part]
+    if len(parts) < 2:
+        return False
+    distinctive = parts[-1]
+    if len(distinctive) < 3:
+        return False
+    return bool(
+        re.search(
+            rf"(?<![А-Яа-яЁё-]){re.escape(distinctive)}[а-яё-]{{0,4}}(?![А-Яа-яЁё-])",
+            recent_text,
+            re.IGNORECASE,
+        )
+    )
 
 
 def _llm_speaker_conflicts_with_turn_taking(
@@ -204,6 +269,51 @@ def _llm_speaker_conflicts_with_turn_taking(
     if speaker != previous_speaker:
         return False
     return any(other and other != previous_speaker for other, _role in recent_dialogue_speakers[:-1])
+
+
+def _apply_inner_thought_author_tags(
+    rows: list[dict[str, Any]],
+    *,
+    language: str,
+    voice_id_for_segment: Any,
+) -> list[dict[str, Any]]:
+    """Keep quoted inner thoughts with their author tag in the narrator voice."""
+
+    if normalize_book_language(language) != "ru" or len(rows) < 2:
+        return rows
+    result = [dict(row) for row in rows]
+    for index in range(len(result) - 1):
+        row = result[index]
+        next_row = result[index + 1]
+        if str(row.get("section_kind") or "") != "dialogue":
+            continue
+        text = str(row.get("text") or "").lstrip()
+        if not text or text[0] not in "«“\"":
+            continue
+        if str(next_row.get("section_kind") or "") != "narration":
+            continue
+        if not _is_inner_thought_author_tag(str(next_row.get("text") or "")):
+            continue
+        row["role"] = "narrator"
+        row["speaker"] = ""
+        row["section_kind"] = "narration"
+        row["character_description"] = ""
+        row["is_dialogue"] = False
+        row["voice_id"] = voice_id_for_segment(row)
+    return result
+
+
+def _is_inner_thought_author_tag(text: str) -> bool:
+    stripped = str(text or "").strip().casefold()
+    if not stripped.startswith(("-", "—", "–")):
+        return False
+    return bool(
+        re.search(
+            r"\b(?:себе|подумал|подумала|думал|думала|вспомнил|вспомнила|"
+            r"напомнил|напомнила|решил|решила|сообразил|сообразила)\b",
+            stripped,
+        )
+    )
 
 
 def _apply_backward_author_tag_speakers(

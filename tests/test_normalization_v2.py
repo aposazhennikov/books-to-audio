@@ -127,10 +127,19 @@ class TestOcrBracketArtifacts:
     def test_removes_spurious_brackets_around_recognized_cyrillic_words(self) -> None:
         pipeline = NormalizationPipeline()
 
-        text = "— [Где ж его взять? [Глаза засветились. Достань [оркха] из рюкзака."
+        text = "— [Где ж его взять? [Глаза засветились. Достань [оркха] из рюкзака. [дето шумело."
 
         assert pipeline.normalize_text(text) == (
-            "— Где ж его взять? Глаза засветились. Достань Горкха из рюкзака."
+            "— Где ж его взять? Глаза засветились. Достань Горкха из рюкзака. Где-то шумело."
+        )
+
+    def test_repairs_glued_short_russian_function_words(self) -> None:
+        pipeline = NormalizationPipeline()
+
+        text = "— А сэтим всё понятно. — Тоесть это Луна? — Авы, Горхи, вкусные? Ноты же землянин?"
+
+        assert pipeline.normalize_text(text) == (
+            "— А с этим всё понятно. — То есть это Луна? — А вы, Горхи, вкусные? Но ты же землянин?"
         )
 
 

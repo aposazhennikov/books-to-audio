@@ -72,10 +72,18 @@ _LONE_GARBAGE = re.compile(
 
 # Square brackets can replace initial Cyrillic letters in OCR output.
 _BRACKET_INITIAL_T = re.compile(r"(?<![\w\u0400-\u04ff])\](?=[ыо])", re.IGNORECASE)
+_BRACKET_INITIAL_GD = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=д)", re.IGNORECASE)
 _BRACKET_INITIAL_G = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=о)", re.IGNORECASE)
 _BRACKET_INITIAL_P = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=р)", re.IGNORECASE)
 _BRACKET_BEFORE_RECOGNIZED_CAPITAL = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=[А-ЯЁ])")
 _BRACKET_AFTER_CYRILLIC_WORD = re.compile(r"(?<=[\u0400-\u04ff])\](?=\W|$)")
+_GLUED_SHORT_RU_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(?<![\w\u0400-\u04ff])сэтим(?![\w\u0400-\u04ff])", re.IGNORECASE), "с этим"),
+    (re.compile(r"(?<![\w\u0400-\u04ff])Тоесть(?![\w\u0400-\u04ff])"), "То есть"),
+    (re.compile(r"(?<![\w\u0400-\u04ff])тоесть(?![\w\u0400-\u04ff])"), "то есть"),
+    (re.compile(r"(?<![\w\u0400-\u04ff])Авы(?=[,\s])"), "А вы"),
+    (re.compile(r"(?<![\w\u0400-\u04ff])Ноты(?=\s+же(?![\w\u0400-\u04ff]))"), "Но ты"),
+)
 
 # Two or more stray single characters separated by spaces (OCR junk).
 _SCATTERED_CHARS = re.compile(
@@ -240,10 +248,19 @@ def fix_square_bracket_ocr_artifacts(text: str) -> str:
     """Repair square brackets substituted for initial Cyrillic letters."""
 
     text = _BRACKET_INITIAL_T.sub("Т", text)
+    text = _BRACKET_INITIAL_GD.sub("Г", text)
     text = _BRACKET_INITIAL_G.sub("Г", text)
     text = _BRACKET_INITIAL_P.sub("П", text)
     text = _BRACKET_BEFORE_RECOGNIZED_CAPITAL.sub("", text)
     return _BRACKET_AFTER_CYRILLIC_WORD.sub("", text)
+
+
+def fix_glued_short_russian_words(text: str) -> str:
+    """Restore spaces in short Russian function-word OCR joins."""
+
+    for pattern, replacement in _GLUED_SHORT_RU_WORDS:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 _TRAILING_JUNK = re.compile(
@@ -281,6 +298,7 @@ def fix_ocr_artifacts(text: str) -> str:
         text = pattern.sub(replacement, text)
     text = _LONE_GARBAGE.sub("", text)
     text = fix_square_bracket_ocr_artifacts(text)
+    text = fix_glued_short_russian_words(text)
     text = fix_russian_particle_hyphens(text)
 
     # Rejoin words broken by hyphenation across lines.

@@ -60,6 +60,15 @@ def test_installer_exposes_asr_extra_flag(monkeypatch) -> None:
     assert _resolve_extras(args) == {"asr"}
 
 
+def test_installer_exposes_audio_qa_runtime_extra_flag(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["install.py", "--with-audio-qa-runtime", "--minimal"])
+    args = _parse_args()
+    from install import VERIFY_MODULES, _resolve_extras
+
+    assert _resolve_extras(args) == {"audio-qa-runtime"}
+    assert VERIFY_MODULES["audio-qa-runtime"] == ["qwen_omni_utils", "vllm"]
+
+
 def test_installer_default_profile_includes_perceptual_qa() -> None:
     assert "perceptual" in DEFAULT_EXTRAS
 

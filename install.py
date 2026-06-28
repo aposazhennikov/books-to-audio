@@ -97,6 +97,7 @@ VERIFY_MODULES = {
         "rich",
     ],
     "audio": ["pydub", "soundfile"],
+    "audio-qa-runtime": ["qwen_omni_utils", "vllm"],
     "asr": ["faster_whisper", "jiwer", "rapidfuzz"],
     "dev": ["pytest", "ruff"],
     "gui": ["PyQt6"],
@@ -379,6 +380,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--without-perceptual", action="store_true", help="Skip NISQA v2 perceptual QA dependencies.")
     parser.add_argument("--with-dev", action="store_true", help="Install pytest and ruff.")
     parser.add_argument("--with-asr", action="store_true", help="Install faster-whisper ASR QA dependencies.")
+    parser.add_argument(
+        "--with-audio-qa-runtime",
+        action="store_true",
+        help="Install local Omni audio QA runtime dependencies such as vLLM and qwen-omni-utils.",
+    )
     parser.add_argument("--with-stress", action="store_true", help="Install optional silero-stress model support.")
     parser.add_argument(
         "--with-tts",
@@ -730,6 +736,8 @@ def _resolve_extras(args: argparse.Namespace) -> set[str]:
         extras.add("dev")
     if args.with_asr:
         extras.add("asr")
+    if args.with_audio_qa_runtime:
+        extras.add("audio-qa-runtime")
     if args.with_stress:
         extras.add("stress")
     if args.with_sage:

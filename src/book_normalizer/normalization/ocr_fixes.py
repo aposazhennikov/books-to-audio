@@ -34,9 +34,9 @@ _STRAY_PUNCT_IN_CYR = re.compile(
     r"(?<=[а-яёА-ЯЁ])['\u2018\u2019`\u201A\u201B\u2039\u203A‹›](?=\s|[а-яёА-ЯЁ]|$)"
 )
 
-# Spurious period inside a word: "за. столом" -> "за столом".
+# Spurious period inside a short OCR-broken word: "за. столом" -> "за столом".
 _PERIOD_INSIDE_WORD = re.compile(
-    r"(?<=[а-яёА-ЯЁ])\.\s(?=[а-яё])"
+    r"\b([а-яёА-ЯЁ]{1,3})\.\s(?=[а-яё])"
 )
 
 # Native PDF extraction can drop the initial capital in "Утром" after a
@@ -230,7 +230,7 @@ def fix_russian_particle_hyphens(text: str) -> str:
 
 
 _TRAILING_JUNK = re.compile(
-    r"\s+[а-яёА-ЯЁa-zA-Z.,;:!?\-]{1,3}\s*$"
+    r"\s+[a-zA-Z.,;:!?\-]{1,3}\s*$"
 )
 
 _LEADING_COMMA_PERIOD = re.compile(
@@ -257,7 +257,7 @@ def fix_ocr_artifacts(text: str) -> str:
     typical of Tesseract misrecognition on Russian scans.
     """
     text = _STRAY_PUNCT_IN_CYR.sub("", text)
-    text = _PERIOD_INSIDE_WORD.sub(" ", text)
+    text = _PERIOD_INSIDE_WORD.sub(r"\1 ", text)
     text = _DROPPED_INITIAL_U.sub("Утром", text)
     text = _DROPPED_INITIAL_P_PRIEM.sub("Прием", text)
     for pattern, replacement in _MISSING_PREPOSITION_FIXES:

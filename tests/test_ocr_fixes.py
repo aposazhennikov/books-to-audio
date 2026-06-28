@@ -106,6 +106,21 @@ def test_ocr_artifacts_restores_obvious_chernaya_kniga_direction() -> None:
     assert fix_ocr_artifacts(text) == "они должны бежать не от «Черной Книги», а за ней."
 
 
+def test_ocr_artifacts_preserve_short_russian_author_tag_tail() -> None:
+    text = (
+        "\u2014 \u041d\u0435\u043f\u0440\u0430\u0432\u0438\u043b\u044c\u043d\u0430\u044f "
+        "\u043a\u043e\u043c\u0431\u0438\u043d\u0430\u0446\u0438\u044f "
+        "\u043c\u0430\u0441\u0435\u043b, \u2014 \u0441\u0443\u0445\u043e "
+        "\u0441\u043e\u043e\u0431\u0449\u0438\u043b \u043e\u043d."
+    )
+    assert fix_ocr_artifacts(text) == text
+
+
+def test_ocr_artifacts_still_remove_short_latin_trailing_junk() -> None:
+    text = "\u0420\u0443\u0441\u0441\u043a\u0438\u0439 \u0442\u0435\u043a\u0441\u0442 xy"
+    assert fix_ocr_artifacts(text) == "\u0420\u0443\u0441\u0441\u043a\u0438\u0439 \u0442\u0435\u043a\u0441\u0442"
+
+
 def test_pipeline_restores_particle_hyphen_after_line_hyphen_repair() -> None:
     text = "А мы-\nто, идиоты, эксцентриситет высчитывали."
     assert NormalizationPipeline.for_language("ru").normalize_text(text) == (

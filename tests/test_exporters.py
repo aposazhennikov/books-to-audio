@@ -70,6 +70,20 @@ class TestTxtExporter:
         assert ",," not in content
         assert "Геркулес, закричали" in content
 
+    def test_repairs_pdf_parenthesis_hyphens_in_chapter_files(self, tmp_path: Path) -> None:
+        para = Paragraph(
+            raw_text="",
+            normalized_text="Применю(ка я 15(й Аркан против террористов(сантехников.",
+            index_in_chapter=0,
+        )
+        book = Book(metadata=Metadata(), chapters=[Chapter(title="Test", index=0, paragraphs=[para])])
+
+        TxtExporter().export(book, tmp_path)
+
+        content = (tmp_path / "001_chapter_01.txt").read_text(encoding="utf-8")
+        assert "Применю-ка я 15-й Аркан против террористов-сантехников." in content
+        assert "Применю(ка" not in content
+
 
 class TestJsonExporter:
     def test_creates_json_file(self, sample_book: Book, tmp_path: Path) -> None:
@@ -150,3 +164,17 @@ class TestQwenExporter:
         content = (tmp_path / "qwen_chapter_001.txt").read_text(encoding="utf-8")
         assert ",," not in content
         assert "Феб, закричали греки, сам" in content
+
+    def test_repairs_pdf_parenthesis_hyphens_for_tts_chunks(self, tmp_path: Path) -> None:
+        para = Paragraph(
+            raw_text="",
+            normalized_text="Применю(ка я 15(й Аркан против террористов(сантехников.",
+            index_in_chapter=0,
+        )
+        book = Book(metadata=Metadata(), chapters=[Chapter(title="Test", index=0, paragraphs=[para])])
+
+        QwenExporter().export(book, tmp_path)
+
+        content = (tmp_path / "qwen_chapter_001.txt").read_text(encoding="utf-8")
+        assert "Применю-ка я 15-й Аркан против террористов-сантехников." in content
+        assert "Применю(ка" not in content

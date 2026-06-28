@@ -52,6 +52,11 @@ def normalize_repeated_commas(text: str) -> str:
     return re.sub(r",{2,}", ",", text)
 
 
+def normalize_pdf_parenthesis_hyphens(text: str) -> str:
+    """Repair PDF extraction cases where an in-word hyphen becomes ``(``."""
+    return re.sub(r"(?<=[0-9A-Za-z\u0400-\u04ff])\((?=[0-9A-Za-z\u0400-\u04ff])", "-", text)
+
+
 def adapt_punctuation_for_tts(text: str) -> str:
     """
     Adjust punctuation for better TTS output quality.

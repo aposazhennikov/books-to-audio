@@ -15,6 +15,7 @@ from book_normalizer.normalization.pipeline import NormalizationPipeline
 from book_normalizer.normalization.punctuation import (
     normalize_dashes,
     normalize_ellipsis,
+    normalize_pdf_parenthesis_hyphens,
     normalize_quotes,
     normalize_repeated_commas,
 )
@@ -64,6 +65,16 @@ class TestPunctuation:
         assert normalize_repeated_commas("— Это же Геркулес,, закричали воины.") == (
             "— Это же Геркулес, закричали воины."
         )
+
+    def test_normalize_pdf_parenthesis_hyphens(self) -> None:
+        source = "Применю(ка террористов(сантехников 15(й Аркан"
+
+        assert normalize_pdf_parenthesis_hyphens(source) == "Применю-ка террористов-сантехников 15-й Аркан"
+
+    def test_normalize_pdf_parenthesis_hyphens_preserves_normal_parentheses(self) -> None:
+        source = "Сергей (похоже) молчал."
+
+        assert normalize_pdf_parenthesis_hyphens(source) == source
 
 
 class TestCleanup:
@@ -172,3 +183,10 @@ class TestNormalizationPipeline:
         result = pipeline.normalize_text("— Феб,, закричали греки,, сам стреловержец Феб здесь.")
 
         assert result == "— Феб, закричали греки, сам стреловержец Феб здесь."
+
+    def test_pipeline_repairs_pdf_parenthesis_hyphens_before_tts(self) -> None:
+        pipeline = NormalizationPipeline()
+
+        result = pipeline.normalize_text("Применю(ка свою Звезду. Это 15(й Аркан.")
+
+        assert result == "Применю-ка свою Звезду. Это пятнадцатый Аркан."

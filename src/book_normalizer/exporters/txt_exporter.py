@@ -6,7 +6,10 @@ import logging
 from pathlib import Path
 
 from book_normalizer.models.book import Book
-from book_normalizer.normalization.punctuation import normalize_repeated_commas
+from book_normalizer.normalization.punctuation import (
+    normalize_pdf_parenthesis_hyphens,
+    normalize_repeated_commas,
+)
 from book_normalizer.normalization.whitespace import (
     repair_hyphenated_words,
     repair_pdf_split_russian_words,
@@ -72,4 +75,5 @@ class TxtExporter:
     def _sanitize_export_text(text: str) -> str:
         text = repair_hyphenated_words(text)
         text = repair_pdf_split_russian_words(text)
-        return normalize_repeated_commas(text)
+        text = normalize_repeated_commas(text)
+        return normalize_pdf_parenthesis_hyphens(text)

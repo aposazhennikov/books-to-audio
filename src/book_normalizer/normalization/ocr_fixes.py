@@ -36,7 +36,7 @@ _STRAY_PUNCT_IN_CYR = re.compile(
 
 # Spurious period inside a short OCR-broken word: "за. столом" -> "за столом".
 _PERIOD_INSIDE_WORD = re.compile(
-    r"\b([а-яёА-ЯЁ]{1,3})\.\s(?=[а-яё])"
+    r"\b([а-яёА-ЯЁ]{1,3})\.\s(?=[а-яёА-ЯЁ])"
 )
 
 # Native PDF extraction can drop the initial capital in "Утром" after a

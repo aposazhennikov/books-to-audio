@@ -101,6 +101,11 @@ def test_ocr_artifacts_restore_obvious_missing_prepositions() -> None:
     )
 
 
+def test_ocr_artifacts_remove_spurious_period_after_single_letter() -> None:
+    text = "Все гораздо хуже. К. Земле идёт Имперский флот."
+    assert fix_ocr_artifacts(text) == "Все гораздо хуже. К Земле идёт Имперский флот."
+
+
 def test_ocr_artifacts_restores_obvious_chernaya_kniga_direction() -> None:
     text = "они должны бежать не от «Черной Книги», а ней."
     assert fix_ocr_artifacts(text) == "они должны бежать не от «Черной Книги», а за ней."

@@ -122,7 +122,9 @@ class TextPreservationValidator:
             issues.append(
                 f"Too many words removed: ratio {word_ratio:.3f} < {self._min_wr:.3f}"
             )
-        if word_ratio > self._max_wr:
+        if word_ratio > self._max_wr and not _word_change_is_only_ocr_token_splits(
+            original, corrected
+        ):
             issues.append(
                 f"Too many words added: ratio {word_ratio:.3f} > {self._max_wr:.3f}"
             )
@@ -213,6 +215,7 @@ _WORD_RE = re.compile(r"\w+", re.UNICODE)
 _WORD_SPAN_RE = re.compile(r"\w+", re.UNICODE)
 _SENTENCE_END_RE = re.compile(r"[.!?…]+(?:\s+|$)")
 _PDF_PARENTHESIS_SPLIT_RE = re.compile(r"([А-ЯЁа-яё])\([ \t\r\n]+([А-ЯЁа-яё])")
+_SPURIOUS_ONE_LETTER_PERIOD_RE = re.compile(r"\b([А-ЯЁа-яё])\.\s+(?=[А-ЯЁа-яё])")
 _OBVIOUS_PUNCTUATION_ARTIFACT_RE = re.compile(r",,{1,}|[;:]{2,}|[!?]{4,}|\.{4,}")
 _DIALOGUE_DASH_RE = re.compile(r"(^|[\n\r\s])[—–-]\s*(?=\S)")
 _IN_WORD_HYPHEN_WRAP_RE = re.compile(r"[А-ЯЁа-яё]-\s+[А-ЯЁа-яё]")
@@ -282,6 +285,7 @@ def _canonical_text_for_validation(text: str) -> str:
     """Normalize layout-only OCR artifacts before preservation metrics."""
 
     text = _PDF_PARENTHESIS_SPLIT_RE.sub(r"\1\2", text or "")
+    text = _SPURIOUS_ONE_LETTER_PERIOD_RE.sub(r"\1 ", text)
     text = repair_pdf_split_russian_words(text)
     text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)
     text = re.sub(r"[ \t]+", " ", text)
@@ -352,6 +356,48 @@ def _word_substitution_issues(original: str, corrected: str) -> list[str]:
     if not changed:
         return []
     return ["Unexpected word substitution after OCR normalization: " + "; ".join(changed)]
+
+
+def _word_change_is_only_ocr_token_splits(original: str, corrected: str) -> bool:
+    """Return true when added words only split glued OCR tokens.
+
+    Example: ``вокругнечему`` -> ``вокруг нечему`` should be accepted, while a
+    valid split plus any extra invented word must still be rejected.
+    """
+
+    orig_words = _words(original)
+    corr_words = _words(corrected)
+    if len(corr_words) <= len(orig_words):
+        return False
+
+    orig_index = 0
+    corr_index = 0
+    saw_split = False
+    while orig_index < len(orig_words) and corr_index < len(corr_words):
+        orig_word = orig_words[orig_index]
+        corr_word = corr_words[corr_index]
+        if _words_equivalent_for_minimal_correction(orig_word, corr_word):
+            orig_index += 1
+            corr_index += 1
+            continue
+
+        joined = ""
+        split_end = corr_index
+        orig_plain = orig_word.replace("ё", "е")
+        while split_end < len(corr_words) and len(joined) < len(orig_word):
+            joined += corr_words[split_end]
+            split_end += 1
+            if joined.replace("ё", "е") == orig_plain:
+                if split_end - corr_index < 2:
+                    return False
+                saw_split = True
+                orig_index += 1
+                corr_index = split_end
+                break
+        else:
+            return False
+
+    return saw_split and orig_index == len(orig_words) and corr_index == len(corr_words)
 
 
 def _capitalization_issues(original: str, corrected: str) -> list[str]:

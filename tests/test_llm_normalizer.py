@@ -141,6 +141,28 @@ class TestTextPreservationValidator:
         result = self.validator.validate(original, corrected)
         assert result.is_valid, f"Should accept parenthesis split repair: {result.issues}"
 
+    def test_accepts_llm_split_of_glued_ocr_word(self) -> None:
+        """Splitting one glued OCR token is preservation, not hallucination."""
+        original = "— Стой, стой! Ты уверен, что тут вокругнечему ломаться?"
+        corrected = "— Стой, стой! Ты уверен, что тут вокруг нечему ломаться?"
+        result = self.validator.validate(original, corrected)
+        assert result.is_valid, f"Should accept glued OCR split: {result.issues}"
+
+    def test_rejects_glued_ocr_split_plus_extra_words(self) -> None:
+        """A valid split must not hide unrelated additions."""
+        original = "— Яине прекращал просто открыл механизм."
+        corrected = "— Я ине прекращал просто открыл механизм происходит."
+        result = self.validator.validate(original, corrected)
+        assert not result.is_valid
+        assert any("Too many words added" in issue for issue in result.issues)
+
+    def test_accepts_single_letter_ocr_period_removal(self) -> None:
+        """Removing OCR dot after a single Cyrillic letter should not drop a sentence."""
+        original = "— Нет, не с американцами. Все гораздо хуже. К. Земле идёт Имперский флот."
+        corrected = "— Нет, не с американцами. Все гораздо хуже. К Земле идёт Имперский флот."
+        result = self.validator.validate(original, corrected)
+        assert result.is_valid, f"Should accept spurious one-letter period removal: {result.issues}"
+
     def test_layout_line_joins_do_not_remove_sentences(self) -> None:
         """Removing PDF line-wrap newlines should not change sentence count."""
         original = "Он вошёл в комнату\nи сел за стол. Затем он сказал:\n— Пора."

@@ -1104,6 +1104,16 @@ class TestOcrImagePreparation:
         assert _looks_like_toc(toc) is True
         assert _should_keep_ocr_text(toc) is False
 
+    def test_should_keep_ocr_text_accepts_short_title_page(self) -> None:
+        title = "\u0415 \u0417\u0410\u0422\u0415\u0420\u042f\u041d\u041d\u042b\u0415"
+
+        assert _should_keep_ocr_text(title) is True
+
+    def test_should_keep_ocr_text_rejects_short_title_like_noise(self) -> None:
+        debris = "\u043f\u0440\u043e\u0433\u0430 33772\n\n\u0421\u0415\u0422\u042f\n\n>.\n\n\u044c"
+
+        assert _should_keep_ocr_text(debris) is False
+
     def test_should_keep_ocr_text_uses_selected_non_russian_language(self) -> None:
         english = " ".join(
             [

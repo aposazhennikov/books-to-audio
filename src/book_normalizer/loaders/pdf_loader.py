@@ -1318,9 +1318,46 @@ def _ocr_text_is_usable(text: str, language_code: str = "ru") -> bool:
     )
 
 
+def _ocr_text_is_short_title(text: str, language_code: str = "ru") -> bool:
+    """Return true for sparse title pages that are too short for body-text gates."""
+    stripped = text.strip()
+    if not stripped:
+        return False
+
+    target_chars = target_script_char_count(stripped, language_code)
+    if target_chars < 8 or len(stripped) > 220:
+        return False
+    if target_script_ratio(stripped, language_code) < 0.65:
+        return False
+    if _ocr_symbol_noise_ratio(stripped) > 0.18:
+        return False
+
+    lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+    if len(lines) > 6:
+        return False
+
+    words = _cyrillic_words(stripped)
+    if not words:
+        return False
+    if len(words) > 10:
+        return False
+    if any(len(word) <= 1 and word.upper() != word for word in words):
+        return False
+    long_words = sum(1 for word in words if len(word) >= 4)
+    uppercase_words = sum(1 for word in words if word.upper() == word and len(word) >= 2)
+    titlecase_words = sum(1 for word in words if word[:1].upper() == word[:1])
+    return long_words >= 1 and (
+        uppercase_words / len(words) >= 0.5
+        or titlecase_words == len(words)
+    )
+
+
 def _should_keep_ocr_text(text: str, language_code: str = "ru") -> bool:
     """Decide whether an OCR page/segment is useful book text."""
-    if not _ocr_text_is_usable(text, language_code):
+    if not _ocr_text_is_usable(text, language_code) and not _ocr_text_is_short_title(
+        text,
+        language_code,
+    ):
         return False
     return not _looks_like_toc(text)
 

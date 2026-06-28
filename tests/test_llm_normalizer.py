@@ -164,6 +164,21 @@ class TestTextPreservationValidator:
         assert not result.is_valid
         assert any("hyphenated line wrap" in issue for issue in result.issues)
 
+    def test_accepts_heading_start_capitalization(self) -> None:
+        """Capitalizing a word after a heading marker is a safe typography fix."""
+        original = "1.   вход в спираль"
+        corrected = "1. Вход в спираль"
+        result = self.validator.validate(original, corrected)
+        assert result.is_valid, f"Should accept heading capitalization: {result.issues}"
+
+    def test_rejects_mid_sentence_capitalization_guess(self) -> None:
+        """Capitalizing a word inside a sentence is an unsafe LLM guess."""
+        original = "Глава четвертая, в которой происходит столкновение идей тром голова болела."
+        corrected = "Глава четвертая, в которой происходит столкновение идей Тром голова болела."
+        result = self.validator.validate(original, corrected)
+        assert not result.is_valid
+        assert any("Unsafe mid-sentence capitalization" in issue for issue in result.issues)
+
     def test_rejects_empty_output(self) -> None:
         """Empty LLM output must always be rejected."""
         result = self.validator.validate("Какой-то текст.", "")

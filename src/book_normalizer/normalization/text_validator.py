@@ -136,6 +136,7 @@ class TextPreservationValidator:
             )
         issues.extend(_punctuation_structure_issues(original, corrected))
         issues.extend(_word_substitution_issues(original, corrected))
+        issues.extend(_capitalization_issues(original, corrected))
 
         # When there are issues, also report word-level statistics and a few
         # concrete mismatches to aid debugging.
@@ -209,6 +210,7 @@ class TextPreservationValidator:
 
 
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
+_WORD_SPAN_RE = re.compile(r"\w+", re.UNICODE)
 _SENTENCE_END_RE = re.compile(r"[.!?…]+(?:\s+|$)")
 _PDF_PARENTHESIS_SPLIT_RE = re.compile(r"([А-ЯЁа-яё])\([ \t\r\n]+([А-ЯЁа-яё])")
 _OBVIOUS_PUNCTUATION_ARTIFACT_RE = re.compile(r",,{1,}|[;:]{2,}|[!?]{4,}|\.{4,}")
@@ -350,6 +352,59 @@ def _word_substitution_issues(original: str, corrected: str) -> list[str]:
     if not changed:
         return []
     return ["Unexpected word substitution after OCR normalization: " + "; ".join(changed)]
+
+
+def _capitalization_issues(original: str, corrected: str) -> list[str]:
+    """Reject unsafe case-only edits inside a sentence.
+
+    Heading starts such as ``1. вход`` -> ``1. Вход`` are safe, but changing
+    ``тром`` -> ``Тром`` in the middle of prose is usually a model guess and
+    can alter pronunciation, role detection, or character/name handling.
+    """
+
+    original_text = _canonical_text_for_validation(original)
+    corrected_text = _canonical_text_for_validation(corrected)
+    original_tokens = list(_WORD_SPAN_RE.finditer(original_text))
+    corrected_tokens = list(_WORD_SPAN_RE.finditer(corrected_text))
+    if len(original_tokens) != len(corrected_tokens):
+        return []
+
+    changed: list[str] = []
+    for index, (original_match, corrected_match) in enumerate(zip(original_tokens, corrected_tokens)):
+        original_word = original_match.group()
+        corrected_word = corrected_match.group()
+        if original_word == corrected_word:
+            continue
+        if original_word.casefold().replace("ё", "е") != corrected_word.casefold().replace("ё", "е"):
+            continue
+        if not _is_lower_to_uppercase_guess(original_word, corrected_word):
+            continue
+        if _is_phrase_start(corrected_text, corrected_match.start()):
+            continue
+        changed.append(f"{index}: '{original_word}' -> '{corrected_word}'")
+        if len(changed) >= 5:
+            break
+    if not changed:
+        return []
+    return ["Unsafe mid-sentence capitalization: " + "; ".join(changed)]
+
+
+def _is_lower_to_uppercase_guess(original_word: str, corrected_word: str) -> bool:
+    return (
+        original_word[:1].islower()
+        and corrected_word[:1].isupper()
+        and original_word[1:].casefold() == corrected_word[1:].casefold()
+    )
+
+
+def _is_phrase_start(text: str, word_start: int) -> bool:
+    prefix = text[:word_start].rstrip()
+    if not prefix:
+        return True
+    prefix = prefix.rstrip(_QUOTE_CHARS + "»”’)]} ")
+    if not prefix:
+        return True
+    return prefix[-1] in ".!?…:—–-("
 
 
 def _words_equivalent_for_minimal_correction(original: str, corrected: str) -> bool:

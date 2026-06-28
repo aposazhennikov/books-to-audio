@@ -604,6 +604,21 @@ def test_export_chunks_filters_book_before_heuristic_export(
     }
 
 
+def test_export_chunks_infers_short_chapter_title_from_text(tmp_path: Path) -> None:
+    export_chunks = _load_export_chunks()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    (book_dir / "001_chapter_01.txt").write_text(
+        "Помощь близка\n\nПервый обычный абзац главы.",
+        encoding="utf-8",
+    )
+
+    book = export_chunks.load_book_from_chapters(book_dir)
+
+    assert book.chapters[0].title == "Помощь близка"
+    assert book.chapters[0].raw_text.startswith("Помощь близка")
+
+
 def test_synthesis_and_assembly_stages_invoke_script_mains_in_process(
     tmp_path: Path,
     monkeypatch,

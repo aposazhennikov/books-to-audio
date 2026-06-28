@@ -41,6 +41,23 @@ from book_normalizer.models.book import Book, Chapter, Paragraph
 HEURISTIC_DEFAULT_MAX_CHUNK_CHARS = 600
 
 
+def infer_chapter_title(text: str, fallback: str) -> str:
+    """Infer a display title from the first short title-like paragraph."""
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if not paragraphs:
+        return fallback
+    candidate = paragraphs[0]
+    lines = [line.strip() for line in candidate.splitlines() if line.strip()]
+    if (
+        1 <= len(lines) <= 2
+        and len(candidate) <= 140
+        and not candidate.endswith((".", "!", "?", "…"))
+        and not any(line.startswith(("—", "-", "–")) for line in lines)
+    ):
+        return candidate
+    return fallback
+
+
 def load_book_from_chapters(book_dir: Path) -> Book:
     """Load a Book from exported chapter text files."""
     chapters = []
@@ -55,7 +72,12 @@ def load_book_from_chapters(book_dir: Path) -> Book:
             for j, p in enumerate(text.split("\n\n"))
             if p.strip()
         ]
-        ch = Chapter(title=f"Chapter {idx + 1}", index=idx, paragraphs=paras)
+        fallback_title = f"Chapter {idx + 1}"
+        ch = Chapter(
+            title=infer_chapter_title(text, fallback_title),
+            index=idx,
+            paragraphs=paras,
+        )
         chapters.append(ch)
         idx += 1
 

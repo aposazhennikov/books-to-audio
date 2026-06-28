@@ -243,6 +243,50 @@ def test_multibook_infers_short_numbered_work_title_before_reset() -> None:
     assert result.chapters[-1].title == "4. троя - Глава первая,"
 
 
+def test_late_work_hits_do_not_block_earlier_chapter_reset_inference() -> None:
+    paragraphs = [
+        Paragraph(raw_text=text, index_in_chapter=index)
+        for index, text in enumerate([
+            "\u0031\u002e \u0412\u0445\u043e\u0434 \u0432 \u0441\u043f\u0438\u0440\u0430\u043b\u044c",
+            "\u0413\u043b\u0430\u0432\u0430 \u043f\u0435\u0440\u0432\u0430\u044f,",
+            "\u0422\u0435\u043a\u0441\u0442 \u043f\u0435\u0440\u0432\u043e\u0439 \u043a\u043d\u0438\u0433\u0438.",
+            "\u0032\u002e \u041d\u0430\u0441\u043b\u0435\u0434\u043d\u0438\u043a\u0438 \u0421\u0435\u0442\u0430",
+            "\u0413\u043b\u0430\u0432\u0430 \u043f\u0435\u0440\u0432\u0430\u044f,",
+            "\u0422\u0435\u043a\u0441\u0442 \u0432\u0442\u043e\u0440\u043e\u0439 \u043a\u043d\u0438\u0433\u0438.",
+            "\u0036\u002e \u0417\u0430\u0442\u0435\u0440\u044f\u043d\u043d\u044b\u0435 "
+            "\u0432 \u043a\u043e\u0441\u043c\u043e\u0441\u0435",
+            "\u0422\u0435\u043a\u0441\u0442 \u0448\u0435\u0441\u0442\u043e\u0439 \u043a\u043d\u0438\u0433\u0438.",
+            "\u0037\u002e \u0412 \u043f\u043e\u0438\u0441\u043a\u0430\u0445 \u0441\u0438\u043b\u044b",
+            "\u0422\u0435\u043a\u0441\u0442 \u0441\u0435\u0434\u044c\u043c\u043e\u0439 \u043a\u043d\u0438\u0433\u0438.",
+        ])
+    ]
+    existing = [
+        _HeadingHit(
+            6,
+            "\u0036\u002e \u0417\u0430\u0442\u0435\u0440\u044f\u043d\u043d\u044b\u0435 "
+            "\u0432 \u043a\u043e\u0441\u043c\u043e\u0441\u0435",
+            "work_inferred_toc_title_page",
+        ),
+        _HeadingHit(
+            8,
+            "\u0037\u002e \u0412 \u043f\u043e\u0438\u0441\u043a\u0430\u0445 \u0441\u0438\u043b\u044b",
+            "work_inferred_toc_title_page",
+        ),
+    ]
+    chapter_hits = [
+        _HeadingHit(1, "\u0413\u043b\u0430\u0432\u0430 \u043f\u0435\u0440\u0432\u0430\u044f,", "chapter_word"),
+        _HeadingHit(4, "\u0413\u043b\u0430\u0432\u0430 \u043f\u0435\u0440\u0432\u0430\u044f,", "chapter_word"),
+    ]
+
+    combined = ChapterDetector._augment_work_headings_from_chapter_resets(
+        paragraphs,
+        existing,
+        chapter_hits,
+    )
+
+    assert [hit.paragraph_index for hit in combined] == [0, 3, 6, 8]
+
+
 def test_multibook_promotes_late_numbered_sections_after_known_works() -> None:
     book = _book([
         "1. вход в спираль",

@@ -348,14 +348,16 @@ class ChapterDetector:
         Infer work boundaries in omnibus PDFs where each book restarts at
         "Глава первая" and the work title sits on a nearby numbered title page.
         """
-        if len(work_hits) >= 2:
-            return work_hits
-
         first_chapter_hits = [
             hit for hit in chapter_hits
             if ChapterDetector._RE_FIRST_GLAVA.match(hit.heading_text)
         ]
         if len(first_chapter_hits) < 2:
+            return work_hits
+        if (
+            len(work_hits) >= 2
+            and min(hit.paragraph_index for hit in work_hits) <= first_chapter_hits[0].paragraph_index
+        ):
             return work_hits
 
         existing_indices = {hit.paragraph_index for hit in work_hits}

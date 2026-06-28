@@ -273,9 +273,12 @@ class NormalizationPipeline:
                 if nxt_text.lstrip().startswith("—"):
                     continue
 
-                cur.normalized_text = cur_text[:m_trail.start()] + m_trail.group(1)
-                nxt.normalized_text = nxt_text[m_lead.end():].lstrip()
-                cur.normalized_text += m_lead.group(1)
+                next_remainder = nxt_text[m_lead.end():].lstrip()
+                joined_tail = m_lead.group(1)
+                if next_remainder:
+                    joined_tail += " " + next_remainder
+                cur.normalized_text = cur_text[:m_trail.start()] + m_trail.group(1) + joined_tail
+                nxt.normalized_text = ""
                 joins += 1
 
         return joins

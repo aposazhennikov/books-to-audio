@@ -133,8 +133,8 @@ class TestPipelineV2:
 
         NormalizationPipeline().normalize_book(book)
 
-        assert para1.normalized_text == "терний и солнечных"
-        assert para2.normalized_text == "ожогов."
+        assert para1.normalized_text == "терний и солнечных ожогов."
+        assert para2.normalized_text == ""
 
     def test_cross_paragraph_hyphen_moves_full_word_tail(self) -> None:
         para1 = Paragraph(raw_text="это при-", index_in_chapter=0)
@@ -144,8 +144,8 @@ class TestPipelineV2:
 
         NormalizationPipeline().normalize_book(book)
 
-        assert para1.normalized_text == "это пример"
-        assert para2.normalized_text == "переноса."
+        assert para1.normalized_text == "это пример переноса."
+        assert para2.normalized_text == ""
 
     def test_tracking_empty_for_clean_text(self) -> None:
         pipeline = NormalizationPipeline()

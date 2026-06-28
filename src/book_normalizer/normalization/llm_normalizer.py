@@ -764,6 +764,16 @@ def _clean_llm_output(content: str) -> str:
     if (content.startswith('"') and content.endswith('"')) or \
        (content.startswith("'") and content.endswith("'")):
         content = content[1:-1]
+    if content.startswith("{") and content.endswith("}"):
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            pass
+        else:
+            if isinstance(data, dict):
+                nested = data.get("text") or data.get("title")
+                if isinstance(nested, str):
+                    return _clean_llm_output(nested)
     return content.strip()
 
 

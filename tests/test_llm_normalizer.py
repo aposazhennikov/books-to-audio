@@ -506,6 +506,27 @@ class TestLlmNormalizerMocked:
         assert payload["language"] == "Uzbek"
         assert payload["text"] == text
 
+    def test_query_llm_unwraps_nested_text_json_string(self, tmp_path: Path) -> None:
+        from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
+        from book_normalizer.llm.ollama_client import OllamaChatAttempt
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        text = "— А вот вкус и запах можно сделать любые, — оживился Горх."
+
+        class _FakeClient:
+            def chat_json_with_fallback(self, **_kwargs):
+                nested = json.dumps({"language": "Russian", "text": text}, ensure_ascii=False)
+                return OllamaChatAttempt(
+                    model=PRIMARY_QWEN3_MODEL,
+                    content=json.dumps({"text": nested}, ensure_ascii=False),
+                    data={"text": nested},
+                )
+
+        normalizer = LlmNormalizer(cache_dir=tmp_path / "cache", language="ru")
+        normalizer._client = _FakeClient()
+
+        assert normalizer._query_llm(text, model=PRIMARY_QWEN3_MODEL) == text
+
     def test_retry_query_tells_model_why_text_preservation_failed(self, tmp_path: Path) -> None:
         from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
         from book_normalizer.llm.ollama_client import OllamaChatAttempt

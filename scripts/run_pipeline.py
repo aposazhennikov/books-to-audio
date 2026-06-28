@@ -199,6 +199,7 @@ def run_stage2_llm_normalize(
     language: str,
     chapter_filter: int | None,
     start_chapter: int | None = None,
+    end_chapter: int | None = None,
     workers: int = 1,
 ) -> None:
     """Apply LLM grammar/punctuation/yofication correction to each chapter."""
@@ -214,11 +215,13 @@ def run_stage2_llm_normalize(
 
     # Filter chapters according to chapter_filter for consistent progress reporting.
     start_number = max(1, start_chapter or 1)
+    end_number = max(start_number, end_chapter) if end_chapter is not None else None
     targets: list[tuple[int, str]] = [
         (ch_idx, text)
         for ch_idx, text in chapters
         if (chapter_filter is None or ch_idx + 1 == chapter_filter)
         and ch_idx + 1 >= start_number
+        and (end_number is None or ch_idx + 1 <= end_number)
     ]
     total = len(targets)
     if total == 0:
@@ -827,6 +830,12 @@ def main(argv: list[str] | None = None) -> None:
         help="Start Stage 2 LLM normalization from this 1-based chapter number.",
     )
     parser.add_argument(
+        "--llm-normalize-end-chapter",
+        type=int,
+        default=None,
+        help="Stop Stage 2 LLM normalization after this 1-based chapter number.",
+    )
+    parser.add_argument(
         "--chunk-mode",
         choices=["llm", "heuristic"],
         default="llm",
@@ -1038,6 +1047,7 @@ def main(argv: list[str] | None = None) -> None:
             args.language,
             args.chapter,
             args.llm_normalize_start_chapter,
+            args.llm_normalize_end_chapter,
             args.llm_normalize_workers,
         )
     else:

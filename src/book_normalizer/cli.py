@@ -205,6 +205,12 @@ for _production_command in (
     help="Start LLM normalization from this 1-based chapter number.",
 )
 @click.option(
+    "--llm-normalize-end-chapter",
+    type=int,
+    default=None,
+    help="Stop LLM normalization after this 1-based chapter number.",
+)
+@click.option(
     "--chunk-mode",
     type=click.Choice(["llm", "heuristic"]),
     default="llm",
@@ -298,6 +304,7 @@ def pipeline_command(
     llm_normalize: bool,
     llm_normalize_workers: int,
     llm_normalize_start_chapter: int | None,
+    llm_normalize_end_chapter: int | None,
     chunk_mode: str,
     llm_chunk_workers: int,
     llm_max_retries: int | None,
@@ -348,6 +355,8 @@ def pipeline_command(
             argv.extend(["--llm-normalize-workers", str(llm_normalize_workers)])
         if llm_normalize_start_chapter is not None:
             argv.extend(["--llm-normalize-start-chapter", str(llm_normalize_start_chapter)])
+        if llm_normalize_end_chapter is not None:
+            argv.extend(["--llm-normalize-end-chapter", str(llm_normalize_end_chapter)])
     if llm_chunk_workers != 1:
         argv.extend(["--llm-chunk-workers", str(llm_chunk_workers)])
     if llm_max_retries is not None:

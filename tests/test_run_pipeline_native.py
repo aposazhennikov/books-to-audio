@@ -171,6 +171,7 @@ def test_stage2_parallel_normalization_round_robins_llm_endpoints(
         "ru",
         chapter_filter=None,
         start_chapter=2,
+        end_chapter=3,
         workers=2,
     )
 

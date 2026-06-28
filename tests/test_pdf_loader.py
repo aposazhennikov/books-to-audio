@@ -20,6 +20,7 @@ from book_normalizer.loaders.pdf_loader import (
     _extract_pdf_structured,
     _looks_like_toc,
     _native_text_is_sparse_title_page,
+    _ocr_text_is_short_title,
     _postprocess_ocr_text,
     _prepare_ocr_page_images,
     _repair_ocr_cross_segment_breaks,
@@ -885,6 +886,18 @@ class TestOcrImagePreparation:
         assert "2 3" not in cleaned
         assert "СР НЕ" not in cleaned
         assert "он. Воспоминание" in cleaned
+
+    def test_postprocess_ocr_text_preserves_numbered_russian_work_title(self) -> None:
+        raw = "7. \u0412 \u043f\u043e\u0438\u0441\u043a\u0430\u0445 \u0441\u0438\u043b\u044b"
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert cleaned == raw
+
+    def test_short_title_gate_accepts_numbered_russian_titlecase_lead(self) -> None:
+        title = "7. \u0412 \u043f\u043e\u0438\u0441\u043a\u0430\u0445 \u0441\u0438\u043b\u044b"
+
+        assert _ocr_text_is_short_title(title)
 
     def test_postprocess_ocr_text_removes_leftover_forbidden_symbols(self) -> None:
         raw = (

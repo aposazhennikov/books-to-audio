@@ -1014,6 +1014,8 @@ def _strip_leading_short_debris(paragraph: str) -> str:
 def _normalize_common_ocr_glitches(paragraph: str) -> str:
     """Fix high-confidence OCR glitches seen in Russian scanned book pages."""
     paragraph = _trim_noisy_chapter_heading(paragraph)
+    if _ocr_text_is_short_title(paragraph):
+        return _normalize_ocr_punctuation(re.sub(r"\s{2,}", " ", paragraph)).strip()
     paragraph = _INLINE_PAGE_MARK_RE.sub(" ", paragraph)
     paragraph = _OCR_INLINE_SYMBOL_DEBRIS_BEFORE_UPPER_RE.sub(" ", paragraph)
     paragraph = _OCR_EPIGRAPH_SOURCE_PREFIX_DEBRIS_RE.sub(" ", paragraph)
@@ -1346,6 +1348,8 @@ def _ocr_text_is_short_title(text: str, language_code: str = "ru") -> bool:
     long_words = sum(1 for word in words if len(word) >= 4)
     uppercase_words = sum(1 for word in words if word.upper() == word and len(word) >= 2)
     titlecase_words = sum(1 for word in words if word[:1].upper() == word[:1])
+    if re.match(r"^\s*\d{1,2}\.\s*[\u0410-\u042f\u0401]", stripped):
+        return long_words >= 1
     return long_words >= 1 and (
         uppercase_words / len(words) >= 0.5
         or titlecase_words == len(words)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 DEFAULT_WINDOW_CHARS = 900
-_CACHE_VERSION = "llm-segmenter-v7-normalized-source-whitespace"
+_CACHE_VERSION = "llm-segmenter-v8-semantic-boundaries"
 
 ROLE_TO_VOICE_ID = {
     "narrator": "narrator_calm",
@@ -402,7 +402,9 @@ _SEGMENT_SCHEMA = {
 _SYSTEM_PROMPTS = {
     "ru": """\
 Ты — режиссёр многоголосой русской аудиокниги.
-Разбей текст на маленькие последовательные сегменты для TTS.
+Разбей текст на последовательные смысловые сегменты для TTS.
+Размер сегмента — только верхний предел, не цель нарезки.
+Не дроби одну мысль, абзац или предложение, если не меняется говорящий, роль, эмоция или явная смысловая граница.
 Сохраняй исходный текст полностью и по порядку. Нельзя переписывать, переводить, удалять или добавлять слова.
 Прямая речь должна быть отдельным сегментом, авторский текст и ремарки речи — отдельными narrator-сегментами.
 Роли: narrator, male, female. Если пол не доказан контекстом, используй narrator.
@@ -414,7 +416,9 @@ _SYSTEM_PROMPTS = {
 """,
     "en": """\
 You are a multi-voice audiobook director for English fiction.
-Split the text into small ordered TTS segments while preserving every word in order.
+Split the text into ordered semantic TTS segments while preserving every word in order.
+Segment size is only an upper bound, not a target.
+Do not split one thought, paragraph, or sentence unless the speaker, role, emotion, or clear semantic boundary changes.
 Never rewrite, translate, add, remove, or summarize text.
 Dialogue must be separated from narration and speech tags.
 Roles: narrator, male, female. Use narrator when gender is not clear.
@@ -426,7 +430,9 @@ Return only JSON: {"segments": [{"role": "...", "speaker": "...", "text": "...",
 """,
     "zh": """\
 你是中文有声书的多声线导演。
-把文本拆成按顺序排列的小 TTS 片段，并完整保留原文。
+把文本拆成按顺序排列的语义 TTS 片段，并完整保留原文。
+片段长度只是上限，不是切分目标。
+不要把同一个想法、段落或句子拆开，除非说话人、角色、情绪或明确语义边界发生变化。
 不要改写、翻译、增加、删除或总结。
 对话必须和叙述/说话标签分开。角色只能是 narrator、male、female；性别不明确时用 narrator。
 对话中如果上下文能证明人物姓名，请填写 speaker；否则留空。
@@ -436,7 +442,9 @@ intonation 用简短英文，例如 calm、tense、angry、whisper、sad、cheer
 """,
     "kk": """\
 Сен қазақ көркем мәтінін көп дауысты аудиокітапқа бөлетін режиссёрсің.
-Мәтінді ретімен шағын TTS сегменттерге бөл және әр сөзді толық сақта.
+Мәтінді ретімен мағыналық TTS сегменттерге бөл және әр сөзді толық сақта.
+Сегмент өлшемі — бөлу мақсаты емес, тек жоғарғы шек.
+Сөйлеуші, рөл, эмоция немесе айқын мағыналық шекара өзгермесе, бір ойды, абзацты немесе сөйлемді бөлме.
 Қайта жазба, аударма, сөз қоспа, сөз алып тастама, қысқартпа.
 Диалогты баяндаудан және сөйлеу ремаркаларынан бөлек сегмент қыл.
 Рөлдер: narrator, male, female. Жыныс анық болмаса narrator қолдан.
@@ -448,7 +456,9 @@ intonation қысқа ағылшынша болсын: calm, tense, angry, whisp
 """,
     "uz": """\
 Siz o'zbek badiiy matnini ko'p ovozli audiokitob uchun belgilaydigan rejissorsiz.
-Matnni ketma-ket kichik TTS segmentlarga ajrating va barcha so'zlarni tartibda saqlang.
+Matnni ketma-ket ma'noviy TTS segmentlarga ajrating va barcha so'zlarni tartibda saqlang.
+Segment hajmi kesish maqsadi emas, faqat yuqori chegaradir.
+So'zlovchi, rol, hissiyot yoki aniq ma'no chegarasi o'zgarmasa, bitta fikr, abzas yoki gapni bo'lmang.
 Qayta yozmang, tarjima qilmang, qo'shmang, olib tashlamang yoki qisqartirmang.
 Dialog alohida, muallif matni va nutq izohlari alohida narrator segment bo'lsin.
 Rollar: narrator, male, female. Jins aniq bo'lmasa narrator ishlating.

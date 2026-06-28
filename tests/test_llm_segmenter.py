@@ -77,9 +77,20 @@ def test_llm_voice_segmenter_prompts_are_readable_and_retry_is_strict() -> None:
     }
 
     assert "режиссёр" in prompts["ru"]
+    assert "Размер сегмента — только верхний предел" in prompts["ru"]
     assert "中文" in prompts["zh"]
     assert "қазақ" in prompts["kk"].lower()
     for prompt in prompts.values():
+        assert any(
+            marker in prompt
+            for marker in (
+                "not a target",
+                "не цель",
+                "不是切分目标",
+                "мақсаты емес",
+                "maqsadi emas",
+            )
+        )
         assert not any(fragment in prompt for fragment in _MOJIBAKE_FRAGMENTS)
 
     retry_prompt = _user_prompt_for_window(

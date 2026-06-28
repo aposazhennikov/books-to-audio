@@ -321,6 +321,24 @@ class TestBuildChunksFromSegments:
 
         assert chunks[0]["role"] == "male"
 
+    def test_dialogue_section_with_narrator_voice_gets_character_voice(self) -> None:
+        segments = [
+            {
+                "chapter_index": 0,
+                "language": "ru",
+                "voice_id": "narrator_calm",
+                "intonation": "questioning",
+                "role": "narrator",
+                "section_kind": "dialogue",
+                "text": "А вы кто? — спросил",
+            },
+        ]
+
+        chunks = build_chunks_from_segments(segments)
+
+        assert chunks[0]["role"] in {"male", "female", "unknown"}
+        assert chunks[0]["voice_id"] != "narrator_calm"
+
     def test_character_metadata_prevents_wrong_dialogue_merge(self) -> None:
         segments = [
             {

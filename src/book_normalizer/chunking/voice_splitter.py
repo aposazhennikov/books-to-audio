@@ -205,7 +205,7 @@ def build_chunks_from_segments(
 
     pending_text_parts: list[str] = []
     pending_chapter = segments[0].get("chapter_index", 0)
-    pending_voice = segments[0].get("voice_id", "narrator_calm")
+    pending_voice = _voice_id_from_segment(segments[0])
     pending_intonation = segments[0].get("intonation", "neutral")
     pending_role = _role_from_segment(segments[0])
     pending_language = str(segments[0].get("language") or "").strip()
@@ -279,7 +279,7 @@ def build_chunks_from_segments(
 
     for seg in segments:
         seg_chapter = seg.get("chapter_index", 0)
-        seg_voice = seg.get("voice_id", "narrator_calm")
+        seg_voice = _voice_id_from_segment(seg)
         seg_intonation = seg.get("intonation", "neutral")
         seg_role = _role_from_segment(seg)
         seg_language = str(seg.get("language") or "").strip()
@@ -594,7 +594,7 @@ def _role_from_segment(seg: dict[str, Any]) -> str:
     """Infer canonical role from voice_id first, then stale role metadata."""
     role = str(seg.get("role") or "narrator").strip().lower()
     section_kind = str(seg.get("section_kind") or "").strip().lower()
-    if role == "unknown" and section_kind == "dialogue":
+    if role in {"narrator", "unknown"} and section_kind == "dialogue":
         return "unknown"
 
     voice_id = str(seg.get("voice_id") or "").strip().lower()
@@ -608,6 +608,20 @@ def _role_from_segment(seg: dict[str, Any]) -> str:
     if role in {"narrator", "male", "female", "unknown"}:
         return role
     return "narrator"
+
+
+def _voice_id_from_segment(seg: dict[str, Any]) -> str:
+    voice_id = str(seg.get("voice_id") or "narrator_calm").strip()
+    role = _role_from_segment(seg)
+    if role == "unknown" and voice_id.lower().startswith("narrator"):
+        from book_normalizer.tts.voice_mapping import auto_builtin_voice_id_for_segment
+
+        repaired = dict(seg)
+        repaired["role"] = role
+        repaired["section_kind"] = "dialogue"
+        repaired["voice_id"] = ""
+        return auto_builtin_voice_id_for_segment(repaired)
+    return voice_id or "narrator_calm"
 
 
 def _segment_role_metadata(seg: dict[str, Any]) -> dict[str, str]:

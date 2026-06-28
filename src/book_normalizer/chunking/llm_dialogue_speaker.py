@@ -119,6 +119,9 @@ def _repair_dialogue_metadata(
     ):
         return "narrator", "", "narration", ""
 
+    if section_kind == "dialogue" and role == "narrator" and not speaker:
+        role = "unknown"
+
     if not _has_direct_speech_marker(text, language):
         return role, speaker, section_kind, character_description
 
@@ -147,7 +150,15 @@ def _repair_dialogue_metadata(
     return role, speaker, section_kind, character_description
 
 def _has_direct_speech_marker(text: str, language: str) -> bool:
-    return _starts_with_direct_speech_marker(text, language)
+    if _starts_with_direct_speech_marker(text, language):
+        return True
+    if normalize_book_language(language) != "ru":
+        return False
+    stripped = str(text or "").strip()
+    if not stripped:
+        return False
+    match = re.search(r"[!?…]\s*[—–-]\s*(?P<tail>.+)$", stripped, re.DOTALL)
+    return bool(match and _contains_ru_attribution_word(match.group("tail")))
 
 def _dialogue_markup_looks_like_narration(text: str, language: str) -> bool:
     """Return true when LLM speaker markup contradicts the text shape."""

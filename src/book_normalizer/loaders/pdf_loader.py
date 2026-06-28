@@ -1129,17 +1129,20 @@ def _repair_pdf_drop_caps(text: str) -> str:
     """Recover common decorative drop caps lost by PDF/OCR extraction."""
     paragraphs = [part.strip() for part in text.split("\n\n")]
     repaired: list[str] = []
-    after_heading = False
+    after_heading_context = 0
     for paragraph in paragraphs:
         if not paragraph:
             repaired.append(paragraph)
             continue
         current = paragraph
-        if after_heading:
+        if after_heading_context > 0:
             current = _repair_drop_cap_paragraph(current)
         current = _repair_drop_caps_after_embedded_heading(current)
         repaired.append(current)
-        after_heading = _is_chapter_heading_line(current)
+        if _is_chapter_heading_line(current):
+            after_heading_context = 6
+        elif after_heading_context > 0:
+            after_heading_context -= 1
     return "\n\n".join(repaired)
 
 

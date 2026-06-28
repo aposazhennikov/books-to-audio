@@ -1016,6 +1016,20 @@ class TestOcrImagePreparation:
             "ПОВЕСТВУЮЩАЯ, В ОБЩЕМ-ТО, НИ О ЧЕМ Сергей сидел за столом.",
         ]
 
+    def test_postprocess_ocr_text_repairs_drop_cap_after_separate_subtitle(self) -> None:
+        raw = (
+            "\u0413\u041b\u0410\u0412\u0410 \u041f\u0415\u0420\u0412\u0410\u042f\n\n"
+            "\u041f\u041e\u0412\u0415\u0421\u0422\u0412\u0423\u042e\u0429\u0410\u042f, "
+            "\u0412 \u041e\u0411\u0429\u0415\u041c-\u0422\u041e, "
+            "\u041d\u0418 \u041e \u0427\u0415\u041c\n\n"
+            "\u0435\u0440\u0433\u0435\u0439 \u0441\u0438\u0434\u0435\u043b "
+            "\u0437\u0430 \u0441\u0442\u043e\u043b\u043e\u043c."
+        )
+
+        cleaned = _postprocess_ocr_text(raw)
+
+        assert "\u0421\u0435\u0440\u0433\u0435\u0439 \u0441\u0438\u0434\u0435\u043b" in cleaned
+
     @pytest.mark.parametrize(
         ("raw_body", "expected"),
         [

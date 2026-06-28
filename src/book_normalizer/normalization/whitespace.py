@@ -51,6 +51,24 @@ def repair_hyphenated_words(text: str) -> str:
     return text
 
 
+_PDF_SPLIT_RU_WORD_RE = re.compile(
+    r"\b(?P<head>[А-ЯЁа-яё]{2,16})\s+"
+    r"(?P<tail>(?:быва(?:ть|л[аио]?|ет|ют)|дажн[а-яё]{2,8}|неч[а-яё]{1,8}))\b"
+)
+
+
+def repair_pdf_split_russian_words(text: str) -> str:
+    """Rejoin conservative native-PDF Russian word splits without a hyphen.
+
+    Some native PDF text layers lose the visual hyphen and leave one word as two
+    tokens, for example ``расхлё бывать`` or ``абор дажном``.  The rule is
+    deliberately narrow: it only joins tails observed in common line-wrap
+    artifacts and leaves ordinary short function-word sequences untouched.
+    """
+
+    return _PDF_SPLIT_RU_WORD_RE.sub(lambda match: match.group("head") + match.group("tail"), text)
+
+
 def normalize_spacing_around_punctuation(text: str) -> str:
     """
     Fix common spacing issues around punctuation marks.

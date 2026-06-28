@@ -35,6 +35,7 @@ from book_normalizer.normalization.whitespace import (
     normalize_whitespace,
     repair_broken_lines,
     repair_hyphenated_words,
+    repair_pdf_split_russian_words,
 )
 from book_normalizer.normalization.yoficator import yoficate_text
 
@@ -50,6 +51,7 @@ DEFAULT_STAGES: list[tuple[str, TextTransform]] = [
     ("fix_ocr_artifacts", fix_ocr_artifacts),
     ("normalize_whitespace", normalize_whitespace),
     ("repair_hyphenated_words", repair_hyphenated_words),
+    ("repair_pdf_split_russian_words", repair_pdf_split_russian_words),
     ("fix_russian_particle_hyphens", fix_russian_particle_hyphens),
     ("repair_broken_lines", repair_broken_lines),
     ("remove_page_numbers", remove_page_numbers),
@@ -74,6 +76,7 @@ LANGUAGE_NEUTRAL_STAGES: list[tuple[str, TextTransform]] = [
     ("strip_ssml_markup", strip_ssml_markup),
     ("normalize_whitespace", normalize_whitespace),
     ("repair_hyphenated_words", repair_hyphenated_words),
+    ("repair_pdf_split_russian_words", repair_pdf_split_russian_words),
     ("repair_broken_lines", repair_broken_lines),
     ("remove_page_numbers", remove_page_numbers),
     ("remove_publisher_boilerplate", remove_publisher_boilerplate),

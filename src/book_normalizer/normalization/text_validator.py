@@ -27,6 +27,8 @@ import re
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
+from book_normalizer.normalization.whitespace import repair_pdf_split_russian_words
+
 logger = logging.getLogger(__name__)
 
 
@@ -237,12 +239,12 @@ def _char_similarity(a: str, b: str) -> float:
 
 def _word_count(text: str) -> int:
     """Count words using Unicode word boundary pattern."""
-    return len(_WORD_RE.findall(text))
+    return len(_WORD_RE.findall(repair_pdf_split_russian_words(text)))
 
 
 def _words(text: str) -> list[str]:
     """Tokenise text into words (case-insensitive) using the same pattern as _word_count."""
-    return [w.lower() for w in _WORD_RE.findall(text)]
+    return [w.lower() for w in _WORD_RE.findall(repair_pdf_split_russian_words(text))]
 
 
 _LATIN_RE = re.compile(r"^[A-Za-z]+$")

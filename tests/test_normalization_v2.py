@@ -8,6 +8,7 @@ from book_normalizer.normalization.pipeline import NormalizationPipeline
 from book_normalizer.normalization.whitespace import (
     normalize_spacing_around_punctuation,
     repair_hyphenated_words,
+    repair_pdf_split_russian_words,
 )
 
 
@@ -31,6 +32,20 @@ class TestRepairHyphenatedWords:
         text = "слово-\nСлово"
         result = repair_hyphenated_words(text)
         assert result == "слово-\nСлово"
+
+
+class TestRepairPdfSplitRussianWords:
+    def test_repairs_common_native_pdf_word_splits(self) -> None:
+        text = "Нам придется расхлё бывать эту историю после абор дажном бою."
+
+        assert repair_pdf_split_russian_words(text) == (
+            "Нам придется расхлёбывать эту историю после абордажном бою."
+        )
+
+    def test_preserves_ordinary_short_words(self) -> None:
+        text = "Он не хотел ни о чем говорить."
+
+        assert repair_pdf_split_russian_words(text) == text
 
 
 class TestSpacingAroundPunctuation:
@@ -86,8 +101,10 @@ class TestPipelineV2:
         names = pipeline.stage_names
         assert "normalize_encoding_artifacts" in names
         assert "repair_hyphenated_words" in names
+        assert "repair_pdf_split_russian_words" in names
         assert "normalize_spacing_around_punctuation" in names
         assert names.index("normalize_encoding_artifacts") < names.index("normalize_whitespace")
+        assert names.index("repair_hyphenated_words") < names.index("repair_pdf_split_russian_words")
 
     def test_normalize_text_with_tracking(self) -> None:
         pipeline = NormalizationPipeline()

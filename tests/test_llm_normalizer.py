@@ -92,6 +92,14 @@ class TestTextPreservationValidator:
         result = self.validator.validate(original, corrected)
         assert result.is_valid, f"Should accept punctuation fix: {result.issues}"
 
+    def test_accepts_pdf_split_word_repairs(self) -> None:
+        """Joining native-PDF word fragments should count as preservation."""
+        original = "Нам придется расхлё бывать это после абор дажном бою."
+        corrected = "Нам придется расхлёбывать это после абордажном бою."
+        result = self.validator.validate(original, corrected)
+        assert result.is_valid, f"Should accept split-word repair: {result.issues}"
+        assert result.accepted_text == corrected
+
     def test_rejects_empty_output(self) -> None:
         """Empty LLM output must always be rejected."""
         result = self.validator.validate("Какой-то текст.", "")

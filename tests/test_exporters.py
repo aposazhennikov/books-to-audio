@@ -56,6 +56,20 @@ class TestTxtExporter:
         assert "полуорганический механизм из-за стены" in content
         assert "(\n" not in content
 
+    def test_repairs_repeated_commas_in_chapter_files(self, tmp_path: Path) -> None:
+        para = Paragraph(
+            raw_text="",
+            normalized_text="— Это же Геркулес,, закричали воины.",
+            index_in_chapter=0,
+        )
+        book = Book(metadata=Metadata(), chapters=[Chapter(title="Test", index=0, paragraphs=[para])])
+
+        TxtExporter().export(book, tmp_path)
+
+        content = (tmp_path / "001_chapter_01.txt").read_text(encoding="utf-8")
+        assert ",," not in content
+        assert "Геркулес, закричали" in content
+
 
 class TestJsonExporter:
     def test_creates_json_file(self, sample_book: Book, tmp_path: Path) -> None:
@@ -122,3 +136,17 @@ class TestQwenExporter:
         content = (tmp_path / "qwen_chapter_001.txt").read_text(encoding="utf-8")
         assert "полуорганический механизм из-за стены" in content
         assert "(\n" not in content
+
+    def test_repairs_repeated_commas_for_tts_chunks(self, tmp_path: Path) -> None:
+        para = Paragraph(
+            raw_text="",
+            normalized_text="— Феб,, закричали греки,, сам стреловержец Феб здесь.",
+            index_in_chapter=0,
+        )
+        book = Book(metadata=Metadata(), chapters=[Chapter(title="Test", index=0, paragraphs=[para])])
+
+        QwenExporter().export(book, tmp_path)
+
+        content = (tmp_path / "qwen_chapter_001.txt").read_text(encoding="utf-8")
+        assert ",," not in content
+        assert "Феб, закричали греки, сам" in content

@@ -13,6 +13,7 @@ from book_normalizer.chunking.splitter import (
     chunk_chapter,
 )
 from book_normalizer.models.book import Book, Paragraph
+from book_normalizer.normalization.punctuation import normalize_repeated_commas
 from book_normalizer.normalization.whitespace import (
     repair_hyphenated_words,
     repair_pdf_split_russian_words,
@@ -165,6 +166,7 @@ class QwenExporter:
 
         result = repair_hyphenated_words(result)
         result = repair_pdf_split_russian_words(result)
+        result = normalize_repeated_commas(result)
         result = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", result)
         result = re.sub(r"\n{3,}", "\n\n", result)
         result = result.strip()

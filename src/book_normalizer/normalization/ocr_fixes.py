@@ -70,6 +70,13 @@ _LONE_GARBAGE = re.compile(
     r"(?<=\s)[=<>|#№\u2021\u2020\u00A7\u00B6]+(?=\s)"
 )
 
+# Square brackets can replace initial Cyrillic letters in OCR output.
+_BRACKET_INITIAL_T = re.compile(r"(?<![\w\u0400-\u04ff])\](?=[ыо])", re.IGNORECASE)
+_BRACKET_INITIAL_G = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=о)", re.IGNORECASE)
+_BRACKET_INITIAL_P = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=р)", re.IGNORECASE)
+_BRACKET_BEFORE_RECOGNIZED_CAPITAL = re.compile(r"(?<![\w\u0400-\u04ff])\[(?=[А-ЯЁ])")
+_BRACKET_AFTER_CYRILLIC_WORD = re.compile(r"(?<=[\u0400-\u04ff])\](?=\W|$)")
+
 # Two or more stray single characters separated by spaces (OCR junk).
 _SCATTERED_CHARS = re.compile(
     r"\b([а-яёА-ЯЁa-zA-Z])\s+([а-яёА-ЯЁa-zA-Z])\s+([а-яёА-ЯЁa-zA-Z])\b"
@@ -229,6 +236,16 @@ def fix_russian_particle_hyphens(text: str) -> str:
     return _PRONOUN_PARTICLE_RE.sub(r"\g<base>-то", text)
 
 
+def fix_square_bracket_ocr_artifacts(text: str) -> str:
+    """Repair square brackets substituted for initial Cyrillic letters."""
+
+    text = _BRACKET_INITIAL_T.sub("Т", text)
+    text = _BRACKET_INITIAL_G.sub("Г", text)
+    text = _BRACKET_INITIAL_P.sub("П", text)
+    text = _BRACKET_BEFORE_RECOGNIZED_CAPITAL.sub("", text)
+    return _BRACKET_AFTER_CYRILLIC_WORD.sub("", text)
+
+
 _TRAILING_JUNK = re.compile(
     r"\s+[a-zA-Z.,;:!?\-]{1,3}\s*$"
 )
@@ -263,6 +280,7 @@ def fix_ocr_artifacts(text: str) -> str:
     for pattern, replacement in _MISSING_PREPOSITION_FIXES:
         text = pattern.sub(replacement, text)
     text = _LONE_GARBAGE.sub("", text)
+    text = fix_square_bracket_ocr_artifacts(text)
     text = fix_russian_particle_hyphens(text)
 
     # Rejoin words broken by hyphenation across lines.

@@ -110,6 +110,30 @@ class TestMojibakeFix:
         assert fix_common_mojibake(text) == text
 
 
+class TestOcrBracketArtifacts:
+    def test_repairs_square_bracket_initial_letter_artifacts(self) -> None:
+        pipeline = NormalizationPipeline()
+
+        text = (
+            "— ]ы знаешь? — спросил [орх.\n"
+            "Кажется, [риземелью повезло. ]о есть он выжил."
+        )
+
+        assert pipeline.normalize_text(text) == (
+            "— Ты знаешь? — спросил Горх.\n"
+            "Кажется, Приземелью повезло. То есть он выжил."
+        )
+
+    def test_removes_spurious_brackets_around_recognized_cyrillic_words(self) -> None:
+        pipeline = NormalizationPipeline()
+
+        text = "— [Где ж его взять? [Глаза засветились. Достань [оркха] из рюкзака."
+
+        assert pipeline.normalize_text(text) == (
+            "— Где ж его взять? Глаза засветились. Достань Горкха из рюкзака."
+        )
+
+
 class TestPipelineV2:
     def test_stage_names(self) -> None:
         pipeline = NormalizationPipeline()

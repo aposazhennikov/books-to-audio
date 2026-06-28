@@ -130,6 +130,13 @@ class TestPipelineV2:
             s in changed for s in ("normalize_whitespace", "fix_ocr_artifacts")
         )
 
+    def test_repairs_dropped_initial_u_in_morning_after_heading(self) -> None:
+        pipeline = NormalizationPipeline()
+
+        result = pipeline.normalize_text("Глава четвёртая тром голова болела.")
+
+        assert result == "Глава четвёртая Утром голова болела."
+
     def test_cross_paragraph_pdf_open_paren_word_split(self) -> None:
         para1 = Paragraph(raw_text="терний и солнеч(", index_in_chapter=0)
         para2 = Paragraph(raw_text="ных ожогов.", index_in_chapter=1)

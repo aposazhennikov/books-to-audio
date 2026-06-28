@@ -39,6 +39,12 @@ _PERIOD_INSIDE_WORD = re.compile(
     r"(?<=[а-яёА-ЯЁ])\.\s(?=[а-яё])"
 )
 
+# Native PDF extraction can drop the initial capital in "Утром" after a
+# chapter heading, leaving the non-word "тром голова...".
+_DROPPED_INITIAL_U = re.compile(
+    r"(?<![0-9A-Za-z\u0400-\u04ff])тром(?=\s+[\u0430-\u044f\u0451])"
+)
+
 # Lone garbage characters surrounded by whitespace in Cyrillic text.
 _LONE_GARBAGE = re.compile(
     r"(?<=\s)[=<>|#№\u2021\u2020\u00A7\u00B6]+(?=\s)"
@@ -232,6 +238,7 @@ def fix_ocr_artifacts(text: str) -> str:
     """
     text = _STRAY_PUNCT_IN_CYR.sub("", text)
     text = _PERIOD_INSIDE_WORD.sub(" ", text)
+    text = _DROPPED_INITIAL_U.sub("Утром", text)
     text = _LONE_GARBAGE.sub("", text)
     text = fix_russian_particle_hyphens(text)
 

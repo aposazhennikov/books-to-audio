@@ -55,6 +55,7 @@ def repair_segment_dialogue_boundaries(
         row = dict(segment)
         original_role = _normalize_role(row.get("role"))
         role = original_role
+        text = str(row.get("text") or "")
         speaker = _clean_speaker(row.get("speaker"), language)
         section_kind = _clean_section_kind(row.get("section_kind"), role)
         character_description = _clean_optional(
@@ -62,6 +63,9 @@ def repair_segment_dialogue_boundaries(
             or row.get("role_description")
             or row.get("description")
         )
+        if speaker and _llm_speaker_needs_local_support(speaker, text, language):
+            speaker = ""
+            character_description = ""
         if (
             pending_continuation_speaker is not None
             and section_kind == "dialogue"
@@ -81,7 +85,7 @@ def repair_segment_dialogue_boundaries(
             speaker=speaker,
             section_kind=section_kind,
             character_description=character_description,
-            text=str(row.get("text") or ""),
+            text=text,
             language=language,
             recent_dialogue_speakers=recent_dialogue_speakers,
             force_narration=bool(row.get("_narration_repaired")),
@@ -91,7 +95,7 @@ def repair_segment_dialogue_boundaries(
             role=role,
             section_kind=section_kind,
             speaker=speaker,
-            text=str(row.get("text") or ""),
+            text=text,
         )
         if is_dialogue:
             _remember_dialogue_speaker(
@@ -145,6 +149,19 @@ def repair_segment_dialogue_boundaries(
         )
         return [dict(segment) for segment in segments]
     return rows
+
+
+def _llm_speaker_needs_local_support(speaker: str, text: str, language: str) -> bool:
+    """Return true when an LLM-provided Russian speaker is not locally proven."""
+
+    if normalize_book_language(language) != "ru":
+        return False
+    if not speaker or not text:
+        return False
+    if len(speaker.split()) <= 1:
+        return False
+    return speaker.casefold() not in text.casefold()
+
 
 def _apply_delivery_cues(
     rows: list[dict[str, Any]],
@@ -227,4 +244,3 @@ def _mark_row_delivery(row: dict[str, Any], cues: list[str]) -> None:
     current_emotion = _clean_intonation(row.get("emotion") or "")
     if not current_emotion or current_emotion in {"calm", "neutral"}:
         row["emotion"] = emotion
-

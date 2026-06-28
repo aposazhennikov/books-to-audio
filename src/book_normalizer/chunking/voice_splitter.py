@@ -14,6 +14,10 @@ from book_normalizer.chunking.annotations import (
     classify_chapter_paragraphs,
     mark_segment_as_special_section,
 )
+from book_normalizer.chunking.llm_dialogue_markers import (
+    _contains_ru_attribution_word,
+    _dash_starts_narrator_tag,
+)
 from book_normalizer.chunking.splitter import (
     DEFAULT_CHAPTER_PAUSE_MS,
     DEFAULT_MAX_CHUNK_CHARS,
@@ -315,10 +319,17 @@ def build_chunks_from_segments(
                 int(seg.get("pause_after_ms") or 0),
             )
         else:
-            transition_boundary = (
+            tight_speech_tag = _is_tight_speech_tag_transition(
+                pending_role=pending_role,
+                pending_text=" ".join(pending_text_parts),
+                next_role=seg_role,
+                next_text=seg_text,
+                language=language,
+            )
+            transition_boundary = "" if tight_speech_tag else (
                 "chapter" if seg_chapter != pending_chapter else "speaker"
             )
-            transition_pause = (
+            transition_pause = 0 if tight_speech_tag else (
                 DEFAULT_CHAPTER_PAUSE_MS
                 if seg_chapter != pending_chapter
                 else DEFAULT_SPEAKER_PAUSE_MS
@@ -352,6 +363,45 @@ def build_chunks_from_segments(
     )
     _renumber_chunk_indices(repaired_chunks)
     return repaired_chunks
+
+
+def _is_tight_speech_tag_transition(
+    *,
+    pending_role: str,
+    pending_text: str,
+    next_role: str,
+    next_text: str,
+    language: str,
+) -> bool:
+    """Return true for dialogue immediately followed by its narrator speech tag."""
+
+    if language != "ru":
+        return False
+    if pending_role == "narrator" or next_role != "narrator":
+        return False
+    if len(pending_text.strip()) > 140:
+        return False
+    return (
+        _dash_starts_narrator_tag(next_text, language)
+        and _contains_ru_attribution_word(next_text)
+    ) or _looks_like_short_ru_author_tag(next_text)
+
+
+def _looks_like_short_ru_author_tag(text: str) -> bool:
+    stripped = str(text or "").lstrip()
+    if not stripped or stripped[0] not in "—–-":
+        return False
+    tail = stripped[1:].lstrip()
+    if not tail or not tail[0].islower():
+        return False
+    return bool(
+        re.search(
+            r"\b(?:сказал|сообщил|ответил|отозвался|спросил|процитировал|"
+            r"прошептал|крикнул|произнес|произнёс|заметил)\w*\b",
+            tail,
+            re.IGNORECASE,
+        )
+    )
 
 
 def _renumber_chunk_indices(chunks: list[dict[str, Any]]) -> None:

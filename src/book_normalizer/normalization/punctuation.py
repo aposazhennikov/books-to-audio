@@ -74,6 +74,11 @@ def adapt_punctuation_for_tts(text: str) -> str:
     # Em-dash between clauses (not at line start = not dialogue).
     # Pattern: "word — word" mid-sentence -> "word, word".
     text = re.sub(
+        r",\s*" + EM_DASH + r"\s*(?=[а-яё\d])",
+        ", ",
+        text,
+    )
+    text = re.sub(
         r"(?<=[а-яёА-ЯЁ\d,.])\s*" + EM_DASH + r"\s*(?=[а-яё\d])",
         ", ",
         text,

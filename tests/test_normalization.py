@@ -191,6 +191,13 @@ class TestNormalizationPipeline:
 
         assert result == "— Феб, закричали греки, сам стреловержец Феб здесь."
 
+    def test_pipeline_does_not_double_comma_when_adapting_dialogue_dash(self) -> None:
+        pipeline = NormalizationPipeline()
+
+        result = pipeline.normalize_text("— Иди с миром, — сказал Сергей.")
+
+        assert result == "— Иди с миром, сказал Сергей."
+
     def test_pipeline_repairs_pdf_parenthesis_hyphens_before_tts(self) -> None:
         pipeline = NormalizationPipeline()
 

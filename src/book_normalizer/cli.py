@@ -198,7 +198,7 @@ for _production_command in (
     show_default=True,
     help="Chunking mode: LLM smart markup or offline heuristic chunks.",
 )
-@click.option("--max-chunk-chars", type=int, default=900, show_default=True, help="Soft max chars per LLM chunk.")
+@click.option("--max-chunk-chars", type=int, default=2400, show_default=True, help="Soft max chars per LLM chunk.")
 @click.option("--synthesize", is_flag=True, default=False, help="Run ComfyUI synthesis after chunking.")
 @click.option(
     "--quality-loop",

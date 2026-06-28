@@ -309,6 +309,69 @@ def test_stage3_llm_rejects_mixed_dialogue_manifest(
     assert not (book_dir / "chunks_manifest_v2.json").exists()
 
 
+def test_stage3_llm_scales_segment_window_with_large_chunks(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pipeline = _load_run_pipeline()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    (book_dir / "001_chapter_01.txt").write_text("Hello.", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class _FakeSegmenter:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def segment_book(self, book):  # noqa: ANN001
+            return [
+                {
+                    "chapter_index": book.chapters[0].index,
+                    "segment_index": 0,
+                    "language": "ru",
+                    "role": "narrator",
+                    "voice_id": "narrator_calm",
+                    "intonation": "calm",
+                    "section_kind": "narration",
+                    "text": "Hello.",
+                }
+            ]
+
+    def fake_build_chunks_from_segments(segments, *, max_chunk_chars):  # noqa: ANN001
+        captured["max_chunk_chars"] = max_chunk_chars
+        return [
+            {
+                "chapter_index": 0,
+                "chunk_index": 0,
+                "language": "ru",
+                "role": "narrator",
+                "voice_id": "narrator_calm",
+                "section_kind": "narration",
+                "text": segments[0]["text"],
+            }
+        ]
+
+    import book_normalizer.chunking.llm_segmenter as llm_segmenter
+    import book_normalizer.chunking.voice_splitter as voice_splitter
+
+    monkeypatch.setattr(llm_segmenter, "LlmVoiceSegmenter", _FakeSegmenter)
+    monkeypatch.setattr(voice_splitter, "build_chunks_from_segments", fake_build_chunks_from_segments)
+
+    pipeline.run_stage3_llm_chunking(
+        book_dir,
+        "http://127.0.0.1:11434",
+        "model",
+        "ru",
+        chapter_filter=None,
+        llm_max_retries=1,
+        max_chunk_chars=2400,
+    )
+
+    assert captured["window_chars"] == 4800
+    assert captured["max_segment_chars"] == 2400
+    assert captured["max_chunk_chars"] == 2400
+
+
 def test_stage3_heuristic_invokes_native_exporter_and_filters_chapter(
     tmp_path: Path,
     monkeypatch,

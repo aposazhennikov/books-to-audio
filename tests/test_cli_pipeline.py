@@ -58,7 +58,7 @@ def test_pipeline_command_runs_in_process_without_subprocess(
         "--chunk-mode",
         "llm",
         "--max-chunk-chars",
-        "900",
+        "2400",
         "--ocr-mode",
         "force",
         "--llm-normalize",

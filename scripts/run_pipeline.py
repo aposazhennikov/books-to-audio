@@ -98,6 +98,9 @@ from book_normalizer.cli import process_command  # noqa: E402
 from book_normalizer.languages import SUPPORTED_LANGUAGE_CODES, normalize_book_language  # noqa: E402
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL  # noqa: E402
 
+DEFAULT_PIPELINE_MAX_CHUNK_CHARS = 2400
+MAX_LLM_SEGMENT_WINDOW_CHARS = 8000
+
 # ── Stage helpers ─────────────────────────────────────────────────────────────
 
 
@@ -127,6 +130,17 @@ def load_chapter_texts(book_dir: Path) -> list[tuple[int, str]]:
         chapters.append((idx, ch_file.read_text(encoding="utf-8")))
         idx += 1
     return chapters
+
+
+def effective_llm_segment_window_chars(max_chunk_chars: int) -> int:
+    """Return the Stage 3 LLM context window for a requested chunk size."""
+    from book_normalizer.chunking.llm_segmenter_config import DEFAULT_WINDOW_CHARS
+
+    requested = max(1, max_chunk_chars)
+    return max(
+        DEFAULT_WINDOW_CHARS,
+        min(requested * 2, MAX_LLM_SEGMENT_WINDOW_CHARS),
+    )
 
 
 # ── Stage 1: Rule-based normalization ────────────────────────────────────────
@@ -245,18 +259,20 @@ def run_stage3_llm_chunking(
 ) -> Path:
     """Create v2 chunks manifest using speaker-aware LLM segmentation."""
     from book_normalizer.chunking.dialogue_invariants import assert_dialogue_chunk_boundaries
-    from book_normalizer.chunking.llm_segmenter import DEFAULT_WINDOW_CHARS, LlmVoiceSegmenter
+    from book_normalizer.chunking.llm_segmenter import LlmVoiceSegmenter
     from book_normalizer.chunking.manifest import chunks_to_v2_manifest
     from book_normalizer.chunking.voice_splitter import build_chunks_from_segments
     from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 
     cache_dir = book_dir / "speaker_cache"
+    window_chars = effective_llm_segment_window_chars(max_chunk_chars)
     init_kwargs: dict[str, object] = {
         "endpoint": llm_endpoint,
         "model": llm_model,
         "cache_dir": cache_dir,
         "language": language,
         "review_report_path": book_dir / "llm_chunking_review_report.json",
+        "window_chars": window_chars,
         "max_segment_chars": max_chunk_chars,
     }
     if llm_max_retries is not None:
@@ -291,14 +307,15 @@ def run_stage3_llm_chunking(
     all_chunks: list[dict[str, object]] = []
     stage_t0 = time.monotonic()
 
-    total_windows = sum(_estimate_windows(text, DEFAULT_WINDOW_CHARS) for _, text in targets)
+    total_windows = sum(_estimate_windows(text, window_chars) for _, text in targets)
     processed_windows = 0
 
     for ch_idx, text in targets:
-        est_windows = _estimate_windows(text, DEFAULT_WINDOW_CHARS)
+        est_windows = _estimate_windows(text, window_chars)
         print(
             f"  Chunking chapter {ch_idx + 1} "
-            f"({len(text)} chars, ~{est_windows} window(s))..."
+            f"({len(text)} chars, ~{est_windows} window(s), "
+            f"window ≈ {window_chars} chars)..."
         )
         t0 = time.monotonic()
         paragraphs = [
@@ -624,9 +641,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--max-chunk-chars",
         type=int,
-        default=900,
+        default=DEFAULT_PIPELINE_MAX_CHUNK_CHARS,
         help=(
-            "Soft max chars per LLM chunk (default: 400). The splitter prefers "
+            f"Soft max chars per LLM chunk (default: {DEFAULT_PIPELINE_MAX_CHUNK_CHARS}). "
+            "The splitter prefers "
             "sentence/clause boundaries and never cuts inside a word."
         ),
     )

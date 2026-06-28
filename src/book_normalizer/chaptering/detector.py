@@ -288,11 +288,12 @@ class ChapterDetector:
         candidate = re.sub(r"\s+", " ", lines[0]).strip(" .,:;!?")
         if not candidate or len(candidate) > 80:
             return None
-        if not candidate[0].isupper():
+        title_text = re.sub(r"^\d{1,2}\.\s+", "", candidate).strip()
+        if not title_text or not title_text[0].isupper():
             return None
         if any(mark in candidate for mark in (";", ":", "!", "?", "…", "—", "–", "«", "»", "(", ")")):
             return None
-        if not re.fullmatch(r"[А-Яа-яЁё0-9\s'-]+", candidate):
+        if not re.fullmatch(r"[А-Яа-яЁё0-9\s'.-]+", candidate):
             return None
         return candidate
 

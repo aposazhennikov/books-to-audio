@@ -361,6 +361,43 @@ def test_toc_work_titles_promote_standalone_title_pages() -> None:
     assert result.chapters[-1].title == f"3. {title_3} - {section_2}"
 
 
+def test_toc_work_titles_promote_numbered_standalone_title_pages() -> None:
+    toc = "\u0421\u043e\u0434\u0435\u0440\u0436\u0430\u043d\u0438\u0435"
+    title_1 = (
+        "\u0417\u0430\u0442\u0435\u0440\u044f\u043d\u043d\u044b\u0435 "
+        "\u0432 \u043a\u043e\u0441\u043c\u043e\u0441\u0435"
+    )
+    title_2 = "\u0412 \u043f\u043e\u0438\u0441\u043a\u0430\u0445 \u0441\u0438\u043b\u044b"
+    section_1 = (
+        "\u0413\u0435\u043d\u0435\u0442\u0438\u0447\u0435\u0441\u043a\u0430\u044f "
+        "\u043f\u0430\u043c\u044f\u0442\u044c"
+    )
+    section_2 = "\u0412\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u044f"
+    body = "\u0414\u043b\u0438\u043d\u043d\u044b\u0439 \u0440\u0430\u0437\u0434\u0435\u043b. " * 900
+    book = _book([
+        toc,
+        "\u041a\u043d\u0438\u0433\u0430 6",
+        title_1,
+        "490",
+        "\u041a\u043d\u0438\u0433\u0430 7",
+        title_2,
+        "493",
+        f"6. {title_1}",
+        f"{section_1}\n{body}",
+        f"7. {title_2}",
+        f"{section_2}\n{body}",
+    ])
+
+    result = ChapterDetector().detect_and_split(book)
+
+    assert result.metadata.extra["structure"]["work_titles"] == [
+        f"6. {title_1}",
+        f"7. {title_2}",
+    ]
+    assert result.chapters[-1].work_title == f"7. {title_2}"
+    assert result.chapters[-1].title == f"7. {title_2}"
+
+
 def test_compact_trailing_toc_extracts_implicit_work_numbers() -> None:
     lines = [
         "\u0421\u043e\u0434\u0435\u0440\u0436\u0430\u043d\u0438\u0435",

@@ -144,6 +144,12 @@ def effective_llm_segment_window_chars(max_chunk_chars: int) -> int:
     )
 
 
+def split_llm_endpoints(endpoint: str) -> list[str]:
+    """Return one or more comma-separated LLM endpoints."""
+    endpoints = [part.strip() for part in endpoint.split(",") if part.strip()]
+    return endpoints or ["http://localhost:11434"]
+
+
 # ── Stage 1: Rule-based normalization ────────────────────────────────────────
 
 
@@ -198,6 +204,7 @@ def run_stage2_llm_normalize(
     from book_normalizer.normalization.llm_normalizer import LlmNormalizer
 
     cache_dir = book_dir / "llm_norm_cache"
+    endpoints = split_llm_endpoints(llm_endpoint)
 
     chapters = load_chapter_texts(book_dir)
     if not chapters:
@@ -222,6 +229,8 @@ def run_stage2_llm_normalize(
     worker_count = max(1, workers)
     if worker_count > 1 and total > 1:
         print(f"  LLM normalisation workers: {worker_count}")
+        if len(endpoints) > 1:
+            print(f"  LLM endpoints: {', '.join(endpoints)}")
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             futures = [
                 executor.submit(
@@ -229,12 +238,12 @@ def run_stage2_llm_normalize(
                     book_dir,
                     ch_idx,
                     text,
-                    llm_endpoint,
+                    endpoints[offset % len(endpoints)],
                     llm_model,
                     language,
                     cache_dir,
                 )
-                for ch_idx, text in targets
+                for offset, (ch_idx, text) in enumerate(targets)
             ]
             for future in as_completed(futures):
                 ch_idx, ch_file, elapsed = future.result()
@@ -249,7 +258,7 @@ def run_stage2_llm_normalize(
                 )
     else:
         normalizer = LlmNormalizer(
-            endpoint=llm_endpoint,
+            endpoint=endpoints[0],
             model=llm_model,
             cache_dir=cache_dir,
             language=language,

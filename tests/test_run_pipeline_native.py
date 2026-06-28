@@ -134,6 +134,51 @@ def test_stage3_passes_language_and_review_report_to_smart_segmenter(
     assert manifest["chapters"][0]["chunks"][0]["speaker"] == ""
 
 
+def test_stage2_parallel_normalization_round_robins_llm_endpoints(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pipeline = _load_run_pipeline()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    for index in range(1, 4):
+        (book_dir / f"{index:03d}_chapter_{index:02d}.txt").write_text(
+            f"Chapter {index}.",
+            encoding="utf-8",
+        )
+    calls: list[tuple[int, str]] = []
+
+    def fake_normalize_stage2_chapter(
+        _book_dir,
+        ch_idx,
+        _text,
+        llm_endpoint,
+        _llm_model,
+        _language,
+        _cache_dir,
+    ):  # noqa: ANN001
+        calls.append((ch_idx, llm_endpoint))
+        ch_file = book_dir / f"{ch_idx + 1:03d}_chapter_{ch_idx + 1:02d}.txt"
+        return ch_idx, ch_file, 1.0
+
+    monkeypatch.setattr(pipeline, "_normalize_stage2_chapter", fake_normalize_stage2_chapter)
+
+    pipeline.run_stage2_llm_normalize(
+        book_dir,
+        "http://127.0.0.1:11434,http://127.0.0.1:11435",
+        "model",
+        "ru",
+        chapter_filter=None,
+        start_chapter=2,
+        workers=2,
+    )
+
+    assert sorted(calls) == [
+        (1, "http://127.0.0.1:11434"),
+        (2, "http://127.0.0.1:11435"),
+    ]
+
+
 def test_export_chunks_llm_uses_smart_segmenter_and_repairs_dialogue(
     tmp_path: Path,
     monkeypatch,

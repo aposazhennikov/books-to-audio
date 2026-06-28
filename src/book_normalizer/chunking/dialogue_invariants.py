@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -74,7 +75,11 @@ def audit_dialogue_chunk_boundaries(
             ))
             continue
 
-        if _is_narration_chunk(role, section_kind) and _starts_with_direct_speech_marker(text, code):
+        if (
+            _is_narration_chunk(role, section_kind)
+            and _starts_with_direct_speech_marker(text, code)
+            and not _is_quoted_inner_thought_narration(text, code)
+        ):
             issues.append(DialogueChunkIssue(
                 kind="narration_starts_with_direct_speech",
                 chapter_index=chapter_index,
@@ -248,6 +253,24 @@ def format_dialogue_speaker_issues(
     if remaining > 0:
         lines.append(f"- ...and {remaining} more warning(s).")
     return "\n".join(lines)
+
+
+_RU_INNER_THOUGHT_RE = re.compile(
+    r"\b(?:вспомнил|вспомнила|думал|думала|подумал|подумала|решил|решила|"
+    r"сообразил|сообразила|понял|поняла|догадался|догадалась|мелькнуло)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_quoted_inner_thought_narration(text: str, language: str) -> bool:
+    if language != "ru":
+        return False
+    stripped = text.lstrip()
+    if not stripped or stripped[0] not in "\"“„«‹「『《〈":
+        return False
+    speech, tail = _take_quoted_speech(stripped)
+    probe = f"{speech} {tail[:200]}".casefold()
+    return bool(_RU_INNER_THOUGHT_RE.search(probe))
 
 
 def _speaker_issue(

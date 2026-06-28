@@ -96,6 +96,8 @@ def is_definitely_not_person_reference(word: str) -> bool:
     cleaned = str(word or "").strip().split()[0] if str(word or "").strip() else ""
     if not cleaned:
         return False
+    if cleaned.casefold().strip(".,!?…:;\"'«»“”„") in _NON_PERSON_SPEAKER_TOKENS:
+        return True
     if infer_person_gender(cleaned):
         return False
     parses = parse_word(cleaned)
@@ -128,6 +130,19 @@ def is_definitely_not_person_reference(word: str) -> bool:
     if first_pos == "NOUN" and "inan" in first_tag and first_score >= 0.58:
         return True
     return bool(_all_top_parses_are_inanimate_nouns(parses))
+
+
+_NON_PERSON_SPEAKER_TOKENS = {
+    "кто",
+    "что",
+    "где",
+    "когда",
+    "куда",
+    "откуда",
+    "почему",
+    "зачем",
+    "как",
+}
 
 
 def _has_person_name_parse(parses: list[Any]) -> bool:

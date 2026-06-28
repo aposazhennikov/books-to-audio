@@ -65,6 +65,30 @@ def test_audit_flags_narration_chunk_that_starts_with_direct_speech() -> None:
     assert [issue.kind for issue in issues] == ["narration_starts_with_direct_speech"]
 
 
+def test_audit_allows_quoted_inner_thought_as_narration() -> None:
+    issues = audit_dialogue_chunk_boundaries([
+        {
+            "role": "narrator",
+            "section_kind": "narration",
+            "text": "«В конце концов, это сон», — неуверенно подумал Сергей.",
+        },
+    ])
+
+    assert issues == []
+
+
+def test_audit_still_flags_quoted_speech_without_thought_marker() -> None:
+    issues = audit_dialogue_chunk_boundaries([
+        {
+            "role": "narrator",
+            "section_kind": "narration",
+            "text": "«Нужно уходить немедленно!» — сказал Сергей.",
+        },
+    ])
+
+    assert [issue.kind for issue in issues] == ["narration_starts_with_direct_speech"]
+
+
 def test_audit_flags_author_tag_with_next_direct_speech() -> None:
     issues = audit_dialogue_chunk_boundaries([
         {

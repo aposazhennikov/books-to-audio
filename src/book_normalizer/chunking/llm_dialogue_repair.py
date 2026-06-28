@@ -53,6 +53,7 @@ def repair_segment_dialogue_boundaries(
     recent_dialogue_speakers: list[tuple[str, str]] = []
     recent_narration_texts: list[str] = []
     pending_continuation_speaker: tuple[str, str] | None = None
+    previous_was_dialogue = False
     repaired_segments = _split_mixed_dialogue_segments(
         _repair_dialogue_segment_boundaries(segments),
         language=language,
@@ -86,7 +87,8 @@ def repair_segment_dialogue_boundaries(
                 and not speaker_matches_pending
             )
             or (
-                _llm_speaker_conflicts_with_turn_taking(
+                previous_was_dialogue
+                and _llm_speaker_conflicts_with_turn_taking(
                     speaker,
                     text,
                     language,
@@ -138,6 +140,7 @@ def repair_segment_dialogue_boundaries(
                 role=role,
             )
             pending_continuation_speaker = None
+            previous_was_dialogue = True
         elif section_kind == "narration":
             recent_narration_texts.append(text)
             del recent_narration_texts[:-4]
@@ -146,8 +149,10 @@ def repair_segment_dialogue_boundaries(
                 language=language,
                 recent_dialogue_speakers=recent_dialogue_speakers,
             )
+            previous_was_dialogue = False
         else:
             pending_continuation_speaker = None
+            previous_was_dialogue = False
         row["role"] = role
         row["speaker"] = speaker
         row["section_kind"] = section_kind

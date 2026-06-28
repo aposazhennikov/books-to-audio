@@ -1663,6 +1663,46 @@ def test_repaired_dialogue_keeps_speaker_after_pure_author_tag_continuation() ->
     assert repaired[2]["speaker"] == "\u0421\u0435\u0440\u0433\u0435\u0439"
 
 
+def test_repaired_dialogue_keeps_repeated_speaker_after_narrator_tag_in_two_person_scene() -> None:
+    from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
+
+    rows = [
+        {
+            "role": "male",
+            "speaker": "\u041a\u043e\u043c\u043c\u0443\u043d\u0438\u043a\u0430\u0442\u043e\u0440",
+            "section_kind": "dialogue",
+            "text": "\u2014 \u042d\u0442\u043e \u044f,",
+            "intonation": "calm",
+        },
+        {
+            "role": "male",
+            "speaker": "\u0421\u0435\u0440\u0433\u0435\u0439",
+            "section_kind": "dialogue",
+            "text": "\u2014 \u0422\u0451\u0437\u043a\u0430,",
+            "intonation": "calm",
+        },
+        {
+            "role": "narrator",
+            "speaker": "",
+            "section_kind": "narration",
+            "text": "\u2014 \u043e\u0442\u043e\u0437\u0432\u0430\u043b\u0441\u044f "
+            "\u0421\u0435\u0440\u0433\u0435\u0439 \u0438 \u0432\u0441\u0442\u0430\u043b.",
+            "intonation": "calm",
+        },
+        {
+            "role": "male",
+            "speaker": "\u0421\u0435\u0440\u0433\u0435\u0439",
+            "section_kind": "dialogue",
+            "text": "\u2014 \u041d\u0423 \u0447\u0442\u043e \u0442\u0430\u043c \u0443 \u0432\u0430\u0441?",
+            "intonation": "irritated",
+        },
+    ]
+
+    repaired = repair_segment_dialogue_boundaries(rows, language="ru")
+
+    assert repaired[3]["speaker"] == "\u0421\u0435\u0440\u0433\u0435\u0439"
+
+
 def test_repaired_dialogue_does_not_continue_after_tag_plus_extra_narration() -> None:
     from book_normalizer.chunking.llm_segmenter import repair_segment_dialogue_boundaries
 

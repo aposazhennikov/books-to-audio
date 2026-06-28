@@ -135,6 +135,29 @@ def test_large_late_numbered_work_splits_past_work_title_hit() -> None:
     ]
 
 
+def test_internal_section_titles_ignore_dialogue_and_trailing_toc() -> None:
+    """Fallback section headings must not turn dialogue or contents into chapters."""
+    long_body = " ".join(["Текст большого раздела."] * 700)
+    paragraphs = [
+        Paragraph(raw_text=text, index_in_chapter=index)
+        for index, text in enumerate(
+            [
+                f"Включения\n{long_body}",
+                f"Восход Солнца\n{long_body}",
+                "— Смотрите, капитан. Это «Замок Ледяных Кукол». Я когда-то был там.",
+                "Кульминация\nФинальный текст.",
+                "Содержание",
+                "Вход в спираль",
+                "Наследники Сета",
+            ]
+        )
+    ]
+
+    hits = ChapterDetector._infer_internal_section_headings(paragraphs)
+
+    assert [hit.heading_text for hit in hits] == ["Включения", "Восход Солнца", "Кульминация"]
+
+
 def test_multibook_can_be_inferred_from_restarted_first_chapters() -> None:
     book = _book([
         "1. вход в спираль",

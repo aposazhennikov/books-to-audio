@@ -202,8 +202,9 @@ class ChapterDetector:
     _LARGE_UNCHAPTERED_WORK_MIN_CHARS = 30_000
     _LARGE_UNCHAPTERED_WORK_MIN_PARAGRAPHS = 4
     _RE_INTERNAL_SECTION_TITLE = re.compile(
-        r"^[А-ЯЁ][А-Яа-яЁё0-9\s'«»\"()%-]{2,70}$"
+        r"^[А-ЯЁ][А-Яа-яЁё0-9\s'%-]{2,70}$"
     )
+    _INTERNAL_SECTION_TOC_TITLES = {"содержание", "оглавление"}
 
     @staticmethod
     def _augment_work_headings_from_chapter_resets(
@@ -664,6 +665,10 @@ class ChapterDetector:
                 continue
             for line in text.splitlines():
                 candidate = re.sub(r"\s+", " ", line).strip()
+                if candidate.casefold() in cls._INTERNAL_SECTION_TOC_TITLES:
+                    if hits:
+                        return cls._unique_internal_section_hits(hits)
+                    continue
                 if cls._looks_like_internal_section_title(candidate):
                     hits.append(
                         _HeadingHit(
@@ -674,6 +679,10 @@ class ChapterDetector:
                     )
                     break
 
+        return cls._unique_internal_section_hits(hits)
+
+    @staticmethod
+    def _unique_internal_section_hits(hits: list[_HeadingHit]) -> list[_HeadingHit]:
         unique_hits: list[_HeadingHit] = []
         seen_indices: set[int] = set()
         for hit in hits:
@@ -688,7 +697,7 @@ class ChapterDetector:
     def _looks_like_internal_section_title(cls, line: str) -> bool:
         if not line or len(line) > 70:
             return False
-        if line.endswith((".", ",", ";", ":", "!", "?", "…")):
+        if any(mark in line for mark in (".", ",", ";", ":", "!", "?", "…", "—", "–", "«", "»", "(", ")")):
             return False
         if line.startswith(("—", "-", "«", "\"")):
             return False

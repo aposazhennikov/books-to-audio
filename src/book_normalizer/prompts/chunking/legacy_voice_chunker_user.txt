@@ -1,0 +1,5 @@
+Input is JSON. Chunk only input.text.
+Preserve quoted dialogue, apostrophes, punctuation, and word order.
+
+INPUT_JSON:
+{{INPUT_JSON}}

@@ -1,0 +1,6 @@
+Input is JSON. Correct only input.text.
+Preserve quoted dialogue, apostrophes, punctuation, names, and every sentence.
+If the previous answer was rejected, make a more conservative correction or return input.text unchanged.
+
+INPUT_JSON:
+{{INPUT_JSON}}{{RETRY_GUARD}}

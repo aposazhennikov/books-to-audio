@@ -35,6 +35,7 @@ from typing import Any
 from book_normalizer.languages import get_book_language, normalize_book_language
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL, model_plan_for_language
 from book_normalizer.llm.ollama_client import OllamaChatClient
+from book_normalizer.prompts.loader import load_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -61,39 +62,6 @@ VOICE_CANONICAL: dict[str, str] = {
 }
 
 VALID_VOICES = frozenset(VOICE_ID_MAP)
-
-# ── LLM system prompt ─────────────────────────────────────────────────────────
-
-_SYSTEM_PROMPT = """\
-You are a multilingual audiobook markup engine for {language_name} fiction.
-Split input text into small ordered TTS chunks, usually 30-{max_chunk_chars} characters.
-
-Hard rules:
-1. Preserve the source text completely and in the same order. Do not rewrite,
-   translate, summarize, add words, remove words, or change punctuation.
-2. Separate dialogue from narration and speech tags. A spoken line and an
-   author tag must not be in the same chunk.
-3. Use exactly one text key per item:
-   "narrator" for narration, descriptions, chapter titles, prefaces, annotations,
-   and speech tags;
-   "men" for direct speech by a male character;
-   "women" for direct speech by a female character.
-   If gender is not proven by nearby context, use narrator.
-4. voice_tone must be a short English label, for example calm, tense, angry,
-   whisper, sad, cheerful, fearful, urgent. Match the scene; do not mark
-   everything as calm.
-5. Return only a JSON array. No markdown and no comments.
-
-Example output:
-[
-  {{"narrator": "Ivan entered the room.", "voice_tone": "calm"}},
-  {{"women": "\"Where were you?\"", "voice_tone": "angry"}},
-  {{"narrator": "Maria asked sharply.", "voice_tone": "calm"}}
-]
-
-Previous voice in sequence: {last_voice}
-"""
-
 
 class LlmChunkingError(RuntimeError):
     """Raised when LLM chunking cannot preserve the source text."""
@@ -454,18 +422,16 @@ class LlmChunker:
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": (
-                        "Input is JSON. Chunk only input.text. "
-                        "Preserve quoted dialogue, apostrophes, punctuation, and word order.\n"
-                        "INPUT_JSON:\n"
-                        + json.dumps(
+                    "content": load_prompt("chunking/legacy_voice_chunker_user.txt").replace(
+                        "{{INPUT_JSON}}",
+                        json.dumps(
                             {
                                 "language": self._language_name,
                                 "language_code": self._language,
                                 "text": user_text,
                             },
                             ensure_ascii=False,
-                        )
+                        ),
                     ),
                 },
             ],
@@ -487,10 +453,11 @@ class LlmChunker:
         return _normalise_llm_items(attempt.data)
 
     def _system_prompt(self, last_voice: str) -> str:
-        return _SYSTEM_PROMPT.format(
-            language_name=self._language_name,
-            last_voice=last_voice,
-            max_chunk_chars=self._max_chunk_chars,
+        return (
+            load_prompt("chunking/legacy_voice_chunker_system.txt")
+            .replace("{{LANGUAGE_NAME}}", self._language_name)
+            .replace("{{LAST_VOICE}}", last_voice)
+            .replace("{{MAX_CHUNK_CHARS}}", str(self._max_chunk_chars))
         )
 
     # ── Cache ─────────────────────────────────────────────────────────────────

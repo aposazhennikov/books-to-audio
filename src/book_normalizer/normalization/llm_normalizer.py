@@ -42,6 +42,7 @@ from book_normalizer.normalization.text_validator import (
     TextPreservationValidator,
     ValidationResult,
 )
+from book_normalizer.prompts.loader import load_language_prompt, load_prompt
 
 if TYPE_CHECKING:
     from book_normalizer.models.book import Book
@@ -480,17 +481,18 @@ class LlmNormalizer:
                 {
                     "role": "user",
                     "content": (
-                        "Input is JSON. Correct only input.text. "
-                        "Preserve quoted dialogue, apostrophes, punctuation, and every sentence.\n"
-                        "INPUT_JSON:\n"
-                        + json.dumps(
+                        load_prompt("normalization/minimal_text_correction_user.txt")
+                        .replace(
+                            "{{INPUT_JSON}}",
+                            json.dumps(
                             {
                                 "language": get_book_language(self._language).english_name,
                                 "text": text,
                             },
                             ensure_ascii=False,
+                            ),
                         )
-                        + retry_guard
+                        .replace("{{RETRY_GUARD}}", retry_guard)
                     ),
                 },
             ],
@@ -615,4 +617,4 @@ def _system_prompt_for_language(language: str | None) -> str:
     """Return the minimal-edit prompt for a selected book language."""
 
     code = normalize_book_language(language)
-    return _PROMPTS.get(code, _PROMPTS["ru"])
+    return load_language_prompt("normalization", "minimal_text_correction_system", code)

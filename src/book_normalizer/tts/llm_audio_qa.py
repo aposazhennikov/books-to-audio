@@ -14,6 +14,7 @@ from typing import Any, Protocol
 
 from book_normalizer.chunking.manifest_v2 import chunk_is_excluded, ensure_v2_manifest
 from book_normalizer.languages import normalize_book_language
+from book_normalizer.prompts.loader import load_prompt
 from book_normalizer.tts.manifest_audio_paths import ManifestAudioPathError, resolve_manifest_audio_path
 from book_normalizer.tts.quality_gate import (
     BAD_QA_STATUSES,
@@ -27,18 +28,7 @@ LLM_AUDIO_QA_SCHEMA_VERSION = 1
 DEFAULT_LLM_AUDIO_QA_REPORT_NAME = "llm_audio_qa_report.json"
 DEFAULT_LLM_AUDIO_QA_MODEL = "Qwen/Qwen3-Omni-30B-A3B-Instruct"
 DEFAULT_LLM_AUDIO_QA_FAVORITES_NAME = "qa_favorites.jsonl"
-DEFAULT_LLM_AUDIO_QA_PROMPT = (
-    "Оцени качество звука, интонации, паузы, ударения.\n"
-    "Это сгенерированный мной AI голос озвучки текста книги.\n"
-    "Будь критичен, не надо \"подсуживать\" мне.\n"
-    "Язык текста -- русский, как и язык аудиофайла.\n"
-    "Также сравни аудио с ожидаемой ролью, персонажем, настроением, эмоцией, "
-    "типом фрагмента и режиссерскими указаниями. Если эмоция или роль не совпадают, "
-    "считай это проблемой качества.\n"
-    "Верни только JSON: status passed|warning|failed, score 0-100, review, "
-    "issues [{kind,severity,message,start_seconds,end_seconds}], recommendations "
-    "{temperature_delta, repetition_penalty_delta, speech_rate_delta}."
-)
+DEFAULT_LLM_AUDIO_QA_PROMPT = load_prompt("audio_qa/qwen_omni_chunk_review_ru.txt")
 _KNOWN_GENERATION_KEYS = {
     "temperature",
     "top_p",

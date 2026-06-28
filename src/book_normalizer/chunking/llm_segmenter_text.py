@@ -6,7 +6,6 @@ import json
 import re
 from typing import Any
 
-from book_normalizer.chunking.llm_segmenter_config import _SYSTEM_PROMPTS
 from book_normalizer.chunking.llm_segmenter_fields import (
     _clean_intonation,
     _clean_optional,
@@ -17,6 +16,7 @@ from book_normalizer.chunking.llm_segmenter_fields import (
 )
 from book_normalizer.chunking.splitter import DEFAULT_PARAGRAPH_PAUSE_MS, chunk_text
 from book_normalizer.languages import get_book_language, normalize_book_language
+from book_normalizer.prompts.loader import load_language_prompt, load_prompt
 
 
 def _chapter_text(chapter: object) -> str:
@@ -96,6 +96,69 @@ def _normalise_segments(data: Any) -> list[dict[str, Any]]:
         )
     return segments
 
+def _source_annotation_units(window_text: str, max_unit_chars: int) -> list[dict[str, Any]]:
+    """Build immutable source units that the LLM may annotate but not rewrite."""
+
+    parts: list[str] = []
+    for paragraph in [part.strip() for part in window_text.split("\n\n") if part.strip()]:
+        if len(paragraph) <= max_unit_chars:
+            parts.append(paragraph)
+            continue
+        parts.extend(chunk_text(paragraph, max_chunk_chars=max_unit_chars) or [paragraph])
+    if not parts and window_text.strip():
+        parts = chunk_text(window_text.strip(), max_chunk_chars=max_unit_chars) or [window_text.strip()]
+    return [{"segment_id": index, "text": text} for index, text in enumerate(parts, 1)]
+
+def _normalise_annotations(
+    data: Any,
+    source_units: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Join model metadata to local source text by id, ignoring any model text."""
+
+    if isinstance(data, dict):
+        raw_segments = data.get("segments", [])
+    else:
+        raw_segments = data
+    if not isinstance(raw_segments, list):
+        raw_segments = []
+
+    by_id: dict[int, dict[str, Any]] = {}
+    for item in raw_segments:
+        if not isinstance(item, dict):
+            continue
+        segment_id = _safe_int(item.get("segment_id"), default=0)
+        if segment_id > 0:
+            by_id[segment_id] = item
+    if not by_id:
+        return []
+
+    segments: list[dict[str, Any]] = []
+    for unit in source_units:
+        segment_id = _safe_int(unit.get("segment_id"), default=0)
+        text = str(unit.get("text") or "").strip()
+        if not text:
+            continue
+        item = by_id.get(segment_id, {})
+        role = _normalize_role(item.get("role") or item.get("voice") or _legacy_voice_role(item))
+        segments.append(
+            {
+                "role": role,
+                "speaker": _clean_optional(item.get("speaker") or item.get("character")),
+                "character_description": _clean_optional(
+                    item.get("character_description")
+                    or item.get("role_description")
+                    or item.get("description")
+                ),
+                "emotion": _clean_intonation(item.get("emotion") or item.get("intonation") or "calm"),
+                "section_kind": _clean_section_kind(item.get("section_kind"), role),
+                "text": text,
+                "intonation": _clean_intonation(item.get("intonation") or item.get("voice_tone") or "calm"),
+                "pause_after_ms": _safe_int(item.get("pause_after_ms")),
+                "boundary_after": str(item.get("boundary_after") or ""),
+            }
+        )
+    return segments
+
 def _source_fallback_segments(window_text: str) -> list[dict[str, Any]]:
     """Preserve a failed LLM window as a safe narrator segment."""
     return [
@@ -130,7 +193,7 @@ def apply_paragraph_boundary_pauses(rows: list[dict[str, Any]]) -> None:
 
 def _system_prompt_for_language(language: str | None) -> str:
     code = normalize_book_language(language)
-    return _SYSTEM_PROMPTS.get(code, _SYSTEM_PROMPTS["ru"])
+    return load_language_prompt("chunking", "voice_role_annotation_system", code)
 
 def _user_prompt_for_window(
     *,
@@ -140,29 +203,42 @@ def _user_prompt_for_window(
     window_text: str,
     previous_issues: list[str] | None = None,
 ) -> str:
+    return _user_prompt_for_annotations(
+        language=language,
+        chapter_index=chapter_index,
+        window_index=window_index,
+        source_units=_source_annotation_units(window_text, max_unit_chars=1200),
+        previous_issues=previous_issues,
+    )
+
+def _user_prompt_for_annotations(
+    *,
+    language: str,
+    chapter_index: int,
+    window_index: int,
+    source_units: list[dict[str, Any]],
+    previous_issues: list[str] | None = None,
+) -> str:
     retry_guard = ""
     if previous_issues:
         retry_guard = (
             "\nPREVIOUS_OUTPUT_FAILED_VALIDATION:\n"
             + json.dumps({"issues": previous_issues[:6]}, ensure_ascii=False)
-            + "\nThe next answer must preserve input.text exactly. "
-            "If dialogue boundaries are uncertain, return fewer larger segments."
+            + "\nReturn metadata for each existing segment_id only. Do not add any text field."
         )
     return (
-        "Input is JSON. Segment only input.text. "
-        "Preserve quoted dialogue, apostrophes, punctuation, and word order. "
-        "The ordered concatenation of all segment.text values must reproduce "
-        "input.text exactly after whitespace normalization.\n"
-        "INPUT_JSON:\n"
-        + json.dumps(
-            {
-                "language": get_book_language(language).english_name,
-                "chapter": chapter_index + 1,
-                "window": window_index + 1,
-                "text": window_text,
-            },
-            ensure_ascii=False,
+        load_prompt("chunking/voice_role_annotation_user.txt")
+        .replace(
+            "{{INPUT_JSON}}",
+            json.dumps(
+                {
+                    "language": get_book_language(language).english_name,
+                    "chapter": chapter_index + 1,
+                    "window": window_index + 1,
+                    "source_segments": source_units,
+                },
+                ensure_ascii=False,
+            ),
         )
-        + retry_guard
+        .replace("{{RETRY_GUARD}}", retry_guard)
     )
-

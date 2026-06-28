@@ -9,22 +9,19 @@ from book_normalizer.chunking.llm_dialogue_splitter import (
     _repair_dialogue_segment_boundaries,
     _split_mixed_dialogue_segments,
 )
-from book_normalizer.chunking.llm_segmenter_config import _SEGMENT_SCHEMA
+from book_normalizer.chunking.llm_segmenter_config import _ANNOTATION_SCHEMA
 from book_normalizer.chunking.llm_segmenter_failures import (
     LlmSegmentationError,
     SegmentationFailure,
 )
 from book_normalizer.chunking.llm_segmenter_text import (
-    _normalise_segments,
+    _normalise_annotations,
+    _source_annotation_units,
     _source_fallback_segments,
     _system_prompt_for_language,
-    _user_prompt_for_window,
+    _user_prompt_for_annotations,
 )
-from book_normalizer.chunking.llm_source_preservation import (
-    _reconcile_segments_to_source,
-    _reconcile_segments_to_source_with_gaps,
-    _segments_preserve_source,
-)
+from book_normalizer.chunking.llm_source_preservation import _segments_preserve_source
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +41,10 @@ class LlmSegmenterWindowMixin:
 
         last_error = ""
         previous_issues: list[str] = []
+        source_units = _source_annotation_units(
+            window_text,
+            max_unit_chars=max(1200, int(getattr(self, "_max_segment_chars", 1200))),
+        )
         for model in self._model_plan.candidates:
             for attempt_index in range(1, self._max_retries + 1):
                 try:
@@ -53,26 +54,21 @@ class LlmSegmenterWindowMixin:
                             {"role": "system", "content": _system_prompt_for_language(self._language)},
                             {
                                 "role": "user",
-                                "content": _user_prompt_for_window(
+                                "content": _user_prompt_for_annotations(
                                     language=self._language,
                                     chapter_index=chapter_index,
                                     window_index=window_index,
-                                    window_text=window_text,
+                                    source_units=source_units,
                                     previous_issues=previous_issues,
                                 ),
                             },
                         ],
-                        schema=_SEGMENT_SCHEMA,
+                        schema=_ANNOTATION_SCHEMA,
                         temperature=0.1,
                     )
-                    segments = _normalise_segments(attempt.data)
+                    segments = _normalise_annotations(attempt.data, source_units)
                     if not segments:
                         raise ValueError("empty segments")
-                    reconciled = _reconcile_segments_to_source(window_text, segments)
-                    if reconciled is None:
-                        reconciled = _reconcile_segments_to_source_with_gaps(window_text, segments)
-                    if reconciled is not None:
-                        segments = reconciled
                     segments = _repair_dialogue_segment_boundaries(segments)
                     segments = _split_mixed_dialogue_segments(segments, language=self._language)
                     if not _segments_preserve_source(window_text, segments):

@@ -76,21 +76,11 @@ def test_llm_voice_segmenter_prompts_are_readable_and_retry_is_strict() -> None:
         for language in ("ru", "en", "zh", "kk", "uz")
     }
 
-    assert "режиссёр" in prompts["ru"]
-    assert "Размер сегмента — только верхний предел" in prompts["ru"]
-    assert "中文" in prompts["zh"]
-    assert "қазақ" in prompts["kk"].lower()
+    assert "режиссер" in prompts["ru"]
+    assert "segment_id" in prompts["ru"]
+    assert "text field" in prompts["en"]
     for prompt in prompts.values():
-        assert any(
-            marker in prompt
-            for marker in (
-                "not a target",
-                "не цель",
-                "不是切分目标",
-                "мақсаты емес",
-                "maqsadi emas",
-            )
-        )
+        assert "segment_id" in prompt
         assert not any(fragment in prompt for fragment in _MOJIBAKE_FRAGMENTS)
 
     retry_prompt = _user_prompt_for_window(
@@ -101,7 +91,7 @@ def test_llm_voice_segmenter_prompts_are_readable_and_retry_is_strict() -> None:
         previous_issues=["text_preservation_failed"],
     )
     assert "PREVIOUS_OUTPUT_FAILED_VALIDATION" in retry_prompt
-    assert "preserve input.text exactly" in retry_prompt
+    assert "Do not add any text field" in retry_prompt
 
 
 @pytest.mark.parametrize(
@@ -180,7 +170,45 @@ def test_llm_voice_segmenter_sends_quoted_source_as_json_input() -> None:
     user_content = fake.messages[0][1]["content"]
     payload = json.loads(user_content.split("INPUT_JSON:\n", 1)[1])
     assert payload["language"] == "Uzbek"
-    assert payload["text"] == text
+    assert payload["source_segments"] == [{"segment_id": 1, "text": text}]
+    assert "Do not include a text key anywhere in the output" in user_content
+
+
+def test_llm_voice_segmenter_joins_role_annotations_to_source_text_by_id() -> None:
+    text = "Маргарита сказала:\n\n«Я здесь»."
+    segmenter = LlmVoiceSegmenter(language="ru")
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [
+                {
+                    "segment_id": 1,
+                    "role": "female",
+                    "speaker": "Маргарита",
+                    "emotion": "tense",
+                    "section_kind": "dialogue",
+                    "intonation": "tense",
+                    "text": "Галлюцинация должна быть проигнорирована.",
+                },
+                {
+                    "segment_id": 2,
+                    "role": "female",
+                    "speaker": "Маргарита",
+                    "emotion": "calm",
+                    "section_kind": "dialogue",
+                    "intonation": "calm",
+                },
+            ],
+        },
+    })
+    segmenter._client = fake
+
+    rows = segmenter.segment_book(_book(text, language="ru"))
+
+    assert [row["text"] for row in rows] == ["Маргарита сказала:", "«Я здесь»."]
+    assert [row["role"] for row in rows] == ["female", "female"]
+    assert all("Галлюцинация" not in row["text"] for row in rows)
+    schema = fake.messages[0]
+    assert "source_segments" in schema[1]["content"]
 
 
 def test_llm_voice_segmenter_collapses_source_layout_spaces_before_prompting() -> None:
@@ -200,7 +228,7 @@ def test_llm_voice_segmenter_collapses_source_layout_spaces_before_prompting() -
 
     user_content = fake.messages[0][1]["content"]
     payload = json.loads(user_content.split("INPUT_JSON:\n", 1)[1])
-    assert payload["text"] == prompt_text
+    assert payload["source_segments"] == [{"segment_id": 1, "text": prompt_text}]
     assert [row["text"] for row in rows] == [prompt_text]
 
 

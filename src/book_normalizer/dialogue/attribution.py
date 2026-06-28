@@ -25,6 +25,7 @@ from book_normalizer.dialogue.models import (
 )
 from book_normalizer.llm.model_router import model_plan_for_language
 from book_normalizer.llm.ollama_client import OllamaChatClient
+from book_normalizer.prompts.loader import load_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -163,17 +164,6 @@ class HeuristicAttributor(BaseSpeakerAttributor):
 # LLM attributor
 # ---------------------------------------------------------------------------
 
-_LLM_SYSTEM_PROMPT = (
-    "You are a literary text analyst. Given a list of dialogue lines from a "
-    "Russian book with nearby narrator context, determine the speaker's gender "
-    "for each target dialogue line. "
-    "Respond with a JSON array of objects: "
-    '[{"line_id": "...", "role": "male"|"female"}]. '
-    "Only annotate lines that have a line_id. "
-    "Use narrator lines, verb endings, character names, and pronouns as context."
-)
-
-
 class LlmAttributor(BaseSpeakerAttributor):
     """Speaker attribution using an LLM via native Ollama API.
 
@@ -245,16 +235,16 @@ class LlmAttributor(BaseSpeakerAttributor):
         """Send dialogue lines to the LLM and parse response."""
         lines_payload = self._build_context_payload(chapter, dialogue_lines)
         user_msg = (
-            f"Chapter: {chapter.chapter_title}\n\n"
-            f"Ordered context lines:\n"
-            f"{json.dumps(lines_payload, ensure_ascii=False, indent=2)}"
+            load_prompt("dialogue/speaker_attribution_user.txt")
+            .replace("{{CHAPTER_TITLE}}", chapter.chapter_title)
+            .replace("{{LINES_JSON}}", json.dumps(lines_payload, ensure_ascii=False, indent=2))
         )
 
         try:
             attempt = self._client.chat_json_with_fallback(
                 models=self._model_plan.candidates,
                 messages=[
-                    {"role": "system", "content": _LLM_SYSTEM_PROMPT},
+                    {"role": "system", "content": load_prompt("dialogue/speaker_attribution_system_ru.txt")},
                     {"role": "user", "content": user_msg},
                 ],
                 schema={
@@ -403,7 +393,7 @@ class LlmAttributor(BaseSpeakerAttributor):
         payload = "\n\0".join((
             ",".join(self._model_plan.candidates),
             self._endpoint,
-            _LLM_SYSTEM_PROMPT,
+            load_prompt("dialogue/speaker_attribution_system_ru.txt"),
             chapter.chapter_title,
             json.dumps(line_payload, ensure_ascii=False, sort_keys=True),
         ))

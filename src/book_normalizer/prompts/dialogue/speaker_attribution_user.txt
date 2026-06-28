@@ -1,0 +1,4 @@
+Chapter: {{CHAPTER_TITLE}}
+
+Ordered context lines:
+{{LINES_JSON}}

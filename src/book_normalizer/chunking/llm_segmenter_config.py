@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 DEFAULT_WINDOW_CHARS = 900
-_CACHE_VERSION = "llm-segmenter-v9-gap-reconciliation"
+_CACHE_VERSION = "llm-segmenter-v10-id-annotations"
 
 ROLE_TO_VOICE_ID = {
     "narrator": "narrator_calm",
@@ -397,6 +397,43 @@ _SEGMENT_SCHEMA = {
         },
     },
     "required": ["segments"],
+}
+
+_ANNOTATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "segments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "segment_id": {"type": "integer"},
+                    "role": {"type": "string", "enum": ["narrator", "male", "female", "unknown"]},
+                    "speaker": {"type": "string"},
+                    "character_description": {"type": "string"},
+                    "emotion": {"type": "string"},
+                    "section_kind": {
+                        "type": "string",
+                        "enum": [
+                            "narration",
+                            "dialogue",
+                            "annotation",
+                            "preface",
+                            "epilogue",
+                            "chapter_title",
+                        ],
+                    },
+                    "intonation": {"type": "string"},
+                    "boundary_after": {"type": "string"},
+                    "pause_after_ms": {"type": "integer"},
+                },
+                "required": ["segment_id", "role", "intonation"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["segments"],
+    "additionalProperties": False,
 }
 
 _SYSTEM_PROMPTS = {

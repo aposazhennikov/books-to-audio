@@ -1,0 +1,10 @@
+Input is JSON with immutable source_segments.
+Read source_segments[].text only to decide audiobook metadata.
+Return annotations only: segment_id, role, speaker, character_description, emotion, section_kind, intonation, boundary_after, pause_after_ms.
+Never return, copy, rewrite, normalize, translate, add, remove, or summarize text.
+Do not include a text key anywhere in the output.
+Return exactly one annotation for each source_segments[].segment_id.
+Use narrator when speaker gender is not proven by context.
+
+INPUT_JSON:
+{{INPUT_JSON}}{{RETRY_GUARD}}

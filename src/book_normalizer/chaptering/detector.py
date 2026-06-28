@@ -199,6 +199,11 @@ class ChapterDetector:
     _RE_NUMBERED_WORK_TITLE = re.compile(
         r"^\s*\d{1,2}\.\s+[А-Яа-яЁё][А-Яа-яЁё\s-]{2,80}$"
     )
+    _LARGE_UNCHAPTERED_WORK_MIN_CHARS = 30_000
+    _LARGE_UNCHAPTERED_WORK_MIN_PARAGRAPHS = 4
+    _RE_INTERNAL_SECTION_TITLE = re.compile(
+        r"^[А-ЯЁ][А-Яа-яЁё0-9\s'«»\"()%-]{2,70}$"
+    )
 
     @staticmethod
     def _augment_work_headings_from_chapter_resets(
@@ -596,12 +601,17 @@ class ChapterDetector:
             chapters = self._split_at_headings(paragraphs, hits)
             chapters = self._drop_work_title_only_preamble(chapters, work_title)
         else:
-            chapter = Chapter(
-                title=work_title or "Full Text",
-                index=0,
-                paragraphs=paragraphs,
-            )
-            chapters = [chapter] if self._has_meaningful_content(chapter) else []
+            inferred_hits = self._infer_internal_section_headings(paragraphs)
+            if inferred_hits:
+                chapters = self._split_at_headings(paragraphs, inferred_hits)
+                chapters = self._drop_work_title_only_preamble(chapters, work_title)
+            else:
+                chapter = Chapter(
+                    title=work_title or "Full Text",
+                    index=0,
+                    paragraphs=paragraphs,
+                )
+                chapters = [chapter] if self._has_meaningful_content(chapter) else []
 
         for section_index, chapter in enumerate(chapters):
             chapter.work_index = work_index
@@ -610,6 +620,71 @@ class ChapterDetector:
             if title_prefix and chapter.title and chapter.title != title_prefix:
                 chapter.title = f"{title_prefix} - {chapter.title}"
         return chapters
+
+    @classmethod
+    def _infer_internal_section_headings(
+        cls,
+        paragraphs: list[Paragraph],
+    ) -> list[_HeadingHit]:
+        """
+        Split very large standalone works that use named sections instead of
+        explicit "Глава" headings.
+
+        The heuristic is intentionally conservative: it only activates for
+        large work ranges and requires at least two short title-like lines.
+        """
+        if len(paragraphs) < cls._LARGE_UNCHAPTERED_WORK_MIN_PARAGRAPHS:
+            return []
+        total_chars = sum(len(para.raw_text) for para in paragraphs)
+        if total_chars < cls._LARGE_UNCHAPTERED_WORK_MIN_CHARS:
+            return []
+
+        hits: list[_HeadingHit] = []
+        for idx, para in enumerate(paragraphs):
+            text = para.raw_text.strip()
+            if not text:
+                continue
+            for line in text.splitlines():
+                candidate = re.sub(r"\s+", " ", line).strip()
+                if cls._looks_like_internal_section_title(candidate):
+                    hits.append(
+                        _HeadingHit(
+                            paragraph_index=idx,
+                            heading_text=candidate,
+                            pattern_label="internal_section_title",
+                        )
+                    )
+                    break
+
+        unique_hits: list[_HeadingHit] = []
+        seen_indices: set[int] = set()
+        for hit in hits:
+            if hit.paragraph_index in seen_indices:
+                continue
+            seen_indices.add(hit.paragraph_index)
+            unique_hits.append(hit)
+
+        return unique_hits if len(unique_hits) >= 2 else []
+
+    @classmethod
+    def _looks_like_internal_section_title(cls, line: str) -> bool:
+        if not line or len(line) > 70:
+            return False
+        if line.endswith((".", ",", ";", ":", "!", "?", "…")):
+            return False
+        if line.startswith(("—", "-", "«", "\"")):
+            return False
+        if not cls._RE_INTERNAL_SECTION_TITLE.fullmatch(line):
+            return False
+        lowered = line.casefold()
+        if lowered.startswith(("глава ", "часть ", "книга ")):
+            return False
+        words = re.findall(r"[А-Яа-яЁёA-Za-z]+", line)
+        if not words:
+            return False
+        if len(words) > 5:
+            return False
+        return True
 
     @staticmethod
     def _drop_work_title_only_preamble(chapters: list[Chapter], work_title: str) -> list[Chapter]:

@@ -65,6 +65,35 @@ def test_multibook_without_chapters_creates_one_section_per_work() -> None:
     assert result.chapters[1].work_title == "Book Two"
 
 
+def test_large_work_without_glava_splits_at_internal_section_titles() -> None:
+    """Large standalone works often use named sections instead of "Глава" headings."""
+    long_body = " ".join(["Текст большого раздела."] * 700)
+    book = _book([
+        "Book One",
+        "Параграф 1, пункт десять космического уложения Империи.",
+        f"Мы все умрём\n{long_body}",
+        f"Посылка сообщения\n{long_body}",
+        f"Помощь извне\n{long_body}",
+        "Book Two",
+        f"Включения\n{long_body}",
+        f"Восход Солнца\n{long_body}",
+        f"Старый город\n{long_body}",
+    ])
+
+    result = ChapterDetector().detect_and_split(book)
+
+    assert [chapter.title for chapter in result.chapters] == [
+        "Book One - Preamble",
+        "Book One - Мы все умрём",
+        "Book One - Посылка сообщения",
+        "Book One - Помощь извне",
+        "Book Two - Включения",
+        "Book Two - Восход Солнца",
+        "Book Two - Старый город",
+    ]
+    assert result.metadata.extra["structure"]["work_count"] == 2
+
+
 def test_multibook_can_be_inferred_from_restarted_first_chapters() -> None:
     book = _book([
         "1. вход в спираль",

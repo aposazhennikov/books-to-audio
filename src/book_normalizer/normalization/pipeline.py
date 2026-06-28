@@ -25,7 +25,6 @@ from book_normalizer.normalization.ocr_fixes import (
 )
 from book_normalizer.normalization.paragraphs import collapse_empty_lines, strip_paragraph_indents
 from book_normalizer.normalization.punctuation import (
-    adapt_punctuation_for_tts,
     normalize_dashes,
     normalize_ellipsis,
     normalize_pdf_parenthesis_hyphens,
@@ -71,7 +70,6 @@ DEFAULT_STAGES: list[tuple[str, TextTransform]] = [
     ("expand_abbreviations", expand_abbreviations),
     ("expand_numbers", expand_numbers),
     ("yoficate_text", yoficate_text),
-    ("adapt_punctuation_for_tts", adapt_punctuation_for_tts),
 ]
 
 LANGUAGE_NEUTRAL_STAGES: list[tuple[str, TextTransform]] = [
@@ -93,7 +91,6 @@ LANGUAGE_NEUTRAL_STAGES: list[tuple[str, TextTransform]] = [
     ("normalize_repeated_commas", normalize_repeated_commas),
     ("normalize_pdf_parenthesis_hyphens", normalize_pdf_parenthesis_hyphens),
     ("normalize_spacing_around_punctuation", normalize_spacing_around_punctuation),
-    ("adapt_punctuation_for_tts", adapt_punctuation_for_tts),
 ]
 
 

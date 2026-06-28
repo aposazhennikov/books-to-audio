@@ -13,6 +13,7 @@ from book_normalizer.normalization.cleanup import (
 from book_normalizer.normalization.paragraphs import collapse_empty_lines
 from book_normalizer.normalization.pipeline import NormalizationPipeline
 from book_normalizer.normalization.punctuation import (
+    adapt_punctuation_for_tts,
     normalize_dashes,
     normalize_ellipsis,
     normalize_pdf_parenthesis_hyphens,
@@ -82,6 +83,11 @@ class TestPunctuation:
         source = "Сергей (похоже) молчал."
 
         assert normalize_pdf_parenthesis_hyphens(source) == source
+
+    def test_adapt_punctuation_for_tts_does_not_double_dialogue_commas(self) -> None:
+        assert adapt_punctuation_for_tts("— Иди с миром, — сказал Сергей.") == (
+            "— Иди с миром, сказал Сергей."
+        )
 
 
 class TestCleanup:
@@ -191,12 +197,12 @@ class TestNormalizationPipeline:
 
         assert result == "— Феб, закричали греки, сам стреловержец Феб здесь."
 
-    def test_pipeline_does_not_double_comma_when_adapting_dialogue_dash(self) -> None:
+    def test_pipeline_preserves_dialogue_attribution_dash_for_role_detection(self) -> None:
         pipeline = NormalizationPipeline()
 
         result = pipeline.normalize_text("— Иди с миром, — сказал Сергей.")
 
-        assert result == "— Иди с миром, сказал Сергей."
+        assert result == "— Иди с миром, — сказал Сергей."
 
     def test_pipeline_repairs_pdf_parenthesis_hyphens_before_tts(self) -> None:
         pipeline = NormalizationPipeline()

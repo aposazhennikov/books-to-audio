@@ -156,6 +156,21 @@ class TestTextPreservationValidator:
         assert not result.is_valid
         assert any("Unexpected word substitution" in issue for issue in result.issues)
 
+    def test_accepts_single_letter_cyrillic_ocr_substitution(self) -> None:
+        """A one-letter ш/щ OCR repair inside a long word is mechanical."""
+        original = "Крейсер оснашен сорока двумя ракетами."
+        corrected = "Крейсер оснащён сорока двумя ракетами."
+        result = self.validator.validate(original, corrected)
+        assert result.is_valid, f"Should accept mechanical OCR repair: {result.issues}"
+
+    def test_rejects_non_mechanical_word_substitution(self) -> None:
+        """Similar grammar edits still need review when they change the word."""
+        original = "И ещё тех тварей, про которых ты говорил."
+        corrected = "И ещё тех тварей, про которые ты говорил."
+        result = self.validator.validate(original, corrected)
+        assert not result.is_valid
+        assert any("Unexpected word substitution" in issue for issue in result.issues)
+
     def test_rejects_in_word_hyphen_wrap_introduced_by_llm(self) -> None:
         """LLM must not replace one OCR artifact with a hyphenated line-wrap."""
         original = "Каждый из восьми руководи( телей проекта докладывал."

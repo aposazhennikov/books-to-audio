@@ -410,4 +410,36 @@ def _is_phrase_start(text: str, word_start: int) -> bool:
 def _words_equivalent_for_minimal_correction(original: str, corrected: str) -> bool:
     if original == corrected:
         return True
-    return original.replace("ё", "е") == corrected.replace("ё", "е")
+    original_plain = original.replace("ё", "е")
+    corrected_plain = corrected.replace("ё", "е")
+    if original_plain == corrected_plain:
+        return True
+    return _is_mechanical_cyrillic_ocr_substitution(original_plain, corrected_plain)
+
+
+def _is_mechanical_cyrillic_ocr_substitution(original: str, corrected: str) -> bool:
+    if min(len(original), len(corrected)) < 5:
+        return False
+    if abs(len(original) - len(corrected)) > 1:
+        return False
+    if not (_CYRILLIC_RE.fullmatch(original) and _CYRILLIC_RE.fullmatch(corrected)):
+        return False
+
+    original_cf = original.casefold()
+    corrected_cf = corrected.casefold()
+    if len(original_cf) == len(corrected_cf):
+        differing_pairs = [
+            frozenset((left, right))
+            for left, right in zip(original_cf, corrected_cf)
+            if left != right
+        ]
+        return len(differing_pairs) == 1 and differing_pairs[0] in _MECHANICAL_CYRILLIC_OCR_PAIRS
+
+    shorter, longer = sorted((original_cf, corrected_cf), key=len)
+    if longer == shorter + "ь":
+        return True
+    return bool(shorter) and longer == shorter + shorter[-1] and shorter[-1] in _CYRILLIC_VOWELS
+
+
+_MECHANICAL_CYRILLIC_OCR_PAIRS = {frozenset(("ш", "щ"))}
+_CYRILLIC_VOWELS = set("аеёиоуыэюя")

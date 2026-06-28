@@ -121,6 +121,21 @@ def test_ocr_artifacts_do_not_restore_dropped_initial_without_context() -> None:
     assert fix_ocr_artifacts(text) == text
 
 
+def test_ocr_artifacts_split_glued_function_word_with_pronoun_tail() -> None:
+    text = "Ты уверен, что тут вокругнечему ломаться?"
+    assert fix_ocr_artifacts(text) == "Ты уверен, что тут вокруг нечему ломаться?"
+
+
+def test_ocr_artifacts_split_past_plural_verb_from_u_preposition() -> None:
+    text = "Искры падалиу их ног и быстро гасли."
+    assert fix_ocr_artifacts(text) == "Искры падали у их ног и быстро гасли."
+
+
+def test_ocr_artifacts_do_not_split_ordinary_words_ending_with_u_sound() -> None:
+    text = "Я не понимаю, почему их не предупредили."
+    assert fix_ocr_artifacts(text) == text
+
+
 def test_ocr_artifacts_restores_obvious_chernaya_kniga_direction() -> None:
     text = "они должны бежать не от «Черной Книги», а ней."
     assert fix_ocr_artifacts(text) == "они должны бежать не от «Черной Книги», а за ней."

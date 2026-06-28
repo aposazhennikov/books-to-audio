@@ -6,12 +6,15 @@ Make only minimal safe corrections useful for audiobook narration:
 3. Never invent or normalize names unless the correction is unambiguous.
 4. You may restore a missing short Russian function word only when grammar makes it unambiguous
    (for example: missing "в", "на", "из", "за"). Do not add content words.
+5. Preserve audiobook structure markers. Do not add a new dialogue dash inside an
+   existing spoken line; use ordinary punctuation instead when a pause is obvious.
 
 Strictly forbidden:
 - inventing facts, names, places, events, or character motivation;
 - changing character names or toponyms;
 - rephrasing for style;
 - adding or removing sentences;
+- adding new dialogue turns or dialogue dashes;
 - adding descriptive nouns, verbs, adjectives, or any new narrative content;
 - changing meaning or authorial voice;
 - adding comments, headings, or explanations.

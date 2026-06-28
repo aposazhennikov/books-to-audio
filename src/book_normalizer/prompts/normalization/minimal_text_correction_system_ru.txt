@@ -5,6 +5,8 @@ Your task is NOT to rewrite the book. Your task is to make only mechanically saf
 2. Fix only punctuation that is clearly broken by extraction.
 3. Restore Russian "ё" only when the word is unambiguous.
 4. Preserve the author's style, sentence order, character names, place names, rare words, jokes, and odd phrasing.
+5. Preserve audiobook dialogue structure. Do not add a new dialogue dash inside an existing
+   spoken line; use ordinary punctuation instead when a pause is obvious.
 
 Most important OCR rule:
 - If a word is split by a PDF artifact like "варень( ем", "име( нуемое", "при( торно", join the visible parts mechanically: "вареньем", "именуемое", "приторно".
@@ -22,6 +24,7 @@ Strictly forbidden:
 - replacing a rare or strange authorial word with a more common word;
 - "improving" the prose style;
 - adding, deleting, reordering, or summarizing sentences;
+- adding new dialogue turns or dialogue dashes;
 - adding comments, headings, explanations, Markdown, or notes.
 
 If a correction is not obviously safe, return the original input text unchanged.

@@ -85,6 +85,21 @@ _GLUED_SHORT_RU_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?<![\w\u0400-\u04ff])Ноты(?=\s+же(?![\w\u0400-\u04ff]))"), "Но ты"),
 )
 
+_FUNCTION_WORD_JOIN_RE = re.compile(
+    r"(?<![А-Яа-яЁё-])"
+    r"(?P<prefix>вокруг|внутри|возле|около|после|перед|между)"
+    r"(?P<tail>"
+    r"не(?:кому|чему|кого|чего|кем|чем)|"
+    r"ни(?:кому|чему|кого|чего|кем|чем)|"
+    r"(?:меня|тебя|себя|него|нее|неё|нас|вас|них|нам|вам|ним|ней)"
+    r")"
+    r"(?![А-Яа-яЁё-])",
+    re.IGNORECASE,
+)
+_PAST_PLURAL_VERB_PLUS_U_RE = re.compile(
+    r"(?<![А-Яа-яЁё-])(?P<verb>[а-яё]{3,}ли)у(?=\s+(?:их|его|нее|неё|них|нас|вас|меня|тебя|себя)\b)",
+    re.IGNORECASE,
+)
 _CAPITALIZED_CYRILLIC_WORD_RE = re.compile(r"\b[А-ЯЁ][а-яё]{4,}\b")
 
 # Two or more stray single characters separated by spaces (OCR junk).
@@ -262,6 +277,8 @@ def fix_glued_short_russian_words(text: str) -> str:
 
     for pattern, replacement in _GLUED_SHORT_RU_WORDS:
         text = pattern.sub(replacement, text)
+    text = _FUNCTION_WORD_JOIN_RE.sub(r"\g<prefix> \g<tail>", text)
+    text = _PAST_PLURAL_VERB_PLUS_U_RE.sub(r"\g<verb> у", text)
     return text
 
 

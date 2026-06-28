@@ -417,6 +417,51 @@ def test_stage3_llm_scales_segment_window_with_large_chunks(
     assert captured["max_chunk_chars"] == 2400
 
 
+def test_stage3_llm_uses_first_endpoint_from_endpoint_pool(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pipeline = _load_run_pipeline()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    (book_dir / "001_chapter_01.txt").write_text("Hello.", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class _FakeSegmenter:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def segment_book(self, book):  # noqa: ANN001
+            return [
+                {
+                    "chapter_index": book.chapters[0].index,
+                    "segment_index": 0,
+                    "language": "ru",
+                    "role": "narrator",
+                    "voice_id": "narrator_calm",
+                    "intonation": "calm",
+                    "section_kind": "narration",
+                    "text": "Hello.",
+                }
+            ]
+
+    import book_normalizer.chunking.llm_segmenter as llm_segmenter
+
+    monkeypatch.setattr(llm_segmenter, "LlmVoiceSegmenter", _FakeSegmenter)
+
+    pipeline.run_stage3_llm_chunking(
+        book_dir,
+        "http://127.0.0.1:11434,http://127.0.0.1:11435",
+        "model",
+        "ru",
+        chapter_filter=None,
+        llm_max_retries=1,
+        max_chunk_chars=2400,
+    )
+
+    assert captured["endpoint"] == "http://127.0.0.1:11434"
+
+
 def test_stage3_heuristic_invokes_native_exporter_and_filters_chapter(
     tmp_path: Path,
     monkeypatch,

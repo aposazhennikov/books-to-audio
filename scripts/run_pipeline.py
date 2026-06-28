@@ -348,8 +348,9 @@ def run_stage3_llm_chunking(
 
     cache_dir = book_dir / "speaker_cache"
     window_chars = effective_llm_segment_window_chars(max_chunk_chars)
+    endpoint = split_llm_endpoints(llm_endpoint)[0]
     init_kwargs: dict[str, object] = {
-        "endpoint": llm_endpoint,
+        "endpoint": endpoint,
         "model": llm_model,
         "cache_dir": cache_dir,
         "language": language,

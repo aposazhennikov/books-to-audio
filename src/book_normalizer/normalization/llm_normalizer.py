@@ -118,6 +118,12 @@ _NORMALIZATION_SCHEMA = {
     "required": ["text"],
 }
 
+_TITLE_CORRECTION_SCHEMA = {
+    "type": "object",
+    "properties": {"title": {"type": "string"}},
+    "required": ["title"],
+}
+
 
 @dataclass
 class NormalizationFailure:
@@ -221,7 +227,10 @@ class LlmNormalizer:
         accepted = rejected = 0
 
         for para_idx, para in enumerate(paragraphs):
-            result = self.normalize_paragraph(para, chapter_index, para_idx)
+            if para_idx == 0 and _is_title_like_paragraph(para):
+                result = self.normalize_title(para, chapter_index, para_idx)
+            else:
+                result = self.normalize_paragraph(para, chapter_index, para_idx)
             corrected_parts.append(result.accepted_text)
             if result.is_valid:
                 accepted += 1
@@ -237,6 +246,90 @@ class LlmNormalizer:
             chapter_index, accepted, rejected,
         )
         return "\n\n".join(corrected_parts)
+
+    def normalize_title(
+        self,
+        text: str,
+        chapter_index: int,
+        paragraph_index: int,
+    ) -> ValidationResult:
+        """Normalise a short chapter title with stricter title-specific guards."""
+
+        if not text or not text.strip():
+            return ValidationResult(
+                is_valid=True,
+                similarity=1.0,
+                word_ratio=1.0,
+                sentence_ratio=1.0,
+                original=text,
+                corrected=text,
+            )
+
+        cached = self._load_cache(chapter_index, paragraph_index, text, kind="title")
+        if cached is not None:
+            cached_result = _validate_title_correction(text, cached)
+            if cached_result.is_valid:
+                return cached_result
+            self._discard_cache(chapter_index, paragraph_index, text, kind="title")
+
+        corrected: str | None = None
+        last_error: Exception | None = None
+        last_issues: list[str] = []
+
+        for attempt in range(1, self._max_retries + 1):
+            for model in self._model_candidates:
+                try:
+                    raw = self._query_title_llm(text, model=model)
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    self._failures.append(
+                        NormalizationFailure(
+                            chapter_index=chapter_index,
+                            paragraph_index=paragraph_index,
+                            model=model,
+                            reason=f"title {type(exc).__name__}: {exc}",
+                            source_preview=text[:500],
+                        )
+                    )
+                    continue
+
+                if raw:
+                    result = _validate_title_correction(text, raw)
+                    if result.is_valid:
+                        self._save_cache(chapter_index, paragraph_index, text, raw, kind="title")
+                        return result
+
+                    corrected = raw
+                    last_issues = list(result.issues)
+                    self._failures.append(
+                        NormalizationFailure(
+                            chapter_index=chapter_index,
+                            paragraph_index=paragraph_index,
+                            model=model,
+                            reason="title " + "; ".join(result.issues),
+                            source_preview=text[:500],
+                            output_preview=raw[:500],
+                        )
+                    )
+                    self._client.unload_model(model)
+
+        issues: list[str] = []
+        if last_error is not None:
+            issues.append(f"LLM error: {type(last_error).__name__}: {last_error}")
+        if last_issues:
+            issues.append("Validation issues: " + "; ".join(last_issues))
+        if not issues:
+            issues.append("All title LLM attempts failed or returned empty output")
+
+        return ValidationResult(
+            is_valid=False,
+            similarity=0.0,
+            word_ratio=1.0,
+            sentence_ratio=1.0,
+            original=text,
+            corrected=corrected or text,
+            issues=issues,
+        )
 
     def normalize_paragraph(
         self,
@@ -503,6 +596,50 @@ class LlmNormalizer:
             return _clean_llm_output(str(attempt.data.get("text") or ""))
         return _clean_llm_output(attempt.content)
 
+    def _query_title_llm(
+        self,
+        text: str,
+        *,
+        model: str | None = None,
+    ) -> str:
+        """Send one short title to a local Ollama model and return corrected title."""
+
+        attempt = self._client.chat_json_with_fallback(
+            models=[model or self._model],
+            messages=[
+                {
+                    "role": "system",
+                    "content": load_language_prompt(
+                        "normalization",
+                        "title_ocr_correction_system",
+                        self._language,
+                        fallback_language="en",
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        load_prompt("normalization/title_ocr_correction_user.txt")
+                        .replace(
+                            "{{INPUT_JSON}}",
+                            json.dumps(
+                                {
+                                    "language": get_book_language(self._language).english_name,
+                                    "title": text,
+                                },
+                                ensure_ascii=False,
+                            ),
+                        )
+                    ),
+                },
+            ],
+            schema=_TITLE_CORRECTION_SCHEMA,
+            temperature=0.0,
+        )
+        if isinstance(attempt.data, dict):
+            return _clean_llm_output(str(attempt.data.get("title") or ""))
+        return _clean_llm_output(attempt.content)
+
     # ── Cache ─────────────────────────────────────────────────────────────────
 
     def _cache_path(
@@ -510,15 +647,17 @@ class LlmNormalizer:
         chapter_index: int,
         paragraph_index: int,
         source_text: str,
+        *,
+        kind: str = "norm",
     ) -> Path | None:
         """Return cache file path for one paragraph."""
         if not self._cache_dir:
             return None
-        fingerprint = self._cache_fingerprint(source_text)
+        fingerprint = self._cache_fingerprint(source_text, kind=kind)
         return (
             self._cache_dir
             / (
-                f"norm_ch{chapter_index:03d}_para{paragraph_index:04d}"
+                f"{kind}_ch{chapter_index:03d}_para{paragraph_index:04d}"
                 f"_{fingerprint}.txt"
             )
         )
@@ -528,9 +667,11 @@ class LlmNormalizer:
         chapter_index: int,
         paragraph_index: int,
         source_text: str,
+        *,
+        kind: str = "norm",
     ) -> str | None:
         """Return cached corrected text, or None if unavailable."""
-        path = self._cache_path(chapter_index, paragraph_index, source_text)
+        path = self._cache_path(chapter_index, paragraph_index, source_text, kind=kind)
         if path and path.exists():
             try:
                 return path.read_text(encoding="utf-8")
@@ -543,9 +684,11 @@ class LlmNormalizer:
         chapter_index: int,
         paragraph_index: int,
         source_text: str,
+        *,
+        kind: str = "norm",
     ) -> None:
         """Remove a cached paragraph result that no longer passes validation."""
-        path = self._cache_path(chapter_index, paragraph_index, source_text)
+        path = self._cache_path(chapter_index, paragraph_index, source_text, kind=kind)
         if path is None:
             return
         try:
@@ -559,20 +702,31 @@ class LlmNormalizer:
         paragraph_index: int,
         source_text: str,
         corrected_text: str,
+        *,
+        kind: str = "norm",
     ) -> None:
         """Persist corrected text to disk cache."""
-        path = self._cache_path(chapter_index, paragraph_index, source_text)
+        path = self._cache_path(chapter_index, paragraph_index, source_text, kind=kind)
         if path:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(corrected_text, encoding="utf-8")
 
-    def _cache_fingerprint(self, source_text: str) -> str:
+    def _cache_fingerprint(self, source_text: str, *, kind: str = "norm") -> str:
         """Return a cache fingerprint for text + LLM settings."""
+        prompt = _system_prompt_for_language(self._language)
+        if kind == "title":
+            prompt = load_language_prompt(
+                "normalization",
+                "title_ocr_correction_system",
+                self._language,
+                fallback_language="en",
+            )
         payload = "\n\0".join((
+            kind,
             ",".join(self._model_candidates),
             self._endpoint,
             self._language,
-            _system_prompt_for_language(self._language),
+            prompt,
             source_text,
         ))
         return sha1(payload.encode("utf-8")).hexdigest()[:16]
@@ -611,6 +765,85 @@ def _clean_llm_output(content: str) -> str:
        (content.startswith("'") and content.endswith("'")):
         content = content[1:-1]
     return content.strip()
+
+
+def _is_title_like_paragraph(text: str) -> bool:
+    """Return True for short standalone chapter headings, not prose."""
+
+    stripped = text.strip()
+    if not stripped or len(stripped) > 140:
+        return False
+    lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+    if not lines or len(lines) > 2:
+        return False
+    if any(line.startswith(("—", "-", "–")) for line in lines):
+        return False
+    if stripped.endswith((".", "!", "?", "…")):
+        return False
+    words = _title_words(stripped)
+    return 1 <= len(words) <= 10
+
+
+def _validate_title_correction(original: str, corrected: str) -> ValidationResult:
+    """Validate a conservative OCR/spelling correction for a short heading."""
+
+    base = TextPreservationValidator(
+        min_similarity=0.72,
+        min_word_ratio=0.95,
+        max_word_ratio=1.05,
+        min_sentence_ratio=0.95,
+        max_sentence_ratio=1.05,
+    ).validate(original, corrected)
+    issues = [
+        issue for issue in base.issues
+        if not issue.startswith("Unexpected word substitution after OCR normalization:")
+        and not issue.startswith("Word counts:")
+        and not issue.startswith("Word mismatches:")
+    ]
+
+    original_words = _title_words(original)
+    corrected_words = _title_words(corrected)
+    if len(original_words) != len(corrected_words):
+        issues.append(
+            "Title word count changed: "
+            f"original={len(original_words)}, corrected={len(corrected_words)}"
+        )
+    else:
+        for idx, (source_word, corrected_word) in enumerate(zip(original_words, corrected_words)):
+            if source_word == corrected_word:
+                continue
+            similarity = _word_similarity(source_word, corrected_word)
+            if similarity < 0.67:
+                issues.append(
+                    f"Title word rewrite at {idx}: {source_word!r} -> {corrected_word!r}"
+                )
+                break
+
+    return ValidationResult(
+        is_valid=not issues,
+        similarity=base.similarity,
+        word_ratio=base.word_ratio,
+        sentence_ratio=base.sentence_ratio,
+        original=original,
+        corrected=corrected,
+        issues=issues,
+    )
+
+
+def _title_words(text: str) -> list[str]:
+    import re
+
+    return [word.casefold() for word in re.findall(r"[\wёЁ]+", text, flags=re.UNICODE)]
+
+
+def _word_similarity(left: str, right: str) -> float:
+    if not left and not right:
+        return 1.0
+    if not left or not right:
+        return 0.0
+    from difflib import SequenceMatcher
+
+    return SequenceMatcher(None, left.casefold(), right.casefold()).ratio()
 
 
 def _system_prompt_for_language(language: str | None) -> str:

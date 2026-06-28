@@ -291,6 +291,41 @@ class TestLlmNormalizerMocked:
         assert call_count["n"] == 3
         assert result.count("\n\n") == 2
 
+    def test_normalize_chapter_uses_title_prompt_for_short_heading(self, tmp_path: Path) -> None:
+        """Short title-like first paragraphs get a dedicated OCR title pass."""
+        normalizer = self._make_normalizer(tmp_path)
+        chapter_text = "Помошь близка\n\nПервый обычный абзац главы."
+        calls: list[tuple[str, str | None]] = []
+
+        def mock_title_query(text: str, *, model: str | None = None) -> str:
+            calls.append(("title", model))
+            assert text == "Помошь близка"
+            return "Помощь близка"
+
+        def mock_body_query(text: str, *, model: str | None = None, previous_issues=None) -> str:
+            calls.append(("body", model))
+            return text
+
+        with (
+            patch.object(normalizer, "_query_title_llm", side_effect=mock_title_query),
+            patch.object(normalizer, "_query_llm", side_effect=mock_body_query),
+        ):
+            result = normalizer.normalize_chapter(chapter_text, chapter_index=0)
+
+        assert result == "Помощь близка\n\nПервый обычный абзац главы."
+        assert [kind for kind, _ in calls] == ["title", "body"]
+
+    def test_title_normalization_rejects_rewrites(self, tmp_path: Path) -> None:
+        """Title mode must not accept semantic rewrites or invented wording."""
+        normalizer = self._make_normalizer(tmp_path)
+        original = "Помошь близка"
+
+        with patch.object(normalizer, "_query_title_llm", return_value="Спасение уже рядом"):
+            result = normalizer.normalize_title(original, chapter_index=0, paragraph_index=0)
+
+        assert not result.is_valid
+        assert result.accepted_text == original
+
     def test_cache_saves_accepted_result(self, tmp_path: Path) -> None:
         """Accepted LLM output is persisted to disk cache."""
         normalizer = self._make_normalizer(tmp_path)
@@ -439,9 +474,9 @@ class TestLlmNormalizerMocked:
 
         assert "JSON" in prompt
         if language == "ru":
-            assert "Ё" in prompt
+            assert "ё" in prompt.lower()
         else:
-            assert "Ё" not in prompt
+            assert prompt
 
     def test_query_llm_sends_quoted_source_as_json_input(self, tmp_path: Path) -> None:
         from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL

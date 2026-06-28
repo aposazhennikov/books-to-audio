@@ -1,0 +1,5 @@
+Input is JSON. Correct only input.title.
+Return the same title unchanged unless a minimal OCR/spelling correction is safe.
+
+INPUT_JSON:
+{{INPUT_JSON}}

@@ -288,6 +288,8 @@ class ChapterDetector:
         candidate = re.sub(r"\s+", " ", lines[0]).strip(" .,:;!?")
         if not candidate or len(candidate) > 80:
             return None
+        if not candidate[0].isupper():
+            return None
         if any(mark in candidate for mark in (";", ":", "!", "?", "…", "—", "–", "«", "»", "(", ")")):
             return None
         if not re.fullmatch(r"[А-Яа-яЁё0-9\s'-]+", candidate):
@@ -302,6 +304,8 @@ class ChapterDetector:
             return False
         if toc_norm == body_norm:
             return True
+        if len(toc_norm) < 6:
+            return False
         if len(body_norm) >= 8 and (body_norm in toc_norm or toc_norm in body_norm):
             return True
 

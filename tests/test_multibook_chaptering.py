@@ -398,6 +398,24 @@ def test_compact_trailing_toc_extracts_implicit_work_numbers() -> None:
     }
 
 
+def test_short_toc_title_does_not_match_lowercase_sentence_fragment() -> None:
+    assert not ChapterDetector._toc_title_matches_body_title(
+        "\u0422\u0440\u043e\u044f",
+        "\u0432 \u043a\u043e\u0442\u043e\u0440\u043e\u0439 "
+        "\u043f\u0440\u043e\u0438\u0441\u0445\u043e\u0434\u0438\u0442 "
+        "\u0432\u0435\u0440\u0431\u043e\u0432\u043a\u0430 "
+        "\u0415\u043b\u0435\u043d\u044b "
+        "\u0422\u0440\u043e\u044f\u043d\u0441\u043a\u043e\u0439",
+    )
+    assert ChapterDetector._single_short_title_line(
+        "\u0432 \u043a\u043e\u0442\u043e\u0440\u043e\u0439 "
+        "\u043f\u0440\u043e\u0438\u0441\u0445\u043e\u0434\u0438\u0442 "
+        "\u0432\u0435\u0440\u0431\u043e\u0432\u043a\u0430 "
+        "\u0415\u043b\u0435\u043d\u044b "
+        "\u0422\u0440\u043e\u044f\u043d\u0441\u043a\u043e\u0439"
+    ) is None
+
+
 def test_supported_language_heading_patterns() -> None:
     assert match_chapter_heading("Chapter One") is not None
     assert match_chapter_heading("Chapter IV") is not None

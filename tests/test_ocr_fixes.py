@@ -76,6 +76,36 @@ def test_ocr_artifacts_restore_russian_particle_hyphens() -> None:
     )
 
 
+def test_ocr_artifacts_restore_dropped_initial_letter_in_priem() -> None:
+    text = "рием шел ни шатко, ни валко."
+    assert fix_ocr_artifacts(text) == "Прием шел ни шатко, ни валко."
+
+
+def test_pipeline_restores_dropped_initial_letter_in_priem() -> None:
+    text = "рием шел ни шатко, ни валко."
+    assert NormalizationPipeline.for_language("ru").normalize_text(text) == (
+        "Приём шёл ни шатко, ни валко."
+    )
+
+
+def test_ocr_artifacts_restore_obvious_missing_prepositions() -> None:
+    text = (
+        "с одной планет Зенов. "
+        "искать кристаллы оставленной кланом планете. "
+        "Пилигримы записывали них информацию."
+    )
+    assert fix_ocr_artifacts(text) == (
+        "с одной из планет Зенов. "
+        "искать кристаллы на оставленной кланом планете. "
+        "Пилигримы записывали в них информацию."
+    )
+
+
+def test_ocr_artifacts_restores_obvious_chernaya_kniga_direction() -> None:
+    text = "они должны бежать не от «Черной Книги», а ней."
+    assert fix_ocr_artifacts(text) == "они должны бежать не от «Черной Книги», а за ней."
+
+
 def test_pipeline_restores_particle_hyphen_after_line_hyphen_repair() -> None:
     text = "А мы-\nто, идиоты, эксцентриситет высчитывали."
     assert NormalizationPipeline.for_language("ru").normalize_text(text) == (

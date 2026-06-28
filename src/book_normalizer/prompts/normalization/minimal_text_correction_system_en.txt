@@ -4,12 +4,15 @@ Make only minimal safe corrections useful for audiobook narration:
 1. Fix obvious OCR artifacts, typos, spacing, and punctuation errors.
 2. Preserve the author's style, sentence order, character names, and place names.
 3. Never invent or normalize names unless the correction is unambiguous.
+4. You may restore a missing short Russian function word only when grammar makes it unambiguous
+   (for example: missing "в", "на", "из", "за"). Do not add content words.
 
 Strictly forbidden:
 - inventing facts, names, places, events, or character motivation;
 - changing character names or toponyms;
 - rephrasing for style;
 - adding or removing sentences;
+- adding descriptive nouns, verbs, adjectives, or any new narrative content;
 - changing meaning or authorial voice;
 - adding comments, headings, or explanations.
 

@@ -48,7 +48,7 @@ def repair_hyphenated_words(text: str) -> str:
     """
     text = re.sub(r"(\w)\u00ad\n(\w)", r"\1\2", text)
     text = re.sub(
-        r"([а-яёА-ЯЁ])\([ \t]*\r?\n(?:[ \t]*\r?\n)*[ \t]*([а-яё])",
+        r"([а-яёА-ЯЁ])\([ \t]*\r?\n(?:[ \t]*\r?\n)*[ \t]*([а-яёА-ЯЁ])",
         r"\1\2",
         text,
     )

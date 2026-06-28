@@ -245,7 +245,7 @@ class NormalizationPipeline:
         return book
 
     _TRAILING_HYPHEN = re.compile(r"([а-яёА-ЯЁ])[-(]\s*$")
-    _LEADING_LOWER = re.compile(r"^([а-яё]+)")
+    _LEADING_WORD = re.compile(r"^([а-яёА-ЯЁ]+)")
 
     @staticmethod
     def _repair_cross_paragraph_hyphens(book: Book) -> int:
@@ -273,15 +273,16 @@ class NormalizationPipeline:
                 nxt_text = nxt.normalized_text or nxt.raw_text
 
                 m_trail = NormalizationPipeline._TRAILING_HYPHEN.search(cur_text)
-                m_lead = NormalizationPipeline._LEADING_LOWER.match(nxt_text)
+                stripped_next = nxt_text.lstrip()
+                m_lead = NormalizationPipeline._LEADING_WORD.match(stripped_next)
                 if not m_trail or not m_lead:
                     continue
 
                 # Skip dialogue lines (they legitimately start with lowercase after dash).
-                if nxt_text.lstrip().startswith("—"):
+                if stripped_next.startswith("—"):
                     continue
 
-                next_remainder = nxt_text[m_lead.end():].lstrip()
+                next_remainder = stripped_next[m_lead.end():].lstrip()
                 joined_tail = m_lead.group(1)
                 if next_remainder:
                     joined_tail += " " + next_remainder

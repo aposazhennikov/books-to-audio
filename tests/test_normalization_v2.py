@@ -167,6 +167,17 @@ class TestPipelineV2:
         assert gap.raw_text == ""
         assert para2.normalized_text == ""
 
+    def test_cross_paragraph_pdf_open_paren_allows_uppercase_tail(self) -> None:
+        para1 = Paragraph(raw_text="брамин Шивва(", index_in_chapter=0)
+        gap = Paragraph(raw_text="", index_in_chapter=1)
+        para2 = Paragraph(raw_text="  Яма поднял палец.", index_in_chapter=2)
+        ch = Chapter(title="Test", index=0, paragraphs=[para1, gap, para2])
+        book = Book(chapters=[ch])
+
+        NormalizationPipeline().normalize_book(book)
+
+        assert ch.normalized_text == "брамин ШивваЯма поднял палец."
+
     def test_tracking_empty_for_clean_text(self) -> None:
         pipeline = NormalizationPipeline()
         clean = "Чистый текст."

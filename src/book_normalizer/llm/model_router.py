@@ -53,11 +53,16 @@ def model_plan_for_language(
     fallback = FALLBACK_QWEN3_MODEL
 
     preferred = (preferred_model or "").strip()
-    if preferred and preferred.lower() not in LEGACY_LOCAL_MODEL_DEFAULTS:
+    preferred_is_explicit = bool(
+        preferred
+        and preferred.lower() not in LEGACY_LOCAL_MODEL_DEFAULTS
+        and preferred != PRIMARY_QWEN3_MODEL
+    )
+    if preferred_is_explicit:
         primary = preferred
 
     candidates: list[str] = [primary]
-    if allow_fallback and fallback not in candidates:
+    if allow_fallback and not preferred_is_explicit and fallback not in candidates:
         candidates.append(fallback)
 
     return OllamaModelPlan(

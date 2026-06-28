@@ -31,6 +31,12 @@ def test_legacy_defaults_do_not_override_safe_router(legacy: str) -> None:
     assert plan.candidates == (PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL)
 
 
+def test_primary_default_keeps_4b_fallback() -> None:
+    plan = model_plan_for_language("ru", preferred_model=PRIMARY_QWEN3_MODEL)
+
+    assert plan.candidates == (PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL)
+
+
 def test_lightweight_mode_uses_4b_only() -> None:
     plan = model_plan_for_language("en", lightweight=True)
 
@@ -38,8 +44,8 @@ def test_lightweight_mode_uses_4b_only() -> None:
     assert plan.candidates == (FALLBACK_QWEN3_MODEL,)
 
 
-def test_custom_model_keeps_4b_fallback() -> None:
+def test_custom_model_disables_implicit_4b_fallback() -> None:
     plan = model_plan_for_language("zh", preferred_model="custom:q4")
 
     assert plan.primary_model == "custom:q4"
-    assert plan.candidates == ("custom:q4", FALLBACK_QWEN3_MODEL)
+    assert plan.candidates == ("custom:q4",)

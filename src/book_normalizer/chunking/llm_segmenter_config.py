@@ -62,6 +62,7 @@ _RU_BAD_SPEAKER_TOKENS = frozenset({
     "им",
     "или",
     "как",
+    "кто",
     "мне",
     "на",
     "не",
@@ -458,4 +459,3 @@ intonation qisqa inglizcha bo'lsin: calm, tense, angry, whisper, sad, cheerful, 
 Faqat JSON qaytaring: {"segments": [{"role": "...", "speaker": "...", "text": "...", "intonation": "..."}]}.
 """,
 }
-

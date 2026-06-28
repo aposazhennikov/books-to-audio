@@ -40,6 +40,36 @@ from book_normalizer.chunking.llm_segmenter_fields import _clean_optional
 from book_normalizer.languages import normalize_book_language
 from book_normalizer.normalization.morphology import infer_person_gender, is_definitely_not_person_reference
 
+_RU_COMMON_PERSON_NOUN_GENDERS = {
+    "барон": "male",
+    "граф": "male",
+    "князь": "male",
+    "маркиз": "male",
+    "мужчина": "male",
+    "парень": "male",
+    "старик": "male",
+    "цыган": "male",
+    "баронесса": "female",
+    "графиня": "female",
+    "девушка": "female",
+    "женщина": "female",
+    "княгиня": "female",
+    "маркиза": "female",
+    "старуха": "female",
+    "цыганка": "female",
+}
+_RU_INANIMATE_SPEAKER_SUFFIXES = (
+    "ание",
+    "ение",
+    "тие",
+    "ство",
+    "ость",
+    "ное",
+    "ское",
+    "цкое",
+    "гое",
+)
+
 
 def _repair_dialogue_metadata(
     *,
@@ -243,7 +273,9 @@ def _clean_ru_speaker(value: str) -> str:
         return ""
     if not re.fullmatch(_RU_SPEAKER_TOKEN, speaker):
         return ""
-    speaker_gender = infer_person_gender(speaker)
+    speaker_gender = _infer_ru_speaker_gender_fallback(speaker)
+    if _looks_like_ru_inanimate_speaker(speaker) and not speaker_gender:
+        return ""
     if is_definitely_not_person_reference(speaker) and not speaker_gender:
         return ""
     if speaker[0].islower() and not speaker_gender:
@@ -251,6 +283,18 @@ def _clean_ru_speaker(value: str) -> str:
     if speaker[0].islower():
         speaker = speaker[0].upper() + speaker[1:]
     return _clean_optional(speaker)
+
+def _infer_ru_speaker_gender_fallback(speaker: str) -> str:
+    gender = infer_person_gender(speaker)
+    if gender:
+        return gender
+    return _RU_COMMON_PERSON_NOUN_GENDERS.get(speaker.casefold(), "")
+
+def _looks_like_ru_inanimate_speaker(speaker: str) -> bool:
+    lowered = speaker.casefold()
+    if lowered in _RU_COMMON_PERSON_NOUN_GENDERS:
+        return False
+    return lowered.endswith(_RU_INANIMATE_SPEAKER_SUFFIXES)
 
 def _clean_speaker(value: Any, language: str) -> str:
     speaker = _clean_optional(value)
@@ -338,4 +382,3 @@ def _remember_dialogue_speaker(
         return
     recent_dialogue_speakers.append(record)
     del recent_dialogue_speakers[:-8]
-

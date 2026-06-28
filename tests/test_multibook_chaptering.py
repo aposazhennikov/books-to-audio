@@ -94,6 +94,47 @@ def test_large_work_without_glava_splits_at_internal_section_titles() -> None:
     assert result.metadata.extra["structure"]["work_count"] == 2
 
 
+def test_large_late_numbered_work_splits_past_work_title_hit() -> None:
+    """Late numeric work boundaries can also be chapter hits; split inside them."""
+    long_body = " ".join(["Текст большого раздела."] * 700)
+    book = _book([
+        "1. вход в спираль",
+        "Глава первая,",
+        "Текст первой книги.",
+        "Глава вторая,",
+        "Продолжение первой книги.",
+        "2. наследники сета",
+        "Глава первая,",
+        "Текст второй книги.",
+        "Глава вторая,",
+        "Продолжение второй книги.",
+        "Глава третья,",
+        "Еще текст второй книги.",
+        "Глава четвертая,",
+        "Еще текст второй книги.",
+        "Глава пятая,",
+        "Еще текст второй книги.",
+        "Глава шестая,",
+        "Еще текст второй книги.",
+        "Глава седьмая,",
+        "Еще текст второй книги.",
+        "Глава восьмая,",
+        "Еще текст второй книги.",
+        "2. Спасательная экспедиция",
+        f"Мы все умрём\n{long_body}",
+        f"Посылка сообщения\n{long_body}",
+        f"Помощь извне\n{long_body}",
+    ])
+
+    result = ChapterDetector().detect_and_split(book)
+
+    assert [chapter.title for chapter in result.chapters[-3:]] == [
+        "2. Спасательная экспедиция - Мы все умрём",
+        "2. Спасательная экспедиция - Посылка сообщения",
+        "2. Спасательная экспедиция - Помощь извне",
+    ]
+
+
 def test_multibook_can_be_inferred_from_restarted_first_chapters() -> None:
     book = _book([
         "1. вход в спираль",

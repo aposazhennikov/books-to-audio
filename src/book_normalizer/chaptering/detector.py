@@ -597,8 +597,9 @@ class ChapterDetector:
         if not paragraphs:
             return []
 
-        if hits:
-            chapters = self._split_at_headings(paragraphs, hits)
+        effective_hits = self._drop_work_title_only_hit(hits, work_title)
+        if effective_hits:
+            chapters = self._split_at_headings(paragraphs, effective_hits)
             chapters = self._drop_work_title_only_preamble(chapters, work_title)
         else:
             inferred_hits = self._infer_internal_section_headings(paragraphs)
@@ -620,6 +621,23 @@ class ChapterDetector:
             if title_prefix and chapter.title and chapter.title != title_prefix:
                 chapter.title = f"{title_prefix} - {chapter.title}"
         return chapters
+
+    @staticmethod
+    def _drop_work_title_only_hit(
+        hits: list[_HeadingHit],
+        work_title: str,
+    ) -> list[_HeadingHit]:
+        """Ignore a sole local chapter hit that is really the work title."""
+        if len(hits) != 1:
+            return hits
+        hit = hits[0]
+        if hit.paragraph_index != 0:
+            return hits
+        normalized_hit = re.sub(r"\s+", " ", hit.heading_text).strip(" .,:;!?").casefold()
+        normalized_work = re.sub(r"\s+", " ", work_title).strip(" .,:;!?").casefold()
+        if normalized_hit and normalized_hit == normalized_work:
+            return []
+        return hits
 
     @classmethod
     def _infer_internal_section_headings(

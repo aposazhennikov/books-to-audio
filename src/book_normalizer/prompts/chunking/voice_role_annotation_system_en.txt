@@ -18,6 +18,14 @@ Rules:
 - If speaker gender is not proven, use narrator or unknown.
 - Narration and speech tags should be narrator.
 - Direct speech should be dialogue when it is really a spoken line.
+- Quoted inner thoughts followed by cues like "he reminded himself", "he thought",
+  "she thought", "подумал", "напомнил себе", or similar are not spoken dialogue;
+  mark them as narrator unless the text clearly says they were spoken aloud.
+- Keep short spoken fragments and their following speech tags flowing naturally:
+  after a short dialogue fragment that is immediately followed by a narrator speech
+  tag, use boundary_after "" and pause_after_ms 0 unless the text shows a real beat.
+- Use a speaker handoff pause only when the next fragment changes to another actual
+  speaker or the scene/paragraph meaning needs a perceptible pause.
 - Mark annotations, prefaces, epilogues, and chapter titles through section_kind.
 - Never change style, names, events, punctuation, or text order.
 - Return only JSON matching the provided schema.

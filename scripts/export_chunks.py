@@ -66,6 +66,22 @@ def load_book_from_chapters(book_dir: Path) -> Book:
     return Book(chapters=chapters)
 
 
+def filter_book_chapter(book: Book, chapter_number: int | None) -> Book:
+    """Return a book containing only the requested 1-based chapter, if set."""
+    if chapter_number is None:
+        return book
+    if chapter_number < 1:
+        print("ERROR: --chapter must be at least 1")
+        sys.exit(1)
+
+    chapter_index = chapter_number - 1
+    chapters = [chapter for chapter in book.chapters if chapter.index == chapter_index]
+    if not chapters:
+        print(f"ERROR: Chapter {chapter_number} not found.")
+        sys.exit(1)
+    return Book(metadata=book.metadata, chapters=chapters)
+
+
 def export_heuristic(
     book: Book,
     args: argparse.Namespace,
@@ -304,6 +320,12 @@ def main(argv: list[str] | None = None) -> None:
         "--out", default=None,
         help="Output JSON path (default: book_dir/chunks_manifest_v2.json).",
     )
+    parser.add_argument(
+        "--chapter",
+        type=int,
+        default=None,
+        help="Process only chapter N (1-based). Omit for all chapters.",
+    )
     args = parser.parse_args(argv)
     if args.max_chunk_chars is not None and args.max_chunk_chars < 30:
         parser.error("--max-chunk-chars must be at least 30.")
@@ -311,6 +333,9 @@ def main(argv: list[str] | None = None) -> None:
     book_dir = Path(args.book_dir)
     book = load_book_from_chapters(book_dir)
     print(f"Loaded {len(book.chapters)} chapter(s) from {book_dir}")
+    book = filter_book_chapter(book, args.chapter)
+    if args.chapter is not None:
+        print(f"Filtered to chapter {args.chapter}")
 
     if args.mode == "llm":
         export_llm(book, args, book_dir)

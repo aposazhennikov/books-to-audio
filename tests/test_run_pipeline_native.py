@@ -562,10 +562,46 @@ def test_stage3_heuristic_invokes_native_exporter_and_filters_chapter(
                 "heuristic",
                 "--max-chunk-chars",
                 "120",
+                "--chapter",
+                "2",
             ],
         )
     ]
     assert [chapter["chapter_index"] for chapter in manifest["chapters"]] == [1]
+
+
+def test_export_chunks_filters_book_before_heuristic_export(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    export_chunks = _load_export_chunks()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    (book_dir / "001_chapter_01.txt").write_text("First.", encoding="utf-8")
+    (book_dir / "002_chapter_02.txt").write_text("Second.", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_export_heuristic(book, args, _book_dir):  # noqa: ANN001
+        captured["chapter_indexes"] = [chapter.index for chapter in book.chapters]
+        captured["chapter_text"] = book.chapters[0].raw_text
+        captured["arg_chapter"] = args.chapter
+
+    monkeypatch.setattr(export_chunks, "export_heuristic", fake_export_heuristic)
+
+    export_chunks.main([
+        "--book-dir",
+        str(book_dir),
+        "--mode",
+        "heuristic",
+        "--chapter",
+        "2",
+    ])
+
+    assert captured == {
+        "chapter_indexes": [1],
+        "chapter_text": "Second.",
+        "arg_chapter": 2,
+    }
 
 
 def test_synthesis_and_assembly_stages_invoke_script_mains_in_process(

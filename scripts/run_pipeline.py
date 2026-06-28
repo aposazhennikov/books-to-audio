@@ -570,6 +570,8 @@ def run_stage3_heuristic_chunking(
         "--max-chunk-chars",
         str(max_chunk_chars),
     ]
+    if chapter_filter is not None:
+        args += ["--chapter", str(chapter_filter)]
     print(f"Running in-process: export_chunks.py {' '.join(args)}")
     _run_script_main("export_chunks.py", args)
 

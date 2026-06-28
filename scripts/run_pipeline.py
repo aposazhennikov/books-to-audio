@@ -357,6 +357,7 @@ def run_stage3_llm_chunking(
         "review_report_path": book_dir / "llm_chunking_review_report.json",
         "window_chars": window_chars,
         "max_segment_chars": max_chunk_chars,
+        "allow_source_fallback": True,
     }
     if llm_max_retries is not None:
         init_kwargs["max_retries"] = llm_max_retries

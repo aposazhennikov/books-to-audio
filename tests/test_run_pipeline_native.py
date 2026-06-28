@@ -129,6 +129,7 @@ def test_stage3_passes_language_and_review_report_to_smart_segmenter(
     assert captured["language"] == "uz"
     assert captured["review_report_path"] == book_dir / "llm_chunking_review_report.json"
     assert captured["max_segment_chars"] == 400
+    assert captured["allow_source_fallback"] is True
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["chunker"] == "llm-smart-segments"
     assert manifest["chapters"][0]["chunks"][0]["speaker"] == ""

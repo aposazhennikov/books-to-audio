@@ -245,7 +245,7 @@ class NormalizationPipeline:
         return book
 
     _TRAILING_HYPHEN = re.compile(r"([а-яёА-ЯЁ])[-(]\s*$")
-    _LEADING_LOWER = re.compile(r"^([а-яё])")
+    _LEADING_LOWER = re.compile(r"^([а-яё]+)")
 
     @staticmethod
     def _repair_cross_paragraph_hyphens(book: Book) -> int:
@@ -274,7 +274,7 @@ class NormalizationPipeline:
                     continue
 
                 cur.normalized_text = cur_text[:m_trail.start()] + m_trail.group(1)
-                nxt.normalized_text = nxt_text[m_lead.end():]
+                nxt.normalized_text = nxt_text[m_lead.end():].lstrip()
                 cur.normalized_text += m_lead.group(1)
                 joins += 1
 

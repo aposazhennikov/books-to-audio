@@ -106,6 +106,7 @@ class LlmSegmenterWindowMixin:
                     self._client.unload_model(model)
 
         if self._allow_source_fallback:
+            segments = _source_fallback_segments(window_text)
             self._failures.append(
                 SegmentationFailure(
                     chapter_index,
@@ -122,7 +123,8 @@ class LlmSegmenterWindowMixin:
                 chapter_index,
                 window_index,
             )
-            return _source_fallback_segments(window_text)
+            self._save_cache(chapter_index, window_index, window_text, segments)
+            return segments
 
         self._write_review_report()
         raise LlmSegmentationError(
@@ -130,4 +132,3 @@ class LlmSegmenterWindowMixin:
             f"chapter {chapter_index}, window {window_index}: {last_error}. "
             f"Review report: {self._review_report_path or '(not configured)'}"
         )
-

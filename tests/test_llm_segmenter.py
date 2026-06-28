@@ -1840,6 +1840,36 @@ def test_llm_voice_segmenter_writes_review_report_when_all_models_fail(tmp_path:
     ]
 
 
+def test_llm_voice_segmenter_caches_source_fallback_when_enabled(tmp_path: Path) -> None:
+    report_path = tmp_path / "review.json"
+    cache_dir = tmp_path / "cache"
+    text = "Full source text."
+    segmenter = LlmVoiceSegmenter(
+        language="en",
+        cache_dir=cache_dir,
+        review_report_path=report_path,
+        allow_source_fallback=True,
+        max_retries=1,
+    )
+    fake = _FakeClient({
+        PRIMARY_QWEN3_MODEL: {
+            "segments": [{"role": "narrator", "text": "lost", "intonation": "calm"}],
+        },
+        FALLBACK_QWEN3_MODEL: {
+            "segments": [{"role": "narrator", "text": "also lost", "intonation": "calm"}],
+        },
+    })
+    segmenter._client = fake
+
+    first = segmenter.segment_book(_book(text, language="en"))
+    second = segmenter.segment_book(_book(text, language="en"))
+
+    assert [row["text"] for row in first] == [text]
+    assert [row["text"] for row in second] == [text]
+    assert len(list(cache_dir.glob("segments_ch000_win000_*.json"))) == 1
+    assert fake.calls == [PRIMARY_QWEN3_MODEL, FALLBACK_QWEN3_MODEL]
+
+
 def test_llm_voice_segmenter_uses_source_fallback_when_enabled(tmp_path: Path) -> None:
     report_path = tmp_path / "review.json"
     text = "Full source text."

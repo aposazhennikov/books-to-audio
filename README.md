@@ -315,7 +315,9 @@ sudo apt-get install -y python3 python3-venv python3-pip \
   tesseract-ocr tesseract-ocr-eng tesseract-ocr-rus \
   tesseract-ocr-chi-sim tesseract-ocr-kaz tesseract-ocr-uzb \
   ffmpeg libegl1 libgl1 libxcb-cursor0 libxcb-icccm4 \
-  libxcb-keysyms1 libxcb-xinerama0 libxkbcommon-x11-0 \
+  libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+  libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 \
+  libxkbcommon-x11-0 \
   fonts-noto-cjk xvfb x11vnc novnc websockify
 ```
 

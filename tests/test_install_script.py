@@ -1028,8 +1028,14 @@ def test_system_package_hints_are_derived_from_native_command_argv(monkeypatch) 
     assert {
         "libxcb-cursor0",
         "libxcb-icccm4",
+        "libxcb-image0",
         "libxcb-keysyms1",
+        "libxcb-randr0",
+        "libxcb-render-util0",
+        "libxcb-shape0",
+        "libxcb-xfixes0",
         "libxcb-xinerama0",
+        "libxcb-xkb1",
     }.issubset(commands[1])
     assert "fonts-noto-cjk" in commands[1]
 

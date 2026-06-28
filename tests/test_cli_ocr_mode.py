@@ -146,6 +146,45 @@ def test_process_pdf_auto_rejects_unreadable_native_without_ocr(tmp_path: Path) 
     assert "OCR is required" in result.output
 
 
+def test_process_pdf_image_rejects_missing_readable_ocr_even_with_readable_native(
+    tmp_path: Path,
+) -> None:
+    pdf_file = tmp_path / "test.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4 dummy")
+
+    with patch(
+        "book_normalizer.cli.extract_pdf_with_ocr_mode"
+    ) as mock_extract, patch(
+        "book_normalizer.cli.select_pdf_text_for_mode"
+    ) as mock_select:
+        from book_normalizer.loaders.pdf_loader import PdfOcrCompareResult, PdfTextVariant
+
+        compare = PdfOcrCompareResult(
+            native=PdfTextVariant(kind="native", text="Readable native text"),
+            ocr=None,
+        )
+        mock_extract.return_value = compare
+        mock_select.return_value = (
+            compare.native,
+            {
+                "selected": "native",
+                "mode": OcrMode.IMAGE.value,
+                "native_unreadable": False,
+                "native_cyrillic_ratio": 1.0,
+                "ocr_len": 0,
+            },
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["process", str(pdf_file), "--ocr-mode", "image", "--out", str(tmp_path / "out")],
+        )
+
+    assert result.exit_code == 1
+    assert "Tesseract OCR did not produce readable Russian text" in result.output
+
+
 def test_process_can_run_optional_llm_normalization(tmp_path: Path) -> None:
     txt_file = tmp_path / "book.txt"
     txt_file.write_text("Alpha beta.", encoding="utf-8")

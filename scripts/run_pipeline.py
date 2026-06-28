@@ -73,7 +73,7 @@ Options:
     --assemble          Assemble audio chunks into chapter WAV files.
     --chapter N         Process only chapter N (1-based).
     --skip-stage1       Skip rule-based normalization (use existing TXT files).
-    --ocr-mode          PDF OCR mode: auto|off|force (default: auto).
+    --ocr-mode          PDF OCR mode: auto|image|off|force|compare (default: auto).
 """
 
 from __future__ import annotations
@@ -96,6 +96,7 @@ _SRC_DIR = str(Path(__file__).resolve().parent.parent / "src")
 sys.path.insert(0, _SRC_DIR)
 
 from book_normalizer.cli import process_command  # noqa: E402
+from book_normalizer.config import OcrMode  # noqa: E402
 from book_normalizer.languages import SUPPORTED_LANGUAGE_CODES, normalize_book_language  # noqa: E402
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL  # noqa: E402
 
@@ -985,7 +986,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--ocr-mode", default="auto",
-        choices=["auto", "off", "force"],
+        choices=[mode.value for mode in OcrMode],
         help="PDF OCR mode (default: auto).",
     )
     args = parser.parse_args(argv)

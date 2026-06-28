@@ -138,6 +138,35 @@ def test_pipeline_command_forwards_llm_audio_qa_options(
     assert captured["argv"][captured["argv"].index("--llm-audio-qa-min-score") + 1] == "88"
 
 
+def test_pipeline_command_accepts_image_ocr_mode(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    book_path = tmp_path / "book.pdf"
+    book_path.write_bytes(b"%PDF-1.4 dummy")
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_pipeline(argv: list[str]) -> None:
+        captured["argv"] = argv
+
+    monkeypatch.setattr(cli, "_run_pipeline_in_process", fake_run_pipeline)
+
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "pipeline",
+            str(book_path),
+            "--out",
+            str(tmp_path / "out"),
+            "--ocr-mode",
+            "image",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["argv"][captured["argv"].index("--ocr-mode") + 1] == "image"
+
+
 def test_pipeline_command_accepts_book_option_alias(
     tmp_path: Path,
     monkeypatch,

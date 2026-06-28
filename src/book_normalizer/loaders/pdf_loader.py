@@ -1452,7 +1452,8 @@ def extract_pdf_with_ocr_mode(
     """Extract PDF text according to the requested OCR mode.
 
     Uses a PDFMiner/pdfplumber structural pass first.  When OCR is requested,
-    Tesseract is applied to image-like regions or image-only pages.
+    Tesseract is applied to image-like regions or image-only pages. IMAGE mode
+    keeps native text only for diagnostics and always OCRs rendered pages.
     """
     loader = PdfLoader()
     resolved = path.resolve()
@@ -1508,7 +1509,21 @@ def extract_pdf_with_ocr_mode(
             resolved.name, dpi, psm, preprocess,
         )
         used_full_page_ocr = False
-        if _target_text_unreadable(native_text, language_code):
+        if mode == OcrMode.IMAGE:
+            logger.info(
+                "OCR image mode requested for '%s'; ignoring native text as a source.",
+                resolved.name,
+            )
+            ocr_text = _ocr_pdf_with_tesseract(
+                resolved,
+                lang=lang,
+                language_code=language_code,
+                dpi=dpi,
+                psm=psm,
+                preprocess=preprocess,
+            )
+            used_full_page_ocr = True
+        elif _target_text_unreadable(native_text, language_code):
             logger.info(
                 "Native PDF text is unreadable for language '%s'; using full-page OCR.",
                 language_code,
@@ -1680,6 +1695,14 @@ def select_pdf_text_for_mode(
     if mode == OcrMode.FORCE:
         stats["selected"] = "ocr"
         stats["reason"] = "ocr_mode=force"
+        return ocr, stats
+
+    if mode == OcrMode.IMAGE:
+        if stats["ocr_unreadable"]:
+            stats["reason"] = "image_mode_no_readable_ocr"
+            return native, stats
+        stats["selected"] = "ocr"
+        stats["reason"] = "image_mode_full_page_ocr"
         return ocr, stats
 
     # AUTO / COMPARE: prefer OCR when native text is empty, garbage, or clearly partial.

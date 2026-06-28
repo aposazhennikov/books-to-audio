@@ -612,7 +612,7 @@ class NormalizePage(QWidget):
         current = self._ocr_mode.currentData() or self._ocr_mode.currentText() or "auto"
         self._ocr_mode.blockSignals(True)
         self._ocr_mode.clear()
-        for mode in ("auto", "off", "force", "compare"):
+        for mode in ("auto", "image", "off", "force", "compare"):
             self._ocr_mode.addItem(t(f"norm.ocr_mode_{mode}"), mode)
         idx = self._ocr_mode.findData(current)
         self._ocr_mode.setCurrentIndex(idx if idx >= 0 else 0)

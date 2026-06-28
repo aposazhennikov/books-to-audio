@@ -83,7 +83,7 @@ def _ensure_pdf_text_selection_is_usable(
         ocr_stats.get("ocr_unreadable", int(ocr_stats.get("ocr_len") or 0) == 0)
     )
 
-    if mode == OcrMode.FORCE and ocr_unreadable:
+    if mode in {OcrMode.FORCE, OcrMode.IMAGE} and ocr_unreadable:
         raise ValueError(
             "Tesseract OCR did not produce readable Russian text. "
             "Check the Russian language pack or try different --ocr-dpi/--ocr-psm values."
@@ -284,7 +284,7 @@ for _production_command in (
 @click.option("--skip-stage1", is_flag=True, default=False, help="Use existing normalized chapter files.")
 @click.option(
     "--ocr-mode",
-    type=click.Choice(["auto", "off", "force"]),
+    type=click.Choice([m.value for m in OcrMode]),
     default="auto",
     show_default=True,
     help="PDF OCR mode.",
@@ -816,8 +816,11 @@ def process_command(
     output_dir = _build_output_dir(input_path, out).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # If PDF compare mode was used, write compare report artifacts now.
-    if input_path.suffix.lower() == ".pdf" and config.ocr_mode == OcrMode.COMPARE:
+    # If PDF diagnostic modes were used, write compare report artifacts now.
+    if input_path.suffix.lower() == ".pdf" and config.ocr_mode in {
+        OcrMode.COMPARE,
+        OcrMode.IMAGE,
+    }:
         try:
             write_pdf_compare_report(output_dir, compare, ocr_stats)
         except Exception as exc:  # pragma: no cover - defensive

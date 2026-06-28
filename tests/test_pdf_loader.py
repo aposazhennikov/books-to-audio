@@ -327,6 +327,24 @@ class TestOcrModeSelection:
         assert chosen.kind == "ocr"
         assert stats["selected"] == "ocr"
 
+    def test_select_pdf_text_for_mode_image_uses_ocr_even_when_native_is_readable(self) -> None:
+        compare = PdfOcrCompareResult(
+            native=PdfTextVariant(
+                kind="native",
+                text="Родной читаемый текст PDF слоя с русскими словами.",
+            ),
+            ocr=PdfTextVariant(
+                kind="ocr",
+                text="Распознанный текст с отрендеренной страницы книги.",
+            ),
+        )
+
+        chosen, stats = select_pdf_text_for_mode(compare, OcrMode.IMAGE)
+
+        assert chosen.kind == "ocr"
+        assert stats["selected"] == "ocr"
+        assert stats["reason"] == "image_mode_full_page_ocr"
+
     def test_select_pdf_text_for_mode_auto_falls_back_when_native_empty(self) -> None:
         compare = PdfOcrCompareResult(
             native=PdfTextVariant(kind="native", text="   "),
@@ -445,6 +463,41 @@ class TestOcrModeSelection:
         assert compare.ocr is not None
         assert compare.ocr.text == _good_ocr_text()
         assert compare.ocr.document_type == "ocr_full_page"
+
+    def test_extract_pdf_with_ocr_mode_image_uses_full_page_ocr_with_readable_native_layer(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        pdf_file = tmp_path / "readable_text_layer.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 dummy")
+        native_structure = PdfStructuredExtraction(
+            pages={
+                1: PdfPageExtraction(
+                    page_number=1,
+                    pdf_type="programmatic",
+                    page_content=["Родной текстовый слой достаточно читаем."],
+                ),
+            },
+            document_type="programmatic",
+        )
+
+        with (
+            patch("book_normalizer.loaders.pdf_loader._tesseract_available", return_value=True),
+            patch("book_normalizer.loaders.pdf_loader._extract_pdf_structured") as structured,
+            patch(
+                "book_normalizer.loaders.pdf_loader._ocr_pdf_with_tesseract",
+                return_value=_good_ocr_text(),
+            ) as full_page_ocr,
+        ):
+            structured.return_value = native_structure
+            compare = extract_pdf_with_ocr_mode(pdf_file, OcrMode.IMAGE)
+
+        assert compare.native.text.startswith("Родной")
+        assert compare.ocr is not None
+        assert compare.ocr.text == _good_ocr_text()
+        assert compare.ocr.document_type == "ocr_full_page"
+        full_page_ocr.assert_called_once()
+        assert [call.kwargs["run_ocr"] for call in structured.call_args_list] == [False]
 
     def test_extract_pdf_with_ocr_mode_does_not_repeat_full_page_ocr_for_unreadable_results(
         self,

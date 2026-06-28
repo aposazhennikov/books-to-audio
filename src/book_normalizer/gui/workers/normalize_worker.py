@@ -55,7 +55,7 @@ def _effective_pdf_extraction_mode(
     if tesseract_available or requested_mode == OcrMode.OFF:
         return requested_mode
 
-    if requested_mode == OcrMode.FORCE:
+    if requested_mode in {OcrMode.FORCE, OcrMode.IMAGE}:
         raise RuntimeError(
             t(
                 "norm.err_tesseract_missing_force",
@@ -78,7 +78,7 @@ def _ensure_pdf_selection_is_usable(
 
     ocr_unreadable = bool(stats.get("ocr_unreadable", stats.get("ocr_empty", True)))
 
-    if requested_mode == OcrMode.FORCE and ocr_unreadable:
+    if requested_mode in {OcrMode.FORCE, OcrMode.IMAGE} and ocr_unreadable:
         raise RuntimeError(t("norm.err_ocr_failed_force"))
 
     if stats.get("native_unreadable") and ocr_unreadable:
@@ -403,7 +403,11 @@ class NormalizeWorker(QThread):
                     language_code=self._book_language,
                 )
 
-                should_run_full_ocr = effective_ocr in {OcrMode.FORCE, OcrMode.COMPARE}
+                should_run_full_ocr = effective_ocr in {
+                    OcrMode.FORCE,
+                    OcrMode.COMPARE,
+                    OcrMode.IMAGE,
+                }
                 if effective_ocr == OcrMode.AUTO:
                     should_run_full_ocr = bool(stats.get("native_unreadable"))
 

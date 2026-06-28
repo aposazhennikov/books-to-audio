@@ -12,16 +12,19 @@ NORMALIZE_TRANSLATIONS: dict[str, dict[str, str]] = {'norm.no_file': {'en': 'No 
                             'ru': 'Влияет на язык OCR, безопасную нормализацию, метаданные чанков '
                                   'и язык синтеза Qwen/ComfyUI.'},
  'norm.ocr_mode': {'en': 'OCR Mode:', 'ru': 'Режим OCR:'},
- 'norm.ocr_mode_hint': {'en': 'auto = OCR if text unreadable | off = no OCR | force = always OCR | '
+ 'norm.ocr_mode_image': {'en': 'Image OCR', 'ru': 'OCR из картинки'},
+ 'norm.ocr_mode_hint': {'en': 'auto = OCR if text unreadable | image = rendered-page OCR | off = no OCR | force = always OCR | '
                               'compare = both',
-                        'ru': 'auto = OCR если текст нечитаем | off = без OCR | force = всегда OCR '
+                        'ru': 'auto = OCR если текст нечитаем | image = OCR из картинки | off = без OCR | force = всегда OCR '
                               '| compare = оба'},
  'norm.ocr_mode_tip': {'en': 'auto — OCR only if native text is empty or unreadable (Cyrillic < '
                              '30%)\n'
+                             'image — render pages and OCR images; native PDF text is diagnostic only\n'
                              'off — use only native PDF text extraction, no OCR\n'
                              'force — always run OCR, ignore native text\n'
                              'compare — run both, save comparison report',
                        'ru': 'auto — OCR только если текст пуст или нечитаем (кириллица < 30%)\n'
+                             'image — рендерить страницы и распознавать картинку; PDF text layer только для диагностики\n'
                              'off — только извлечение текста из PDF, без OCR\n'
                              'force — всегда запускать OCR, игнорировать встроенный текст\n'
                              'compare — запустить оба способа, сохранить отчёт'},

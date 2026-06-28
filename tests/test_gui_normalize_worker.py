@@ -53,6 +53,14 @@ def test_gui_pdf_force_requires_tesseract() -> None:
         )
 
 
+def test_gui_pdf_image_requires_tesseract() -> None:
+    with pytest.raises(RuntimeError, match="Tesseract"):
+        _effective_pdf_extraction_mode(
+            OcrMode.IMAGE,
+            tesseract_available=False,
+        )
+
+
 def test_gui_pdf_keeps_requested_mode_when_tesseract_available() -> None:
     assert (
         _effective_pdf_extraction_mode(

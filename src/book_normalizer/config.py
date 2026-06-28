@@ -15,6 +15,7 @@ class OcrMode(str, Enum):
     AUTO = "auto"
     FORCE = "force"
     COMPARE = "compare"
+    IMAGE = "image"
 
 
 class AppConfig(BaseModel):

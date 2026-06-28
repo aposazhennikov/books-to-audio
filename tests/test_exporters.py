@@ -8,7 +8,7 @@ from pathlib import Path
 from book_normalizer.exporters.json_exporter import JsonExporter
 from book_normalizer.exporters.qwen_exporter import QwenExporter
 from book_normalizer.exporters.txt_exporter import TxtExporter
-from book_normalizer.models.book import Book
+from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
 
 
 class TestTxtExporter:
@@ -41,6 +41,20 @@ class TestTxtExporter:
         exporter = TxtExporter()
         exporter.export(sample_book, out)
         assert out.is_dir()
+
+    def test_repairs_pdf_word_wraps_in_chapter_files(self, tmp_path: Path) -> None:
+        para = Paragraph(
+            raw_text="",
+            normalized_text="выдала полуоргани(\n\nческий механизм из(за стены",
+            index_in_chapter=0,
+        )
+        book = Book(metadata=Metadata(), chapters=[Chapter(title="Test", index=0, paragraphs=[para])])
+
+        TxtExporter().export(book, tmp_path)
+
+        content = (tmp_path / "001_chapter_01.txt").read_text(encoding="utf-8")
+        assert "полуорганический механизм из-за стены" in content
+        assert "(\n" not in content
 
 
 class TestJsonExporter:
@@ -94,3 +108,17 @@ class TestQwenExporter:
         content = (tmp_path / "qwen_full.txt").read_text(encoding="utf-8")
         assert "\x00" not in content
         assert "\n\n\n" not in content
+
+    def test_repairs_pdf_word_wraps_for_tts_chunks(self, tmp_path: Path) -> None:
+        para = Paragraph(
+            raw_text="",
+            normalized_text="выдала полуоргани(\n\nческий механизм из(за стены",
+            index_in_chapter=0,
+        )
+        book = Book(metadata=Metadata(), chapters=[Chapter(title="Test", index=0, paragraphs=[para])])
+
+        QwenExporter().export(book, tmp_path)
+
+        content = (tmp_path / "qwen_chapter_001.txt").read_text(encoding="utf-8")
+        assert "полуорганический механизм из-за стены" in content
+        assert "(\n" not in content

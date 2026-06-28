@@ -6,6 +6,10 @@ import logging
 from pathlib import Path
 
 from book_normalizer.models.book import Book
+from book_normalizer.normalization.whitespace import (
+    repair_hyphenated_words,
+    repair_pdf_split_russian_words,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +44,7 @@ class TxtExporter:
             chapter_num = chapter.index + 1
             filename = f"{chapter_num:03d}_chapter_{chapter_num:02d}.txt"
             chapter_path = output_dir / filename
-            chapter_text = chapter.normalized_text or chapter.raw_text
+            chapter_text = self._sanitize_export_text(chapter.normalized_text or chapter.raw_text)
             chapter_path.write_text(chapter_text, encoding="utf-8")
             created.append(chapter_path)
             logger.debug("Wrote chapter '%s' to %s", chapter.title, chapter_path)
@@ -59,6 +63,11 @@ class TxtExporter:
                 parts.append(f"{'=' * 60}")
                 parts.append("")
             text = chapter.normalized_text or chapter.raw_text
-            parts.append(text)
+            parts.append(TxtExporter._sanitize_export_text(text))
             parts.append("")
         return "\n".join(parts)
+
+    @staticmethod
+    def _sanitize_export_text(text: str) -> str:
+        text = repair_hyphenated_words(text)
+        return repair_pdf_split_russian_words(text)

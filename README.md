@@ -214,8 +214,10 @@ multimodal audio reviewer, plus Qwen3 ASR and Qwen3 ForcedAligner. Use
 `--audio-qa-model omni` for the Omni reviewer only, or `--audio-qa-model all`
 to also include the Russian emotion classifier.
 
-If you serve Omni locally through vLLM/OpenAI-compatible API, point the pipeline
-at that endpoint with `--llm-audio-qa-endpoint`.
+By default `--llm-audio-qa` loads Qwen3-Omni directly through
+Transformers/qwen-omni-utils. If you serve Omni locally through a
+vLLM/OpenAI-compatible API instead, point the pipeline at that endpoint with
+`--llm-audio-qa-endpoint`.
 
 Run diagnostics:
 
@@ -485,13 +487,14 @@ normalize-book pipeline books/mybook.pdf \
   --workflow comfyui_workflows/qwen3_tts_template.json \
   --quality-loop \
   --llm-audio-qa \
-  --llm-audio-qa-model Qwen/Qwen3-Omni-30B-A3B-Instruct \
-  --llm-audio-qa-endpoint http://127.0.0.1:8801/v1
+  --llm-audio-qa-model models/audio_qa/Qwen3-Omni-30B-A3B-Instruct
 ```
 
 Bad Omni reviews are written to `llm_audio_qa_report.json`, annotated in
 `chunks_manifest_v2.json`, and sent back through the retry loop with adjusted
-generation options.
+generation options. To use a running vLLM/OpenAI-compatible server instead of
+the direct Transformers backend, add
+`--llm-audio-qa-endpoint http://127.0.0.1:8801/v1`.
 
 Assemble already synthesized chunks:
 

@@ -97,7 +97,7 @@ VERIFY_MODULES = {
         "rich",
     ],
     "audio": ["pydub", "soundfile"],
-    "audio-qa-runtime": ["qwen_omni_utils", "vllm"],
+    "audio-qa-runtime": ["accelerate", "qwen_omni_utils", "transformers", "vllm"],
     "asr": ["faster_whisper", "jiwer", "rapidfuzz"],
     "dev": ["pytest", "ruff"],
     "gui": ["PyQt6"],

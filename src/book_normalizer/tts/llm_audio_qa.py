@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import importlib.util
 import json
 import re
 import time
@@ -193,6 +194,99 @@ class OpenAICompatibleAudioBackend:
         return review_from_json(content, config=self.config)
 
 
+class TransformersOmniAudioBackend:
+    """Direct local Qwen3-Omni backend for hosts where vLLM offload is not viable."""
+
+    name = "transformers-qwen3-omni"
+
+    def __init__(self, config: LlmAudioQaConfig) -> None:
+        self.config = config
+        self.model = config.model
+        self._model: Any | None = None
+        self._processor: Any | None = None
+        self._process_mm_info: Any | None = None
+
+    def review_chunk(
+        self,
+        audio_path: Path,
+        *,
+        expected_text: str,
+        language: str,
+        expected_context: dict[str, Any],
+    ) -> LlmAudioQaReview:
+        if audio_path.stat().st_size > self.config.max_audio_bytes:
+            raise RuntimeError(f"Audio chunk is too large for LLM QA: {audio_path.stat().st_size} bytes.")
+        model, processor, process_mm_info = self._load()
+        prompt = _build_prompt(self.config.prompt, expected_text, language, expected_context)
+        conversation = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "audio", "audio": str(audio_path.resolve())},
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ]
+        use_audio_in_video = False
+        text = processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
+        audios, images, videos = process_mm_info(conversation, use_audio_in_video=use_audio_in_video)
+        inputs = processor(
+            text=text,
+            audio=audios,
+            images=images,
+            videos=videos,
+            return_tensors="pt",
+            padding=True,
+            use_audio_in_video=use_audio_in_video,
+        )
+        inputs = inputs.to(model.device).to(model.dtype)
+
+        try:
+            import torch
+        except ImportError as exc:  # pragma: no cover - optional runtime dependency
+            raise RuntimeError("Transformers Qwen3-Omni audio QA requires torch.") from exc
+
+        with torch.inference_mode():
+            text_ids, _audio = model.generate(
+                **inputs,
+                return_audio=False,
+                thinker_return_dict_in_generate=True,
+                use_audio_in_video=use_audio_in_video,
+                max_new_tokens=768,
+            )
+        sequences = getattr(text_ids, "sequences", text_ids)
+        decoded = processor.batch_decode(
+            sequences[:, inputs["input_ids"].shape[1] :],
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )
+        content = decoded[0] if decoded else ""
+        return review_from_json(content, config=self.config)
+
+    def _load(self) -> tuple[Any, Any, Any]:
+        if self._model is not None and self._processor is not None and self._process_mm_info is not None:
+            return self._model, self._processor, self._process_mm_info
+        try:
+            from qwen_omni_utils import process_mm_info
+            from transformers import Qwen3OmniMoeForConditionalGeneration, Qwen3OmniMoeProcessor
+        except ImportError as exc:  # pragma: no cover - optional runtime dependency
+            raise RuntimeError(
+                "Transformers Qwen3-Omni audio QA requires qwen_omni_utils and a "
+                "Qwen3-Omni-capable transformers build. Install with "
+                "`python install.py --with-audio-qa-runtime`."
+            ) from exc
+        model_kwargs: dict[str, Any] = {"dtype": "auto", "device_map": "auto"}
+        if importlib.util.find_spec("flash_attn") is not None:
+            model_kwargs["attn_implementation"] = "flash_attention_2"
+        model = Qwen3OmniMoeForConditionalGeneration.from_pretrained(self.config.model, **model_kwargs)
+        if hasattr(model, "disable_talker"):
+            model.disable_talker()
+        self._model = model
+        self._processor = Qwen3OmniMoeProcessor.from_pretrained(self.config.model)
+        self._process_mm_info = process_mm_info
+        return self._model, self._processor, self._process_mm_info
+
+
 @dataclass
 class LlmAudioQaChunkResult:
     """LLM audio QA result for one manifest chunk."""
@@ -300,7 +394,7 @@ def run_llm_audio_qa(
     cfg = config or LlmAudioQaConfig()
     manifest_record = ensure_v2_manifest(manifest).to_record()
     language = normalize_book_language(cfg.language or manifest_record.get("language"))
-    backend_obj = backend or OpenAICompatibleAudioBackend(cfg)
+    backend_obj = backend or default_llm_audio_qa_backend(cfg)
     result = LlmAudioQaResult(
         backend=backend_obj.name,
         model=backend_obj.model,
@@ -341,6 +435,13 @@ def run_llm_audio_qa(
                 )
             )
     return result
+
+
+def default_llm_audio_qa_backend(config: LlmAudioQaConfig) -> LlmAudioQaBackend:
+    """Select the local audio QA backend from the configured endpoint."""
+    if config.endpoint:
+        return OpenAICompatibleAudioBackend(config)
+    return TransformersOmniAudioBackend(config)
 
 
 def annotate_manifest_with_llm_audio_qa(

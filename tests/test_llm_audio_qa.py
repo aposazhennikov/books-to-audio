@@ -6,7 +6,10 @@ from book_normalizer.tts.llm_audio_qa import (
     LlmAudioQaConfig,
     LlmAudioQaIssue,
     LlmAudioQaReview,
+    OpenAICompatibleAudioBackend,
+    TransformersOmniAudioBackend,
     annotate_manifest_with_llm_audio_qa,
+    default_llm_audio_qa_backend,
     run_llm_audio_qa,
 )
 
@@ -87,6 +90,16 @@ def test_llm_audio_qa_records_passed_review(tmp_path: Path) -> None:
     assert block["score"] == 94
     assert "Звучит естественно" in block["review"]
     assert backend.calls == [(audio_path, "Привет, мир.")]
+
+
+def test_default_llm_audio_qa_backend_uses_transformers_without_endpoint() -> None:
+    direct_backend = default_llm_audio_qa_backend(LlmAudioQaConfig(model="local-omni"))
+    endpoint_backend = default_llm_audio_qa_backend(
+        LlmAudioQaConfig(model="local-omni", endpoint="http://127.0.0.1:8801/v1")
+    )
+
+    assert isinstance(direct_backend, TransformersOmniAudioBackend)
+    assert isinstance(endpoint_backend, OpenAICompatibleAudioBackend)
 
 
 def test_llm_audio_qa_failed_review_resets_chunk_and_sets_retry_options(tmp_path: Path) -> None:

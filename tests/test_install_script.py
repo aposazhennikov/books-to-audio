@@ -66,7 +66,12 @@ def test_installer_exposes_audio_qa_runtime_extra_flag(monkeypatch) -> None:
     from install import VERIFY_MODULES, _resolve_extras
 
     assert _resolve_extras(args) == {"audio-qa-runtime"}
-    assert VERIFY_MODULES["audio-qa-runtime"] == ["qwen_omni_utils", "vllm"]
+    assert VERIFY_MODULES["audio-qa-runtime"] == [
+        "accelerate",
+        "qwen_omni_utils",
+        "transformers",
+        "vllm",
+    ]
 
 
 def test_installer_default_profile_includes_perceptual_qa() -> None:

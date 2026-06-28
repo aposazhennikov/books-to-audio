@@ -32,7 +32,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from book_normalizer.chunking.dialogue_invariants import assert_dialogue_chunk_boundaries
 from book_normalizer.chunking.manifest import chunks_to_v2_manifest
-from book_normalizer.chunking.voice_splitter import chunk_annotated_book
+from book_normalizer.chunking.voice_splitter import (
+    build_chunks_from_segments,
+    extract_segments_book,
+)
 from book_normalizer.dialogue.attribution import SpeakerMode, create_attributor
 from book_normalizer.dialogue.detector import DialogueDetector
 from book_normalizer.llm.model_router import PRIMARY_QWEN3_MODEL
@@ -128,22 +131,19 @@ def export_heuristic(
         if args.max_chunk_chars is not None
         else HEURISTIC_DEFAULT_MAX_CHUNK_CHARS
     )
-    chunked = chunk_annotated_book(annotated, max_chunk_chars=max_chunk_chars)
-    total_chunks = sum(len(v) for v in chunked.values())
-    print(f"Total chunks: {total_chunks}")
-
-    chunks = []
     chapter_titles = {chapter.index: chapter.title for chapter in book.chapters}
-    for ch_idx in sorted(chunked.keys()):
-        for chunk in chunked[ch_idx]:
-            chunks.append({
-                "chapter_index": chunk.chapter_index,
-                "chapter_title": chapter_titles.get(chunk.chapter_index, ""),
-                "chunk_index": chunk.index,
-                "role": chunk.role.value,
-                "voice_id": chunk.voice_id,
-                "text": chunk.text,
-            })
+    segments = [
+        segment.model_dump()
+        for segment in extract_segments_book(annotated)
+    ]
+    chunks = build_chunks_from_segments(
+        segments,
+        max_chunk_chars=max_chunk_chars,
+    )
+    print(f"Total chunks: {len(chunks)}")
+    for chunk in chunks:
+        ch_idx = int(chunk.get("chapter_index") or 0)
+        chunk["chapter_title"] = chunk.get("chapter_title") or chapter_titles.get(ch_idx, "")
 
     manifest = chunks_to_v2_manifest(
         chunks,

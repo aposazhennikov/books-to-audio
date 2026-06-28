@@ -19,11 +19,13 @@ from book_normalizer.loaders.pdf_loader import (
     _classify_pdf_page,
     _extract_pdf_structured,
     _looks_like_toc,
+    _native_text_is_sparse_title_page,
     _postprocess_ocr_text,
     _prepare_ocr_page_images,
     _repair_ocr_cross_segment_breaks,
     _should_keep_ocr_text,
     _should_use_fast_native_pdf_extraction,
+    _strip_native_page_number,
     _table_converter,
     extract_pdf_with_ocr_mode,
     select_pdf_text_for_mode,
@@ -1108,6 +1110,32 @@ class TestOcrImagePreparation:
         title = "\u0415 \u0417\u0410\u0422\u0415\u0420\u042f\u041d\u041d\u042b\u0415"
 
         assert _should_keep_ocr_text(title) is True
+
+    def test_sparse_native_title_page_accepts_numbered_work_title(self) -> None:
+        native = (
+            "\u0034\u0039\u0033\n"
+            "\u0037\u002e \u0412 "
+            "\u043f\u043e\u0438\u0441\u043a\u0430\u0445 "
+            "\u0441\u0438\u043b\u044b\n"
+        )
+
+        assert _strip_native_page_number(native) == (
+            "\u0037\u002e \u0412 "
+            "\u043f\u043e\u0438\u0441\u043a\u0430\u0445 "
+            "\u0441\u0438\u043b\u044b"
+        )
+        assert _native_text_is_sparse_title_page(native) is True
+
+    def test_sparse_native_title_page_rejects_body_text(self) -> None:
+        native = (
+            "\u0034\u0039\u0033\n"
+            "\u0421\u0435\u0440\u0433\u0435\u0439 \u0432\u044b\u0448\u0435\u043b "
+            "\u0438\u0437 \u0441\u043d\u0430 \u0442\u044f\u0436\u0435\u043b\u043e. "
+            "\u041e\u043d \u0434\u043e\u043b\u0433\u043e \u0432\u0441\u043f\u043e\u043c\u0438\u043d\u0430\u043b "
+            "\u043f\u0440\u043e\u0448\u0435\u0434\u0448\u0438\u0439 \u0434\u0435\u043d\u044c."
+        )
+
+        assert _native_text_is_sparse_title_page(native) is False
 
     def test_should_keep_ocr_text_rejects_short_title_like_noise(self) -> None:
         debris = "\u043f\u0440\u043e\u0433\u0430 33772\n\n\u0421\u0415\u0422\u042f\n\n>.\n\n\u044c"

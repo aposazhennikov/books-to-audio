@@ -1352,6 +1352,38 @@ def _ocr_text_is_short_title(text: str, language_code: str = "ru") -> bool:
     )
 
 
+def _strip_native_page_number(text: str) -> str:
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    if len(lines) >= 2 and re.fullmatch(r"\d{1,4}", lines[0]):
+        return "\n".join(lines[1:]).strip()
+    return text.strip()
+
+
+def _native_text_is_sparse_title_page(text: str, language_code: str = "ru") -> bool:
+    """Return true for short native text overlays that only contain a title page."""
+    stripped = _strip_native_page_number(text)
+    if not stripped or len(stripped) > 120:
+        return False
+    if "\n" in stripped:
+        return False
+    if target_script_char_count(stripped, language_code) < 8:
+        return False
+    if target_script_ratio(stripped, language_code) < 0.65:
+        return False
+    if _ocr_symbol_noise_ratio(stripped) > 0.12:
+        return False
+    if any(mark in stripped for mark in (";", ":", "!", "?", "…", "—", "–", "«", "»", "(", ")")):
+        return False
+
+    title = re.sub(r"^\s*\d{1,2}\.\s+", "", stripped)
+    words = _cyrillic_words(title)
+    if not 1 <= len(words) <= 8:
+        return False
+    if any(len(word) <= 1 and word.upper() != word for word in words):
+        return False
+    return any(len(word) >= 4 for word in words)
+
+
 def _should_keep_ocr_text(text: str, language_code: str = "ru") -> bool:
     """Decide whether an OCR page/segment is useful book text."""
     if not _ocr_text_is_usable(text, language_code) and not _ocr_text_is_short_title(
@@ -1450,6 +1482,7 @@ def _ocr_pdf_with_tesseract(
             pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csGRAY)
             img = Image.frombytes("L", [pix.width, pix.height], pix.samples)
             segments = _prepare_ocr_page_images(img)
+            kept_page_text = False
 
             for segment_num, segment in enumerate(segments, start=1):
                 page_text = _ocr_pil_image_with_tesseract(
@@ -1473,6 +1506,17 @@ def _ocr_pdf_with_tesseract(
                     )
                     continue
                 pages.append(page_text)
+                kept_page_text = True
+
+            if not kept_page_text:
+                native_title = _strip_native_page_number(page.get_text("text"))
+                if _native_text_is_sparse_title_page(native_title, language_code):
+                    logger.debug(
+                        "Page %d kept sparse native title after empty image OCR: %r.",
+                        page_num + 1,
+                        native_title,
+                    )
+                    pages.append(native_title)
 
             if (page_num + 1) % 20 == 0 or page_num == total - 1:
                 logger.info("OCR progress: %d/%d pages", page_num + 1, total)

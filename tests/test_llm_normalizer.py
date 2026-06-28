@@ -92,6 +92,39 @@ class TestTextPreservationValidator:
         result = self.validator.validate(original, corrected)
         assert result.is_valid, f"Should accept punctuation fix: {result.issues}"
 
+    def test_rejects_repeated_comma_introduced_by_llm(self) -> None:
+        """LLM must not introduce punctuation artifacts that break TTS phrasing."""
+        original = "— Это же Геркулес, — закричали воины."
+        corrected = "— Это же Геркулес,, закричали воины."
+
+        result = self.validator.validate(original, corrected)
+
+        assert not result.is_valid
+        assert result.accepted_text == original
+        assert any("punctuation artifact" in issue for issue in result.issues)
+
+    def test_rejects_dialogue_dash_loss(self) -> None:
+        """Dialogue dash count is structural for role/casting detection."""
+        original = "— Гера, ты об аккумуляторах помнишь? — тихо спросил Сергей."
+        corrected = "— Гера, ты об аккумуляторах помнишь? тихо спросил Сергей."
+
+        result = self.validator.validate(original, corrected)
+
+        assert not result.is_valid
+        assert result.accepted_text == original
+        assert any("Dialogue dash count changed" in issue for issue in result.issues)
+
+    def test_rejects_quote_marker_loss(self) -> None:
+        """Quoted thought/dialogue markers must survive LLM normalization."""
+        original = "Греки с ужасом смотрели на «погибель» персидского войска."
+        corrected = "Греки с ужасом смотрели на погибель персидского войска."
+
+        result = self.validator.validate(original, corrected)
+
+        assert not result.is_valid
+        assert result.accepted_text == original
+        assert any("Quote marker count changed" in issue for issue in result.issues)
+
     def test_accepts_pdf_split_word_repairs(self) -> None:
         """Joining native-PDF word fragments should count as preservation."""
         original = "Нам придется расхлё бывать это после абор дажном бою."

@@ -134,6 +134,7 @@ class TextPreservationValidator:
             issues.append(
                 f"Too many sentences added: ratio {sentence_ratio:.3f} > {self._max_sr:.3f}"
             )
+        issues.extend(_punctuation_structure_issues(original, corrected))
 
         # When there are issues, also report word-level statistics and a few
         # concrete mismatches to aid debugging.
@@ -208,6 +209,9 @@ class TextPreservationValidator:
 
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
 _SENTENCE_END_RE = re.compile(r"[.!?…]+\s+|\n")
+_OBVIOUS_PUNCTUATION_ARTIFACT_RE = re.compile(r",,{1,}|[;:]{2,}|[!?]{4,}|\.{4,}")
+_DIALOGUE_DASH_RE = re.compile(r"(^|[\n\r\s])[—–-]\s*(?=\S)")
+_QUOTE_CHARS = "\"'«»“”„"
 
 
 def _char_similarity(a: str, b: str) -> float:
@@ -271,3 +275,38 @@ def _sentence_ratio(original: str, corrected: str) -> float:
     if orig == 0:
         return 1.0
     return _sentence_count(corrected) / orig
+
+
+def _punctuation_structure_issues(original: str, corrected: str) -> list[str]:
+    """Return issues for punctuation changes that break audiobook structure.
+
+    The validator allows small punctuation edits, but direct-speech boundaries
+    are structural data for casting and TTS. A result with repeated commas or
+    changed dialogue/quote marker counts is unsafe even when words are preserved.
+    """
+    issues: list[str] = []
+
+    artifact = _OBVIOUS_PUNCTUATION_ARTIFACT_RE.search(corrected)
+    if artifact:
+        issues.append(f"Suspicious punctuation artifact introduced: {artifact.group()!r}")
+
+    original_dialogue_dashes = len(_DIALOGUE_DASH_RE.findall(original))
+    corrected_dialogue_dashes = len(_DIALOGUE_DASH_RE.findall(corrected))
+    if original_dialogue_dashes and original_dialogue_dashes != corrected_dialogue_dashes:
+        issues.append(
+            "Dialogue dash count changed: "
+            f"original={original_dialogue_dashes}, corrected={corrected_dialogue_dashes}"
+        )
+
+    original_quotes = _count_quote_markers(original)
+    corrected_quotes = _count_quote_markers(corrected)
+    if original_quotes and original_quotes != corrected_quotes:
+        issues.append(
+            f"Quote marker count changed: original={original_quotes}, corrected={corrected_quotes}"
+        )
+
+    return issues
+
+
+def _count_quote_markers(text: str) -> int:
+    return sum(1 for char in text if char in _QUOTE_CHARS)

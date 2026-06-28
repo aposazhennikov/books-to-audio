@@ -53,7 +53,13 @@ def normalize_repeated_commas(text: str) -> str:
 
 
 def normalize_pdf_parenthesis_hyphens(text: str) -> str:
-    """Repair PDF extraction cases where an in-word hyphen becomes ``(``."""
+    """Repair PDF extraction cases where an in-word hyphen becomes ``(``.
+
+    Native PDF text layers can also expose a wrapped word as ``варень( ем``.
+    That is a word break marker, not a real parenthesis or hyphen, so join it
+    before the text reaches LLM normalization or TTS chunking.
+    """
+    text = re.sub(r"(?<=[A-Za-z\u0400-\u04ff])\([ \t\r\n]+(?=[A-Za-z\u0400-\u04ff])", "", text)
     return re.sub(r"(?<=[0-9A-Za-z\u0400-\u04ff])\((?=[0-9A-Za-z\u0400-\u04ff])", "-", text)
 
 

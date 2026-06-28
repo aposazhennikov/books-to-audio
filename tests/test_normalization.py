@@ -71,6 +71,13 @@ class TestPunctuation:
 
         assert normalize_pdf_parenthesis_hyphens(source) == "Применю-ка террористов-сантехников 15-й Аркан"
 
+    def test_normalize_pdf_parenthesis_split_words(self) -> None:
+        source = "чай с малиновым варень( ем, в комнате при( торно пахло, церк( ви"
+
+        assert normalize_pdf_parenthesis_hyphens(source) == (
+            "чай с малиновым вареньем, в комнате приторно пахло, церкви"
+        )
+
     def test_normalize_pdf_parenthesis_hyphens_preserves_normal_parentheses(self) -> None:
         source = "Сергей (похоже) молчал."
 
@@ -190,3 +197,10 @@ class TestNormalizationPipeline:
         result = pipeline.normalize_text("Применю(ка свою Звезду. Это 15(й Аркан.")
 
         assert result == "Применю-ка свою Звезду. Это пятнадцатый Аркан."
+
+    def test_pipeline_repairs_pdf_parenthesis_split_words_before_tts(self) -> None:
+        pipeline = NormalizationPipeline()
+
+        result = pipeline.normalize_text("Сергей пил чай с малиновым варень( ем. Фюрер (он же вождь) ждал.")
+
+        assert result == "Сергей пил чай с малиновым вареньем. Фюрер (он же вождь) ждал."

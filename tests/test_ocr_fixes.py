@@ -106,6 +106,21 @@ def test_ocr_artifacts_remove_spurious_period_after_single_letter() -> None:
     assert fix_ocr_artifacts(text) == "Все гораздо хуже. К Земле идёт Имперский флот."
 
 
+def test_ocr_artifacts_restore_dropped_initial_from_nearby_name() -> None:
+    text = "ергей понимал, что спит. Сергей вспомнил сон."
+    assert fix_ocr_artifacts(text) == "Сергей понимал, что спит. Сергей вспомнил сон."
+
+
+def test_ocr_artifacts_restore_dropped_initial_without_name_hardcode() -> None:
+    text = "лександр вошёл в комнату. Александр кивнул."
+    assert fix_ocr_artifacts(text) == "Александр вошёл в комнату. Александр кивнул."
+
+
+def test_ocr_artifacts_do_not_restore_dropped_initial_without_context() -> None:
+    text = "ергей понимал, что спит."
+    assert fix_ocr_artifacts(text) == text
+
+
 def test_ocr_artifacts_restores_obvious_chernaya_kniga_direction() -> None:
     text = "они должны бежать не от «Черной Книги», а ней."
     assert fix_ocr_artifacts(text) == "они должны бежать не от «Черной Книги», а за ней."

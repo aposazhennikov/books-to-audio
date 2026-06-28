@@ -85,6 +85,8 @@ _GLUED_SHORT_RU_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?<![\w\u0400-\u04ff])Ноты(?=\s+же(?![\w\u0400-\u04ff]))"), "Но ты"),
 )
 
+_CAPITALIZED_CYRILLIC_WORD_RE = re.compile(r"\b[А-ЯЁ][а-яё]{4,}\b")
+
 # Two or more stray single characters separated by spaces (OCR junk).
 _SCATTERED_CHARS = re.compile(
     r"\b([а-яёА-ЯЁa-zA-Z])\s+([а-яёА-ЯЁa-zA-Z])\s+([а-яёА-ЯЁa-zA-Z])\b"
@@ -263,6 +265,25 @@ def fix_glued_short_russian_words(text: str) -> str:
     return text
 
 
+def fix_dropped_initials_from_context(text: str) -> str:
+    """Restore a dropped first letter when the full capitalized word is nearby."""
+
+    candidates = sorted(
+        set(_CAPITALIZED_CYRILLIC_WORD_RE.findall(text)),
+        key=len,
+        reverse=True,
+    )
+    for candidate in candidates:
+        suffix = candidate[1:].casefold()
+        if len(suffix) < 4:
+            continue
+        pattern = re.compile(
+            rf"(?<![А-Яа-яЁё-]){re.escape(suffix)}(?![А-Яа-яЁё-])"
+        )
+        text = pattern.sub(candidate, text)
+    return text
+
+
 _TRAILING_JUNK = re.compile(
     r"\s+[a-zA-Z.,;:!?\-]{1,3}\s*$"
 )
@@ -299,6 +320,7 @@ def fix_ocr_artifacts(text: str) -> str:
     text = _LONE_GARBAGE.sub("", text)
     text = fix_square_bracket_ocr_artifacts(text)
     text = fix_glued_short_russian_words(text)
+    text = fix_dropped_initials_from_context(text)
     text = fix_russian_particle_hyphens(text)
 
     # Rejoin words broken by hyphenation across lines.

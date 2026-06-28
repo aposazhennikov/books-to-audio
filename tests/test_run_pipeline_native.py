@@ -463,6 +463,59 @@ def test_stage3_llm_uses_first_endpoint_from_endpoint_pool(
     assert captured["endpoint"] == "http://127.0.0.1:11434"
 
 
+def test_stage3_parallel_llm_chunking_round_robins_endpoints_and_preserves_order(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pipeline = _load_run_pipeline()
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    (book_dir / "001_chapter_01.txt").write_text("First.", encoding="utf-8")
+    (book_dir / "002_chapter_02.txt").write_text("Second.", encoding="utf-8")
+    endpoints: list[str] = []
+
+    class _FakeSegmenter:
+        def __init__(self, **kwargs: object) -> None:
+            endpoints.append(str(kwargs["endpoint"]))
+
+        def segment_book(self, book):  # noqa: ANN001
+            chapter = book.chapters[0]
+            return [
+                {
+                    "chapter_index": chapter.index,
+                    "segment_index": 0,
+                    "language": "ru",
+                    "role": "narrator",
+                    "voice_id": "narrator_calm",
+                    "intonation": "calm",
+                    "section_kind": "narration",
+                    "text": chapter.paragraphs[0].raw_text,
+                }
+            ]
+
+    import book_normalizer.chunking.llm_segmenter as llm_segmenter
+
+    monkeypatch.setattr(llm_segmenter, "LlmVoiceSegmenter", _FakeSegmenter)
+
+    manifest_path = pipeline.run_stage3_llm_chunking(
+        book_dir,
+        "http://127.0.0.1:11434,http://127.0.0.1:11435",
+        "model",
+        "ru",
+        chapter_filter=None,
+        llm_max_retries=1,
+        max_chunk_chars=2400,
+        llm_chunk_workers=2,
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert sorted(endpoints) == ["http://127.0.0.1:11434", "http://127.0.0.1:11435"]
+    assert [
+        chapter["chunks"][0]["text"]
+        for chapter in manifest["chapters"]
+    ] == ["First.", "Second."]
+
+
 def test_stage3_heuristic_invokes_native_exporter_and_filters_chapter(
     tmp_path: Path,
     monkeypatch,

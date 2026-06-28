@@ -211,6 +211,13 @@ for _production_command in (
     show_default=True,
     help="Chunking mode: LLM smart markup or offline heuristic chunks.",
 )
+@click.option(
+    "--llm-chunk-workers",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Parallel LLM chunking workers.",
+)
 @click.option("--max-chunk-chars", type=int, default=2400, show_default=True, help="Soft max chars per LLM chunk.")
 @click.option("--synthesize", is_flag=True, default=False, help="Run ComfyUI synthesis after chunking.")
 @click.option("--synthesis-workers", type=int, default=1, show_default=True, help="Parallel ComfyUI synthesis workers.")
@@ -286,6 +293,7 @@ def pipeline_command(
     llm_normalize_workers: int,
     llm_normalize_start_chapter: int | None,
     chunk_mode: str,
+    llm_chunk_workers: int,
     max_chunk_chars: int,
     synthesize: bool,
     synthesis_workers: int,
@@ -333,6 +341,8 @@ def pipeline_command(
             argv.extend(["--llm-normalize-workers", str(llm_normalize_workers)])
         if llm_normalize_start_chapter is not None:
             argv.extend(["--llm-normalize-start-chapter", str(llm_normalize_start_chapter)])
+    if llm_chunk_workers != 1:
+        argv.extend(["--llm-chunk-workers", str(llm_chunk_workers)])
     if synthesize:
         argv.append("--synthesize")
         if not workflow:

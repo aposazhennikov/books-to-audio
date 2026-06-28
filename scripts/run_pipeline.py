@@ -338,6 +338,7 @@ def run_stage3_llm_chunking(
     chapter_filter: int | None,
     llm_max_retries: int | None,
     max_chunk_chars: int,
+    llm_chunk_workers: int = 1,
 ) -> Path:
     """Create v2 chunks manifest using speaker-aware LLM segmentation."""
     from book_normalizer.chunking.dialogue_invariants import assert_dialogue_chunk_boundaries
@@ -348,21 +349,17 @@ def run_stage3_llm_chunking(
 
     cache_dir = book_dir / "speaker_cache"
     window_chars = effective_llm_segment_window_chars(max_chunk_chars)
-    endpoint = split_llm_endpoints(llm_endpoint)[0]
-    init_kwargs: dict[str, object] = {
-        "endpoint": endpoint,
+    endpoint_pool = split_llm_endpoints(llm_endpoint)
+    base_init_kwargs: dict[str, object] = {
         "model": llm_model,
         "cache_dir": cache_dir,
         "language": language,
-        "review_report_path": book_dir / "llm_chunking_review_report.json",
         "window_chars": window_chars,
         "max_segment_chars": max_chunk_chars,
         "allow_source_fallback": True,
     }
     if llm_max_retries is not None:
-        init_kwargs["max_retries"] = llm_max_retries
-
-    segmenter = LlmVoiceSegmenter(**init_kwargs)
+        base_init_kwargs["max_retries"] = llm_max_retries
 
     chapters = load_chapter_texts(book_dir)
     if not chapters:
@@ -393,6 +390,85 @@ def run_stage3_llm_chunking(
 
     total_windows = sum(_estimate_windows(text, window_chars) for _, text in targets)
     processed_windows = 0
+    workers = max(1, int(llm_chunk_workers))
+
+    def _process_chapter(
+        order_index: int,
+        ch_idx: int,
+        text: str,
+    ) -> tuple[int, int, list[dict[str, object]], float, int, str]:
+        endpoint = endpoint_pool[order_index % len(endpoint_pool)]
+        report_path = (
+            book_dir / "llm_chunking_review_report.json"
+            if workers == 1
+            else book_dir / "llm_chunking_reviews" / f"chapter_{ch_idx + 1:04d}.json"
+        )
+        init_kwargs = dict(base_init_kwargs)
+        init_kwargs["endpoint"] = endpoint
+        init_kwargs["review_report_path"] = report_path
+        segmenter = LlmVoiceSegmenter(**init_kwargs)
+
+        est_windows = _estimate_windows(text, window_chars)
+        t0 = time.monotonic()
+        paragraphs = [
+            Paragraph(raw_text=para, normalized_text=para, index_in_chapter=index)
+            for index, para in enumerate(text.split("\n\n"))
+            if para.strip()
+        ]
+        book = Book(
+            metadata=Metadata(language=language),
+            chapters=[
+                Chapter(
+                    title=f"Chapter {ch_idx + 1}",
+                    index=ch_idx,
+                    paragraphs=paragraphs,
+                )
+            ],
+        )
+        assert segmenter is not None
+        segments = segmenter.segment_book(book)
+        chunks = build_chunks_from_segments(segments, max_chunk_chars=max_chunk_chars)
+        elapsed = time.monotonic() - t0
+        return order_index, ch_idx, chunks, elapsed, est_windows, endpoint
+
+    if workers > 1:
+        print(f"  Using {workers} LLM chunk worker(s) across {len(endpoint_pool)} endpoint(s).")
+        (book_dir / "llm_chunking_reviews").mkdir(parents=True, exist_ok=True)
+        ordered_chunks: dict[int, list[dict[str, object]]] = {}
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(_process_chapter, order_index, ch_idx, text): (
+                    order_index,
+                    ch_idx,
+                    text,
+                )
+                for order_index, (ch_idx, text) in enumerate(targets)
+            }
+            for future in as_completed(futures):
+                order_index, ch_idx, text = futures[future]
+                _order, _ch_idx, chunks, elapsed, est_windows, endpoint = future.result()
+                ordered_chunks[order_index] = chunks
+                processed_windows += est_windows
+                total_elapsed = time.monotonic() - stage_t0
+                avg_per_window = total_elapsed / processed_windows
+                remaining_windows = max(total_windows - processed_windows, 0)
+                eta = remaining_windows * avg_per_window
+                print(
+                    f"    в†’ chapter {ch_idx + 1} ({len(text)} chars, endpoint {endpoint}) "
+                    f"{len(chunks)} chunks in {elapsed:.1f}s "
+                    f"(elapsed {total_elapsed:.1f}s, eta в‰€ {eta:.1f}s, "
+                    f"{processed_windows}/{total_windows} estimated windows)"
+                )
+        for order_index in range(len(targets)):
+            all_chunks.extend(ordered_chunks[order_index])
+        targets = []
+
+    segmenter: LlmVoiceSegmenter | None = None
+    if workers == 1:
+        init_kwargs = dict(base_init_kwargs)
+        init_kwargs["endpoint"] = endpoint_pool[0]
+        init_kwargs["review_report_path"] = book_dir / "llm_chunking_review_report.json"
+        segmenter = LlmVoiceSegmenter(**init_kwargs)
 
     for ch_idx, text in targets:
         est_windows = _estimate_windows(text, window_chars)
@@ -738,6 +814,12 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     parser.add_argument(
+        "--llm-chunk-workers",
+        type=int,
+        default=1,
+        help="Parallel LLM chunking workers for Stage 3 (default: 1).",
+    )
+    parser.add_argument(
         "--max-chunk-chars",
         type=int,
         default=DEFAULT_PIPELINE_MAX_CHUNK_CHARS,
@@ -944,6 +1026,7 @@ def main(argv: list[str] | None = None) -> None:
             args.chapter,
             args.llm_max_retries,
             args.max_chunk_chars,
+            args.llm_chunk_workers,
         )
     else:
         stage_banner(3, "Heuristic chunking (offline rule-based)")

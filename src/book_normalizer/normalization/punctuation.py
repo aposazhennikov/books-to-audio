@@ -47,6 +47,11 @@ def normalize_ellipsis(text: str) -> str:
     return text
 
 
+def normalize_repeated_commas(text: str) -> str:
+    """Collapse repeated commas introduced by PDF/OCR extraction."""
+    return re.sub(r",{2,}", ",", text)
+
+
 def adapt_punctuation_for_tts(text: str) -> str:
     """
     Adjust punctuation for better TTS output quality.

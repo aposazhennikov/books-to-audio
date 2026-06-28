@@ -12,7 +12,12 @@ from book_normalizer.normalization.cleanup import (
 )
 from book_normalizer.normalization.paragraphs import collapse_empty_lines
 from book_normalizer.normalization.pipeline import NormalizationPipeline
-from book_normalizer.normalization.punctuation import normalize_dashes, normalize_ellipsis, normalize_quotes
+from book_normalizer.normalization.punctuation import (
+    normalize_dashes,
+    normalize_ellipsis,
+    normalize_quotes,
+    normalize_repeated_commas,
+)
 from book_normalizer.normalization.whitespace import normalize_whitespace, repair_broken_lines
 
 
@@ -54,6 +59,11 @@ class TestPunctuation:
     def test_normalize_ellipsis(self) -> None:
         assert normalize_ellipsis("текст...") == "текст…"
         assert normalize_ellipsis("текст....") == "текст…"
+
+    def test_normalize_repeated_commas(self) -> None:
+        assert normalize_repeated_commas("— Это же Геркулес,, закричали воины.") == (
+            "— Это же Геркулес, закричали воины."
+        )
 
 
 class TestCleanup:
@@ -155,3 +165,10 @@ class TestNormalizationPipeline:
         result = pipeline.normalize_text(text)
 
         assert result.startswith("\u2014 \u0412\u044b")
+
+    def test_pipeline_repairs_repeated_commas_before_tts(self) -> None:
+        pipeline = NormalizationPipeline()
+
+        result = pipeline.normalize_text("— Феб,, закричали греки,, сам стреловержец Феб здесь.")
+
+        assert result == "— Феб, закричали греки, сам стреловержец Феб здесь."

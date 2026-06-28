@@ -457,7 +457,74 @@ class ChapterDetector:
             number = int(match.group("number"))
             normalized_title = re.sub(r"\s+", " ", title).strip()
             titles[number] = f"{number}. {normalized_title}"
-        return titles
+        if titles:
+            return titles
+        return ChapterDetector._extract_compact_toc_work_titles(lines)
+
+    @staticmethod
+    def _extract_compact_toc_work_titles(lines: list[str]) -> dict[int, str]:
+        """Extract trailing compact TOCs like "Книга 1 Title / Title / Книга 4 Title"."""
+        toc_markers = {"содержание", "оглавление"}
+        marker_indices = [
+            idx for idx, line in enumerate(lines)
+            if re.sub(r"\s+", " ", line).strip().casefold() in toc_markers
+        ]
+        if not marker_indices:
+            return {}
+
+        inline_book_re = re.compile(r"^Книга\s+(?P<number>\d{1,2})\s+(?P<title>.+)$", re.IGNORECASE)
+        bare_book_re = re.compile(r"^Книга\s+(?P<number>\d{1,2})$", re.IGNORECASE)
+        for marker_index in reversed(marker_indices):
+            titles: dict[int, str] = {}
+            next_number = 1
+            idx = marker_index + 1
+            while idx < len(lines):
+                line = re.sub(r"\s+", " ", lines[idx]).strip()
+                if not line:
+                    idx += 1
+                    continue
+
+                inline_match = inline_book_re.match(line)
+                if inline_match:
+                    number = int(inline_match.group("number"))
+                    title = inline_match.group("title").strip()
+                    if ChapterDetector._looks_like_toc_work_title(title):
+                        titles[number] = f"{number}. {title}"
+                        next_number = number + 1
+                    idx += 1
+                    continue
+
+                bare_match = bare_book_re.match(line)
+                if bare_match and idx + 1 < len(lines):
+                    number = int(bare_match.group("number"))
+                    title = re.sub(r"\s+", " ", lines[idx + 1]).strip()
+                    if ChapterDetector._looks_like_toc_work_title(title):
+                        titles[number] = f"{number}. {title}"
+                        next_number = number + 1
+                        idx += 2
+                        continue
+
+                if ChapterDetector._looks_like_toc_work_title(line):
+                    while next_number in titles:
+                        next_number += 1
+                    titles[next_number] = f"{next_number}. {line}"
+                    next_number += 1
+                    idx += 1
+                    continue
+
+                break
+
+            if len(titles) >= 3:
+                return dict(sorted(titles.items()))
+        return {}
+
+    @staticmethod
+    def _looks_like_toc_work_title(line: str) -> bool:
+        if not line or len(line) > 80:
+            return False
+        if any(mark in line for mark in (".", ",", ";", ":", "!", "?", "…", "—", "–", "«", "»", "(", ")")):
+            return False
+        return bool(re.fullmatch(r"[А-Яа-яЁё][А-Яа-яЁё0-9\s'-]{2,79}", line))
 
     @staticmethod
     def _filter_numeric_heading_noise(hits: list[_HeadingHit]) -> list[_HeadingHit]:

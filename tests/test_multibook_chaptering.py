@@ -361,6 +361,43 @@ def test_toc_work_titles_promote_standalone_title_pages() -> None:
     assert result.chapters[-1].title == f"3. {title_3} - {section_2}"
 
 
+def test_compact_trailing_toc_extracts_implicit_work_numbers() -> None:
+    lines = [
+        "\u0421\u043e\u0434\u0435\u0440\u0436\u0430\u043d\u0438\u0435",
+        "\u041a\u043d\u0438\u0433\u0430 1 "
+        "\u0412\u0445\u043e\u0434 \u0432 \u0441\u043f\u0438\u0440\u0430\u043b\u044c",
+        "\u041d\u0430\u0441\u043b\u0435\u0434\u043d\u0438\u043a\u0438 \u0421\u0435\u0442\u0430",
+        "\u0422\u0435\u043c\u043d\u044b\u0439 \u043e\u0431\u0435\u043b\u0438\u0441\u043a",
+        "\u041a\u043d\u0438\u0433\u0430 4 \u0422\u0440\u043e\u044f",
+        "\u041a\u043d\u0438\u0433\u0430 5 "
+        "\u041c\u0430\u043b\u044c\u0442\u0438\u0439\u0441\u043a\u0438\u0439 "
+        "\u044f\u0441\u0442\u0440\u0435\u0431",
+        "\u0417\u0430\u0442\u0435\u0440\u044f\u043d\u043d\u044b\u0435 "
+        "\u0432 \u043a\u043e\u0441\u043c\u043e\u0441\u0435",
+        "\u0412 \u043f\u043e\u0438\u0441\u043a\u0430\u0445 \u0441\u0438\u043b\u044b",
+    ]
+
+    titles = ChapterDetector._extract_compact_toc_work_titles(lines)
+
+    assert titles == {
+        1: "\u0031\u002e \u0412\u0445\u043e\u0434 \u0432 \u0441\u043f\u0438\u0440\u0430\u043b\u044c",
+        2: "\u0032\u002e \u041d\u0430\u0441\u043b\u0435\u0434\u043d\u0438\u043a\u0438 \u0421\u0435\u0442\u0430",
+        3: "\u0033\u002e \u0422\u0435\u043c\u043d\u044b\u0439 \u043e\u0431\u0435\u043b\u0438\u0441\u043a",
+        4: "\u0034\u002e \u0422\u0440\u043e\u044f",
+        5: (
+            "\u0035\u002e "
+            "\u041c\u0430\u043b\u044c\u0442\u0438\u0439\u0441\u043a\u0438\u0439 "
+            "\u044f\u0441\u0442\u0440\u0435\u0431"
+        ),
+        6: (
+            "\u0036\u002e "
+            "\u0417\u0430\u0442\u0435\u0440\u044f\u043d\u043d\u044b\u0435 "
+            "\u0432 \u043a\u043e\u0441\u043c\u043e\u0441\u0435"
+        ),
+        7: "\u0037\u002e \u0412 \u043f\u043e\u0438\u0441\u043a\u0430\u0445 \u0441\u0438\u043b\u044b",
+    }
+
+
 def test_supported_language_heading_patterns() -> None:
     assert match_chapter_heading("Chapter One") is not None
     assert match_chapter_heading("Chapter IV") is not None

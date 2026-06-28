@@ -108,6 +108,50 @@ def test_synthesize_manifest_updates_successful_chunk(tmp_path: Path) -> None:
     assert "PROGRESS 1/1" in lines
 
 
+def test_synthesize_manifest_parallel_workers_keep_chunk_audio_paths(tmp_path: Path) -> None:
+    manifest = _manifest()
+    chunks = manifest["chapters"][0]["chunks"]
+    chunks.extend(
+        [
+            {
+                "chapter_index": 0,
+                "chunk_index": 1,
+                "voice_label": "men",
+                "voice_tone": "tense",
+                "text": "Второй.",
+                "synthesized": False,
+            },
+            {
+                "chapter_index": 0,
+                "chunk_index": 2,
+                "voice_label": "women",
+                "voice_tone": "sad",
+                "text": "Третий.",
+                "synthesized": False,
+            },
+        ]
+    )
+    manifest_path = tmp_path / "chunks_manifest_v2.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    summary = synthesize_manifest(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        client=_Client(),  # type: ignore[arg-type]
+        builder=_Builder(),  # type: ignore[arg-type]
+        out_dir=tmp_path / "audio_chunks",
+        synthesis_workers=2,
+    )
+
+    assert summary.synthesized == 3
+    assert [Path(chunk["audio_file"]).name for chunk in chunks] == [
+        "chunk_001_narrator.wav",
+        "chunk_002_men.wav",
+        "chunk_003_women.wav",
+    ]
+    assert all((manifest_path.parent / chunk["audio_file"]).exists() for chunk in chunks)
+
+
 def test_synthesize_manifest_localizes_chunk_log(tmp_path: Path) -> None:
     manifest = _manifest()
     manifest["chapters"][0]["chunks"][0].update(

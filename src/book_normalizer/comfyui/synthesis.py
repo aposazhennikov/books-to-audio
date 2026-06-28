@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 import wave
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -449,11 +451,6 @@ def synthesize_manifest(
     synthesis_workers: int = 1,
 ) -> SynthesisSummary:
     """Synthesize all pending chunks and update the manifest after each chunk."""
-    if synthesis_workers > 1:
-        logger.info(
-            "Parallel synthesis requested (%d workers); using sequential mode until worker pool is available.",
-            synthesis_workers,
-        )
     is_cancelled = cancel_requested or (lambda: False)
     out_dir.mkdir(parents=True, exist_ok=True)
     all_pairs = [
@@ -484,6 +481,164 @@ def synthesize_manifest(
     synthesized_now = 0
     manifest_language = str(manifest.get("language") or "ru")
     base_generation_options = generation_options_from_mapping(generation_options)
+    worker_count = max(1, int(synthesis_workers or 1))
+
+    if worker_count > 1 and len(pending) > 1:
+        emit(f"Synthesis workers: {worker_count}")
+        lock = threading.Lock()
+
+        def process_pair(pair: tuple[dict[str, Any], dict[str, Any]]) -> tuple[str, bool]:
+            nonlocal done, failed, skipped, synthesized_now
+            chapter_entry, chunk = pair
+            if is_cancelled():
+                return "cancelled", False
+            chapter_index = int(chapter_entry.get("chapter_index", 0))
+            chunk_index = int(chunk.get("chunk_index", 0))
+            voice_label = str(chunk.get("voice_label") or "narrator")
+            voice_id = str(chunk.get("voice_id") or "")
+            voice_tone = str(chunk.get("voice_tone") or "calm").strip().lower()
+            text = str(chunk.get("text") or chunk.get(voice_label) or "")
+            language = str(chunk.get("language") or manifest_language)
+            attempt = int(chunk.get("resynthesis_attempt") or 0)
+            effective_options = base_generation_options.for_attempt(
+                attempt,
+                chapter_index=chapter_index,
+                chunk_index=chunk_index,
+            )
+            next_generation_options = chunk.get("next_generation_options")
+            if isinstance(next_generation_options, dict):
+                effective_options.update(
+                    {
+                        key: value
+                        for key, value in next_generation_options.items()
+                        if key in effective_options
+                    }
+                )
+
+            with lock:
+                chunk["failed"] = False
+                chunk["error"] = ""
+
+            if not text.strip():
+                with lock:
+                    emit(
+                        _log_text(
+                            log_language,
+                            "skip_empty",
+                            chapter=f"{chapter_index + 1:03d}",
+                            chunk=f"{chunk_index + 1:03d}",
+                        )
+                    )
+                    chunk["synthesized"] = True
+                    chunk["audio_file"] = ""
+                    done += 1
+                    skipped += 1
+                    emit(f"PROGRESS {done}/{total}")
+                    save_manifest(manifest_path, manifest)
+                return "skipped", True
+
+            output_path = build_output_path(out_dir, chapter_index, chunk_index, voice_label)
+            output_filename = output_path.with_suffix("").name
+            with lock:
+                emit(
+                    localized_synthesis_line(
+                        language=log_language,
+                        chapter=chapter_index + 1,
+                        chunk=chunk_index + 1,
+                        voice_label=voice_label,
+                        voice_id=voice_id,
+                        voice_tone=voice_tone,
+                        chars=len(text),
+                        file_name=output_path.name,
+                    )
+                )
+
+            started = time.monotonic()
+            try:
+                workflow = builder.build(
+                    text=text,
+                    voice_label=voice_label,
+                    voice_tone=voice_tone,
+                    output_filename=output_filename,
+                    language=language,
+                    speaker_override=resolve_speaker_override(
+                        chunk,
+                        voice_label,
+                        speaker_overrides,
+                    ),
+                    generation_options=effective_options,
+                    speaker=str(chunk.get("speaker") or ""),
+                    emotion=str(chunk.get("emotion") or ""),
+                    section_kind=str(chunk.get("section_kind") or ""),
+                    director=chunk.get("director") if isinstance(chunk.get("director"), dict) else None,
+                    resynthesis_attempt=attempt,
+                )
+                client.synthesize_chunk(
+                    workflow,
+                    output_path,
+                    timeout=chunk_timeout,
+                    cancel_requested=is_cancelled,
+                )
+                try:
+                    smoothing = smooth_wav_silence(output_path)
+                except (OSError, ValueError, wave.Error, EOFError):
+                    smoothing = None
+            except ComfyUICancelledError:
+                return "cancelled", False
+            except ComfyUIError as exc:
+                with lock:
+                    chunk["failed"] = True
+                    chunk["error"] = str(exc)
+                    failed += 1
+                    emit(_log_text(log_language, "error", error=exc))
+                    save_manifest(manifest_path, manifest)
+                return "failed", False
+
+            elapsed = time.monotonic() - started
+            size_kb = output_path.stat().st_size // 1024 if output_path.exists() else 0
+            with lock:
+                emit(_log_text(log_language, "done", seconds=elapsed, size_kb=size_kb))
+                chunk["synthesized"] = True
+                chunk["failed"] = False
+                chunk["error"] = ""
+                chunk["audio_file"] = _manifest_audio_file(output_path, manifest_path)
+                _write_compatible_chunk_audio(chunk, output_path, manifest_path)
+                chunk["last_generation_options"] = effective_options
+                chunk.pop("next_generation_options", None)
+                if smoothing is not None:
+                    chunk["audio_postprocess"] = {"silence_smoothing": smoothing.to_dict()}
+                    if smoothing.changed:
+                        emit(
+                            _log_text(
+                                log_language,
+                                "smoothed",
+                                removed=smoothing.removed_silence_ms,
+                                max_gap=smoothing.max_silence_ms,
+                            )
+                        )
+                done += 1
+                synthesized_now += 1
+                emit(f"PROGRESS {done}/{total}")
+                save_manifest(manifest_path, manifest)
+            return "done", True
+
+        status = "completed"
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = [executor.submit(process_pair, pair) for pair in pending]
+            for future in as_completed(futures):
+                state, _ok = future.result()
+                if state == "cancelled":
+                    status = "cancelled"
+                    break
+
+        emit(_log_text(log_language, "complete", new=synthesized_now, done=done, total=total, failed=failed))
+        return SynthesisSummary(
+            total=total,
+            synthesized=synthesized_now,
+            skipped=skipped,
+            failed=failed,
+            status=status,
+        )
 
     for chapter_entry, chunk in pending:
         if is_cancelled():

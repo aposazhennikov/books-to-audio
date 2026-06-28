@@ -466,6 +466,40 @@ class TestLlmNormalizerMocked:
         assert payload["failures"][0]["source_preview"] == original
         assert payload["failures"][0]["output_preview"] == "Alpha beta."
 
+    def test_normalize_book_clears_stale_review_report_on_clean_run(self, tmp_path: Path) -> None:
+        from book_normalizer.models.book import Book, Chapter, Metadata, Paragraph
+        from book_normalizer.normalization.llm_normalizer import LlmNormalizer
+
+        report_path = tmp_path / "review.json"
+        report_path.write_text('{"requires_human_review": true}', encoding="utf-8")
+        normalizer = LlmNormalizer(
+            cache_dir=tmp_path / "cache",
+            language="en",
+            max_retries=1,
+            review_report_path=report_path,
+        )
+        book = Book(
+            metadata=Metadata(language="en"),
+            chapters=[
+                Chapter(
+                    index=0,
+                    paragraphs=[
+                        Paragraph(
+                            raw_text="Alpha beta gamma.",
+                            normalized_text="Alpha beta gamma.",
+                            index_in_chapter=0,
+                        )
+                    ],
+                )
+            ],
+        )
+
+        with patch.object(normalizer, "_query_llm", return_value="Alpha beta gamma."):
+            accepted, rejected = normalizer.normalize_book(book)
+
+        assert (accepted, rejected) == (1, 0)
+        assert not report_path.exists()
+
     @pytest.mark.parametrize("language", ["ru", "en", "zh", "kk", "uz"])
     def test_language_prompt_is_selected_for_supported_languages(self, language: str) -> None:
         from book_normalizer.normalization.llm_normalizer import _system_prompt_for_language

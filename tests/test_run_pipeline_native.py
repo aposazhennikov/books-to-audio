@@ -157,6 +157,7 @@ def test_stage2_parallel_normalization_round_robins_llm_endpoints(
         _llm_model,
         _language,
         _cache_dir,
+        _review_report_path,
     ):  # noqa: ANN001
         calls.append((ch_idx, llm_endpoint))
         ch_file = book_dir / f"{ch_idx + 1:03d}_chapter_{ch_idx + 1:02d}.txt"

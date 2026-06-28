@@ -228,6 +228,9 @@ def run_stage2_llm_normalize(
         print("No matching chapters for LLM normalization (check --chapter).")
         return
 
+    review_report_path = book_dir / "llm_normalization_review_report.json"
+    review_report_path.unlink(missing_ok=True)
+
     processed = 0
     stage_t0 = time.monotonic()
     worker_count = max(1, workers)
@@ -246,6 +249,7 @@ def run_stage2_llm_normalize(
                     llm_model,
                     language,
                     cache_dir,
+                    review_report_path,
                 )
                 for offset, (ch_idx, text) in enumerate(targets)
             ]
@@ -266,7 +270,7 @@ def run_stage2_llm_normalize(
             model=llm_model,
             cache_dir=cache_dir,
             language=language,
-            review_report_path=book_dir / "llm_normalization_review_report.json",
+            review_report_path=review_report_path,
         )
         for ch_idx, text in targets:
             ch_file = book_dir / f"{ch_idx + 1:03d}_chapter_{ch_idx + 1:02d}.txt"
@@ -292,6 +296,7 @@ def _normalize_stage2_chapter(
     llm_model: str,
     language: str,
     cache_dir: Path,
+    review_report_path: Path,
 ) -> tuple[int, Path, float]:
     """Normalize one chapter for Stage 2 and write its TXT file."""
     from book_normalizer.normalization.llm_normalizer import LlmNormalizer
@@ -303,7 +308,7 @@ def _normalize_stage2_chapter(
         model=llm_model,
         cache_dir=cache_dir,
         language=language,
-        review_report_path=book_dir / "llm_normalization_review_report.json",
+        review_report_path=review_report_path,
     )
     t0 = time.monotonic()
     corrected = normalizer.normalize_chapter(text, chapter_index=ch_idx)

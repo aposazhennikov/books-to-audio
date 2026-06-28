@@ -501,6 +501,7 @@ class LlmNormalizer:
         Returns:
             ``(accepted, rejected)`` paragraph counts.
         """
+        self._clear_review_report()
         total = sum(len(chapter.paragraphs) for chapter in book.chapters)
         accepted = rejected = done = 0
 
@@ -748,6 +749,15 @@ class LlmNormalizer:
             ),
             encoding="utf-8",
         )
+
+    def _clear_review_report(self) -> None:
+        if self._review_report_path is None:
+            return
+        self._failures.clear()
+        try:
+            self._review_report_path.unlink(missing_ok=True)
+        except OSError:
+            logger.debug("Could not clear stale LLM normalization report: %s", self._review_report_path)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

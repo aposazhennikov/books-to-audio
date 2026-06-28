@@ -59,6 +59,7 @@ from book_normalizer.tts.perceptual_qa import (
     write_perceptual_report,
 )
 from book_normalizer.tts.quality_gate import split_problem_chunks_for_retry
+from book_normalizer.tts.voice_library import default_voice_library_dir
 
 ProgressCallback = Callable[[int, int, str, int, int, float, int, int, int], None]
 StatusCallback = Callable[[str], None]
@@ -806,6 +807,7 @@ class SynthesisController:
                 report_path=report_path.resolve(),
                 reset_bad_chunks=request.quality_loop,
                 max_resynthesis_attempts=request.max_resynthesis_attempts,
+                favorite_library_dir=default_voice_library_dir(),
             )
             summary = llm_audio_result.summary
             self._emit_log(

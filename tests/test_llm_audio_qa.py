@@ -19,9 +19,18 @@ class _FakeBackend:
         self.review = review
         self.calls: list[tuple[Path, str]] = []
 
-    def review_chunk(self, audio_path: Path, *, expected_text: str, language: str) -> LlmAudioQaReview:
+    def review_chunk(
+        self,
+        audio_path: Path,
+        *,
+        expected_text: str,
+        language: str,
+        expected_context: dict,
+    ) -> LlmAudioQaReview:
         self.calls.append((audio_path, expected_text))
         assert language == "ru"
+        assert expected_context["speaker"] == "Мастер"
+        assert expected_context["emotion"] == "calm"
         return self.review
 
 
@@ -38,6 +47,11 @@ def _manifest(audio_path: Path) -> dict:
                         "chunk_index": 0,
                         "voice_label": "narrator",
                         "text": "Привет, мир.",
+                        "speaker": "Мастер",
+                        "emotion": "calm",
+                        "voice_tone": "warm",
+                        "section_kind": "narration",
+                        "director": {"pace": "slow", "delivery": "soft"},
                         "synthesized": True,
                         "audio_file": str(audio_path),
                         "last_generation_options": {
@@ -123,3 +137,28 @@ def test_llm_audio_qa_failed_review_resets_chunk_and_sets_retry_options(tmp_path
     assert chunk["next_generation_options"]["temperature"] == 0.47
     assert chunk["next_generation_options"]["repetition_penalty"] == 1.2
     assert chunk["next_generation_options"]["speech_rate"] == 0.96
+
+
+def test_llm_audio_qa_saves_passed_generation_options_as_favorite(tmp_path: Path) -> None:
+    audio_path = tmp_path / "chunk.wav"
+    audio_path.write_bytes(b"fake wav")
+    manifest = _manifest(audio_path)
+    result = run_llm_audio_qa(
+        manifest,
+        config=LlmAudioQaConfig(model="fake-model"),
+        backend=_FakeBackend(LlmAudioQaReview(status="passed", score=97, review="Удачный вариант.")),
+        manifest_path=tmp_path / "chunks_manifest_v2.json",
+    )
+
+    annotate_manifest_with_llm_audio_qa(
+        manifest,
+        result,
+        report_path=tmp_path / "llm_audio.json",
+        favorite_library_dir=tmp_path / "voices",
+    )
+
+    favorites = (tmp_path / "voices" / "qa_favorites.jsonl").read_text(encoding="utf-8")
+    assert "\"speaker\": \"Мастер\"" in favorites
+    assert "\"emotion\": \"calm\"" in favorites
+    assert "\"temperature\": 0.55" in favorites
+    assert "\"score\": 97" in favorites

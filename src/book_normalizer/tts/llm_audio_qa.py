@@ -20,15 +20,20 @@ from book_normalizer.tts.quality_gate import (
     normalize_statuses,
     reset_chunk_for_resynthesis,
 )
+from book_normalizer.tts.voice_library import default_voice_library_dir, normalize_voice_library_dir
 
 LLM_AUDIO_QA_SCHEMA_VERSION = 1
 DEFAULT_LLM_AUDIO_QA_REPORT_NAME = "llm_audio_qa_report.json"
 DEFAULT_LLM_AUDIO_QA_MODEL = "Qwen/Qwen3-Omni-30B-A3B-Instruct"
+DEFAULT_LLM_AUDIO_QA_FAVORITES_NAME = "qa_favorites.jsonl"
 DEFAULT_LLM_AUDIO_QA_PROMPT = (
     "Оцени качество звука, интонации, паузы, ударения.\n"
     "Это сгенерированный мной AI голос озвучки текста книги.\n"
     "Будь критичен, не надо \"подсуживать\" мне.\n"
     "Язык текста -- русский, как и язык аудиофайла.\n"
+    "Также сравни аудио с ожидаемой ролью, персонажем, настроением, эмоцией, "
+    "типом фрагмента и режиссерскими указаниями. Если эмоция или роль не совпадают, "
+    "считай это проблемой качества.\n"
     "Верни только JSON: status passed|warning|failed, score 0-100, review, "
     "issues [{kind,severity,message,start_seconds,end_seconds}], recommendations "
     "{temperature_delta, repetition_penalty_delta, speech_rate_delta}."
@@ -120,7 +125,14 @@ class LlmAudioQaBackend(Protocol):
     name: str
     model: str
 
-    def review_chunk(self, audio_path: Path, *, expected_text: str, language: str) -> LlmAudioQaReview:
+    def review_chunk(
+        self,
+        audio_path: Path,
+        *,
+        expected_text: str,
+        language: str,
+        expected_context: dict[str, Any],
+    ) -> LlmAudioQaReview:
         """Review one audio chunk against the text it should pronounce."""
 
 
@@ -133,7 +145,14 @@ class OpenAICompatibleAudioBackend:
         self.config = config
         self.model = config.model
 
-    def review_chunk(self, audio_path: Path, *, expected_text: str, language: str) -> LlmAudioQaReview:
+    def review_chunk(
+        self,
+        audio_path: Path,
+        *,
+        expected_text: str,
+        language: str,
+        expected_context: dict[str, Any],
+    ) -> LlmAudioQaReview:
         try:
             import httpx
         except ImportError as exc:  # pragma: no cover - optional runtime dependency
@@ -147,7 +166,7 @@ class OpenAICompatibleAudioBackend:
 
         encoded = base64.b64encode(audio_path.read_bytes()).decode("ascii")
         media_type = _audio_media_type(audio_path)
-        prompt = _build_prompt(self.config.prompt, expected_text, language)
+        prompt = _build_prompt(self.config.prompt, expected_text, language, expected_context)
         payload = {
             "model": self.config.model,
             "messages": [
@@ -186,6 +205,7 @@ class LlmAudioQaChunkResult:
     review: str = ""
     issues: list[LlmAudioQaIssue] = field(default_factory=list)
     recommendations: dict[str, Any] = field(default_factory=dict)
+    expected_context: dict[str, Any] = field(default_factory=dict)
     elapsed_seconds: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
@@ -198,6 +218,7 @@ class LlmAudioQaChunkResult:
             "review": self.review,
             "issues": [issue.to_dict() for issue in self.issues],
             "recommendations": self.recommendations,
+            "expected_context": self.expected_context,
             "elapsed_seconds": round(self.elapsed_seconds, 3),
         }
 
@@ -216,6 +237,7 @@ class LlmAudioQaChunkResult:
             "issues": [issue.kind for issue in self.issues],
             "review": self.review,
             "recommendations": self.recommendations,
+            "expected_context": self.expected_context,
             "report_path": str(report_path or ""),
             "backend": backend,
             "model": model,
@@ -312,6 +334,7 @@ def run_llm_audio_qa(
                     chunk_index,
                     audio_path,
                     str(chunk.get("text") or ""),
+                    _chunk_expected_context(chunk),
                     language,
                     backend_obj,
                     cfg,
@@ -328,6 +351,7 @@ def annotate_manifest_with_llm_audio_qa(
     reset_bad_chunks: bool = False,
     resynth_statuses: set[str] | list[str] | tuple[str, ...] | None = None,
     max_resynthesis_attempts: int = 2,
+    favorite_library_dir: Path | str | None = None,
 ) -> None:
     """Attach compact LLM audio QA blocks and optionally reset bad chunks."""
     statuses = normalize_statuses(resynth_statuses or set(BAD_QA_STATUSES))
@@ -360,6 +384,12 @@ def annotate_manifest_with_llm_audio_qa(
                     chunk,
                     reason=reason,
                     max_attempts=max_resynthesis_attempts,
+                )
+            elif chunk_result.status == "passed" and favorite_library_dir is not None:
+                _record_passed_favorite(
+                    chunk,
+                    chunk_result,
+                    library_dir=favorite_library_dir,
                 )
 
 
@@ -399,18 +429,25 @@ def _run_chunk_llm_audio_qa(
     chunk_index: int,
     audio_path: Path,
     expected_text: str,
+    expected_context: dict[str, Any],
     language: str,
     backend: LlmAudioQaBackend,
     config: LlmAudioQaConfig,
 ) -> LlmAudioQaChunkResult:
     started = time.monotonic()
     item = LlmAudioQaChunkResult(chapter_index, chunk_index, audio_file=str(audio_path))
+    item.expected_context = expected_context
     if not audio_path.exists():
         item.status = "error"
         item.issues.append(LlmAudioQaIssue("missing_audio_file", "error", f"Audio file does not exist: {audio_path}"))
         return item
     try:
-        review = backend.review_chunk(audio_path, expected_text=expected_text, language=language)
+        review = backend.review_chunk(
+            audio_path,
+            expected_text=expected_text,
+            language=language,
+            expected_context=expected_context,
+        )
     except Exception as exc:
         item.status = "error"
         item.review = str(exc)
@@ -449,6 +486,71 @@ def _next_generation_options(base: Any, recommendations: dict[str, Any]) -> dict
     return {key: value for key, value in options.items() if key in _KNOWN_GENERATION_KEYS or key == "seed_strategy"}
 
 
+def _chunk_expected_context(chunk: dict[str, Any]) -> dict[str, Any]:
+    context = {
+        "voice_label": str(chunk.get("voice_label") or ""),
+        "voice_id": str(chunk.get("voice_id") or ""),
+        "voice_tone": str(chunk.get("voice_tone") or ""),
+        "speaker": str(chunk.get("canonical_speaker") or chunk.get("speaker") or ""),
+        "character_id": str(chunk.get("character_id") or ""),
+        "character_description": str(chunk.get("character_description") or ""),
+        "emotion": str(chunk.get("emotion") or ""),
+        "section_kind": str(chunk.get("section_kind") or ""),
+        "role": str(chunk.get("role") or chunk.get("voice") or ""),
+        "cast_voice_id": str(chunk.get("cast_voice_id") or ""),
+        "voice_strategy": str(chunk.get("voice_strategy") or ""),
+    }
+    director = chunk.get("director")
+    if isinstance(director, dict):
+        context["director"] = director
+    last_generation_options = chunk.get("last_generation_options")
+    if isinstance(last_generation_options, dict):
+        context["generation_options"] = {
+            key: last_generation_options[key]
+            for key in sorted(last_generation_options)
+            if key in _KNOWN_GENERATION_KEYS or key == "seed"
+        }
+    return {key: value for key, value in context.items() if value not in ("", {}, None)}
+
+
+def _record_passed_favorite(
+    chunk: dict[str, Any],
+    chunk_result: LlmAudioQaChunkResult,
+    *,
+    library_dir: Path | str | None,
+) -> None:
+    options = chunk.get("last_generation_options")
+    if not isinstance(options, dict):
+        return
+    target_dir = normalize_voice_library_dir(library_dir) if library_dir else default_voice_library_dir()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "schema_version": LLM_AUDIO_QA_SCHEMA_VERSION,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "source": "llm_audio_qa",
+        "status": chunk_result.status,
+        "score": chunk_result.score,
+        "review": chunk_result.review,
+        "issues": [issue.to_dict() for issue in chunk_result.issues],
+        "chapter_index": int(chunk.get("chapter_index") or 0),
+        "chunk_index": int(chunk.get("chunk_index") or 0),
+        "speaker": str(chunk.get("canonical_speaker") or chunk.get("speaker") or ""),
+        "emotion": str(chunk.get("emotion") or ""),
+        "voice_label": str(chunk.get("voice_label") or ""),
+        "voice_id": str(chunk.get("voice_id") or ""),
+        "voice_tone": str(chunk.get("voice_tone") or ""),
+        "section_kind": str(chunk.get("section_kind") or ""),
+        "director": chunk.get("director") if isinstance(chunk.get("director"), dict) else {},
+        "generation_options": {
+            key: options[key]
+            for key in sorted(options)
+            if key in _KNOWN_GENERATION_KEYS or key == "seed"
+        },
+    }
+    with (target_dir / DEFAULT_LLM_AUDIO_QA_FAVORITES_NAME).open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+
+
 def _skipped_chunk(
     chapter_index: int,
     chunk_index: int,
@@ -463,8 +565,19 @@ def _skipped_chunk(
     return item
 
 
-def _build_prompt(prompt: str, expected_text: str, language: str) -> str:
-    return f"{prompt}\n\nLanguage: {language}\nExpected text:\n{expected_text}"
+def _build_prompt(
+    prompt: str,
+    expected_text: str,
+    language: str,
+    expected_context: dict[str, Any],
+) -> str:
+    return (
+        f"{prompt}\n\n"
+        f"Language: {language}\n"
+        f"Expected role/mood context JSON:\n"
+        f"{json.dumps(expected_context, ensure_ascii=False, indent=2, sort_keys=True)}\n"
+        f"Expected text:\n{expected_text}"
+    )
 
 
 def _audio_media_type(path: Path) -> str:

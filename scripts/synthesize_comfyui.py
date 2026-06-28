@@ -90,6 +90,7 @@ from book_normalizer.tts.perceptual_qa import (
     write_perceptual_report,
 )
 from book_normalizer.tts.quality_gate import split_problem_chunks_for_retry
+from book_normalizer.tts.voice_library import default_voice_library_dir
 
 # ── Manifest helpers ──────────────────────────────────────────────────────────
 
@@ -500,6 +501,7 @@ def main(argv: list[str] | None = None) -> None:
                 report_path=llm_audio_report.resolve(),
                 reset_bad_chunks=args.quality_loop,
                 max_resynthesis_attempts=args.max_resynth_attempts,
+                favorite_library_dir=default_voice_library_dir(),
             )
             save_manifest(manifest_path, manifest)
             summary = llm_audio_result.summary

@@ -65,6 +65,32 @@ _MISSING_PREPOSITION_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
 )
 
+_COMMON_RUSSIAN_OCR_TOKEN_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(?<![А-Яа-яЁё-])а этот раз\b", re.IGNORECASE), "На этот раз"),
+    (re.compile(r"(?<![А-Яа-яЁё-])Полушай\b"), "Послушай"),
+    (re.compile(r"(?<![А-Яа-яЁё-])полушай\b"), "послушай"),
+    (re.compile(r"(?<![А-Яа-яЁё-])Иничего\b"), "И ничего"),
+    (re.compile(r"(?<![А-Яа-яЁё-])иничего\b"), "и ничего"),
+    (re.compile(r"(?<![А-Яа-яЁё-])Даесли\b"), "Да если"),
+    (re.compile(r"(?<![А-Яа-яЁё-])даесли\b"), "да если"),
+    (re.compile(r"(?<![А-Яа-яЁё-])Дане\b"), "Да не"),
+    (re.compile(r"(?<![А-Яа-яЁё-])дане\b"), "да не"),
+    (re.compile(r"(?<![А-Яа-яЁё-])Датут\b"), "Да тут"),
+    (re.compile(r"(?<![А-Яа-яЁё-])датут\b"), "да тут"),
+    (re.compile(r"\bТо Шесть\b"), "То есть"),
+    (re.compile(r"\bто шесть\b"), "то есть"),
+    (re.compile(r"(?<=\bкаждом\s)Шесть\b"), "есть"),
+    (re.compile(r"(?<![А-Яа-яЁё-])Ррыбы\b"), "Рыбы"),
+    (re.compile(r"(?<![А-Яа-яЁё-])ррыбы\b"), "рыбы"),
+    (re.compile(r"(?<=\bВеликого\s)Сдома\b"), "дома"),
+    (re.compile(r"(?<=\bвеликого\s)сдома\b"), "дома"),
+    (re.compile(r"(?<![А-Яа-яЁё-])Ятебе\b"), "тебе"),
+    (re.compile(r"(?<![А-Яа-яЁё-])Яведь\b"), "ведь"),
+    (re.compile(r"(?<![А-Яа-яЁё-])Уменя\b"), "меня"),
+    (re.compile(r"(?<![А-Яа-яЁё-])У\s+меня(?=\s+на\s+Небо\b)"), "меня"),
+    (re.compile(r"(?<=—\s)ы прав(?=,)"), "Вы правы"),
+)
+
 # Lone garbage characters surrounded by whitespace in Cyrillic text.
 _LONE_GARBAGE = re.compile(
     r"(?<=\s)[=<>|#№\u2021\u2020\u00A7\u00B6]+(?=\s)"
@@ -360,6 +386,26 @@ _STRAY_LINE_PATTERN = re.compile(
 )
 
 
+def _looks_like_short_ocr_noise_line(text: str) -> bool:
+    """Detect short mixed-case OCR debris lines produced near headings."""
+
+    normalized = re.sub(r"[^А-Яа-яЁёA-Za-z]+", " ", text).strip()
+    if not normalized:
+        return False
+    tokens = normalized.split()
+    if len(tokens) < 3:
+        return False
+    if max(len(token) for token in tokens) > 5:
+        return False
+    if sum(len(token) for token in tokens) / len(tokens) > 3.5:
+        return False
+    letters = [char for char in normalized if char.isalpha()]
+    if len(letters) < 6:
+        return False
+    uppercase_ratio = sum(1 for char in letters if char.isupper()) / len(letters)
+    return uppercase_ratio >= 0.35 and not text.rstrip().endswith((".", "!", "?", "…", "»"))
+
+
 def fix_ocr_artifacts(text: str) -> str:
     """Remove common OCR artifacts from Cyrillic text.
 
@@ -373,6 +419,8 @@ def fix_ocr_artifacts(text: str) -> str:
     text = _DROPPED_INITIAL_U.sub("Утром", text)
     text = _DROPPED_INITIAL_P_PRIEM.sub("Прием", text)
     for pattern, replacement in _MISSING_PREPOSITION_FIXES:
+        text = pattern.sub(replacement, text)
+    for pattern, replacement in _COMMON_RUSSIAN_OCR_TOKEN_FIXES:
         text = pattern.sub(replacement, text)
     text = _LONE_GARBAGE.sub("", text)
     text = fix_square_bracket_ocr_artifacts(text)
@@ -398,7 +446,7 @@ def fix_ocr_artifacts(text: str) -> str:
             continue
 
         # Skip lines that are just 1-2 stray characters (OCR noise).
-        if _STRAY_LINE_PATTERN.match(stripped):
+        if _STRAY_LINE_PATTERN.match(stripped) or _looks_like_short_ocr_noise_line(stripped):
             if not stripped.isdigit() and stripped not in ("—", "«", "»", "—,"):
                 continue
 

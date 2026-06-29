@@ -89,6 +89,37 @@ def test_ocr_artifacts_restore_bracket_as_initial_p_before_pere_stem() -> None:
     assert fix_ocr_artifacts(text) == "— Передай наставнику, — сказал Сергей."
 
 
+@pytest.mark.parametrize(
+    "input_text, expected",
+    [
+        ("а этот раз Сергей уснул.", "На этот раз Сергей уснул."),
+        ("- Полушай, Дан.", "- Послушай, Дан."),
+        ("Иничего не решает.", "И ничего не решает."),
+        ("Даесли сказать правду.", "Да если сказать правду."),
+        ("Дане стойте вы.", "Да не стойте вы."),
+        ("Датут Лев.", "Да тут Лев."),
+        ("То Шесть без галстуков?", "То есть без галстуков?"),
+        ("На каждом Шесть астрологические знаки.", "На каждом есть астрологические знаки."),
+        ("Ваш знак — Ррыбы.", "Ваш знак — Рыбы."),
+        ("Великого Сдома Стрельца.", "Великого дома Стрельца."),
+        ("они к Ятебе потянутся.", "они к тебе потянутся."),
+        ("мы Яведь всегда дружили.", "мы ведь всегда дружили."),
+        ("вместо Уменя.", "вместо меня."),
+        ("— ы прав, Матфей.", "— Вы правы, Матфей."),
+    ],
+)
+def test_ocr_artifacts_restore_common_glued_or_prefixed_russian_tokens(
+    input_text: str,
+    expected: str,
+) -> None:
+    assert fix_ocr_artifacts(input_text) == expected
+
+
+def test_ocr_artifacts_remove_short_mixed_case_heading_noise_line() -> None:
+    text = "Сон разума\n\nМЕ: А аеИИ пиНИИ\n\nНа этот раз Сергей уснул."
+    assert fix_ocr_artifacts(text) == "Сон разума\n\nНа этот раз Сергей уснул."
+
+
 def test_pipeline_restores_dropped_initial_letter_in_priem() -> None:
     text = "рием шел ни шатко, ни валко."
     assert NormalizationPipeline.for_language("ru").normalize_text(text) == (
